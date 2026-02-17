@@ -17,6 +17,12 @@ const TOOL_CATEGORIES = {
     SendMessage: 'task', TeamCreate: 'task',
 };
 
+const PROVIDER_BADGES = {
+    claude: { label: 'Claude', color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
+    codex:  { label: 'Codex',  color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
+    gemini: { label: 'Gemini', color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
+};
+
 const PROJECT_COLORS = [
     '#e8d44d', '#4ade80', '#60a5fa', '#f97316', '#a78bfa',
     '#f472b6', '#34d399', '#fb923c', '#818cf8', '#22d3ee',
@@ -204,6 +210,7 @@ export class DashboardRenderer {
                 <div class="dash-card__info">
                     <div class="dash-card__name"></div>
                     <div class="dash-card__meta">
+                        <span class="dash-card__provider-badge"></span>
                         <span class="dash-card__model"></span>
                         <span class="dash-card__role"></span>
                     </div>
@@ -254,6 +261,13 @@ export class DashboardRenderer {
         cardEl.querySelector('.dash-card__name').textContent = agent.name;
         cardEl.querySelector('.dash-card__model').textContent = this._shortModel(agent.model);
         cardEl.querySelector('.dash-card__role').textContent = agent.role || '';
+
+        // 프로바이더 뱃지
+        const badgeEl = cardEl.querySelector('.dash-card__provider-badge');
+        const badge = PROVIDER_BADGES[agent.provider] || PROVIDER_BADGES.claude;
+        badgeEl.textContent = badge.label;
+        badgeEl.style.color = badge.color;
+        badgeEl.style.background = badge.bg;
 
         const statusEl = cardEl.querySelector('.dash-card__status');
         statusEl.className = `dash-card__status dash-card__status--${agent.status}`;
@@ -341,6 +355,7 @@ export class DashboardRenderer {
             const params = new URLSearchParams({
                 sessionId: agent.id,
                 project: agent.projectPath || '',
+                provider: agent.provider || 'claude',
             });
             const resp = await fetch(`/api/session-detail?${params}`);
             if (!resp.ok) return;

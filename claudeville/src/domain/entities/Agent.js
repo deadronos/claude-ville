@@ -20,7 +20,7 @@ const TITLES_KO = [
 ];
 
 export class Agent {
-    constructor({ id, name, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage }) {
+    constructor({ id, name, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
         this.id = id;
         this._customName = !!name; // 팀에서 지정된 이름인지 여부
         this.name = name || this.generateName();
@@ -31,6 +31,7 @@ export class Agent {
         this.messages = messages || [];
         this.teamName = teamName;
         this.projectPath = projectPath;
+        this.provider = provider || 'claude';
         this.currentTool = lastTool || null;
         this.currentToolInput = lastToolInput || null;
         this._lastMessage = lastMessage || null;

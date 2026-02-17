@@ -95,6 +95,7 @@ export class AgentManager {
                 lastTool: session.lastTool,
                 lastToolInput: session.lastToolInput,
                 lastMessage: session.lastMessage,
+                provider: session.provider || 'claude',
             });
             this.world.addAgent(agent);
         }

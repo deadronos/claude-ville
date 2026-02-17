@@ -159,6 +159,14 @@
     color: #8b8b9e;
 }
 
+.dash-card__provider-badge {
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
 .dash-card__model {
     background: rgba(74, 158, 255, 0.15);
     color: #4a9eff;

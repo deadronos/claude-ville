@@ -15,16 +15,18 @@
           ╚═╝   ╚═╝╚══════╝╚══════╝╚══════╝
 ```
 
-**Real-time visualization dashboard for Claude Code agents, teams & swarms**
+**Universal AI Coding Agent Visualization Dashboard**
 
 Watch your AI agent teams come alive in an isometric pixel world
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Claude Code](https://img.shields.io/badge/Claude_Code-CLI-blueviolet?logo=anthropic&logoColor=white)](https://docs.anthropic.com/en/docs/claude-code)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen)]()
 
-<!-- 스크린샷이 준비되면 아래 주석 해제 -->
+[![Claude Code](https://img.shields.io/badge/Claude_Code-Supported-a78bfa?logo=anthropic&logoColor=white)](https://docs.anthropic.com/en/docs/claude-code)
+[![Codex CLI](https://img.shields.io/badge/Codex_CLI-Supported-4ade80?logo=openai&logoColor=white)](https://github.com/openai/codex)
+[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-Supported-60a5fa?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
+
 <!-- <img src="assets/demo.gif" alt="ClaudeVille Demo" width="800" /> -->
 
 </div>
@@ -33,16 +35,28 @@ Watch your AI agent teams come alive in an isometric pixel world
 
 ## What is ClaudeVille?
 
-ClaudeVille turns your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) agent sessions into a live, visual dashboard. Whether you're running a single agent or orchestrating multi-agent teams and swarms, ClaudeVille reads `~/.claude/` session logs in real-time and renders agents as pixel characters in an isometric world — or as monitoring cards in dashboard mode.
+ClaudeVille is a **universal dashboard** for AI coding agents. It visualizes sessions from **Claude Code**, **OpenAI Codex CLI**, and **Google Gemini CLI** — all in one place. Agents appear as pixel characters roaming an isometric village, or as real-time monitoring cards in dashboard mode.
 
-> **Claude Code CLI only** — reads directly from `~/.claude/` directory
+Each CLI stores session logs locally. ClaudeVille reads them all, merges them into a single unified view, and streams live updates to your browser.
+
+## Supported CLI Tools
+
+| CLI | Data Source | Provider Badge |
+|---|---|---|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `~/.claude/` | 🟣 Purple |
+| [Codex CLI](https://github.com/openai/codex) | `~/.codex/` | 🟢 Green |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `~/.gemini/` | 🔵 Blue |
+
+> Only installed CLIs are detected. You don't need all three — ClaudeVille works with whichever ones you have.
 
 ## Features
 
 - **World Mode** — Isometric pixel village where agents roam as characters with unique appearances
 - **Dashboard Mode** — Real-time agent cards showing tool usage, messages, and activity
+- **Multi-Provider** — Claude Code + Codex CLI + Gemini CLI in a single dashboard
 - **Live Detection** — WebSocket + file watcher for instant session updates
 - **Agent Team & Swarm** — Auto-detects Claude Code teams, swarms, and sub-agents
+- **Project Grouping** — Agents grouped by project with color-coded sections
 - **Multilingual** — Korean / English
 - **Zero Dependencies** — Pure Node.js, no npm install needed
 
@@ -59,37 +73,51 @@ Open http://localhost:3000 in your browser. That's it.
 ## Requirements
 
 - [Node.js](https://nodejs.org/) v18+
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed with session history
+- At least one of:
+  - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`~/.claude/`)
+  - [Codex CLI](https://github.com/openai/codex) (`~/.codex/`)
+  - [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`~/.gemini/`)
 
 ## How It Works
 
-When you use Claude Code CLI, session logs are written to `~/.claude/`.
-ClaudeVille watches these files and streams updates to your browser via WebSocket.
+Each CLI stores session logs in its own directory. ClaudeVille uses an **adapter pattern** to normalize sessions from all providers into a unified format, then streams updates to your browser via WebSocket.
 
 ```
-~/.claude/
-├── history.jsonl            # Session history
-├── projects/{path}/         # Per-project session logs (.jsonl)
-│   └── {sessionId}/
-│       └── subagents/       # Sub-agent logs
-├── teams/                   # Team configs
-└── tasks/                   # Task lists
+~/.claude/                          # Claude Code
+├── history.jsonl
+├── projects/{path}/{sessionId}/
+│   └── subagents/
+├── teams/
+└── tasks/
+
+~/.codex/                           # Codex CLI
+└── sessions/YYYY/MM/DD/
+    └── rollout-*.jsonl
+
+~/.gemini/                          # Gemini CLI
+└── tmp/{project_hash}/chats/
+    └── session-*.json
 ```
 
-## Project Structure
+## Architecture
 
 ```
 claude-ville/
 ├── claudeville/
 │   ├── index.html
 │   ├── server.js                # Node.js server (HTTP + WebSocket)
+│   ├── adapters/                # Provider adapters
+│   │   ├── index.js             #   Adapter registry
+│   │   ├── claude.js            #   Claude Code adapter
+│   │   ├── codex.js             #   Codex CLI adapter
+│   │   └── gemini.js            #   Gemini CLI adapter
 │   ├── css/                     # Stylesheets
 │   └── src/
 │       ├── config/              # Theme, buildings, i18n, constants
 │       ├── domain/              # Entities, value objects, events
 │       ├── infrastructure/      # Data source, WebSocket client
-│       ├── application/         # Managers, session watcher, notifications
-│       └── presentation/        # UI renderers (character / dashboard)
+│       ├── application/         # Managers, session watcher
+│       └── presentation/        # UI renderers (world / dashboard)
 └── package.json
 ```
 
@@ -101,17 +129,18 @@ claude-ville/
 | Rendering | Canvas 2D API (isometric pixel art) |
 | Server | Node.js built-in modules only |
 | Real-time | WebSocket (RFC 6455, hand-rolled) |
-| Data | `~/.claude/` file system (read-only) |
+| Data | Local CLI session files (read-only) |
 
 ## API
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/sessions` | Active session list |
-| `GET /api/session-detail?sessionId=&project=` | Tool history + messages |
-| `GET /api/teams` | Team list |
-| `GET /api/tasks` | Task list |
-| `GET /api/history?lines=100` | Last N lines of history.jsonl |
+| `GET /api/sessions` | Active sessions from all providers |
+| `GET /api/session-detail?sessionId=&project=&provider=` | Tool history + messages |
+| `GET /api/teams` | Claude Code team list |
+| `GET /api/tasks` | Claude Code task list |
+| `GET /api/providers` | Detected provider list |
+| `GET /api/history?lines=100` | Last N lines of Claude history |
 | `ws://localhost:3000` | Real-time updates (WebSocket) |
 
 ## Contributing

@@ -2,6 +2,9 @@ import { eventBus } from '../../domain/events/DomainEvent.js';
 import { i18n } from '../../config/i18n.js';
 
 // 프로젝트별 색상 팔레트
+const PROVIDER_ICONS = { claude: 'C', codex: 'X', gemini: 'G' };
+const PROVIDER_COLORS = { claude: '#a78bfa', codex: '#4ade80', gemini: '#60a5fa' };
+
 const PROJECT_COLORS = [
     '#e8d44d', '#4ade80', '#60a5fa', '#f97316', '#a78bfa',
     '#f472b6', '#34d399', '#fb923c', '#818cf8', '#22d3ee',
@@ -47,7 +50,7 @@ export class Sidebar {
                     <span class="sidebar__agent-dot sidebar__agent-dot--${agent.status}"></span>
                     <div class="sidebar__agent-info">
                         <span class="sidebar__agent-name">${this._escape(agent.name)}</span>
-                        <span class="sidebar__agent-model">${this._shortModel(agent.model)}</span>
+                        <span class="sidebar__agent-model"><span style="color:${PROVIDER_COLORS[agent.provider] || '#8b8b9e'};font-weight:bold">${PROVIDER_ICONS[agent.provider] || '?'}</span> ${this._shortModel(agent.model)}</span>
                     </div>
                 </div>`;
             }

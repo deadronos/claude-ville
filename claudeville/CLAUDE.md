@@ -23,7 +23,14 @@ body (flex column, height 100vh)
 - ES Modules (import/export)
 - Node.js 서버 (server.js) - HTTP + WebSocket (RFC 6455 직접 구현)
 - Canvas 2D API로 아이소메트릭 렌더링
-- 데이터 소스: ~/.claude/ 디렉토리 (history.jsonl, projects/, teams/, tasks/)
+- 어댑터 패턴으로 멀티 프로바이더 지원 (adapters/ 디렉토리)
+
+## 데이터 소스 (멀티 프로바이더)
+- **Claude Code**: `~/.claude/` (history.jsonl, projects/, teams/, tasks/)
+- **Codex CLI**: `~/.codex/sessions/` (rollout-*.jsonl)
+- **Gemini CLI**: `~/.gemini/tmp/` (session-*.json)
+- 각 어댑터는 `adapters/claude.js`, `adapters/codex.js`, `adapters/gemini.js`에 구현
+- `adapters/index.js`가 레지스트리 역할, 설치된 CLI만 자동 감지
 
 ## 모드
 - **WORLD**: 아이소메트릭 픽셀 월드에서 에이전트가 캐릭터로 돌아다님
