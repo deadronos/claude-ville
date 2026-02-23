@@ -16,6 +16,7 @@ const https = require('https');
 const CLAUDE_HOME = path.join(require('os').homedir(), '.claude');
 const CREDENTIALS_PATH = path.join(CLAUDE_HOME, '.credentials.json');
 const STATS_CACHE_PATH = path.join(CLAUDE_HOME, 'stats-cache.json');
+const HISTORY_PATH = path.join(CLAUDE_HOME, 'history.jsonl');
 
 // 캐시 TTL
 const CREDENTIALS_TTL = 30_000;   // 30초
@@ -66,58 +67,95 @@ function fetchEmail() {
   });
 }
 
-// ─── stats-cache.json 파싱 ───────────────────────────────────
+// ─── history.jsonl 실시간 파싱 + stats-cache.json 병합 ────────
 
 function readStats() {
   const now = Date.now();
   if (cache.stats.data && now - cache.stats.ts < STATS_TTL) {
     return cache.stats.data;
   }
+
+  // history.jsonl에서 오늘/이번주 활동 직접 계산 (실시간)
+  const live = readHistoryLive();
+
+  // stats-cache.json에서 누적 totals 읽기
+  let totalSessions = 0, totalMessages = 0;
   try {
     const raw = fs.readFileSync(STATS_CACHE_PATH, 'utf-8');
     const json = JSON.parse(raw);
-    const activity = json.dailyActivity || [];
+    totalSessions = json.totalSessions || 0;
+    totalMessages = json.totalMessages || 0;
+  } catch { /* 무시 */ }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const todayEntry = activity.find(d => d.date === today);
+  const result = {
+    today: live.today,
+    thisWeek: live.thisWeek,
+    totalSessions,
+    totalMessages,
+  };
 
-    // 이번 주 (월~일)
+  cache.stats = { data: result, ts: now };
+  return result;
+}
+
+/**
+ * history.jsonl에서 오늘/이번주 메시지·세션 수를 직접 계산
+ * 파일을 뒤에서부터 읽어서 날짜 범위 밖이면 중단 (성능 최적화)
+ */
+function readHistoryLive() {
+  const empty = {
+    today: { messages: 0, sessions: 0 },
+    thisWeek: { messages: 0, sessions: 0 },
+  };
+
+  try {
+    if (!fs.existsSync(HISTORY_PATH)) return empty;
+
     const nowDate = new Date();
+    const todayStr = nowDate.toISOString().slice(0, 10);
+    const todayStart = new Date(todayStr + 'T00:00:00').getTime();
+
+    // 이번 주 월요일 00:00
     const dayOfWeek = nowDate.getDay();
     const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     const monday = new Date(nowDate);
     monday.setDate(monday.getDate() - mondayOffset);
-    const mondayStr = monday.toISOString().slice(0, 10);
+    monday.setHours(0, 0, 0, 0);
+    const weekStart = monday.getTime();
 
-    const weekEntries = activity.filter(d => d.date >= mondayStr && d.date <= today);
-    const weekMessages = weekEntries.reduce((s, d) => s + (d.messageCount || 0), 0);
-    const weekSessions = weekEntries.reduce((s, d) => s + (d.sessionCount || 0), 0);
-    const weekTools = weekEntries.reduce((s, d) => s + (d.toolCallCount || 0), 0);
+    // 파일을 뒤에서부터 읽기 (최신 데이터가 뒤에 있음)
+    const content = fs.readFileSync(HISTORY_PATH, 'utf-8');
+    const lines = content.trim().split('\n');
 
-    const result = {
-      today: {
-        messages: todayEntry?.messageCount || 0,
-        sessions: todayEntry?.sessionCount || 0,
-        tools: todayEntry?.toolCallCount || 0,
-      },
-      thisWeek: {
-        messages: weekMessages,
-        sessions: weekSessions,
-        tools: weekTools,
-      },
-      totalSessions: json.totalSessions || 0,
-      totalMessages: json.totalMessages || 0,
-    };
+    let todayMsgs = 0, weekMsgs = 0;
+    const todaySessions = new Set();
+    const weekSessions = new Set();
 
-    cache.stats = { data: result, ts: now };
-    return result;
-  } catch {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const entry = JSON.parse(lines[i]);
+        const ts = entry.timestamp;
+        if (!ts) continue;
+
+        // 이번 주보다 이전이면 중단
+        if (ts < weekStart) break;
+
+        weekMsgs++;
+        if (entry.sessionId) weekSessions.add(entry.sessionId);
+
+        if (ts >= todayStart) {
+          todayMsgs++;
+          if (entry.sessionId) todaySessions.add(entry.sessionId);
+        }
+      } catch { /* 파싱 실패 줄 무시 */ }
+    }
+
     return {
-      today: { messages: 0, sessions: 0, tools: 0 },
-      thisWeek: { messages: 0, sessions: 0, tools: 0 },
-      totalSessions: 0,
-      totalMessages: 0,
+      today: { messages: todayMsgs, sessions: todaySessions.size },
+      thisWeek: { messages: weekMsgs, sessions: weekSessions.size },
     };
+  } catch {
+    return empty;
   }
 }
 
