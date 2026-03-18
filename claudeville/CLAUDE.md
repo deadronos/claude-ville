@@ -24,6 +24,7 @@ body (flex column, height 100vh)
 - Node.js 서버 (server.js) - HTTP + WebSocket (RFC 6455 직접 구현)
 - Canvas 2D API로 아이소메트릭 렌더링
 - 어댑터 패턴으로 멀티 프로바이더 지원 (adapters/ 디렉토리)
+- **서버 포트: 4000** (3000 아님! 변경하지 말 것)
 
 ## 데이터 소스 (멀티 프로바이더)
 - **Claude Code**: `~/.claude/` (history.jsonl, projects/, teams/, tasks/)

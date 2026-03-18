@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node claudeville/server.js"
+    "dev": "node claudeville/server.js",
+    "widget:build": "cd widget && bash build.sh",
+    "widget": "open widget/ClaudeVilleWidget.app"
   }
 }
