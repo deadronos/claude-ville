@@ -1,3 +1,5 @@
+require('../load-local-env');
+
 const http = require('http');
 const crypto = require('crypto');
 const { applySnapshot, getCurrentState, getSessionDetail, getHistory, defaultUsage } = require('./state');

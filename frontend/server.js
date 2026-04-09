@@ -1,10 +1,12 @@
+require('../load-local-env');
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
 const PORT = Number(process.env.FRONTEND_PORT || 3001);
 const STATIC_DIR = path.join(__dirname, '..', 'claudeville');
-const HUB_HTTP_URL = process.env.HUB_HTTP_URL || 'http://localhost:3030';
+const HUB_HTTP_URL = process.env.HUB_HTTP_URL || process.env.HUB_URL || 'http://localhost:3030';
 const HUB_WS_URL = process.env.HUB_WS_URL || HUB_HTTP_URL.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws';
 
 const MIME_TYPES = {

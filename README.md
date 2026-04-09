@@ -82,7 +82,9 @@ npm run dev:collector
 npm run dev:frontend
 ```
 
+Each Node entrypoint auto-loads `.env.local` from the repo root if it exists.
 Set `HUB_HTTP_URL` and `HUB_WS_URL` for the frontend if the hubreceiver runs on another host.
+`HUB_URL` is also accepted by the frontend as a shortcut for `HUB_HTTP_URL`.
 
 ### macOS Menu Bar Widget (Optional)
 

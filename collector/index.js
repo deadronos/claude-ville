@@ -1,3 +1,5 @@
+require('../load-local-env');
+
 const fs = require('fs');
 const crypto = require('crypto');
 const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters');
