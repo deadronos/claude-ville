@@ -5,11 +5,15 @@
 const { ClaudeAdapter } = require('./claude');
 const { CodexAdapter } = require('./codex');
 const { GeminiAdapter } = require('./gemini');
+const { OpenClawAdapter } = require('./openclaw');
+const { CopilotAdapter } = require('./copilot');
 
 const adapters = [
   new ClaudeAdapter(),
   new CodexAdapter(),
   new GeminiAdapter(),
+  new OpenClawAdapter(),
+  new CopilotAdapter(),
 ];
 
 /**
