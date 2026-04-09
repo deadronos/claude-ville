@@ -19,9 +19,19 @@ export class Sidebar {
         this._projectColorMap = new Map();
 
         this._onUpdate = () => this.render();
+        this._onAgentSelected = (agent) => {
+            this.selectedId = agent?.id || null;
+            this.render();
+        };
+        this._onAgentDeselected = () => {
+            this.selectedId = null;
+            this.render();
+        };
         eventBus.on('agent:added', this._onUpdate);
         eventBus.on('agent:updated', this._onUpdate);
         eventBus.on('agent:removed', this._onUpdate);
+        eventBus.on('agent:selected', this._onAgentSelected);
+        eventBus.on('agent:deselected', this._onAgentDeselected);
 
         this.render();
     }
@@ -63,10 +73,15 @@ export class Sidebar {
         this.listEl.querySelectorAll('.sidebar__agent').forEach(el => {
             el.addEventListener('click', () => {
                 const id = el.dataset.agentId;
-                this.selectedId = this.selectedId === id ? null : id;
                 const agent = this.world.agents.get(id);
-                if (agent) {
-                    eventBus.emit('agent:selected', agent);
+                if (this.selectedId === id) {
+                    this.selectedId = null;
+                    eventBus.emit('agent:deselected');
+                } else {
+                    this.selectedId = id;
+                    if (agent) {
+                        eventBus.emit('agent:selected', agent);
+                    }
                 }
                 this.render();
             });
@@ -121,5 +136,7 @@ export class Sidebar {
         eventBus.off('agent:added', this._onUpdate);
         eventBus.off('agent:updated', this._onUpdate);
         eventBus.off('agent:removed', this._onUpdate);
+        eventBus.off('agent:selected', this._onAgentSelected);
+        eventBus.off('agent:deselected', this._onAgentDeselected);
     }
 }

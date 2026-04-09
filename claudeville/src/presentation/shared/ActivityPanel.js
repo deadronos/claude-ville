@@ -35,6 +35,12 @@ export class ActivityPanel {
             }
         });
 
+        eventBus.on('agent:deselected', () => {
+            if (this.currentAgent) {
+                this.hide();
+            }
+        });
+
         eventBus.on('agent:removed', (agent) => {
             if (this.currentAgent && agent.id === this.currentAgent.id) {
                 this.hide();
@@ -166,7 +172,18 @@ export class ActivityPanel {
     }
 
     _renderTokenUsage(usage) {
-        if (!usage) return;
+        if (!usage) {
+            document.getElementById('panelContextSize').textContent = '-';
+            document.getElementById('panelInputTokens').textContent = '0';
+            document.getElementById('panelOutputTokens').textContent = '0';
+            document.getElementById('panelCacheRead').textContent = '0';
+            document.getElementById('panelTurnCount').textContent = '0';
+            document.getElementById('panelEstCost').textContent = '$0.00';
+            const bar = document.getElementById('panelContextBar');
+            bar.style.width = '0%';
+            bar.className = 'activity-panel__context-bar';
+            return;
+        }
 
         const MAX_CONTEXT = 200000; // Opus 200k context window
         const contextPct = Math.min(100, (usage.contextWindow / MAX_CONTEXT) * 100);

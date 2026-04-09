@@ -1,4 +1,6 @@
-const BASE_URL = window.location.origin;
+import { getHubHttpUrl } from '../config/runtime.js';
+
+const BASE_URL = getHubHttpUrl();
 
 export class ClaudeDataSource {
     async getSessions() {
