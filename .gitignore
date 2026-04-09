@@ -2,3 +2,9 @@ node_modules/
 .DS_Store
 *.log
 docs/plans/
+
+
+
+.env
+.env.local
+
