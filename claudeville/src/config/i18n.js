@@ -34,8 +34,11 @@ const STRINGS = {
     modeSwitchDashboard: 'Switched to Dashboard mode',
 
     settingsTitle: 'SETTINGS',
-    language: 'Language',
-    languageFixed: 'English only',
+    nameMode: 'Name mode',
+    autodetectedNames: 'Autodetected',
+    pooledRandomNames: 'Pooled random',
+    providerNameModeNote: 'Provider overrides from the environment can still force a mode for specific providers.',
+    nameModeChanged: (label) => `Name mode set to ${label}`,
 };
 
 class I18n {

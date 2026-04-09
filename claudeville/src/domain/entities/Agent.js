@@ -4,10 +4,12 @@ import { Appearance } from '../value-objects/Appearance.js';
 import { generateAgentDisplayName } from '../../config/agentNames.js';
 
 export class Agent {
-    constructor({ id, name, nameIsCustom = false, nameSeed = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
+    constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
         this.id = id;
         this.nameSeed = nameSeed || id;
-        this._customName = !!name && nameIsCustom; // 팀에서 지정된 이름인지 여부
+        this.nameKind = nameKind;
+        this.nameMode = nameMode;
+        this.nameHint = nameHint;
         this.name = name || this.generateName();
         this.model = model || 'unknown';
         this.status = status || AgentStatus.IDLE;
@@ -83,7 +85,8 @@ export class Agent {
     }
 
     generateName() {
-        return generateAgentDisplayName(this.nameSeed || this.id);
+        const seed = this.nameSeed || this.id;
+        return generateAgentDisplayName(seed, this.nameKind);
     }
 
     static generateNameForSeed(seed) {
@@ -91,28 +94,12 @@ export class Agent {
     }
 
     regenerateName() {
-        if (!this._customName) {
-            this.name = generateAgentDisplayName(this.nameSeed || this.id);
-        }
+        this.name = this.generateName();
         return this.name;
     }
 
     update(data) {
-        const { nameIsCustom, name: nextName, nameSeed, ...rest } = data || {};
-        Object.assign(this, rest);
-        if (typeof nextName === 'string' && nextName) {
-            if (!this._customName || nameIsCustom) {
-                this.name = nextName;
-            }
-            if (nameIsCustom !== undefined) {
-                this._customName = !!nameIsCustom;
-            } else if (!this._customName) {
-                this._customName = true;
-            }
-        }
-        if (typeof nameSeed === 'string' && nameSeed) {
-            this.nameSeed = nameSeed;
-        }
+        Object.assign(this, data);
         this.lastActive = Date.now();
     }
 }

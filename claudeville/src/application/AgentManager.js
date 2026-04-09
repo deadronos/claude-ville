@@ -102,21 +102,22 @@ export class AgentManager {
             tokens,
             _lastMessage: session.lastMessage || null,
             nameSeed: resolvedName.nameSeed,
+            nameKind: resolvedName.nameKind,
+            nameMode: resolvedName.nameMode,
+            nameHint: resolvedName.nameHint,
         };
 
         if (this.world.agents.has(id)) {
-            const currentAgent = this.world.agents.get(id);
-            if (resolvedName.nameIsCustom || !currentAgent._customName) {
-                agentData.name = resolvedName.name;
-                agentData.nameIsCustom = resolvedName.nameIsCustom;
-            }
+            agentData.name = resolvedName.name;
             this.world.updateAgent(id, agentData);
         } else {
             const agent = new Agent({
                 id,
                 name: resolvedName.name,
-                nameIsCustom: resolvedName.nameIsCustom,
                 nameSeed: resolvedName.nameSeed,
+                nameKind: resolvedName.nameKind,
+                nameMode: resolvedName.nameMode,
+                nameHint: resolvedName.nameHint,
                 model: agentData.model,
                 status: agentData.status,
                 role: agentData.role,

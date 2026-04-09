@@ -11,6 +11,7 @@ import { AgentManager } from '../application/AgentManager.js';
 import { ModeManager } from '../application/ModeManager.js';
 import { SessionWatcher } from '../application/SessionWatcher.js';
 import { NotificationService } from '../application/NotificationService.js';
+import { getNameMode, setNameMode } from '../config/agentNames.js';
 
 import { TopBar } from './shared/TopBar.js';
 import { Sidebar } from './shared/Sidebar.js';
@@ -181,14 +182,38 @@ class App {
         if (!btn) return;
 
         btn.addEventListener('click', () => {
+            const currentMode = getNameMode();
             this.modal.open(i18n.t('settingsTitle'), `
                 <div class="settings-form">
                     <div class="settings-row">
-                        <span class="settings-label">${i18n.t('language')}</span>
-                        <span style="color:#8b8b9e;font-size:11px">${i18n.t('languageFixed')}</span>
+                        <span class="settings-label">${i18n.t('nameMode')}</span>
+                        <div class="settings-lang-btns">
+                            <button class="settings-lang-btn ${currentMode === 'autodetected' ? 'settings-lang-btn--active' : ''}" data-mode="autodetected">${i18n.t('autodetectedNames')}</button>
+                            <button class="settings-lang-btn ${currentMode === 'pooled' ? 'settings-lang-btn--active' : ''}" data-mode="pooled">${i18n.t('pooledRandomNames')}</button>
+                        </div>
                     </div>
+                    <div class="settings-note">${i18n.t('providerNameModeNote')}</div>
                 </div>
             `);
+
+            document.querySelectorAll('.settings-lang-btn').forEach(modeBtn => {
+                modeBtn.addEventListener('click', () => {
+                    const nextMode = modeBtn.dataset.mode;
+                    if (nextMode === getNameMode()) return;
+                    setNameMode(nextMode);
+                    for (const agent of this.world.agents.values()) {
+                        agent.regenerateName();
+                    }
+                    this.sidebar.render();
+                    if (this.dashboardRenderer && this.dashboardRenderer.active) {
+                        this.dashboardRenderer.render();
+                    }
+                    this.modal.close();
+                    if (this.toast) {
+                        this.toast.show(i18n.t('nameModeChanged')(i18n.t(nextMode === 'pooled' ? 'pooledRandomNames' : 'autodetectedNames')), 'success');
+                    }
+                });
+            });
         });
     }
 
