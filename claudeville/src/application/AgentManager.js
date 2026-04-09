@@ -81,6 +81,7 @@ export class AgentManager {
     _upsertAgent(session, teamMembers) {
         const id = session.sessionId;
         const teamInfo = teamMembers ? teamMembers.get(session.agentId) : null;
+        const resolvedName = teamInfo?.name || session.displayName || session.agentName || session.agentId || null;
         const tokenUsage = session.tokenUsage || null;
         const tokens = session.tokens || (tokenUsage ? {
             input: tokenUsage.totalInput || 0,
@@ -103,11 +104,14 @@ export class AgentManager {
         };
 
         if (this.world.agents.has(id)) {
+            if (teamInfo?.name) {
+                agentData.name = resolvedName;
+            }
             this.world.updateAgent(id, agentData);
         } else {
             const agent = new Agent({
                 id,
-                name: teamInfo?.name || null,
+                name: resolvedName,
                 model: agentData.model,
                 status: agentData.status,
                 role: agentData.role,

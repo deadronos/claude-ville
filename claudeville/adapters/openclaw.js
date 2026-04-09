@@ -177,6 +177,34 @@ function getRecentMessages(filePath, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
+function encodeSessionKey(value) {
+  return encodeURIComponent(value || '');
+}
+
+function decodeSessionKey(value) {
+  return decodeURIComponent(value || '');
+}
+
+function buildSessionId(agentId, fileName) {
+  const sessionId = fileName.replace('.jsonl', '');
+  return `openclaw:${encodeSessionKey(agentId)}:${encodeSessionKey(sessionId)}`;
+}
+
+function parseSessionId(sessionId) {
+  if (!sessionId.startsWith('openclaw:')) {
+    return {
+      agentId: null,
+      fileId: sessionId.replace('openclaw-', ''),
+    };
+  }
+
+  const [, encodedAgentId = '', encodedFileId = ''] = sessionId.split(':', 3);
+  return {
+    agentId: decodeSessionKey(encodedAgentId),
+    fileId: decodeSessionKey(encodedFileId),
+  };
+}
+
 // ─── 세션 스캔 ────────────────────────────────────────
 
 function scanAllSessionFiles(activeThresholdMs) {
@@ -236,12 +264,12 @@ class OpenClawAdapter {
 
     for (const { filePath, mtime, fileName, agentId } of sessionFiles) {
       const detail = parseSession(filePath);
-      const sessionId = fileName.replace('.jsonl', '');
 
       sessions.push({
-        sessionId: `openclaw-${sessionId}`,
+        sessionId: buildSessionId(agentId, fileName),
         provider: 'openclaw',
         agentId,
+        displayName: agentId || null,
         agentType: 'main',
         model: detail.model || 'unknown',
         status: 'active',
@@ -258,12 +286,15 @@ class OpenClawAdapter {
   }
 
   getSessionDetail(sessionId, project) {
-    const cleanId = sessionId.replace('openclaw-', '');
     const sessionFiles = scanAllSessionFiles(30 * 60 * 1000);
+    const parsed = parseSessionId(sessionId);
 
-    for (const { filePath, fileName } of sessionFiles) {
+    for (const { filePath, fileName, agentId } of sessionFiles) {
       const fileId = fileName.replace('.jsonl', '');
-      if (fileId === cleanId) {
+      if (
+        fileId === parsed.fileId
+        && (!parsed.agentId || parsed.agentId === agentId)
+      ) {
         return {
           toolHistory: getToolHistory(filePath),
           messages: getRecentMessages(filePath),
