@@ -8,6 +8,17 @@ const { GeminiAdapter } = require('./gemini');
 const { OpenClawAdapter } = require('./openclaw');
 const { CopilotAdapter } = require('./copilot');
 
+const CLAUDE_RATE_TABLE = {
+  'claude-opus-4-6': { input: 15, output: 75 },
+  'claude-sonnet-4-5': { input: 3, output: 15 },
+  'claude-haiku-4-5': { input: 0.8, output: 4 },
+};
+
+function estimateCost(model, tokens = { input: 0, output: 0 }) {
+  const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
+  return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
+}
+
 const adapters = [
   new ClaudeAdapter(),
   new CodexAdapter(),
@@ -24,7 +35,24 @@ function getAllSessions(activeThresholdMs) {
   for (const adapter of adapters) {
     if (!adapter.isAvailable()) continue;
     try {
-      const sessions = adapter.getActiveSessions(activeThresholdMs);
+      const sessions = adapter.getActiveSessions(activeThresholdMs).map((session) => {
+        const detail = adapter.getSessionDetail(session.sessionId, session.project);
+        const tokenUsage = detail.tokenUsage || null;
+        const tokens = tokenUsage
+          ? {
+              input: tokenUsage.totalInput || 0,
+              output: tokenUsage.totalOutput || 0,
+            }
+          : session.tokens || { input: 0, output: 0 };
+
+        return {
+          ...session,
+          detail,
+          tokenUsage,
+          tokens,
+          estimatedCost: estimateCost(session.model, tokens),
+        };
+      });
       allSessions.push(...sessions);
     } catch (err) {
       console.error(`[${adapter.name}] 세션 조회 실패:`, err.message);

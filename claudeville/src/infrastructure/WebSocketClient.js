@@ -1,5 +1,6 @@
 import { eventBus } from '../domain/events/DomainEvent.js';
 import { WS_RECONNECT_INTERVAL } from '../config/constants.js';
+import { getHubWsUrl } from '../config/runtime.js';
 
 export class WebSocketClient {
     constructor() {
@@ -7,7 +8,7 @@ export class WebSocketClient {
         this.connected = false;
         this.reconnectTimer = null;
         this.reconnectAttempts = 0;
-        this.url = `ws://${window.location.host}`;
+        this.url = getHubWsUrl();
     }
 
     get isConnected() {

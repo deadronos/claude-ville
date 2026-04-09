@@ -35,9 +35,9 @@ Watch your AI agent teams come alive in an isometric pixel world
 
 ## What is ClaudeVille?
 
-ClaudeVille is a **universal dashboard** for AI coding agents. It visualizes sessions from **Claude Code**, **OpenAI Codex CLI**, and **Google Gemini CLI** — all in one place. Agents appear as pixel characters roaming an isometric village, or as real-time monitoring cards in dashboard mode.
+ClaudeVille is a **universal dashboard** for AI coding agents. It visualizes sessions from **Claude Code**, **OpenAI Codex CLI**, **Google Gemini CLI**, **OpenClaw**, and **GitHub Copilot CLI**. Agents appear as pixel characters roaming an isometric village, or as real-time monitoring cards in dashboard mode.
 
-Each CLI stores session logs locally. ClaudeVille reads them all, merges them into a single unified view, and streams live updates to your browser.
+Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one app, or as a split stack where a collector on the source machine streams snapshots to a hubreceiver and the frontend connects remotely.
 
 ## Supported CLI Tools
 
@@ -46,6 +46,8 @@ Each CLI stores session logs locally. ClaudeVille reads them all, merges them in
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `~/.claude/` | 🟣 Purple |
 | [Codex CLI](https://github.com/openai/codex) | `~/.codex/` | 🟢 Green |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `~/.gemini/` | 🔵 Blue |
+| OpenClaw | `~/.openclaw/` | 🟠 Orange |
+| GitHub Copilot CLI | `~/.copilot/` | 🔵 Cyan |
 
 > Only installed CLIs are detected. You don't need all three — ClaudeVille works with whichever ones you have.
 
@@ -53,7 +55,7 @@ Each CLI stores session logs locally. ClaudeVille reads them all, merges them in
 
 - **World Mode** — Isometric pixel village where agents roam as characters with unique appearances
 - **Dashboard Mode** — Real-time agent cards showing tool usage, messages, and activity
-- **Multi-Provider** — Claude Code + Codex CLI + Gemini CLI in a single dashboard
+- **Multi-Provider** — Claude Code + Codex CLI + Gemini CLI + OpenClaw + Copilot CLI
 - **Live Detection** — WebSocket + file watcher for instant session updates
 - **Agent Team & Swarm** — Auto-detects Claude Code teams, swarms, and sub-agents
 - **Project Grouping** — Agents grouped by project with color-coded sections
@@ -69,6 +71,20 @@ npm run dev
 ```
 
 Open http://localhost:4000 in your browser. That's it.
+
+### Split mode
+
+In separate shells or machines:
+
+```bash
+npm run dev:hubreceiver
+npm run dev:collector
+npm run dev:frontend
+```
+
+Each Node entrypoint auto-loads `.env.local` from the repo root if it exists.
+Set `HUB_HTTP_URL` and `HUB_WS_URL` for the frontend if the hubreceiver runs on another host.
+`HUB_URL` is also accepted by the frontend as a shortcut for `HUB_HTTP_URL`.
 
 ### macOS Menu Bar Widget (Optional)
 
@@ -122,7 +138,7 @@ Each CLI stores session logs in its own directory. ClaudeVille uses an **adapter
 
 ```
 claude-ville/
-├── claudeville/
+├── claudeville/                # Legacy all-in-one app + frontend assets
 │   ├── index.html
 │   ├── server.js                # Node.js server (HTTP + WebSocket)
 │   ├── adapters/                # Provider adapters
@@ -139,6 +155,9 @@ claude-ville/
 │       ├── infrastructure/      # Data source, WebSocket client
 │       ├── application/         # Managers, session watcher
 │       └── presentation/        # UI renderers (world / dashboard)
+├── collector/                   # Remote file watcher + snapshot publisher
+├── hubreceiver/                 # Snapshot ingestion + state/API server
+├── frontend/                    # Static frontend host for remote browsers
 ├── widget/                      # macOS menu bar widget
 │   ├── Sources/main.swift       #   Swift app (NSStatusItem + WKWebView)
 │   ├── Resources/               #   HTML/CSS for popover UI

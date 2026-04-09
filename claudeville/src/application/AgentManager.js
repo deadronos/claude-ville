@@ -81,6 +81,11 @@ export class AgentManager {
     _upsertAgent(session, teamMembers) {
         const id = session.sessionId;
         const teamInfo = teamMembers ? teamMembers.get(session.agentId) : null;
+        const tokenUsage = session.tokenUsage || null;
+        const tokens = session.tokens || (tokenUsage ? {
+            input: tokenUsage.totalInput || 0,
+            output: tokenUsage.totalOutput || 0,
+        } : { input: 0, output: 0 });
 
         // 팀 이름: teamInfo에서 가져오거나, 프로젝트 경로에서 추출
         const teamName = teamInfo?.teamName
@@ -93,6 +98,7 @@ export class AgentManager {
             teamName,
             currentTool: session.lastTool || null,
             currentToolInput: session.lastToolInput || null,
+            tokens,
             _lastMessage: session.lastMessage || null,
         };
 
@@ -106,6 +112,7 @@ export class AgentManager {
                 status: agentData.status,
                 role: agentData.role,
                 teamName,
+                tokens: agentData.tokens,
                 projectPath: session.project || null,
                 lastTool: session.lastTool,
                 lastToolInput: session.lastToolInput,
