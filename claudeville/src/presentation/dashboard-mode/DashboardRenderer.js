@@ -18,9 +18,11 @@ const TOOL_CATEGORIES = {
 };
 
 const PROVIDER_BADGES = {
-    claude: { label: 'Claude', color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
-    codex:  { label: 'Codex',  color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
-    gemini: { label: 'Gemini', color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
+    claude:    { label: 'Claude',    color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
+    codex:     { label: 'Codex',     color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
+    gemini:    { label: 'Gemini',    color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
+    openclaw:  { label: 'OpenClaw',  color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
+    copilot:   { label: 'Copilot',   color: '#22d3ee', bg: 'rgba(34,211,238,0.15)' },
 };
 
 const PROJECT_COLORS = [
