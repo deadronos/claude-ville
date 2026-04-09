@@ -15,7 +15,7 @@ const MIME_TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-const WS_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-5AB5DC563B35';
+const WS_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
