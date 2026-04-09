@@ -1,11 +1,9 @@
-import { getHubHttpUrl } from '../config/runtime.js';
-
-const BASE_URL = getHubHttpUrl();
+import { getHubApiUrl } from '../config/runtime.js';
 
 export class ClaudeDataSource {
     async getSessions() {
         try {
-            const res = await fetch(`${BASE_URL}/api/sessions`);
+            const res = await fetch(getHubApiUrl('/api/sessions'));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             return data.sessions || [];
@@ -17,7 +15,7 @@ export class ClaudeDataSource {
 
     async getTeams() {
         try {
-            const res = await fetch(`${BASE_URL}/api/teams`);
+            const res = await fetch(getHubApiUrl('/api/teams'));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             return data.teams || [];
@@ -29,7 +27,7 @@ export class ClaudeDataSource {
 
     async getTasks() {
         try {
-            const res = await fetch(`${BASE_URL}/api/tasks`);
+            const res = await fetch(getHubApiUrl('/api/tasks'));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             return data.taskGroups || [];
@@ -41,7 +39,7 @@ export class ClaudeDataSource {
 
     async getUsage() {
         try {
-            const res = await fetch(`${BASE_URL}/api/usage`);
+            const res = await fetch(getHubApiUrl('/api/usage'));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return await res.json();
         } catch (err) {
@@ -52,7 +50,7 @@ export class ClaudeDataSource {
 
     async getHistory(lines = 100) {
         try {
-            const res = await fetch(`${BASE_URL}/api/history?lines=${lines}`);
+            const res = await fetch(getHubApiUrl('/api/history', { lines }));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             return data.entries || [];

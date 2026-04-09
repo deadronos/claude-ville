@@ -1,4 +1,6 @@
 import { eventBus } from '../../domain/events/DomainEvent.js';
+import { estimateClaudeCost } from '../../config/costs.js';
+import { getHubApiUrl } from '../../config/runtime.js';
 
 const TOOL_ICONS = {
     Read: '\u{1F4D6}', Edit: '\u270F\uFE0F', Write: '\u{1F4DD}',
@@ -121,7 +123,7 @@ export class ActivityPanel {
                 project: agent.projectPath || '',
                 provider: agent.provider || 'claude',
             });
-            const resp = await fetch(`/api/session-detail?${params}`);
+            const resp = await fetch(getHubApiUrl('/api/session-detail', params));
             if (!resp.ok) return;
             const data = await resp.json();
             if (this.currentAgent && this.currentAgent.id === agent.id) {
@@ -209,8 +211,11 @@ export class ActivityPanel {
         document.getElementById('panelTurnCount').textContent =
             usage.turnCount.toLocaleString();
 
-        // Estimated cost (Opus 4.6 기본 요금)
-        const cost = this._estimateCost(usage);
+        // Estimated cost uses the same source of truth as the world/top bar.
+        const cost = estimateClaudeCost(usage.model || 'claude-sonnet-4-5', {
+            input: usage.totalInput,
+            output: usage.totalOutput,
+        });
         document.getElementById('panelEstCost').textContent = `$${cost.toFixed(4)}`;
     }
 
@@ -218,16 +223,6 @@ export class ActivityPanel {
         if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
         if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
         return String(n);
-    }
-
-    _estimateCost(usage) {
-        // Opus 4.6 pricing: input $15/M, output $75/M, cache_read $1.5/M, cache_create $18.75/M
-        return (
-            (usage.totalInput * 15 / 1000000) +
-            (usage.totalOutput * 75 / 1000000) +
-            (usage.cacheRead * 1.5 / 1000000) +
-            (usage.cacheCreate * 18.75 / 1000000)
-        );
     }
 
     // ─── 유틸 ───────────────────────────────────────
