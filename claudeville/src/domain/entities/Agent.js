@@ -1,7 +1,7 @@
 import { AgentStatus } from '../value-objects/AgentStatus.js';
 import { Position } from '../value-objects/Position.js';
 import { Appearance } from '../value-objects/Appearance.js';
-import { generateAgentDisplayName } from '../../config/agentNames.js';
+import { generateAgentDisplayName, resolveAgentDisplayName } from '../../config/agentNames.js';
 
 export class Agent {
     constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
@@ -51,6 +51,17 @@ export class Agent {
         return this._lastMessage || this.messages[this.messages.length - 1] || null;
     }
 
+    _buildDisplaySession() {
+        return {
+            sessionId: this.id,
+            agentId: this.nameKind === 'agent' ? this.nameSeed : null,
+            displayName: this.nameHint,
+            agentName: this.nameHint,
+            provider: this.provider,
+            agentType: this.nameKind === 'agent' ? 'sub-agent' : 'main',
+        };
+    }
+
     /**
      * 현재 도구에 따른 목표 건물 타입 반환
      */
@@ -85,8 +96,7 @@ export class Agent {
     }
 
     generateName() {
-        const seed = this.nameSeed || this.id;
-        return generateAgentDisplayName(seed, this.nameKind);
+        return resolveAgentDisplayName(this._buildDisplaySession(), this.teamName ? { name: this.teamName } : null).name;
     }
 
     static generateNameForSeed(seed) {
@@ -94,7 +104,12 @@ export class Agent {
     }
 
     regenerateName() {
-        this.name = this.generateName();
+        const resolved = resolveAgentDisplayName(this._buildDisplaySession(), this.teamName ? { name: this.teamName } : null);
+        this.name = resolved.name;
+        this.nameSeed = resolved.nameSeed;
+        this.nameKind = resolved.nameKind;
+        this.nameMode = resolved.nameMode;
+        this.nameHint = resolved.nameHint;
         return this.name;
     }
 

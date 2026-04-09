@@ -91,11 +91,22 @@ Set `HUB_HTTP_URL` and `HUB_WS_URL` for the frontend if the hubreceiver runs on 
 When ClaudeVille sees a long raw session or agent identifier, it now shows a short stable display name instead. You can customize the generated names with `.env.local`:
 
 ```bash
-# English / default locale pool
+# Default display mode: autodetected names or pooled random names
+CLAUDEVILLE_NAME_MODE=autodetected
+
+# Optional per-provider overrides
+CLAUDEVILLE_NAME_MODE_CLAUDE=autodetected
+CLAUDEVILLE_NAME_MODE_CODEX=autodetected
+CLAUDEVILLE_NAME_MODE_GEMINI=autodetected
+CLAUDEVILLE_NAME_MODE_OPENCLAW=autodetected
+CLAUDEVILLE_NAME_MODE_COPILOT=autodetected
+
+# Separate pools for agent/team names and session names
 CLAUDEVILLE_AGENT_NAME_POOL=Atlas,Nova,Cipher,Pixel,Spark,Bolt,Echo,Flux,Helix,Onyx
+CLAUDEVILLE_SESSION_NAME_POOL=Orbit,Beacon,Relay,Pulse,Signal,Vector,Comet,Drift,Trace,Kernel
 ```
 
-The same variable is used by the legacy app, the split frontend, and the collector/hubreceiver runtime config they serve. If a session already has a human-friendly name, ClaudeVille keeps it; only raw ID-like labels are replaced.
+The same variables are used by the legacy app, the split frontend, and the collector/hubreceiver runtime config they serve. If a session already has a human-friendly name, ClaudeVille keeps it in autodetected mode; pooled mode always uses the configured pool. Provider-specific overrides can force a mode for a given provider.
 
 ### macOS Menu Bar Widget (Optional)
 

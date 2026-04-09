@@ -208,6 +208,10 @@ class App {
                     if (this.dashboardRenderer && this.dashboardRenderer.active) {
                         this.dashboardRenderer.render();
                     }
+                    if (this.activityPanel?.currentAgent) {
+                        this.activityPanel._updateInfo(this.activityPanel.currentAgent);
+                        this.activityPanel._updateCurrentTool(this.activityPanel.currentAgent);
+                    }
                     this.modal.close();
                     if (this.toast) {
                         this.toast.show(i18n.t('nameModeChanged')(i18n.t(nextMode === 'pooled' ? 'pooledRandomNames' : 'autodetectedNames')), 'success');
