@@ -149,9 +149,9 @@ The architecture exposes the following main data endpoints:
 - `/api/tasks`
 - `/api/providers`
 - `/api/usage`
-- `/api/history` in the split hubreceiver
+- `/api/history` in the legacy app and split hubreceiver
 
-The browser UI should always use the configured runtime base URL for remote deployments.
+The browser UI should always use the configured runtime base URL for remote deployments, including session-detail, usage, and history fetches.
 
 ## Branch delta since `upstream/main`
 
@@ -163,7 +163,9 @@ The branch introduces the following major architectural changes:
 - shared runtime config generation for browser and Node entrypoints
 - short stable display names and naming pools
 - project grouping and provider-aware dashboard rendering
+- shared cost helper used by the world, top bar, and activity panel
 - expanded activity panel token / tool / message inspection
+- legacy `/api/history` restored for local mode parity
 - richer docs and issue tracking for OpenClaw naming behavior
 
 ## Constraints

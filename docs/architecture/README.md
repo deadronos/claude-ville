@@ -10,7 +10,7 @@ This folder documents the current architecture of ClaudeVille and the main decis
 | `001-split-stack-runtime.md` | ADR for the collector / hubreceiver / frontend topology and runtime configuration model. |
 | `002-provider-adapters.md` | ADR for the normalized multi-provider adapter contract. |
 | `003-identity-and-grouping.md` | ADR for stable display names, provider-aware naming, and project grouping. |
-| `004-api-and-cost-model.md` | ADR for API surface ownership and cost/token presentation semantics. |
+| `004-api-and-cost-model.md` | ADR for API surface ownership, history parity, and cost/token presentation semantics. |
 
 ## Reading order
 

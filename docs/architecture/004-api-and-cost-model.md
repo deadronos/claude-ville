@@ -15,6 +15,8 @@ The UI presents token counts, activity, and estimated costs in multiple places:
 
 To remain trustworthy, these values need a clear ownership model and compatible data shape across all renderers.
 
+The branch also restored `/api/history` on the legacy server so the local all-in-one mode matches the split hubreceiver API shape.
+
 ## Decision
 
 Define a shared session contract that includes:
@@ -26,7 +28,9 @@ Define a shared session contract that includes:
 - `lastTool`
 - `lastToolInput`
 
-Treat the split hubreceiver as the canonical source for `/api/history` and merged session detail data.
+Centralize Claude cost estimation in `claudeville/src/config/costs.js` and have the domain world plus UI surfaces reuse that helper instead of maintaining separate formulas.
+
+Treat the split hubreceiver as the canonical source for merged session detail data, while also keeping `/api/history` available in the legacy server for parity.
 
 Keep the legacy server responsible for the local all-in-one APIs, while the split-stack browser should use the runtime-configured hub URL for remote data access.
 
