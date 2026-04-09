@@ -86,6 +86,21 @@ Each Node entrypoint auto-loads `.env.local` from the repo root if it exists.
 Set `HUB_HTTP_URL` and `HUB_WS_URL` for the frontend if the hubreceiver runs on another host.
 `HUB_URL` is also accepted by the frontend as a shortcut for `HUB_HTTP_URL`.
 
+### Display name pools
+
+When ClaudeVille sees a long raw session or agent identifier, it now shows a short stable display name instead. You can customize the generated names with `.env.local`:
+
+```bash
+# English / default locale pool
+CLAUDEVILLE_AGENT_NAME_POOL=Atlas,Nova,Cipher,Pixel,Spark,Bolt,Echo,Flux,Helix,Onyx
+
+# Korean pool is split into surnames + titles
+CLAUDEVILLE_AGENT_NAME_POOL_KO_SURNAMES=김,이,박,최,정,강,조,윤
+CLAUDEVILLE_AGENT_NAME_POOL_KO_TITLES=대표,실장,부장,과장,차장,팀장
+```
+
+The same variables are used by the legacy app, the split frontend, and the collector/hubreceiver runtime config they serve. If a session already has a human-friendly name, ClaudeVille keeps it; only raw ID-like labels are replaced.
+
 ### macOS Menu Bar Widget (Optional)
 
 A lightweight status bar widget that shows agent status at a glance.

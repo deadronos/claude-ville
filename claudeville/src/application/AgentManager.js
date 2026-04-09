@@ -1,6 +1,7 @@
 import { Agent } from '../domain/entities/Agent.js';
 import { AgentStatus } from '../domain/value-objects/AgentStatus.js';
-import { eventBus } from '../domain/events/DomainEvent.js';
+import { i18n } from '../config/i18n.js';
+import { resolveAgentDisplayName } from '../config/agentNames.js';
 
 export class AgentManager {
     constructor(world, dataSource) {
@@ -81,7 +82,7 @@ export class AgentManager {
     _upsertAgent(session, teamMembers) {
         const id = session.sessionId;
         const teamInfo = teamMembers ? teamMembers.get(session.agentId) : null;
-        const resolvedName = teamInfo?.name || session.displayName || session.agentName || session.agentId || null;
+        const resolvedName = resolveAgentDisplayName(session, teamInfo, i18n.lang);
         const tokenUsage = session.tokenUsage || null;
         const tokens = session.tokens || (tokenUsage ? {
             input: tokenUsage.totalInput || 0,
@@ -101,17 +102,22 @@ export class AgentManager {
             currentToolInput: session.lastToolInput || null,
             tokens,
             _lastMessage: session.lastMessage || null,
+            nameSeed: resolvedName.nameSeed,
         };
 
         if (this.world.agents.has(id)) {
-            if (teamInfo?.name) {
-                agentData.name = resolvedName;
+            const currentAgent = this.world.agents.get(id);
+            if (resolvedName.nameIsCustom || !currentAgent._customName) {
+                agentData.name = resolvedName.name;
+                agentData.nameIsCustom = resolvedName.nameIsCustom;
             }
             this.world.updateAgent(id, agentData);
         } else {
             const agent = new Agent({
                 id,
-                name: resolvedName,
+                name: resolvedName.name,
+                nameIsCustom: resolvedName.nameIsCustom,
+                nameSeed: resolvedName.nameSeed,
                 model: agentData.model,
                 status: agentData.status,
                 role: agentData.role,

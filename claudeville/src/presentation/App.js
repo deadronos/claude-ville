@@ -3,8 +3,6 @@ import { Building } from '../domain/entities/Building.js';
 import { BUILDING_DEFS } from '../config/buildings.js';
 import { eventBus } from '../domain/events/DomainEvent.js';
 import { i18n } from '../config/i18n.js';
-import { Appearance } from '../domain/value-objects/Appearance.js';
-import { Agent } from '../domain/entities/Agent.js';
 
 import { ClaudeDataSource } from '../infrastructure/ClaudeDataSource.js';
 import { WebSocketClient } from '../infrastructure/WebSocketClient.js';
@@ -229,11 +227,7 @@ class App {
 
     _regenerateAgentNames() {
         for (const agent of this.world.agents.values()) {
-            // 팀에서 지정된 이름이 아닌 자동 생성 이름만 변경
-            if (!agent._customName) {
-                const hash = Appearance.hashCode(agent.id);
-                agent.name = Agent.generateNameForLang(hash, i18n.lang);
-            }
+            agent.regenerateName(i18n.lang);
         }
     }
 

@@ -3,11 +3,10 @@ require('../load-local-env');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { buildRuntimeConfig } = require('../runtime-config.shared');
 
 const PORT = Number(process.env.FRONTEND_PORT || 3001);
 const STATIC_DIR = path.join(__dirname, '..', 'claudeville');
-const HUB_HTTP_URL = process.env.HUB_HTTP_URL || process.env.HUB_URL || 'http://localhost:3030';
-const HUB_WS_URL = process.env.HUB_WS_URL || HUB_HTTP_URL.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -61,9 +60,10 @@ const server = http.createServer((req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname === '/runtime-config.js') {
+    const runtimeConfig = buildRuntimeConfig(process.env);
     setCorsHeaders(res);
     res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
-    res.end(`window.__CLAUDEVILLE_CONFIG__ = {\n  hubHttpUrl: ${JSON.stringify(HUB_HTTP_URL)},\n  hubWsUrl: ${JSON.stringify(HUB_WS_URL)}\n};\n`);
+    res.end(`window.__CLAUDEVILLE_CONFIG__ = Object.assign(window.__CLAUDEVILLE_CONFIG__ || {}, ${JSON.stringify(runtimeConfig)});\n`);
     return;
   }
 
