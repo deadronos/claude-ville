@@ -181,37 +181,14 @@ class App {
         if (!btn) return;
 
         btn.addEventListener('click', () => {
-            const currentLang = i18n.lang;
             this.modal.open(i18n.t('settingsTitle'), `
                 <div class="settings-form">
                     <div class="settings-row">
                         <span class="settings-label">${i18n.t('language')}</span>
-                        <div class="settings-lang-btns">
-                            <button class="settings-lang-btn ${currentLang === 'ko' ? 'settings-lang-btn--active' : ''}" data-lang="ko">${i18n.t('langKo')}</button>
-                            <button class="settings-lang-btn ${currentLang === 'en' ? 'settings-lang-btn--active' : ''}" data-lang="en">${i18n.t('langEn')}</button>
-                        </div>
+                        <span style="color:#8b8b9e;font-size:11px">${i18n.t('languageFixed')}</span>
                     </div>
                 </div>
             `);
-
-            // 언어 버튼 클릭 이벤트
-            document.querySelectorAll('.settings-lang-btn').forEach(langBtn => {
-                langBtn.addEventListener('click', () => {
-                    const newLang = langBtn.dataset.lang;
-                    if (newLang === i18n.lang) return;
-                    i18n.lang = newLang;
-                    this._regenerateAgentNames();
-                    this._applyI18n();
-                    this.sidebar.render();
-                    if (this.dashboardRenderer && this.dashboardRenderer.active) {
-                        this.dashboardRenderer.render();
-                    }
-                    this.modal.close();
-                    if (this.toast) {
-                        this.toast.show(i18n.t('langChanged'), 'success');
-                    }
-                });
-            });
         });
     }
 
@@ -223,12 +200,6 @@ class App {
                 el.textContent = val;
             }
         });
-    }
-
-    _regenerateAgentNames() {
-        for (const agent of this.world.agents.values()) {
-            agent.regenerateName(i18n.lang);
-        }
     }
 
     _showBootError(err) {

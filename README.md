@@ -59,7 +59,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 - **Live Detection** — WebSocket + file watcher for instant session updates
 - **Agent Team & Swarm** — Auto-detects Claude Code teams, swarms, and sub-agents
 - **Project Grouping** — Agents grouped by project with color-coded sections
-- **Multilingual** — Korean / English
+- **English-only UI** — Consistent English labels across the app
 - **Zero Dependencies** — Pure Node.js, no npm install needed
 
 ## Quick Start
