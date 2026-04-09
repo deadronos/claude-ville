@@ -114,6 +114,9 @@ export class Agent {
 
     update(data) {
         Object.assign(this, data);
+        if (data && typeof data.name === 'string' && data.name) {
+            this._customName = true;
+        }
         this.lastActive = Date.now();
     }
 }
