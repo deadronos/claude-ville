@@ -1,7 +1,6 @@
 import { AgentStatus } from '../value-objects/AgentStatus.js';
 import { Position } from '../value-objects/Position.js';
 import { Appearance } from '../value-objects/Appearance.js';
-import { i18n } from '../../config/i18n.js';
 import { generateAgentDisplayName } from '../../config/agentNames.js';
 
 export class Agent {
@@ -84,16 +83,16 @@ export class Agent {
     }
 
     generateName() {
-        return generateAgentDisplayName(this.nameSeed || this.id, i18n.lang);
+        return generateAgentDisplayName(this.nameSeed || this.id);
     }
 
-    static generateNameForLang(seed, lang) {
-        return generateAgentDisplayName(seed, lang);
+    static generateNameForSeed(seed) {
+        return generateAgentDisplayName(seed);
     }
 
-    regenerateName(lang = i18n.lang) {
+    regenerateName() {
         if (!this._customName) {
-            this.name = generateAgentDisplayName(this.nameSeed || this.id, lang);
+            this.name = generateAgentDisplayName(this.nameSeed || this.id);
         }
         return this.name;
     }

@@ -1,20 +1,8 @@
-const DEFAULT_AGENT_NAME_POOLS = {
-  en: [
-    'Atlas', 'Nova', 'Cipher', 'Pixel', 'Spark',
-    'Bolt', 'Echo', 'Flux', 'Helix', 'Onyx',
-    'Prism', 'Qubit', 'Rune', 'Sage', 'Vex',
-  ],
-  ko: {
-    surnames: [
-      '김', '이', '박', '최', '정', '강', '조', '윤', '장', '임',
-      '한', '오', '서', '신', '권', '황', '안', '송', '류', '홍',
-    ],
-    titles: [
-      '대표', '실장', '부장', '과장', '차장', '팀장', '이사',
-      '수석', '책임', '선임', '주임', '대리', '매니저', '센터장', '국장',
-    ],
-  },
-};
+const DEFAULT_AGENT_NAME_POOL = [
+  'Atlas', 'Nova', 'Cipher', 'Pixel', 'Spark',
+  'Bolt', 'Echo', 'Flux', 'Helix', 'Onyx',
+  'Prism', 'Qubit', 'Rune', 'Sage', 'Vex',
+];
 
 function toList(value) {
   if (Array.isArray(value)) {
@@ -31,19 +19,9 @@ function toList(value) {
     .filter(Boolean);
 }
 
-function normalizeNamePools(rawPools = {}) {
-  const en = toList(rawPools.en || rawPools.agentNames || rawPools.agentNamePool);
-  const koRaw = rawPools.ko || {};
-  const surnames = toList(koRaw.surnames || rawPools.koSurnames || rawPools.ko_surnames);
-  const titles = toList(koRaw.titles || rawPools.koTitles || rawPools.ko_titles);
-
-  return {
-    en: en.length > 0 ? en : DEFAULT_AGENT_NAME_POOLS.en,
-    ko: {
-      surnames: surnames.length > 0 ? surnames : DEFAULT_AGENT_NAME_POOLS.ko.surnames,
-      titles: titles.length > 0 ? titles : DEFAULT_AGENT_NAME_POOLS.ko.titles,
-    },
-  };
+function normalizeAgentNamePool(rawPool = '') {
+  const pool = toList(rawPool);
+  return pool.length > 0 ? pool : DEFAULT_AGENT_NAME_POOL;
 }
 
 function buildRuntimeConfig(env = process.env) {
@@ -53,18 +31,12 @@ function buildRuntimeConfig(env = process.env) {
   return {
     hubHttpUrl,
     hubWsUrl,
-    agentNamePools: normalizeNamePools({
-      en: env.CLAUDEVILLE_AGENT_NAME_POOL,
-      ko: {
-        surnames: env.CLAUDEVILLE_AGENT_NAME_POOL_KO_SURNAMES,
-        titles: env.CLAUDEVILLE_AGENT_NAME_POOL_KO_TITLES,
-      },
-    }),
+    agentNamePool: normalizeAgentNamePool(env.CLAUDEVILLE_AGENT_NAME_POOL),
   };
 }
 
 module.exports = {
-  DEFAULT_AGENT_NAME_POOLS,
-  normalizeNamePools,
+  DEFAULT_AGENT_NAME_POOL,
+  normalizeAgentNamePool,
   buildRuntimeConfig,
 };

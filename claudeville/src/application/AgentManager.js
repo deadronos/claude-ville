@@ -1,6 +1,5 @@
 import { Agent } from '../domain/entities/Agent.js';
 import { AgentStatus } from '../domain/value-objects/AgentStatus.js';
-import { i18n } from '../config/i18n.js';
 import { resolveAgentDisplayName } from '../config/agentNames.js';
 
 export class AgentManager {
@@ -82,7 +81,7 @@ export class AgentManager {
     _upsertAgent(session, teamMembers) {
         const id = session.sessionId;
         const teamInfo = teamMembers ? teamMembers.get(session.agentId) : null;
-        const resolvedName = resolveAgentDisplayName(session, teamInfo, i18n.lang);
+        const resolvedName = resolveAgentDisplayName(session, teamInfo);
         const tokenUsage = session.tokenUsage || null;
         const tokens = session.tokens || (tokenUsage ? {
             input: tokenUsage.totalInput || 0,

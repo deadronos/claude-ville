@@ -93,13 +93,9 @@ When ClaudeVille sees a long raw session or agent identifier, it now shows a sho
 ```bash
 # English / default locale pool
 CLAUDEVILLE_AGENT_NAME_POOL=Atlas,Nova,Cipher,Pixel,Spark,Bolt,Echo,Flux,Helix,Onyx
-
-# Korean pool is split into surnames + titles
-CLAUDEVILLE_AGENT_NAME_POOL_KO_SURNAMES=김,이,박,최,정,강,조,윤
-CLAUDEVILLE_AGENT_NAME_POOL_KO_TITLES=대표,실장,부장,과장,차장,팀장
 ```
 
-The same variables are used by the legacy app, the split frontend, and the collector/hubreceiver runtime config they serve. If a session already has a human-friendly name, ClaudeVille keeps it; only raw ID-like labels are replaced.
+The same variable is used by the legacy app, the split frontend, and the collector/hubreceiver runtime config they serve. If a session already has a human-friendly name, ClaudeVille keeps it; only raw ID-like labels are replaced.
 
 ### macOS Menu Bar Widget (Optional)
 
