@@ -2,6 +2,7 @@ import { AgentStatus } from '../value-objects/AgentStatus.js';
 import { Position } from '../value-objects/Position.js';
 import { Appearance } from '../value-objects/Appearance.js';
 import { generateAgentDisplayName, resolveAgentDisplayName } from '../../config/agentNames.js';
+import { estimateClaudeCost } from '../../config/costs.js';
 
 export class Agent {
     constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
@@ -38,13 +39,7 @@ export class Agent {
     }
 
     get cost() {
-        const rates = {
-            'claude-opus-4-6': { input: 15, output: 75 },
-            'claude-sonnet-4-5': { input: 3, output: 15 },
-            'claude-haiku-4-5': { input: 0.8, output: 4 },
-        };
-        const rate = rates[this.model] || rates['claude-sonnet-4-5'];
-        return (this.tokens.input * rate.input + this.tokens.output * rate.output) / 1000000;
+        return estimateClaudeCost(this.model, this.tokens);
     }
 
     get lastMessage() {

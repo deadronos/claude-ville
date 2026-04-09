@@ -158,6 +158,41 @@ function handleGetUsage(req, res) {
   }
 }
 
+/**
+ * GET /api/history?lines=100
+ * 최근 메시지 이력 반환
+ */
+function handleGetHistory(req, res) {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const limit = Number(url.searchParams.get('lines') || 100);
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
+    const sessions = getAllSessions(ACTIVE_THRESHOLD_MS);
+    const entries = [];
+
+    for (const session of sessions) {
+      const messages = session.detail?.messages || [];
+      for (const message of messages) {
+        if (!message || !message.text) continue;
+        entries.push({
+          provider: session.provider,
+          sessionId: session.sessionId,
+          project: session.project || null,
+          role: message.role || 'assistant',
+          text: message.text,
+          ts: message.ts || 0,
+        });
+      }
+    }
+
+    entries.sort((a, b) => a.ts - b.ts);
+    sendJson(res, 200, { entries: entries.slice(-safeLimit) });
+  } catch (err) {
+    console.error('히스토리 조회 실패:', err.message);
+    sendError(res, 500, '히스토리 정보를 불러올 수 없습니다.');
+  }
+}
+
 // ─── 정적 파일 서빙 ─────────────────────────────────────
 
 function handleStaticFile(req, res) {
@@ -486,6 +521,8 @@ const server = http.createServer((req, res) => {
         return handleGetProviders(req, res);
       case '/api/usage':
         return handleGetUsage(req, res);
+      case '/api/history':
+        return handleGetHistory(req, res);
     }
   }
 

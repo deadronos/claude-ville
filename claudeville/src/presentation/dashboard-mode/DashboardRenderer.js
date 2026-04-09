@@ -1,6 +1,7 @@
 import { eventBus } from '../../domain/events/DomainEvent.js';
 import { AvatarCanvas } from './AvatarCanvas.js';
 import { i18n } from '../../config/i18n.js';
+import { getHubApiUrl } from '../../config/runtime.js';
 
 const TOOL_ICONS = {
     Read: '📖', Edit: '✏️', Write: '📝', Grep: '🔍', Glob: '📁',
@@ -359,7 +360,7 @@ export class DashboardRenderer {
                 project: agent.projectPath || '',
                 provider: agent.provider || 'claude',
             });
-            const resp = await fetch(`/api/session-detail?${params}`);
+            const resp = await fetch(getHubApiUrl('/api/session-detail', params));
             if (!resp.ok) return;
             const data = await resp.json();
             if (data.toolHistory) {
