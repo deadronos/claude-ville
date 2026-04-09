@@ -190,6 +190,13 @@ function buildSessionId(agentId, fileName) {
   return `openclaw:${encodeSessionKey(agentId)}:${encodeSessionKey(sessionId)}`;
 }
 
+function buildProjectKey(agentId, projectPath) {
+  if (agentId) {
+    return `openclaw:${agentId}`;
+  }
+  return projectPath || null;
+}
+
 function parseSessionId(sessionId) {
   if (!sessionId.startsWith('openclaw:')) {
     return {
@@ -274,7 +281,7 @@ class OpenClawAdapter {
         model: detail.model || 'unknown',
         status: 'active',
         lastActivity: mtime,
-        project: detail.project,
+        project: buildProjectKey(agentId, detail.project),
         lastMessage: detail.lastMessage,
         lastTool: detail.lastTool,
         lastToolInput: detail.lastToolInput,
