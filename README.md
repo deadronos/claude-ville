@@ -59,7 +59,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 - **Live Detection** — WebSocket + file watcher for instant session updates
 - **Agent Team & Swarm** — Auto-detects Claude Code teams, swarms, and sub-agents
 - **Project Grouping** — Agents grouped by project with color-coded sections
-- **Multilingual** — Korean / English
+- **English-only UI** — Consistent English labels across the app
 - **Zero Dependencies** — Pure Node.js, no npm install needed
 
 ## Quick Start
@@ -85,6 +85,28 @@ npm run dev:frontend
 Each Node entrypoint auto-loads `.env.local` from the repo root if it exists.
 Set `HUB_HTTP_URL` and `HUB_WS_URL` for the frontend if the hubreceiver runs on another host.
 `HUB_URL` is also accepted by the frontend as a shortcut for `HUB_HTTP_URL`.
+
+### Display name pools
+
+When ClaudeVille sees a long raw session or agent identifier, it now shows a short stable display name instead. You can customize the generated names with `.env.local`:
+
+```bash
+# Default display mode: autodetected names or pooled random names
+CLAUDEVILLE_NAME_MODE=autodetected
+
+# Optional per-provider overrides
+CLAUDEVILLE_NAME_MODE_CLAUDE=autodetected
+CLAUDEVILLE_NAME_MODE_CODEX=autodetected
+CLAUDEVILLE_NAME_MODE_GEMINI=autodetected
+CLAUDEVILLE_NAME_MODE_OPENCLAW=autodetected
+CLAUDEVILLE_NAME_MODE_COPILOT=autodetected
+
+# Separate pools for agent/team names and session names
+CLAUDEVILLE_AGENT_NAME_POOL=Atlas,Nova,Cipher,Pixel,Spark,Bolt,Echo,Flux,Helix,Onyx
+CLAUDEVILLE_SESSION_NAME_POOL=Orbit,Beacon,Relay,Pulse,Signal,Vector,Comet,Drift,Trace,Kernel
+```
+
+The same variables are used by the legacy app, the split frontend, and the collector/hubreceiver runtime config they serve. If a session already has a human-friendly name, ClaudeVille keeps it in autodetected mode; pooled mode always uses the configured pool. Provider-specific overrides can force a mode for a given provider.
 
 ### macOS Menu Bar Widget (Optional)
 

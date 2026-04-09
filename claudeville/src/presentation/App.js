@@ -3,8 +3,6 @@ import { Building } from '../domain/entities/Building.js';
 import { BUILDING_DEFS } from '../config/buildings.js';
 import { eventBus } from '../domain/events/DomainEvent.js';
 import { i18n } from '../config/i18n.js';
-import { Appearance } from '../domain/value-objects/Appearance.js';
-import { Agent } from '../domain/entities/Agent.js';
 
 import { ClaudeDataSource } from '../infrastructure/ClaudeDataSource.js';
 import { WebSocketClient } from '../infrastructure/WebSocketClient.js';
@@ -13,6 +11,7 @@ import { AgentManager } from '../application/AgentManager.js';
 import { ModeManager } from '../application/ModeManager.js';
 import { SessionWatcher } from '../application/SessionWatcher.js';
 import { NotificationService } from '../application/NotificationService.js';
+import { getNameMode, setNameMode } from '../config/agentNames.js';
 
 import { TopBar } from './shared/TopBar.js';
 import { Sidebar } from './shared/Sidebar.js';
@@ -183,34 +182,39 @@ class App {
         if (!btn) return;
 
         btn.addEventListener('click', () => {
-            const currentLang = i18n.lang;
+            const currentMode = getNameMode();
             this.modal.open(i18n.t('settingsTitle'), `
                 <div class="settings-form">
                     <div class="settings-row">
-                        <span class="settings-label">${i18n.t('language')}</span>
+                        <span class="settings-label">${i18n.t('nameMode')}</span>
                         <div class="settings-lang-btns">
-                            <button class="settings-lang-btn ${currentLang === 'ko' ? 'settings-lang-btn--active' : ''}" data-lang="ko">${i18n.t('langKo')}</button>
-                            <button class="settings-lang-btn ${currentLang === 'en' ? 'settings-lang-btn--active' : ''}" data-lang="en">${i18n.t('langEn')}</button>
+                            <button class="settings-lang-btn ${currentMode === 'autodetected' ? 'settings-lang-btn--active' : ''}" data-mode="autodetected">${i18n.t('autodetectedNames')}</button>
+                            <button class="settings-lang-btn ${currentMode === 'pooled' ? 'settings-lang-btn--active' : ''}" data-mode="pooled">${i18n.t('pooledRandomNames')}</button>
                         </div>
                     </div>
+                    <div class="settings-note">${i18n.t('providerNameModeNote')}</div>
                 </div>
             `);
 
-            // 언어 버튼 클릭 이벤트
-            document.querySelectorAll('.settings-lang-btn').forEach(langBtn => {
-                langBtn.addEventListener('click', () => {
-                    const newLang = langBtn.dataset.lang;
-                    if (newLang === i18n.lang) return;
-                    i18n.lang = newLang;
-                    this._regenerateAgentNames();
-                    this._applyI18n();
+            document.querySelectorAll('.settings-lang-btn').forEach(modeBtn => {
+                modeBtn.addEventListener('click', () => {
+                    const nextMode = modeBtn.dataset.mode;
+                    if (nextMode === getNameMode()) return;
+                    setNameMode(nextMode);
+                    for (const agent of this.world.agents.values()) {
+                        agent.regenerateName();
+                    }
                     this.sidebar.render();
                     if (this.dashboardRenderer && this.dashboardRenderer.active) {
                         this.dashboardRenderer.render();
                     }
+                    if (this.activityPanel?.currentAgent) {
+                        this.activityPanel._updateInfo(this.activityPanel.currentAgent);
+                        this.activityPanel._updateCurrentTool(this.activityPanel.currentAgent);
+                    }
                     this.modal.close();
                     if (this.toast) {
-                        this.toast.show(i18n.t('langChanged'), 'success');
+                        this.toast.show(i18n.t('nameModeChanged')(i18n.t(nextMode === 'pooled' ? 'pooledRandomNames' : 'autodetectedNames')), 'success');
                     }
                 });
             });
@@ -225,16 +229,6 @@ class App {
                 el.textContent = val;
             }
         });
-    }
-
-    _regenerateAgentNames() {
-        for (const agent of this.world.agents.values()) {
-            // 팀에서 지정된 이름이 아닌 자동 생성 이름만 변경
-            if (!agent._customName) {
-                const hash = Appearance.hashCode(agent.id);
-                agent.name = Agent.generateNameForLang(hash, i18n.lang);
-            }
-        }
     }
 
     _showBootError(err) {

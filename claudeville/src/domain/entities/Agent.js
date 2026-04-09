@@ -1,28 +1,15 @@
 import { AgentStatus } from '../value-objects/AgentStatus.js';
 import { Position } from '../value-objects/Position.js';
 import { Appearance } from '../value-objects/Appearance.js';
-import { i18n } from '../../config/i18n.js';
-
-const AGENT_NAMES_EN = [
-    'Atlas', 'Nova', 'Cipher', 'Pixel', 'Spark',
-    'Bolt', 'Echo', 'Flux', 'Helix', 'Onyx',
-    'Prism', 'Qubit', 'Rune', 'Sage', 'Vex',
-];
-
-const SURNAMES_KO = [
-    '김', '이', '박', '최', '정', '강', '조', '윤', '장', '임',
-    '한', '오', '서', '신', '권', '황', '안', '송', '류', '홍',
-];
-
-const TITLES_KO = [
-    '대표', '실장', '부장', '과장', '차장', '팀장', '이사',
-    '수석', '책임', '선임', '주임', '대리', '매니저', '센터장', '국장',
-];
+import { generateAgentDisplayName, resolveAgentDisplayName } from '../../config/agentNames.js';
 
 export class Agent {
-    constructor({ id, name, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
+    constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
         this.id = id;
-        this._customName = !!name; // 팀에서 지정된 이름인지 여부
+        this.nameSeed = nameSeed || id;
+        this.nameKind = nameKind;
+        this.nameMode = nameMode;
+        this.nameHint = nameHint;
         this.name = name || this.generateName();
         this.model = model || 'unknown';
         this.status = status || AgentStatus.IDLE;
@@ -64,6 +51,17 @@ export class Agent {
         return this._lastMessage || this.messages[this.messages.length - 1] || null;
     }
 
+    _buildDisplaySession() {
+        return {
+            sessionId: this.id,
+            agentId: this.nameKind === 'agent' ? this.nameSeed : null,
+            displayName: this.nameHint,
+            agentName: this.nameHint,
+            provider: this.provider,
+            agentType: this.nameKind === 'agent' ? 'sub-agent' : 'main',
+        };
+    }
+
     /**
      * 현재 도구에 따른 목표 건물 타입 반환
      */
@@ -98,25 +96,25 @@ export class Agent {
     }
 
     generateName() {
-        const hash = Appearance.hashCode(this.id);
-        return Agent.generateNameForLang(hash, i18n.lang);
+        return resolveAgentDisplayName(this._buildDisplaySession(), this.teamName ? { name: this.teamName } : null).name;
     }
 
-    static generateNameForLang(hash, lang) {
-        const h = Math.abs(hash);
-        if (lang === 'ko') {
-            const surname = SURNAMES_KO[h % SURNAMES_KO.length];
-            const title = TITLES_KO[(h >> 4) % TITLES_KO.length];
-            return `${surname}${title}`;
-        }
-        return AGENT_NAMES_EN[h % AGENT_NAMES_EN.length];
+    static generateNameForSeed(seed) {
+        return generateAgentDisplayName(seed);
+    }
+
+    regenerateName() {
+        const resolved = resolveAgentDisplayName(this._buildDisplaySession(), this.teamName ? { name: this.teamName } : null);
+        this.name = resolved.name;
+        this.nameSeed = resolved.nameSeed;
+        this.nameKind = resolved.nameKind;
+        this.nameMode = resolved.nameMode;
+        this.nameHint = resolved.nameHint;
+        return this.name;
     }
 
     update(data) {
         Object.assign(this, data);
-        if (data && typeof data.name === 'string' && data.name) {
-            this._customName = true;
-        }
         this.lastActive = Date.now();
     }
 }

@@ -11,3 +11,7 @@ export function getHubHttpUrl() {
 export function getHubWsUrl() {
     return config.hubWsUrl || fallbackWsUrl();
 }
+
+export function getRuntimeConfig() {
+    return window.__CLAUDEVILLE_CONFIG__ || config;
+}

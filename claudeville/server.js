@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { buildRuntimeConfig } = require('../runtime-config.shared');
 
 // ─── 어댑터 로드 ─────────────────────────────────────
 const {
@@ -209,6 +210,13 @@ function handleStaticFile(req, res) {
       sendError(res, 500, 'Internal Server Error');
     }
   }
+}
+
+function handleRuntimeConfig(req, res) {
+  const runtimeConfig = buildRuntimeConfig(process.env);
+  setCorsHeaders(res);
+  res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+  res.end(`window.__CLAUDEVILLE_CONFIG__ = Object.assign(window.__CLAUDEVILLE_CONFIG__ || {}, ${JSON.stringify(runtimeConfig)});\n`);
 }
 
 // ─── WebSocket 구현 (RFC 6455) ──────────────────────────
@@ -464,6 +472,8 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET') {
     switch (pathname) {
+      case '/runtime-config.js':
+        return handleRuntimeConfig(req, res);
       case '/api/sessions':
         return handleGetSessions(req, res);
       case '/api/teams':
