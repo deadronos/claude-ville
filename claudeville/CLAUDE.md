@@ -1,5 +1,8 @@
 # ClaudeVille - 프로젝트 규칙
 
+> 리포지토리 공통 지침은 `../AGENTS.md`를 먼저 확인하세요.
+> `../AGENTS.md`는 `.github/copilot-instructions.md`를 가리킵니다.
+
 ## 레이아웃 구조 (중요)
 
 ```
