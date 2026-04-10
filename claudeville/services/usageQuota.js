@@ -202,7 +202,6 @@ function tryFetchQuota() {
             sevenDay: data.sevenDayPercent ?? data.seven_day_percent ?? null,
           };
           cache.quota.available = true;
-          console.log('[Usage] Quota API 활성화!');
         } catch { /* 파싱 실패 */ }
       }
       // 실패 시 조용히 무시 (다음 주기에 재시도)
