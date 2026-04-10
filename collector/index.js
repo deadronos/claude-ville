@@ -48,7 +48,7 @@ function normalizeSession(session, detail) {
   };
 }
 
-function buildSnapshot() {
+async function buildSnapshot() {
   const sessions = [];
   const sessionDetails = {};
 
@@ -61,13 +61,18 @@ function buildSnapshot() {
     sessionDetails[key] = detail;
   }
 
+  const [teams, taskGroups] = await Promise.all([
+    claudeAdapter?.getTeams?.() || [],
+    claudeAdapter?.getTasks?.() || [],
+  ]);
+
   return {
     collectorId: COLLECTOR_ID,
     hostName: COLLECTOR_HOST,
     timestamp: Date.now(),
     sessions,
-    teams: claudeAdapter?.getTeams?.() || [],
-    taskGroups: claudeAdapter?.getTasks?.() || [],
+    teams,
+    taskGroups,
     providers: getActiveProviders(),
     usage: usageQuota.fetchUsage(),
     sessionDetails,
@@ -97,7 +102,7 @@ async function publishSnapshot() {
 
   sending = true;
   try {
-    const snapshot = buildSnapshot();
+    const snapshot = await buildSnapshot();
     const fingerprint = crypto.createHash('sha1').update(JSON.stringify(snapshot)).digest('hex');
     if (fingerprint === lastSentHash && !dirty) {
       return;

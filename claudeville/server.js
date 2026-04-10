@@ -85,9 +85,9 @@ function handleGetSessions(req, res) {
  * GET /api/teams
  * Claude 팀 정보 (Claude 전용)
  */
-function handleGetTeams(req, res) {
+async function handleGetTeams(req, res) {
   try {
-    const teams = claudeAdapter ? claudeAdapter.getTeams() : [];
+    const teams = claudeAdapter ? await claudeAdapter.getTeams() : [];
     sendJson(res, 200, { teams, count: teams.length });
   } catch (err) {
     console.error('팀 조회 실패:', err.message);
@@ -99,9 +99,9 @@ function handleGetTeams(req, res) {
  * GET /api/tasks
  * Claude 태스크 정보 (Claude 전용)
  */
-function handleGetTasks(req, res) {
+async function handleGetTasks(req, res) {
   try {
-    const taskGroups = claudeAdapter ? claudeAdapter.getTasks() : [];
+    const taskGroups = claudeAdapter ? await claudeAdapter.getTasks() : [];
     sendJson(res, 200, { taskGroups, totalGroups: taskGroups.length });
   } catch (err) {
     console.error('태스크 조회 실패:', err.message);
@@ -420,12 +420,13 @@ function wsBroadcast(data) {
 
 // ─── 데이터 브로드캐스트 ────────────────────────────────
 
-function sendInitialData(socket) {
+async function sendInitialData(socket) {
   try {
+    const teams = claudeAdapter ? await claudeAdapter.getTeams() : [];
     wsSend(socket, {
       type: 'init',
       sessions: getAllSessions(ACTIVE_THRESHOLD_MS),
-      teams: claudeAdapter ? claudeAdapter.getTeams() : [],
+      teams,
       usage: usageQuota.fetchUsage(),
       timestamp: Date.now(),
     });
@@ -436,13 +437,14 @@ function sendInitialData(socket) {
 
 let watchDebounce = null;
 
-function broadcastUpdate() {
+async function broadcastUpdate() {
   if (wsClients.size === 0) return;
   try {
+    const teams = claudeAdapter ? await claudeAdapter.getTeams() : [];
     wsBroadcast({
       type: 'update',
       sessions: getAllSessions(ACTIVE_THRESHOLD_MS),
-      teams: claudeAdapter ? claudeAdapter.getTeams() : [],
+      teams,
       usage: usageQuota.fetchUsage(),
       timestamp: Date.now(),
     });
