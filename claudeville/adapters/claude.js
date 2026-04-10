@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const CLAUDE_DIR = process.env.CLAUDE_DIR || path.join(os.homedir(), '.claude');
 const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const TEAMS_DIR = path.join(CLAUDE_DIR, 'teams');
 const TASKS_DIR = path.join(CLAUDE_DIR, 'tasks');
@@ -484,52 +484,66 @@ class ClaudeAdapter {
 
   // ─── 팀/태스크 (Claude 전용) ──────────────────────
 
-  getTeams() {
-    if (!fs.existsSync(TEAMS_DIR)) return [];
-    const teams = [];
+  async getTeams() {
     try {
-      const teamDirs = fs.readdirSync(TEAMS_DIR, { withFileTypes: true })
-        .filter(d => d.isDirectory());
-      for (const dir of teamDirs) {
-        const configPath = path.join(TEAMS_DIR, dir.name, 'config.json');
-        try {
-          if (fs.existsSync(configPath)) {
-            const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-            teams.push({ teamName: dir.name, ...config });
+      const teamDirs = await fs.promises.readdir(TEAMS_DIR, { withFileTypes: true });
+      const teamPromises = teamDirs
+        .filter(d => d.isDirectory())
+        .map(async (dir) => {
+          const configPath = path.join(TEAMS_DIR, dir.name, 'config.json');
+          try {
+            const content = await fs.promises.readFile(configPath, 'utf-8');
+            const config = JSON.parse(content);
+            return { teamName: dir.name, ...config };
+          } catch (err) {
+            if (err.code === 'ENOENT') return null;
+            return { teamName: dir.name, error: '파싱 실패' };
           }
-        } catch {
-          teams.push({ teamName: dir.name, error: '파싱 실패' });
-        }
-      }
-    } catch { /* 무시 */ }
-    return teams;
+        });
+
+      const results = await Promise.all(teamPromises);
+      return results.filter(Boolean);
+    } catch {
+      return [];
+    }
   }
 
-  getTasks() {
-    if (!fs.existsSync(TASKS_DIR)) return [];
-    const taskGroups = [];
+  async getTasks() {
     try {
-      const taskDirs = fs.readdirSync(TASKS_DIR, { withFileTypes: true })
-        .filter(d => d.isDirectory());
+      const taskDirs = await fs.promises.readdir(TASKS_DIR, { withFileTypes: true });
+      const taskGroups = [];
+
       for (const dir of taskDirs) {
+        if (!dir.isDirectory()) continue;
         const groupDir = path.join(TASKS_DIR, dir.name);
-        const tasks = [];
         try {
-          const files = fs.readdirSync(groupDir).filter(f => f.endsWith('.json'));
-          for (const file of files) {
+          const files = await fs.promises.readdir(groupDir);
+          const jsonFiles = files.filter(f => f.endsWith('.json'));
+
+          const taskPromises = jsonFiles.map(async (file) => {
             try {
-              tasks.push(JSON.parse(fs.readFileSync(path.join(groupDir, file), 'utf-8')));
-            } catch { /* 무시 */ }
-          }
-        } catch { /* 무시 */ }
-        taskGroups.push({
-          groupName: dir.name,
-          tasks: tasks.sort((a, b) => Number(a.id || 0) - Number(b.id || 0)),
-          count: tasks.length,
-        });
+              const content = await fs.promises.readFile(path.join(groupDir, file), 'utf-8');
+              return JSON.parse(content);
+            } catch {
+              return null;
+            }
+          });
+
+          const tasks = (await Promise.all(taskPromises)).filter(Boolean);
+          taskGroups.push({
+            groupName: dir.name,
+            tasks: tasks.sort((a, b) => Number(a.id || 0) - Number(b.id || 0)),
+            count: tasks.length,
+          });
+        } catch {
+          continue;
+        }
       }
-    } catch { /* 무시 */ }
-    return taskGroups;
+
+      return taskGroups;
+    } catch {
+      return [];
+    }
   }
 }
 

@@ -98,11 +98,20 @@ function resolveProjectPath(projectHash) {
 
 // ─── 세션 파싱 ────────────────────────────────────────
 
+async function readJsonFile(filePath) {
+  try {
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Gemini 세션 JSON에서 모델/도구/메시지 추출
  * 실제 포맷: {sessionId, projectHash, messages: [{type, content, model, ...}]}
  */
-function parseSession(filePath) {
+async function parseSession(filePath) {
   const detail = {
     model: null,
     lastTool: null,
@@ -111,8 +120,8 @@ function parseSession(filePath) {
   };
 
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const session = JSON.parse(content);
+    const session = await readJsonFile(filePath);
+    if (!session) return detail;
 
     const messages = session.messages;
     if (!Array.isArray(messages)) return detail;
@@ -171,11 +180,11 @@ function parseSession(filePath) {
 /**
  * Gemini 세션에서 도구 히스토리 추출
  */
-function getToolHistory(filePath, maxItems = 15) {
+async function getToolHistory(filePath, maxItems = 15) {
   const tools = [];
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const session = JSON.parse(content);
+    const session = await readJsonFile(filePath);
+    if (!session) return tools;
     const messages = session.messages;
     if (!Array.isArray(messages)) return tools;
 
@@ -219,11 +228,11 @@ function getToolHistory(filePath, maxItems = 15) {
 /**
  * Gemini 세션에서 최근 메시지 추출
  */
-function getRecentMessages(filePath, maxItems = 5) {
+async function getRecentMessages(filePath, maxItems = 5) {
   const msgList = [];
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const session = JSON.parse(content);
+    const session = await readJsonFile(filePath);
+    if (!session) return msgList;
     const messages = session.messages;
     if (!Array.isArray(messages)) return msgList;
 
@@ -247,40 +256,45 @@ function getRecentMessages(filePath, maxItems = 5) {
  * 활성 세션 파일 스캔
  * ~/.gemini/tmp/<project_hash>/chats/session-*.json
  */
-function scanActiveSessions(activeThresholdMs) {
+async function scanActiveSessions(activeThresholdMs) {
   const results = [];
   if (!fs.existsSync(TMP_DIR)) return results;
 
   const now = Date.now();
 
   try {
-    const projectDirs = fs.readdirSync(TMP_DIR, { withFileTypes: true })
+    const projectDirs = (await fs.promises.readdir(TMP_DIR, { withFileTypes: true }))
       .filter(d => d.isDirectory());
-
-    for (const projDir of projectDirs) {
+    const projectResults = await Promise.all(projectDirs.map(async (projDir) => {
       const chatsDir = path.join(TMP_DIR, projDir.name, 'chats');
-      if (!fs.existsSync(chatsDir)) continue;
+      if (!fs.existsSync(chatsDir)) return [];
 
-      let sessionFiles;
       try {
-        sessionFiles = fs.readdirSync(chatsDir)
-          .filter(f => f.startsWith('session-') && f.endsWith('.json'));
-      } catch { continue; }
-
-      for (const file of sessionFiles) {
-        const filePath = path.join(chatsDir, file);
-        let stat;
-        try { stat = fs.statSync(filePath); } catch { continue; }
-
-        if (now - stat.mtimeMs > activeThresholdMs) continue;
-
-        results.push({
-          filePath,
-          mtime: stat.mtimeMs,
-          fileName: file,
-          projectHash: projDir.name,
-        });
+        const sessionFiles = await fs.promises.readdir(chatsDir);
+        const jsonFiles = sessionFiles.filter(f => f.startsWith('session-') && f.endsWith('.json'));
+        const fileResults = await Promise.all(jsonFiles.map(async (file) => {
+          const filePath = path.join(chatsDir, file);
+          try {
+            const stat = await fs.promises.stat(filePath);
+            if (now - stat.mtimeMs > activeThresholdMs) return null;
+            return {
+              filePath,
+              mtime: stat.mtimeMs,
+              fileName: file,
+              projectHash: projDir.name,
+            };
+          } catch {
+            return null;
+          }
+        }));
+        return fileResults.filter(Boolean);
+      } catch {
+        return [];
       }
+    }));
+
+    for (const group of projectResults) {
+      results.push(...group);
     }
   } catch { /* 무시 */ }
 
@@ -298,16 +312,14 @@ class GeminiAdapter {
     return fs.existsSync(GEMINI_DIR);
   }
 
-  getActiveSessions(activeThresholdMs) {
-    const sessionFiles = scanActiveSessions(activeThresholdMs);
-    const sessions = [];
-
-    for (const { filePath, mtime, fileName, projectHash } of sessionFiles) {
-      const detail = parseSession(filePath);
+  async getActiveSessions(activeThresholdMs) {
+    const sessionFiles = await scanActiveSessions(activeThresholdMs);
+    const sessions = await Promise.all(sessionFiles.map(async ({ filePath, mtime, fileName, projectHash }) => {
+      const detail = await parseSession(filePath);
       const sessionId = fileName.replace('session-', '').replace('.json', '');
       const project = resolveProjectPath(projectHash);
 
-      sessions.push({
+      return {
         sessionId: `gemini-${sessionId}`,
         provider: 'gemini',
         agentId: null,
@@ -315,27 +327,36 @@ class GeminiAdapter {
         model: detail.model || 'gemini',
         status: 'active',
         lastActivity: mtime,
-        project: project,
+        project,
         lastMessage: detail.lastMessage,
         lastTool: detail.lastTool,
         lastToolInput: detail.lastToolInput,
         parentSessionId: null,
-      });
-    }
+        filePath,
+      };
+    }));
 
     return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  getSessionDetail(sessionId, project) {
+  async getSessionDetail(sessionId, project, filePath = null) {
+    if (filePath) {
+      return {
+        toolHistory: await getToolHistory(filePath),
+        messages: await getRecentMessages(filePath),
+        sessionId,
+      };
+    }
+
     const cleanId = sessionId.replace('gemini-', '');
-    const sessionFiles = scanActiveSessions(30 * 60 * 1000);
+    const sessionFiles = await scanActiveSessions(30 * 60 * 1000);
 
     for (const { filePath, fileName } of sessionFiles) {
       const fileId = fileName.replace('session-', '').replace('.json', '');
       if (fileId === cleanId) {
         return {
-          toolHistory: getToolHistory(filePath),
-          messages: getRecentMessages(filePath),
+          toolHistory: await getToolHistory(filePath),
+          messages: await getRecentMessages(filePath),
           sessionId,
         };
       }

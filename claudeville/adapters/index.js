@@ -30,13 +30,13 @@ const adapters = [
 /**
  * 모든 활성 어댑터에서 세션 수집
  */
-function getAllSessions(activeThresholdMs) {
-  const allSessions = [];
-  for (const adapter of adapters) {
-    if (!adapter.isAvailable()) continue;
+async function getAllSessions(activeThresholdMs) {
+  const adapterResults = await Promise.all(adapters.map(async (adapter) => {
+    if (!adapter.isAvailable()) return [];
     try {
-      const sessions = adapter.getActiveSessions(activeThresholdMs).map((session) => {
-        const detail = adapter.getSessionDetail(session.sessionId, session.project);
+      const sessions = await adapter.getActiveSessions(activeThresholdMs);
+      return await Promise.all(sessions.map(async (session) => {
+        const detail = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
         const tokenUsage = detail.tokenUsage || null;
         const tokens = tokenUsage
           ? {
@@ -52,23 +52,24 @@ function getAllSessions(activeThresholdMs) {
           tokens,
           estimatedCost: estimateCost(session.model, tokens),
         };
-      });
-      allSessions.push(...sessions);
+      }));
     } catch (err) {
       console.error(`[${adapter.name}] 세션 조회 실패:`, err.message);
+      return [];
     }
-  }
-  return allSessions.sort((a, b) => b.lastActivity - a.lastActivity);
+  }));
+
+  return adapterResults.flat().sort((a, b) => b.lastActivity - a.lastActivity);
 }
 
 /**
  * 특정 프로바이더의 세션 상세 조회
  */
-function getSessionDetailByProvider(provider, sessionId, project) {
+async function getSessionDetailByProvider(provider, sessionId, project) {
   const adapter = adapters.find(a => a.provider === provider);
   if (!adapter) return { toolHistory: [], messages: [] };
   try {
-    return adapter.getSessionDetail(sessionId, project);
+    return await adapter.getSessionDetail(sessionId, project);
   } catch (err) {
     console.error(`[${adapter.name}] 세션 상세 조회 실패:`, err.message);
     return { toolHistory: [], messages: [] };
