@@ -49,13 +49,14 @@ function normalizeSession(session, detail) {
 }
 
 async function buildSnapshot() {
-  const sessions = [];
+  const normalizedSessions = [];
   const sessionDetails = {};
 
-  for (const session of getAllSessions(ACTIVE_THRESHOLD_MS)) {
-    const detail = session.detail || getSessionDetailByProvider(session.provider, session.sessionId, session.project);
+  const activeSessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
+  for (const session of activeSessions) {
+    const detail = session.detail || await getSessionDetailByProvider(session.provider, session.sessionId, session.project);
     const normalized = normalizeSession(session, detail);
-    sessions.push(normalized);
+    normalizedSessions.push(normalized);
 
     const key = `${session.provider}:${session.sessionId}`;
     sessionDetails[key] = detail;
@@ -70,7 +71,7 @@ async function buildSnapshot() {
     collectorId: COLLECTOR_ID,
     hostName: COLLECTOR_HOST,
     timestamp: Date.now(),
-    sessions,
+    sessions: normalizedSessions,
     teams,
     taskGroups,
     providers: getActiveProviders(),

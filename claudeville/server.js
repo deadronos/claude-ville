@@ -71,9 +71,9 @@ function sendError(res, statusCode, message) {
  * GET /api/sessions
  * 모든 활성 어댑터에서 세션 수집
  */
-function handleGetSessions(req, res) {
+async function handleGetSessions(req, res) {
   try {
-    const sessions = getAllSessions(ACTIVE_THRESHOLD_MS);
+    const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
     sendJson(res, 200, { sessions, count: sessions.length, timestamp: Date.now() });
   } catch (err) {
     console.error('세션 조회 실패:', err.message);
@@ -113,7 +113,7 @@ async function handleGetTasks(req, res) {
  * GET /api/session-detail?sessionId=xxx&project=xxx&provider=claude
  * 특정 세션의 도구 히스토리 + 최근 메시지 반환
  */
-function handleGetSessionDetail(req, res) {
+async function handleGetSessionDetail(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const sessionId = url.searchParams.get('sessionId');
@@ -122,7 +122,7 @@ function handleGetSessionDetail(req, res) {
 
     if (!sessionId) return sendError(res, 400, 'sessionId 필수');
 
-    const result = getSessionDetailByProvider(provider, sessionId, project);
+    const result = await getSessionDetailByProvider(provider, sessionId, project);
     sendJson(res, 200, result);
   } catch (err) {
     console.error('세션 상세 조회 실패:', err.message);
@@ -162,12 +162,12 @@ function handleGetUsage(req, res) {
  * GET /api/history?lines=100
  * 최근 메시지 이력 반환
  */
-function handleGetHistory(req, res) {
+async function handleGetHistory(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const limit = Number(url.searchParams.get('lines') || 100);
     const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
-    const sessions = getAllSessions(ACTIVE_THRESHOLD_MS);
+    const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
     const entries = [];
 
     for (const session of sessions) {
@@ -281,7 +281,7 @@ function handleWebSocketUpgrade(req, socket) {
     wsClients.add(socket);
     setTimeout(() => {
       if (!socket.destroyed && socket.writable && wsClients.has(socket)) {
-        sendInitialData(socket);
+        void sendInitialData(socket);
       }
     }, 100);
   });
@@ -422,10 +422,13 @@ function wsBroadcast(data) {
 
 async function sendInitialData(socket) {
   try {
-    const teams = claudeAdapter ? await claudeAdapter.getTeams() : [];
+    const [sessions, teams] = await Promise.all([
+      getAllSessions(ACTIVE_THRESHOLD_MS),
+      claudeAdapter ? claudeAdapter.getTeams() : [],
+    ]);
     wsSend(socket, {
       type: 'init',
-      sessions: getAllSessions(ACTIVE_THRESHOLD_MS),
+      sessions,
       teams,
       usage: usageQuota.fetchUsage(),
       timestamp: Date.now(),
@@ -436,26 +439,42 @@ async function sendInitialData(socket) {
 }
 
 let watchDebounce = null;
+let broadcastInFlight = false;
+let broadcastNeedsRefresh = false;
 
 async function broadcastUpdate() {
   if (wsClients.size === 0) return;
+  if (broadcastInFlight) {
+    broadcastNeedsRefresh = true;
+    return;
+  }
+  broadcastInFlight = true;
   try {
-    const teams = claudeAdapter ? await claudeAdapter.getTeams() : [];
+    const [sessions, teams] = await Promise.all([
+      getAllSessions(ACTIVE_THRESHOLD_MS),
+      claudeAdapter ? claudeAdapter.getTeams() : [],
+    ]);
     wsBroadcast({
       type: 'update',
-      sessions: getAllSessions(ACTIVE_THRESHOLD_MS),
+      sessions,
       teams,
       usage: usageQuota.fetchUsage(),
       timestamp: Date.now(),
     });
   } catch (err) {
     console.error('[Watch] 데이터 처리 실패:', err.message);
+  } finally {
+    broadcastInFlight = false;
+    if (broadcastNeedsRefresh && wsClients.size > 0) {
+      broadcastNeedsRefresh = false;
+      void broadcastUpdate();
+    }
   }
 }
 
 function debouncedBroadcast() {
   if (watchDebounce) clearTimeout(watchDebounce);
-  watchDebounce = setTimeout(broadcastUpdate, 100);
+  watchDebounce = setTimeout(() => { void broadcastUpdate(); }, 100);
 }
 
 // ─── 파일 감시 (멀티 프로바이더) ────────────────────────
@@ -489,7 +508,7 @@ function startFileWatcher() {
 
   // 주기적 폴링 (2초) - 놓치는 변경 방지
   setInterval(() => {
-    if (wsClients.size > 0) broadcastUpdate();
+    if (wsClients.size > 0) void broadcastUpdate();
   }, 2000);
   console.log('[Watch] 2초 주기 폴링 시작');
 }

@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const test = require('node:test');
 
-test('groups OpenClaw sessions by agent id project key', () => {
+test('groups OpenClaw sessions by agent id project key', async () => {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-openclaw-'));
   const originalHomedir = os.homedir;
   os.homedir = () => tmpHome;
@@ -22,7 +22,7 @@ test('groups OpenClaw sessions by agent id project key', () => {
       JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }], model: 'gpt-5-mini' } }),
     ].join('\n'));
 
-    const sessions = adapter.getActiveSessions(60 * 1000);
+    const sessions = await adapter.getActiveSessions(60 * 1000);
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].agentId, 'researcher');
     assert.equal(sessions[0].project, 'openclaw:researcher');

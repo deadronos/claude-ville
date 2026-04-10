@@ -17,10 +17,10 @@ const SESSIONS_DIR = path.join(CODEX_DIR, 'sessions');
 
 // ─── 유틸 ─────────────────────────────────────────────
 
-function readLines(filePath, { from = 'end', count = 50 } = {}) {
+async function readLines(filePath, { from = 'end', count = 50 } = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = await fs.promises.readFile(filePath, 'utf-8');
     const lines = content.trim().split('\n');
     if (from === 'start') return lines.slice(0, count);
     return lines.slice(-count);
@@ -44,7 +44,7 @@ function parseJsonLines(lines) {
  * Codex 롤아웃 JSONL에서 세션 메타/도구/메시지 추출
  * 실제 포맷: 모든 데이터가 entry.payload 안에 있음
  */
-function parseRollout(filePath) {
+async function parseRollout(filePath) {
   const detail = {
     model: null,
     project: null,
@@ -54,7 +54,7 @@ function parseRollout(filePath) {
   };
 
   // session_meta는 파일 첫 줄에 있음 → 먼저 읽기
-  const firstLines = readLines(filePath, { from: 'start', count: 5 });
+  const firstLines = await readLines(filePath, { from: 'start', count: 5 });
   const firstEntries = parseJsonLines(firstLines);
   for (const entry of firstEntries) {
     if (entry.type === 'session_meta' && entry.payload) {
@@ -65,7 +65,7 @@ function parseRollout(filePath) {
   }
 
   // 최근 도구/메시지는 파일 끝에서 읽기
-  const lastLines = readLines(filePath, { from: 'end', count: 50 });
+  const lastLines = await readLines(filePath, { from: 'end', count: 50 });
   const entries = parseJsonLines(lastLines);
 
   for (const entry of entries) {
@@ -121,10 +121,10 @@ function parseRollout(filePath) {
 /**
  * Codex 롤아웃에서 도구 히스토리 추출
  */
-function getToolHistory(filePath, maxItems = 15) {
+async function getToolHistory(filePath, maxItems = 15) {
   const tools = [];
   try {
-    const lines = readLines(filePath, { from: 'end', count: 100 });
+    const lines = await readLines(filePath, { from: 'end', count: 100 });
     const entries = parseJsonLines(lines);
 
     for (const entry of entries) {
@@ -154,10 +154,10 @@ function getToolHistory(filePath, maxItems = 15) {
 /**
  * Codex 롤아웃에서 최근 메시지 추출
  */
-function getRecentMessages(filePath, maxItems = 5) {
+async function getRecentMessages(filePath, maxItems = 5) {
   const messages = [];
   try {
-    const lines = readLines(filePath, { from: 'end', count: 60 });
+    const lines = await readLines(filePath, { from: 'end', count: 60 });
     const entries = parseJsonLines(lines);
 
     for (const entry of entries) {
@@ -196,7 +196,7 @@ function getRecentMessages(filePath, maxItems = 5) {
 /**
  * 최근 날짜 디렉토리에서 롤아웃 파일 스캔
  */
-function scanRecentRollouts(activeThresholdMs) {
+async function scanRecentRollouts(activeThresholdMs) {
   const results = [];
   if (!fs.existsSync(SESSIONS_DIR)) return results;
 
@@ -204,50 +204,68 @@ function scanRecentRollouts(activeThresholdMs) {
 
   try {
     // YYYY 디렉토리 순회
-    const years = fs.readdirSync(SESSIONS_DIR, { withFileTypes: true })
+    const years = (await fs.promises.readdir(SESSIONS_DIR, { withFileTypes: true }))
       .filter(d => d.isDirectory())
       .map(d => d.name)
       .sort()
       .reverse()
       .slice(0, 2); // 최근 2년만
 
-    for (const year of years) {
+    const yearResults = await Promise.all(years.map(async (year) => {
       const yearDir = path.join(SESSIONS_DIR, year);
-      const months = fs.readdirSync(yearDir, { withFileTypes: true })
-        .filter(d => d.isDirectory())
-        .map(d => d.name)
-        .sort()
-        .reverse()
-        .slice(0, 2); // 최근 2개월만
-
-      for (const month of months) {
-        const monthDir = path.join(yearDir, month);
-        const days = fs.readdirSync(monthDir, { withFileTypes: true })
+      try {
+        const months = (await fs.promises.readdir(yearDir, { withFileTypes: true }))
           .filter(d => d.isDirectory())
           .map(d => d.name)
           .sort()
           .reverse()
-          .slice(0, 3); // 최근 3일만
+          .slice(0, 2); // 최근 2개월만
 
-        for (const day of days) {
-          const dayDir = path.join(monthDir, day);
-          let rolloutFiles;
+        const monthResults = await Promise.all(months.map(async (month) => {
+          const monthDir = path.join(yearDir, month);
           try {
-            rolloutFiles = fs.readdirSync(dayDir)
-              .filter(f => f.startsWith('rollout-') && f.endsWith('.jsonl'));
-          } catch { continue; }
+            const days = (await fs.promises.readdir(monthDir, { withFileTypes: true }))
+              .filter(d => d.isDirectory())
+              .map(d => d.name)
+              .sort()
+              .reverse()
+              .slice(0, 3); // 최근 3일만
 
-          for (const file of rolloutFiles) {
-            const filePath = path.join(dayDir, file);
-            let stat;
-            try { stat = fs.statSync(filePath); } catch { continue; }
+            const dayResults = await Promise.all(days.map(async (day) => {
+              const dayDir = path.join(monthDir, day);
+              try {
+                const rolloutFiles = (await fs.promises.readdir(dayDir))
+                  .filter(f => f.startsWith('rollout-') && f.endsWith('.jsonl'));
+                const fileResults = await Promise.all(rolloutFiles.map(async (file) => {
+                  const filePath = path.join(dayDir, file);
+                  try {
+                    const stat = await fs.promises.stat(filePath);
+                    if (now - stat.mtimeMs > activeThresholdMs) return null;
+                    return { filePath, mtime: stat.mtimeMs, fileName: file };
+                  } catch {
+                    return null;
+                  }
+                }));
+                return fileResults.filter(Boolean);
+              } catch {
+                return [];
+              }
+            }));
 
-            if (now - stat.mtimeMs > activeThresholdMs) continue;
-
-            results.push({ filePath, mtime: stat.mtimeMs, fileName: file });
+            return dayResults.flat();
+          } catch {
+            return [];
           }
-        }
+        }));
+
+        return monthResults.flat();
+      } catch {
+        return [];
       }
+    }));
+
+    for (const group of yearResults) {
+      results.push(...group);
     }
   } catch { /* 무시 */ }
 
@@ -265,16 +283,14 @@ class CodexAdapter {
     return fs.existsSync(CODEX_DIR);
   }
 
-  getActiveSessions(activeThresholdMs) {
-    const rollouts = scanRecentRollouts(activeThresholdMs);
-    const sessions = [];
-
-    for (const { filePath, mtime, fileName } of rollouts) {
-      const detail = parseRollout(filePath);
+  async getActiveSessions(activeThresholdMs) {
+    const rollouts = await scanRecentRollouts(activeThresholdMs);
+    const sessions = await Promise.all(rollouts.map(async ({ filePath, mtime, fileName }) => {
+      const detail = await parseRollout(filePath);
       // 파일명에서 세션 ID 추출: rollout-2025-01-22T10-30-00-abc123.jsonl
       const sessionId = fileName.replace('rollout-', '').replace('.jsonl', '');
 
-      sessions.push({
+      return {
         sessionId: `codex-${sessionId}`,
         provider: 'codex',
         agentId: null,
@@ -287,23 +303,32 @@ class CodexAdapter {
         lastTool: detail.lastTool,
         lastToolInput: detail.lastToolInput,
         parentSessionId: null,
-      });
-    }
+        filePath,
+      };
+    }));
 
     return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  getSessionDetail(sessionId, project) {
+  async getSessionDetail(sessionId, project, filePath = null) {
+    if (filePath) {
+      return {
+        toolHistory: await getToolHistory(filePath),
+        messages: await getRecentMessages(filePath),
+        sessionId,
+      };
+    }
+
     // sessionId에서 파일 찾기
     const cleanId = sessionId.replace('codex-', '');
-    const rollouts = scanRecentRollouts(30 * 60 * 1000); // 30분 범위로 확대
+    const rollouts = await scanRecentRollouts(30 * 60 * 1000); // 30분 범위로 확대
 
     for (const { filePath, fileName } of rollouts) {
       const fileId = fileName.replace('rollout-', '').replace('.jsonl', '');
       if (fileId === cleanId) {
         return {
-          toolHistory: getToolHistory(filePath),
-          messages: getRecentMessages(filePath),
+          toolHistory: await getToolHistory(filePath),
+          messages: await getRecentMessages(filePath),
           sessionId,
         };
       }

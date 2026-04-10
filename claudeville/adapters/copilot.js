@@ -19,10 +19,10 @@ const SESSION_STATE_DIR = path.join(COPILOT_DIR, 'session-state');
 
 // ─── 유틸 ─────────────────────────────────────────────
 
-function readLines(filePath, { from = 'end', count = 50 } = {}) {
+async function readLines(filePath, { from = 'end', count = 50 } = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = await fs.promises.readFile(filePath, 'utf-8');
     const lines = content.trim().split('\n');
     if (from === 'start') return lines.slice(0, count);
     return lines.slice(-count);
@@ -42,7 +42,7 @@ function parseJsonLines(lines) {
 
 // ─── 롤아웃 파싱 ──────────────────────────────────────
 
-function parseSession(filePath) {
+async function parseSession(filePath) {
   const detail = {
     model: null,
     project: null,
@@ -52,7 +52,7 @@ function parseSession(filePath) {
   };
 
   // session.start에서 메타데이터 추출
-  const firstLines = readLines(filePath, { from: 'start', count: 5 });
+  const firstLines = await readLines(filePath, { from: 'start', count: 5 });
   const firstEntries = parseJsonLines(firstLines);
   for (const entry of firstEntries) {
     if (entry.type === 'session.start' && entry.data) {
@@ -67,7 +67,7 @@ function parseSession(filePath) {
   }
 
   // 나머지에서 도구/메시지 추출
-  const lastLines = readLines(filePath, { from: 'end', count: 80 });
+  const lastLines = await readLines(filePath, { from: 'end', count: 80 });
   const entries = parseJsonLines(lastLines);
 
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -134,10 +134,10 @@ function extractText(content) {
 
 // ─── 도구 히스토리 ────────────────────────────────────
 
-function getToolHistory(filePath, maxItems = 15) {
+async function getToolHistory(filePath, maxItems = 15) {
   const tools = [];
   try {
-    const lines = readLines(filePath, { from: 'end', count: 100 });
+    const lines = await readLines(filePath, { from: 'end', count: 100 });
     const entries = parseJsonLines(lines);
 
     for (const entry of entries) {
@@ -177,10 +177,10 @@ function getToolHistory(filePath, maxItems = 15) {
 
 // ─── 최근 메시지 ──────────────────────────────────────
 
-function getRecentMessages(filePath, maxItems = 5) {
+async function getRecentMessages(filePath, maxItems = 5) {
   const messages = [];
   try {
-    const lines = readLines(filePath, { from: 'end', count: 60 });
+    const lines = await readLines(filePath, { from: 'end', count: 60 });
     const entries = parseJsonLines(lines);
 
     for (const entry of entries) {
@@ -202,31 +202,33 @@ function getRecentMessages(filePath, maxItems = 5) {
 
 // ─── 세션 스캔 ────────────────────────────────────────
 
-function scanAllSessions(activeThresholdMs) {
+async function scanAllSessions(activeThresholdMs) {
   const results = [];
   if (!fs.existsSync(SESSION_STATE_DIR)) return results;
 
   const now = Date.now();
 
   try {
-    const sessionDirs = fs.readdirSync(SESSION_STATE_DIR, { withFileTypes: true })
+    const sessionDirs = (await fs.promises.readdir(SESSION_STATE_DIR, { withFileTypes: true }))
       .filter(d => d.isDirectory());
-
-    for (const sessionDir of sessionDirs) {
+    const dirResults = await Promise.all(sessionDirs.map(async (sessionDir) => {
       const eventsFile = path.join(SESSION_STATE_DIR, sessionDir.name, 'events.jsonl');
-      if (!fs.existsSync(eventsFile)) continue;
+      if (!fs.existsSync(eventsFile)) return null;
 
-      let stat;
-      try { stat = fs.statSync(eventsFile); } catch { continue; }
+      try {
+        const stat = await fs.promises.stat(eventsFile);
+        if (now - stat.mtimeMs > activeThresholdMs) return null;
+        return {
+          filePath: eventsFile,
+          mtime: stat.mtimeMs,
+          sessionId: sessionDir.name,
+        };
+      } catch {
+        return null;
+      }
+    }));
 
-      if (now - stat.mtimeMs > activeThresholdMs) continue;
-
-      results.push({
-        filePath: eventsFile,
-        mtime: stat.mtimeMs,
-        sessionId: sessionDir.name,
-      });
-    }
+    results.push(...dirResults.filter(Boolean));
   } catch { /* 무시 */ }
 
   return results;
@@ -243,11 +245,11 @@ class CopilotAdapter {
     return fs.existsSync(SESSION_STATE_DIR);
   }
 
-  getActiveSessions(activeThresholdMs) {
-    const sessions = scanAllSessions(activeThresholdMs);
+  async getActiveSessions(activeThresholdMs) {
+    const sessions = await scanAllSessions(activeThresholdMs);
 
-    return sessions.map(({ filePath, mtime, sessionId }) => {
-      const detail = parseSession(filePath);
+    return Promise.all(sessions.map(async ({ filePath, mtime, sessionId }) => {
+      const detail = await parseSession(filePath);
 
       return {
         sessionId: `copilot-${sessionId}`,
@@ -262,19 +264,28 @@ class CopilotAdapter {
         lastTool: detail.lastTool,
         lastToolInput: detail.lastToolInput,
         parentSessionId: null,
+        filePath,
       };
-    }).sort((a, b) => b.lastActivity - a.lastActivity);
+    })).then(results => results.sort((a, b) => b.lastActivity - a.lastActivity));
   }
 
-  getSessionDetail(sessionId, project) {
+  async getSessionDetail(sessionId, project, filePath = null) {
+    if (filePath) {
+      return {
+        toolHistory: await getToolHistory(filePath),
+        messages: await getRecentMessages(filePath),
+        sessionId,
+      };
+    }
+
     const cleanId = sessionId.replace('copilot-', '');
-    const sessions = scanAllSessions(30 * 60 * 1000);
+    const sessions = await scanAllSessions(30 * 60 * 1000);
 
     const found = sessions.find(s => s.sessionId === cleanId);
     if (found) {
       return {
-        toolHistory: getToolHistory(found.filePath),
-        messages: getRecentMessages(found.filePath),
+        toolHistory: await getToolHistory(found.filePath),
+        messages: await getRecentMessages(found.filePath),
         sessionId,
       };
     }
