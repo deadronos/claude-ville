@@ -50,6 +50,8 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 | GitHub Copilot CLI | `~/.copilot/` | 🔵 Cyan |
 | VS Code / VS Code Insiders Copilot Chat | `~/Library/Application Support/Code*/User/workspaceStorage/.../GitHub.copilot-chat/debug-logs/.../main.jsonl` | 🩵 Light Blue |
 
+> The VS Code / Insiders adapter uses provider key `vscode` (shared for stable UI grouping). Session IDs are namespaced as `vscode:<channel>:<workspaceId>:<sessionId>`.
+
 > Only installed CLIs are detected. You don't need all three — ClaudeVille works with whichever ones you have.
 
 ## Features
@@ -177,33 +179,36 @@ Each CLI stores session logs in its own directory. ClaudeVille uses an **adapter
 
 ```
 claude-ville/
-├── claudeville/                # Legacy all-in-one app + frontend assets
-│   ├── index.html
-│   ├── server.js                # Node.js server (HTTP + WebSocket)
-│   ├── adapters/                # Provider adapters
-│   │   ├── index.js             #   Adapter registry
-│   │   ├── claude.js            #   Claude Code adapter
-│   │   ├── codex.js             #   Codex CLI adapter
-│   │   ├── gemini.js            #   Gemini CLI adapter
-│   │   ├── copilot.js           #   Copilot CLI adapter
-│   │   ├── openclaw.js          #   OpenClaw adapter
-│   │   └── vscode.js            #   VS Code / Insiders adapter
-│   ├── services/                # Backend services
-│   │   └── usageQuota.js        #   Account & usage data
-│   ├── css/                     # Stylesheets
-│   └── src/
-│       ├── config/              # Theme, buildings, i18n, constants
-│       ├── domain/              # Entities, value objects, events
-│       ├── infrastructure/      # Data source, WebSocket client
-│       ├── application/         # Managers, session watcher
-│       └── presentation/        # UI renderers (world / dashboard)
-├── collector/                   # Remote file watcher + snapshot publisher
-├── hubreceiver/                 # Snapshot ingestion + state/API server
-├── frontend/                    # Static frontend host for remote browsers
-├── widget/                      # macOS menu bar widget
-│   ├── Sources/main.swift       #   Swift app (NSStatusItem + WKWebView)
-│   ├── Resources/               #   HTML/CSS for popover UI
-│   └── build.sh                 #   Build script
+├── claudeville/                # Legacy all-in-one app (serves UI + API)
+│   ├── index.html              #   HTML shell
+│   ├── server.js               #   Node.js server (HTTP + WebSocket)
+│   ├── runtime-config.js      #   Runtime config loader
+│   ├── adapters/              #   Provider adapters (CommonJS)
+│   │   ├── index.js           #   Adapter registry
+│   │   ├── claude.js          #   Claude Code adapter
+│   │   ├── codex.js           #   Codex CLI adapter
+│   │   ├── gemini.js          #   Gemini CLI adapter
+│   │   ├── copilot.js         #   Copilot CLI adapter
+│   │   ├── openclaw.js        #   OpenClaw adapter
+│   │   └── vscode.js          #   VS Code / Insiders adapter
+│   ├── services/              #   Backend services
+│   │   └── usageQuota.js      #   Account & usage data
+│   ├── css/                   #   Stylesheets
+│   └── src/                   #   Application source (ES modules)
+│       ├── config/            #   Theme, buildings, i18n, constants, costs
+│       ├── domain/            #   Entities, value objects, events
+│       ├── infrastructure/    #   Data source, WebSocket client
+│       ├── application/        #   Managers, session watcher
+│       └── presentation/       #   UI renderers (world / dashboard)
+├── collector/                 #   Remote file watcher + snapshot publisher
+├── hubreceiver/               #   Snapshot ingestion + state/API server
+├── frontend/                  #   Static server for remote browser UI
+│   └── server.js              #   Serves claudeville/ static files
+├── widget/                    #   macOS menu bar widget
+│   ├── Sources/main.swift     #   Swift app (NSStatusItem + WKWebView)
+│   ├── Resources/             #   HTML/CSS for popover UI
+│   └── build.sh               #   Build script
+├── runtime-config.shared.js   #   Shared runtime config builder
 └── package.json
 ```
 
