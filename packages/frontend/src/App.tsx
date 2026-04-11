@@ -1,7 +1,9 @@
 import * as React from 'react';
 import { pixelTheme } from '@claude-ville/ui';
+import { useHubClient } from './hub-client';
 
-export function App() {
+function AppInner() {
+  useHubClient();
   return (
     <div
       style={{
@@ -61,4 +63,8 @@ export function App() {
       </div>
     </div>
   );
+}
+
+export function App() {
+  return <AppInner />;
 }
