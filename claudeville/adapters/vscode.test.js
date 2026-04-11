@@ -82,6 +82,64 @@ test('collects VS Code + Insiders Copilot Chat sessions from debug logs', async 
   }
 });
 
+test('prefers debug logs over newer transcript and resource candidates for the same session', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-vscode-priority-'));
+  const oldCodeDir = process.env.VSCODE_USER_DATA_DIR;
+  const oldInsidersDir = process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+
+  process.env.VSCODE_USER_DATA_DIR = path.join(tmpRoot, 'Code', 'User');
+  process.env.VSCODE_INSIDERS_USER_DATA_DIR = path.join(tmpRoot, 'Code - Insiders', 'User');
+
+  try {
+    const workspace = path.join(process.env.VSCODE_USER_DATA_DIR, 'workspaceStorage', 'ws-priority');
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(workspace, 'workspace.json'), JSON.stringify({ folder: 'file:///tmp/project-priority' }));
+
+    const debugFile = path.join(workspace, 'GitHub.copilot-chat', 'debug-logs', 'shared-session', 'main.jsonl');
+    writeJsonLines(debugFile, [
+      { ts: Date.now() - 4000, type: 'llm_request', attrs: { model: 'gpt-5.3', inputTokens: 1, outputTokens: 2 } },
+      { ts: Date.now() - 3900, type: 'agent_response', attrs: { response: JSON.stringify([{ role: 'assistant', parts: [{ type: 'text', content: 'debug source wins' }] }]) } },
+    ]);
+
+    const transcriptFile = path.join(workspace, 'GitHub.copilot-chat', 'transcripts', 'shared-session.jsonl');
+    writeJsonLines(transcriptFile, [
+      { type: 'assistant.message', data: { content: 'transcript source should lose' }, timestamp: new Date(Date.now() - 2000).toISOString() },
+    ]);
+
+    const resourceFile = path.join(
+      workspace,
+      'GitHub.copilot-chat',
+      'chat-session-resources',
+      'shared-session',
+      'call_1__tool',
+      'content.txt'
+    );
+    fs.mkdirSync(path.dirname(resourceFile), { recursive: true });
+    fs.writeFileSync(resourceFile, 'resource source should lose');
+
+    const nowSec = Date.now() / 1000;
+    fs.utimesSync(debugFile, nowSec - 4, nowSec - 4);
+    fs.utimesSync(transcriptFile, nowSec - 2, nowSec - 2);
+    fs.utimesSync(resourceFile, nowSec - 1, nowSec - 1);
+
+    delete require.cache[require.resolve('./vscode')];
+    const { VSCodeAdapter } = require('./vscode');
+    const adapter = new VSCodeAdapter();
+
+    const sessions = await adapter.getActiveSessions(60 * 1000);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].sessionId, 'vscode:vscode:ws-priority:shared-session');
+    assert.ok(sessions[0].filePath.endsWith(path.join('GitHub.copilot-chat', 'debug-logs', 'shared-session', 'main.jsonl')));
+    assert.equal(sessions[0].lastMessage, 'debug source wins');
+  } finally {
+    if (oldCodeDir === undefined) delete process.env.VSCODE_USER_DATA_DIR;
+    else process.env.VSCODE_USER_DATA_DIR = oldCodeDir;
+
+    if (oldInsidersDir === undefined) delete process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+    else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
+  }
+});
+
 test('collects active session from chat-session-resources content files', async () => {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-vscode-resources-'));
   const oldCodeDir = process.env.VSCODE_USER_DATA_DIR;

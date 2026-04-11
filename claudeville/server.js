@@ -290,10 +290,7 @@ function handleWebSocketUpgrade(req, socket) {
     try {
       handleWebSocketFrame(socket, buffer);
     } catch (err) {
-      // 프레임 처리 에러 무시 (필요 시 trace 로그)
-      if (process.env.CLAUDEVILLE_TRACE_WS === '1') {
-        console.warn('[WebSocket] frame handling error:', err instanceof Error ? err.message : String(err));
-      }
+      reportWebSocketFrameIssue(socket, 'frame handling error', err);
     }
   });
 
@@ -317,6 +314,11 @@ function handleWebSocketFrame(socket, buffer) {
   let payloadLength = secondByte & 0x7f;
   let offset = 2;
 
+  if (!isMasked) {
+    reportWebSocketFrameIssue(socket, 'client frame was not masked');
+    return;
+  }
+
   if (payloadLength === 126) {
     if (buffer.length < 4) return;
     payloadLength = buffer.readUInt16BE(2);
@@ -327,20 +329,15 @@ function handleWebSocketFrame(socket, buffer) {
     offset = 10;
   }
 
-  let maskKey = null;
-  if (isMasked) {
-    if (buffer.length < offset + 4) return;
-    maskKey = buffer.slice(offset, offset + 4);
-    offset += 4;
-  }
+  if (buffer.length < offset + 4) return;
+  const maskKey = buffer.slice(offset, offset + 4);
+  offset += 4;
 
   if (buffer.length < offset + payloadLength) return;
 
   const payload = buffer.slice(offset, offset + payloadLength);
-  if (isMasked && maskKey) {
-    for (let i = 0; i < payload.length; i++) {
-      payload[i] ^= maskKey[i % 4];
-    }
+  for (let i = 0; i < payload.length; i++) {
+    payload[i] ^= maskKey[i % 4];
   }
 
   switch (opcode) {
@@ -356,6 +353,9 @@ function handleWebSocketFrame(socket, buffer) {
       break;
     case 0xa:
       break;
+    default:
+      reportWebSocketFrameIssue(socket, `unsupported opcode 0x${opcode.toString(16)}`);
+      break;
   }
 }
 
@@ -365,7 +365,9 @@ function handleTextMessage(socket, message) {
     if (data.type === 'ping') {
       wsSend(socket, { type: 'pong', timestamp: Date.now() });
     }
-  } catch { /* 무시 */ }
+  } catch (err) {
+    reportWebSocketFrameIssue(socket, 'invalid JSON text frame', err);
+  }
 }
 
 function createWebSocketFrame(data, opcode = 0x1) {
@@ -418,6 +420,32 @@ function wsBroadcast(data) {
     } catch {
       wsClients.delete(socket);
     }
+  }
+}
+
+const WS_FRAME_ISSUE_WINDOW_MS = 5000;
+const WS_FRAME_ISSUE_CLOSE_THRESHOLD = 3;
+
+function reportWebSocketFrameIssue(socket, reason, err) {
+  const now = Date.now();
+  const state = socket._claudevilleWsFrameIssue || { count: 0, lastLoggedAt: 0 };
+  state.count += 1;
+
+  if (state.count === 1 || now - state.lastLoggedAt >= WS_FRAME_ISSUE_WINDOW_MS) {
+    const suffix = err ? `: ${err instanceof Error ? err.message : String(err)}` : '';
+    console.warn(`[WebSocket] ${reason}${suffix}`);
+    state.lastLoggedAt = now;
+  }
+
+  socket._claudevilleWsFrameIssue = state;
+
+  if (state.count >= WS_FRAME_ISSUE_CLOSE_THRESHOLD && !socket.destroyed) {
+    try {
+      socket.end(createWebSocketFrame('', 0x8));
+    } catch {
+      socket.destroy();
+    }
+    wsClients.delete(socket);
   }
 }
 
