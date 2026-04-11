@@ -25,14 +25,6 @@
         </div>
         <div class="topbar__center">
             <div class="topbar__stat">
-                <span data-i18n="tokens" class="topbar__stat-label">TOKENS</span>
-                <span id="statTokens" class="topbar__stat-value">0</span>
-            </div>
-            <div class="topbar__stat">
-                <span data-i18n="cost" class="topbar__stat-label">COST</span>
-                <span id="statCost" class="topbar__stat-value">$0.0000</span>
-            </div>
-            <div class="topbar__stat">
                 <span data-i18n="time" class="topbar__stat-label">TIME</span>
                 <span id="statTime" class="topbar__stat-value">00:00:00</span>
             </div>
@@ -49,27 +41,6 @@
                     <span class="topbar__badge-dot"></span>
                     <span id="badgeWaiting">0</span> <span data-i18n="waiting">WAITING</span>
                 </span>
-            </div>
-            <div class="topbar__divider"></div>
-            <div class="topbar__account" id="accountSection">
-                <span id="accountTier" class="topbar__account-tier"></span>
-                <span id="accountActivity" class="topbar__account-activity"></span>
-            </div>
-            <div id="quotaSection" class="topbar__quota" style="display: none;">
-                <div class="topbar__quota-bar">
-                    <span class="topbar__quota-label">5H</span>
-                    <div class="topbar__quota-track">
-                        <div id="quota5hBar" class="topbar__quota-fill"></div>
-                    </div>
-                    <span id="quota5hPct" class="topbar__quota-pct">0%</span>
-                </div>
-                <div class="topbar__quota-bar">
-                    <span class="topbar__quota-label">7D</span>
-                    <div class="topbar__quota-track">
-                        <div id="quota7dBar" class="topbar__quota-fill"></div>
-                    </div>
-                    <span id="quota7dPct" class="topbar__quota-pct">0%</span>
-                </div>
             </div>
         </div>
         <div class="topbar__right">
@@ -139,40 +110,6 @@
                     <div class="activity-panel__meta-row">
                         <span class="activity-panel__label" data-i18n="team">TEAM</span>
                         <span id="panelTeam" class="activity-panel__value"></span>
-                    </div>
-                </div>
-                <div class="activity-panel__section">
-                    <div class="activity-panel__section-title">Token Usage</div>
-                    <div id="panelTokenUsage" class="activity-panel__token-usage">
-                        <div class="activity-panel__token-row">
-                            <span class="activity-panel__token-label">Context</span>
-                            <span id="panelContextSize" class="activity-panel__token-value">-</span>
-                        </div>
-                        <div class="activity-panel__context-bar-wrap">
-                            <div id="panelContextBar" class="activity-panel__context-bar" style="width: 0%"></div>
-                        </div>
-                        <div class="activity-panel__token-grid">
-                            <div class="activity-panel__token-cell">
-                                <span class="activity-panel__token-cell-label">Input</span>
-                                <span id="panelInputTokens" class="activity-panel__token-cell-value">0</span>
-                            </div>
-                            <div class="activity-panel__token-cell">
-                                <span class="activity-panel__token-cell-label">Output</span>
-                                <span id="panelOutputTokens" class="activity-panel__token-cell-value">0</span>
-                            </div>
-                            <div class="activity-panel__token-cell">
-                                <span class="activity-panel__token-cell-label">Cache Read</span>
-                                <span id="panelCacheRead" class="activity-panel__token-cell-value">0</span>
-                            </div>
-                            <div class="activity-panel__token-cell">
-                                <span class="activity-panel__token-cell-label">Turns</span>
-                                <span id="panelTurnCount" class="activity-panel__token-cell-value">0</span>
-                            </div>
-                        </div>
-                        <div class="activity-panel__token-row">
-                            <span class="activity-panel__token-label">Est. Cost</span>
-                            <span id="panelEstCost" class="activity-panel__token-value activity-panel__token-value--cost">$0.00</span>
-                        </div>
                     </div>
                 </div>
                 <div class="activity-panel__section">

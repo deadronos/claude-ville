@@ -4,20 +4,10 @@ export class TopBar {
     constructor(world) {
         this.world = world;
         this.els = {
-            tokens: document.getElementById('statTokens'),
-            cost: document.getElementById('statCost'),
             time: document.getElementById('statTime'),
             working: document.getElementById('badgeWorking'),
             idle: document.getElementById('badgeIdle'),
             waiting: document.getElementById('badgeWaiting'),
-            // Account & Quota
-            accountTier: document.getElementById('accountTier'),
-            accountActivity: document.getElementById('accountActivity'),
-            quotaSection: document.getElementById('quotaSection'),
-            quota5hBar: document.getElementById('quota5hBar'),
-            quota5hPct: document.getElementById('quota5hPct'),
-            quota7dBar: document.getElementById('quota7dBar'),
-            quota7dPct: document.getElementById('quota7dPct'),
         };
         this.timeInterval = null;
 
@@ -26,71 +16,15 @@ export class TopBar {
         eventBus.on('agent:updated', this._onUpdate);
         eventBus.on('agent:removed', this._onUpdate);
 
-        this._onUsage = (usage) => this.renderQuota(usage);
-        eventBus.on('usage:updated', this._onUsage);
-
         this._startTimer();
         this.render();
     }
 
     render() {
         const stats = this.world.getStats();
-
-        this.els.tokens.textContent = this._formatNumber(stats.totalTokens);
-        this.els.cost.textContent = `$${stats.totalCost.toFixed(4)}`;
         this.els.working.textContent = stats.working;
         this.els.idle.textContent = stats.idle;
         this.els.waiting.textContent = stats.waiting;
-    }
-
-    renderQuota(usage) {
-        if (!usage) return;
-
-        // 구독 정보
-        if (usage.account) {
-            const tier = this._formatTier(usage.account.rateLimitTier, usage.account.subscriptionType);
-            this.els.accountTier.textContent = tier;
-        }
-
-        // 오늘 활동량
-        if (usage.activity?.today) {
-            const t = usage.activity.today;
-            this.els.accountActivity.textContent = `${this._formatNumber(t.messages)} msgs`;
-        }
-
-        // Quota 바 (API 성공 시에만 표시)
-        if (usage.quotaAvailable && usage.quota) {
-            this.els.quotaSection.style.display = 'flex';
-            this._updateQuotaBar(this.els.quota5hBar, this.els.quota5hPct, usage.quota.fiveHour);
-            this._updateQuotaBar(this.els.quota7dBar, this.els.quota7dPct, usage.quota.sevenDay);
-        }
-    }
-
-    _updateQuotaBar(barEl, pctEl, value) {
-        if (value == null) return;
-        const pct = Math.round(value * 100);
-        barEl.style.width = `${pct}%`;
-        pctEl.textContent = `${pct}%`;
-
-        // 색상 클래스 설정
-        barEl.classList.remove('topbar__quota-fill--warn', 'topbar__quota-fill--danger');
-        if (pct >= 80) {
-            barEl.classList.add('topbar__quota-fill--danger');
-        } else if (pct >= 50) {
-            barEl.classList.add('topbar__quota-fill--warn');
-        }
-    }
-
-    _formatTier(rateLimitTier, subscriptionType) {
-        if (rateLimitTier) {
-            // "default_claude_max_20x" → "Max 20x"
-            const match = rateLimitTier.match(/max_(\d+x)/i);
-            if (match) return `Max ${match[1]}`;
-        }
-        if (subscriptionType) {
-            return subscriptionType.charAt(0).toUpperCase() + subscriptionType.slice(1);
-        }
-        return 'Free';
     }
 
     _startTimer() {
@@ -103,17 +37,10 @@ export class TopBar {
         }, 1000);
     }
 
-    _formatNumber(num) {
-        if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-        if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-        return String(num);
-    }
-
     destroy() {
         if (this.timeInterval) clearInterval(this.timeInterval);
         eventBus.off('agent:added', this._onUpdate);
         eventBus.off('agent:updated', this._onUpdate);
         eventBus.off('agent:removed', this._onUpdate);
-        eventBus.off('usage:updated', this._onUsage);
     }
 }

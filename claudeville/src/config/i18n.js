@@ -1,6 +1,4 @@
 const STRINGS = {
-    tokens: 'TOKENS',
-    cost: 'COST',
     time: 'TIME',
     working: 'WORKING',
     idle: 'IDLE',

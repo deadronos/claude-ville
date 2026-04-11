@@ -1,5 +1,4 @@
 import { eventBus } from '../../domain/events/DomainEvent.js';
-import { estimateClaudeCost } from '../../config/costs.js';
 import { getHubApiUrl } from '../../config/runtime.js';
 
 const TOOL_ICONS = {
@@ -129,7 +128,6 @@ export class ActivityPanel {
             if (this.currentAgent && this.currentAgent.id === agent.id) {
                 this._renderToolHistory(data.toolHistory || []);
                 this._renderMessages(data.messages || []);
-                this._renderTokenUsage(data.tokenUsage);
             }
         } catch {
             // 네트워크 에러 무시
@@ -171,58 +169,6 @@ export class ActivityPanel {
                 <div>${this._esc(m.text)}</div>
             </div>`;
         }).join('');
-    }
-
-    _renderTokenUsage(usage) {
-        if (!usage) {
-            document.getElementById('panelContextSize').textContent = '-';
-            document.getElementById('panelInputTokens').textContent = '0';
-            document.getElementById('panelOutputTokens').textContent = '0';
-            document.getElementById('panelCacheRead').textContent = '0';
-            document.getElementById('panelTurnCount').textContent = '0';
-            document.getElementById('panelEstCost').textContent = '$0.00';
-            const bar = document.getElementById('panelContextBar');
-            bar.style.width = '0%';
-            bar.className = 'activity-panel__context-bar';
-            return;
-        }
-
-        const MAX_CONTEXT = 200000; // Opus 200k context window
-        const contextPct = Math.min(100, (usage.contextWindow / MAX_CONTEXT) * 100);
-
-        // Context size (읽기 쉬운 형태)
-        document.getElementById('panelContextSize').textContent =
-            this._formatTokens(usage.contextWindow) + ` / ${this._formatTokens(MAX_CONTEXT)}`;
-
-        // Context bar
-        const bar = document.getElementById('panelContextBar');
-        bar.style.width = contextPct + '%';
-        bar.className = 'activity-panel__context-bar';
-        if (contextPct > 80) bar.classList.add('activity-panel__context-bar--danger');
-        else if (contextPct > 50) bar.classList.add('activity-panel__context-bar--warning');
-
-        // Token cells
-        document.getElementById('panelInputTokens').textContent =
-            this._formatTokens(usage.totalInput);
-        document.getElementById('panelOutputTokens').textContent =
-            this._formatTokens(usage.totalOutput);
-        document.getElementById('panelCacheRead').textContent =
-            this._formatTokens(usage.cacheRead);
-        document.getElementById('panelTurnCount').textContent =
-            usage.turnCount.toLocaleString();
-
-        // Estimated cost uses the same source of truth as the world/top bar.
-        const cost = estimateClaudeCost(usage.model || 'claude-sonnet-4-5', {
-            input: usage.totalInput,
-            output: usage.totalOutput,
-        });
-        document.getElementById('panelEstCost').textContent = `$${cost.toFixed(4)}`;
-    }
-
-    _formatTokens(n) {
-        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-        return String(n);
     }
 
     // ─── 유틸 ───────────────────────────────────────
