@@ -1,9 +1,9 @@
 import * as React from 'react';
+import { TopBar } from './components/TopBar';
+import { Sidebar } from './components/Sidebar';
 import { pixelTheme } from '@claude-ville/ui';
-import { useHubClient } from './hub-client';
 
 function AppInner() {
-  useHubClient();
   return (
     <div
       style={{
@@ -13,37 +13,9 @@ function AppInner() {
         backgroundColor: pixelTheme.colors.background,
       }}
     >
-      {/* TopBar placeholder */}
-      <div
-        style={{
-          height: '48px',
-          display: 'flex',
-          alignItems: 'center',
-          padding: `0 ${pixelTheme.spacing.md}`,
-          backgroundColor: pixelTheme.colors.surface,
-          borderBottom: `1px solid ${pixelTheme.colors.border}`,
-          fontFamily: pixelTheme.fontFamily.pixel,
-          fontSize: pixelTheme.fontSize.base,
-          color: pixelTheme.colors.accent,
-        }}
-      >
-        ClaudeVille v0.1
-      </div>
+      <TopBar />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar placeholder */}
-        <div
-          style={{
-            width: '240px',
-            backgroundColor: pixelTheme.colors.surface,
-            borderRight: `1px solid ${pixelTheme.colors.border}`,
-            fontFamily: pixelTheme.fontFamily.pixel,
-            fontSize: pixelTheme.fontSize.xs,
-            color: pixelTheme.colors.border,
-            padding: pixelTheme.spacing.md,
-          }}
-        >
-          SIDEBAR
-        </div>
+        <Sidebar />
         <main style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <div
             style={{
