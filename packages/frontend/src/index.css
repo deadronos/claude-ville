@@ -1,8 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-:root {
+@theme {
   --color-background: #0f0f23;
   --color-surface: #1a1a2e;
   --color-surface-alt: #16213e;
@@ -10,10 +8,25 @@
   --color-text: #e0e0e0;
   --color-accent: #00d9ff;
   --color-accent-alt: #7b2cbf;
-  --color-working: #00ff88;
-  --color-idle: #00d9ff;
+  --color-success: #00ff88;
   --color-warning: #ffaa00;
   --color-danger: #ff4757;
+  --color-working: #00ff88;
+  --color-idle: #00d9ff;
+  --color-waiting: #ffaa00;
+
+  --font-family-pixel: "Press Start 2P", monospace;
+
+  --font-size-xs: 8px;
+  --font-size-sm: 10px;
+  --font-size-base: 12px;
+  --font-size-lg: 14px;
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
 }
 
 * {
@@ -29,12 +42,8 @@ html, body, #root {
 body {
   background-color: var(--color-background);
   color: var(--color-text);
-  font-family: 'Press Start 2P', monospace;
-  font-size: 12px;
+  font-family: var(--font-family-pixel);
+  font-size: var(--font-size-base);
   line-height: 1.5;
   overflow: hidden;
-}
-
-.font-pixel {
-  font-family: 'Press Start 2P', monospace;
 }
