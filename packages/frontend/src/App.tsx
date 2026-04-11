@@ -1,6 +1,5 @@
 import * as React from 'react';
-import { pixelTheme } from '@claude-ville/ui/src/styles/pixel-theme';
-import './App.css';
+import { pixelTheme } from '@claude-ville/ui';
 
 export function App() {
   return (
