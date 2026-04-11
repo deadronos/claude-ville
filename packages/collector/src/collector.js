@@ -2,7 +2,7 @@ require('../load-local-env');
 
 const fs = require('fs');
 const crypto = require('crypto');
-const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters');
+const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('./adapters/index.js');
 
 const HUB_URL = process.env.HUB_URL || 'http://localhost:3030';
 const HUB_AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';

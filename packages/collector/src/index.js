@@ -1,3 +1,4 @@
 // packages/collector/src/index.js
-export { Collector } from './collector.js';
-export { adapters } from './adapters/index.js';
+const { Collector } = require('./collector.js');
+const { adapters } = require('./adapters/index.js');
+module.exports = { Collector, adapters };
