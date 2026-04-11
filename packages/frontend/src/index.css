@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-background: #0f0f23;
+  --color-surface: #1a1a2e;
+  --color-surface-alt: #16213e;
+  --color-border: #4a4a6a;
+  --color-text: #e0e0e0;
+  --color-accent: #00d9ff;
+  --color-accent-alt: #7b2cbf;
+  --color-working: #00ff88;
+  --color-idle: #00d9ff;
+  --color-warning: #ffaa00;
+  --color-danger: #ff4757;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+.font-pixel {
+  font-family: 'Press Start 2P', monospace;
+}
