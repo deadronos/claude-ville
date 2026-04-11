@@ -1,0 +1,556 @@
+/**
+ * Claude Code CLI adapter
+ * Data source: ~/.claude/
+ */
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const CLAUDE_DIR = process.env.CLAUDE_DIR || path.join(os.homedir(), '.claude');
+const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
+const TEAMS_DIR = path.join(CLAUDE_DIR, 'teams');
+const TASKS_DIR = path.join(CLAUDE_DIR, 'tasks');
+
+function resolveProjectDisplayPath(projectPathMap, encodedProjectDirName) {
+  const mapped = projectPathMap.get(encodedProjectDirName);
+  if (mapped) return mapped;
+  // Encoded project dir names use '/' -> '-' substitution; reverse-transform loses info.
+  // Instead of guessing a wrong path, expose a stable identifier.
+  return `claude:projects:${encodedProjectDirName}`;
+}
+
+// ─── Utility ─────────────────────────────────────────────
+
+function readLastLines(filePath, lineCount) {
+  try {
+    if (!fs.existsSync(filePath)) return [];
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.trim().split('\n');
+    return lines.slice(-lineCount);
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonLines(lines) {
+  const results = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
+  }
+  return results;
+}
+
+// ─── Session parsing ─────────────────────────────────────
+
+function getSessionDetail(sessionId, projectPath) {
+  const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+  if (!projectPath) return detail;
+
+  const encoded = projectPath.replace(/\//g, '-');
+  const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
+  if (!fs.existsSync(sessionFile)) return detail;
+
+  try {
+    const lines = readLastLines(sessionFile, 30);
+    const entries = parseJsonLines(lines);
+
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const msg = entries[i].message;
+      if (!msg || msg.role !== 'assistant') continue;
+
+      if (!detail.model && msg.model) detail.model = msg.model;
+
+      const content = msg.content;
+      if (!Array.isArray(content)) continue;
+
+      for (const block of content) {
+        if (!detail.lastTool && block.type === 'tool_use') {
+          detail.lastTool = block.name || null;
+          if (block.input) {
+            if (block.input.command) detail.lastToolInput = block.input.command.substring(0, 60);
+            else if (block.input.file_path) detail.lastToolInput = block.input.file_path.split('/').pop();
+            else if (block.input.pattern) detail.lastToolInput = block.input.pattern;
+            else if (block.input.query) detail.lastToolInput = block.input.query.substring(0, 40);
+            else if (block.input.recipient) detail.lastToolInput = block.input.recipient;
+          }
+        }
+        if (!detail.lastMessage && block.type === 'text' && block.text) {
+          const text = block.text.trim();
+          if (text.length > 0) detail.lastMessage = text.substring(0, 80);
+        }
+      }
+      if (detail.model && detail.lastTool && detail.lastMessage) break;
+    }
+  } catch { /* ignore */ }
+
+  return detail;
+}
+
+function getSubAgentDetail(filePath) {
+  const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+  try {
+    const lines = readLastLines(filePath, 20);
+    const entries = parseJsonLines(lines);
+
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const msg = entries[i].message;
+      if (!msg || msg.role !== 'assistant') continue;
+
+      if (!detail.model && msg.model) detail.model = msg.model;
+      const content = msg.content;
+      if (!Array.isArray(content)) continue;
+
+      for (const block of content) {
+        if (!detail.lastTool && block.type === 'tool_use') {
+          detail.lastTool = block.name || null;
+          if (block.input) {
+            if (block.input.command) detail.lastToolInput = block.input.command.substring(0, 60);
+            else if (block.input.file_path) detail.lastToolInput = block.input.file_path.split('/').pop();
+            else if (block.input.pattern) detail.lastToolInput = block.input.pattern;
+            else if (block.input.query) detail.lastToolInput = block.input.query.substring(0, 40);
+            else if (block.input.recipient) detail.lastToolInput = block.input.recipient;
+          }
+        }
+        if (!detail.lastMessage && block.type === 'text' && block.text) {
+          const text = block.text.trim();
+          if (text.length > 0) detail.lastMessage = text.substring(0, 80);
+        }
+      }
+      if (detail.model && detail.lastTool && detail.lastMessage) break;
+    }
+  } catch { /* ignore */ }
+  return detail;
+}
+
+function getToolHistory(sessionFilePath, maxItems = 15) {
+  const tools = [];
+  try {
+    const lines = readLastLines(sessionFilePath, 100);
+    const entries = parseJsonLines(lines);
+
+    for (const entry of entries) {
+      const msg = entry.message;
+      if (!msg || msg.role !== 'assistant') continue;
+      const content = msg.content;
+      if (!Array.isArray(content)) continue;
+
+      for (const block of content) {
+        if (block.type !== 'tool_use') continue;
+        let detail = '';
+        if (block.input) {
+          if (block.input.command) detail = block.input.command.substring(0, 80);
+          else if (block.input.file_path) detail = block.input.file_path;
+          else if (block.input.pattern) detail = block.input.pattern;
+          else if (block.input.query) detail = block.input.query.substring(0, 60);
+          else if (block.input.prompt) detail = block.input.prompt.substring(0, 60);
+          else if (block.input.url) detail = block.input.url;
+          else if (block.input.description) detail = block.input.description.substring(0, 60);
+        }
+        tools.push({ tool: block.name || 'unknown', detail, ts: entry.timestamp || 0 });
+      }
+    }
+  } catch { /* ignore */ }
+  return tools.slice(-maxItems);
+}
+
+function getRecentMessages(sessionFilePath, maxItems = 5) {
+  const messages = [];
+  try {
+    const lines = readLastLines(sessionFilePath, 60);
+    const entries = parseJsonLines(lines);
+
+    for (const entry of entries) {
+      const msg = entry.message;
+      if (!msg) continue;
+      const content = msg.content;
+      if (!Array.isArray(content)) continue;
+
+      for (const block of content) {
+        if (block.type !== 'text' || !block.text) continue;
+        const text = block.text.trim();
+        if (text.length === 0) continue;
+        messages.push({ role: msg.role, text: text.substring(0, 200), ts: entry.timestamp || 0 });
+      }
+    }
+  } catch { /* ignore */ }
+  return messages.slice(-maxItems);
+}
+
+function getTokenUsage(sessionFilePath) {
+  const usage = {
+    totalInput: 0,
+    totalOutput: 0,
+    cacheRead: 0,
+    cacheCreate: 0,
+    contextWindow: 0,  // last turn context size
+    turnCount: 0,
+  };
+  try {
+    const lines = readLastLines(sessionFilePath, 200);
+    const entries = parseJsonLines(lines);
+
+    let lastUsage = null;
+    for (const entry of entries) {
+      const msg = entry.message;
+      if (!msg || !msg.usage) continue;
+      const u = msg.usage;
+      usage.totalInput += u.input_tokens || 0;
+      usage.totalOutput += u.output_tokens || 0;
+      usage.cacheRead += u.cache_read_input_tokens || 0;
+      usage.cacheCreate += u.cache_creation_input_tokens || 0;
+      usage.turnCount++;
+      lastUsage = u;
+    }
+
+    // last turn context = input + cache_read + cache_create
+    if (lastUsage) {
+      usage.contextWindow =
+        (lastUsage.input_tokens || 0) +
+        (lastUsage.cache_read_input_tokens || 0) +
+        (lastUsage.cache_creation_input_tokens || 0);
+    }
+  } catch { /* ignore */ }
+  return usage;
+}
+
+function resolveSessionFilePath(sessionId, project) {
+  if (!project) return null;
+  const encoded = project.replace(/\//g, '-');
+  const projectsDir = path.join(CLAUDE_DIR, 'projects', encoded);
+
+  if (sessionId.startsWith('subagent-')) {
+    const agentId = sessionId.replace('subagent-', '');
+    try {
+      const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
+        .filter(d => d.isDirectory());
+      for (const dir of sessionDirs) {
+        const agentFile = path.join(projectsDir, dir.name, 'subagents', `agent-${agentId}.jsonl`);
+        if (fs.existsSync(agentFile)) return agentFile;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  const sessionFile = path.join(projectsDir, `${sessionId}.jsonl`);
+  return fs.existsSync(sessionFile) ? sessionFile : null;
+}
+
+function getSessionFileActivity(sessionId, project) {
+  if (!project) return 0;
+  const encoded = project.replace(/\//g, '-');
+  const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
+  try {
+    if (fs.existsSync(sessionFile)) return fs.statSync(sessionFile).mtimeMs;
+  } catch { /* ignore */ }
+  return 0;
+}
+
+// ─── Adapter class ──────────────────────────────────────
+
+class ClaudeAdapter {
+  get name() { return 'Claude Code'; }
+  get provider() { return 'claude'; }
+  get homeDir() { return CLAUDE_DIR; }
+
+  isAvailable() {
+    return fs.existsSync(CLAUDE_DIR);
+  }
+
+  getActiveSessions(activeThresholdMs) {
+    const lines = readLastLines(HISTORY_FILE, 1000);
+    const entries = parseJsonLines(lines);
+    const now = Date.now();
+    const sessionsMap = new Map();
+    const projectPathMap = new Map(); // encoded dir name -> actual path
+
+    const HISTORY_SCAN_MS = 10 * 60 * 1000;
+    for (const entry of entries) {
+      // Build project path map from all entries (regardless of active status)
+      if (entry.project) {
+        const encoded = entry.project.replace(/\//g, '-');
+        projectPathMap.set(encoded, entry.project);
+      }
+
+      if (!entry.sessionId) continue;
+      if (now - (entry.timestamp || 0) > HISTORY_SCAN_MS) continue;
+
+      const existing = sessionsMap.get(entry.sessionId);
+      if (!existing || (entry.timestamp || 0) > (existing.timestamp || 0)) {
+        sessionsMap.set(entry.sessionId, {
+          sessionId: entry.sessionId,
+          provider: 'claude',
+          agentId: entry.agentId || null,
+          agentType: entry.agentType || (entry.agentId ? 'sub-agent' : 'main'),
+          model: entry.model || 'unknown',
+          status: 'active',
+          lastActivity: entry.timestamp || 0,
+          project: entry.project || null,
+          lastMessage: entry.display ? entry.display.substring(0, 100) : null,
+        });
+      }
+    }
+
+    const mainSessions = [];
+    for (const session of sessionsMap.values()) {
+      const fileMtime = getSessionFileActivity(session.sessionId, session.project);
+      const lastActive = Math.max(session.lastActivity, fileMtime);
+      if (now - lastActive > activeThresholdMs) continue;
+
+      session.lastActivity = lastActive;
+      const detail = getSessionDetail(session.sessionId, session.project);
+      mainSessions.push({
+        ...session,
+        model: detail.model || session.model,
+        lastTool: detail.lastTool,
+        lastToolInput: detail.lastToolInput,
+        lastMessage: detail.lastMessage || session.lastMessage,
+      });
+    }
+
+    mainSessions.sort((a, b) => b.lastActivity - a.lastActivity);
+
+    // Sub-agents (pass project path map)
+    const subAgents = this._getActiveSubAgents(activeThresholdMs, projectPathMap);
+
+    // Orphan sessions (not in history.jsonl or subagents/)
+    const knownIds = new Set([
+      ...Array.from(sessionsMap.keys()),
+      ...subAgents.map(s => s.sessionId.replace('subagent-', '')),
+    ]);
+    const orphans = this._getOrphanSessions(activeThresholdMs, projectPathMap, knownIds);
+
+    return [...mainSessions, ...subAgents, ...orphans];
+  }
+
+  _getActiveSubAgents(activeThresholdMs, projectPathMap = new Map()) {
+    const projectsDir = path.join(CLAUDE_DIR, 'projects');
+    if (!fs.existsSync(projectsDir)) return [];
+
+    const now = Date.now();
+    const results = [];
+
+    try {
+      const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
+        .filter(d => d.isDirectory());
+
+      for (const projDir of projDirs) {
+        const projPath = path.join(projectsDir, projDir.name);
+        let sessionDirs;
+        try {
+          sessionDirs = fs.readdirSync(projPath, { withFileTypes: true })
+            .filter(d => d.isDirectory());
+        } catch { continue; }
+
+        for (const sessionDir of sessionDirs) {
+          const subagentsDir = path.join(projPath, sessionDir.name, 'subagents');
+          if (!fs.existsSync(subagentsDir)) continue;
+
+          let agentFiles;
+          try {
+            agentFiles = fs.readdirSync(subagentsDir)
+              .filter(f => f.startsWith('agent-') && f.endsWith('.jsonl'));
+          } catch { continue; }
+
+          for (const agentFile of agentFiles) {
+            const filePath = path.join(subagentsDir, agentFile);
+            let stat;
+            try { stat = fs.statSync(filePath); } catch { continue; }
+
+            if (now - stat.mtimeMs > activeThresholdMs) continue;
+
+            const agentId = agentFile.replace('agent-', '').replace('.jsonl', '');
+            const detail = getSubAgentDetail(filePath);
+            // Look up exact path from projectPathMap; fall back if hyphens in path broke decoding
+            const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
+
+            results.push({
+              sessionId: `subagent-${agentId}`,
+              provider: 'claude',
+              agentId,
+              agentType: 'sub-agent',
+              model: detail.model || 'unknown',
+              status: 'active',
+              lastActivity: stat.mtimeMs,
+              project: decodedProject,
+              lastMessage: detail.lastMessage,
+              lastTool: detail.lastTool,
+              lastToolInput: detail.lastToolInput,
+              parentSessionId: sessionDir.name,
+            });
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    return results;
+  }
+
+  _getOrphanSessions(activeThresholdMs, projectPathMap = new Map(), knownIds = new Set()) {
+    const projectsDir = path.join(CLAUDE_DIR, 'projects');
+    if (!fs.existsSync(projectsDir)) return [];
+
+    const now = Date.now();
+    const results = [];
+
+    try {
+      const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
+        .filter(d => d.isDirectory());
+
+      for (const projDir of projDirs) {
+        const projPath = path.join(projectsDir, projDir.name);
+        let files;
+        try {
+          files = fs.readdirSync(projPath)
+            .filter(f => f.endsWith('.jsonl') && !f.startsWith('.'));
+        } catch { continue; }
+
+        for (const file of files) {
+          const sessionId = file.replace('.jsonl', '');
+          // Skip if session is already known
+          if (knownIds.has(sessionId)) continue;
+
+          const filePath = path.join(projPath, file);
+          let stat;
+          try { stat = fs.statSync(filePath); } catch { continue; }
+
+          if (now - stat.mtimeMs > activeThresholdMs) continue;
+
+          const detail = getSubAgentDetail(filePath);
+          const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
+
+          results.push({
+            sessionId,
+            provider: 'claude',
+            agentId: sessionId,
+            agentType: 'team-member',
+            model: detail.model || 'unknown',
+            status: 'active',
+            lastActivity: stat.mtimeMs,
+            project: decodedProject,
+            lastMessage: detail.lastMessage,
+            lastTool: detail.lastTool,
+            lastToolInput: detail.lastToolInput,
+          });
+        }
+      }
+    } catch { /* ignore */ }
+
+    return results;
+  }
+
+  getSessionDetail(sessionId, project) {
+    const filePath = resolveSessionFilePath(sessionId, project);
+    if (!filePath) return { toolHistory: [], messages: [], tokenUsage: null };
+    return {
+      toolHistory: getToolHistory(filePath),
+      messages: getRecentMessages(filePath),
+      tokenUsage: getTokenUsage(filePath),
+      sessionId,
+    };
+  }
+
+  getWatchPaths() {
+    const paths = [];
+
+    // history.jsonl
+    if (fs.existsSync(HISTORY_FILE)) {
+      paths.push({ type: 'file', path: HISTORY_FILE });
+    }
+
+    // Project directories (recursive to also catch sub-agent files)
+    const projectsDir = path.join(CLAUDE_DIR, 'projects');
+    if (fs.existsSync(projectsDir)) {
+      try {
+        const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
+          .filter(d => d.isDirectory());
+        for (const dir of projDirs) {
+          paths.push({
+            type: 'directory',
+            path: path.join(projectsDir, dir.name),
+            filter: '.jsonl',
+            recursive: true,
+          });
+        }
+      } catch { /* ignore */ }
+    }
+
+    // Teams directory (detect team creation/changes)
+    if (fs.existsSync(TEAMS_DIR)) {
+      paths.push({
+        type: 'directory',
+        path: TEAMS_DIR,
+        recursive: true,
+        filter: '.json',
+      });
+    }
+
+    return paths;
+  }
+
+  // ─── Teams/tasks (Claude only) ──────────────────────
+
+  async getTeams() {
+    try {
+      const teamDirs = await fs.promises.readdir(TEAMS_DIR, { withFileTypes: true });
+      const teamPromises = teamDirs
+        .filter(d => d.isDirectory())
+        .map(async (dir) => {
+          const configPath = path.join(TEAMS_DIR, dir.name, 'config.json');
+          try {
+            const content = await fs.promises.readFile(configPath, 'utf-8');
+            const config = JSON.parse(content);
+            return { teamName: dir.name, ...config };
+          } catch (err) {
+            if (err.code === 'ENOENT') return null;
+            return { teamName: dir.name, error: 'parse failed' };
+          }
+        });
+
+      const results = await Promise.all(teamPromises);
+      return results.filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  async getTasks() {
+    try {
+      const taskDirs = await fs.promises.readdir(TASKS_DIR, { withFileTypes: true });
+      const taskGroups = [];
+
+      for (const dir of taskDirs) {
+        if (!dir.isDirectory()) continue;
+        const groupDir = path.join(TASKS_DIR, dir.name);
+        try {
+          const files = await fs.promises.readdir(groupDir);
+          const jsonFiles = files.filter(f => f.endsWith('.json'));
+
+          const taskPromises = jsonFiles.map(async (file) => {
+            try {
+              const content = await fs.promises.readFile(path.join(groupDir, file), 'utf-8');
+              return JSON.parse(content);
+            } catch {
+              return null;
+            }
+          });
+
+          const tasks = (await Promise.all(taskPromises)).filter(Boolean);
+          taskGroups.push({
+            groupName: dir.name,
+            tasks: tasks.sort((a, b) => Number(a.id || 0) - Number(b.id || 0)),
+            count: tasks.length,
+          });
+        } catch {
+          continue;
+        }
+      }
+
+      return taskGroups;
+    } catch {
+      return [];
+    }
+  }
+}
+
+module.exports = { ClaudeAdapter };
