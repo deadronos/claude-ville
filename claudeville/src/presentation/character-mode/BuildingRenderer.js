@@ -52,7 +52,7 @@ export class BuildingRenderer {
         this.hoveredBuilding = null;
         this.torchFrame = 0;
         this.agentSprites = [];
-        this.roofAlpha = new Map(); // 건물별 지붕 투명도 (1=지붕 보임, 0=내부 보임)
+        this.roofAlpha = new Map(); // Roof transparency per building (1=roof visible, 0=interior visible)
     }
 
     setBuildings(buildings) {
@@ -66,14 +66,14 @@ export class BuildingRenderer {
     update() {
         this.torchFrame += 0.08;
 
-        // 지붕 투명도 업데이트 (심즈 효과)
+        // Update roof transparency (Sims-style effect)
         for (const b of this.buildings) {
             const center = this._getBuildingCenter(b);
             const halfW = b.width * TILE_WIDTH / 4;
             const style = BUILDING_STYLES[b.type];
             if (!style) continue;
 
-            // 에이전트가 건물 근처에 있는지 체크
+            // Check if any agent is near the building
             let agentNear = false;
             for (const sprite of this.agentSprites) {
                 const dx = sprite.x - center.x;
@@ -172,9 +172,9 @@ export class BuildingRenderer {
 
         const wh = style.wallHeight;
 
-        // === 1. 뒷벽 (항상 보임 - 에이전트 들어가면 깊이감 제공) ===
+        // === 1. Back wall (always visible - provides depth when agents enter) ===
         ctx.fillStyle = this._lighten(style.wallColor, -15);
-        // 뒷벽 좌 (top→left)
+        // Back wall left (top→left)
         ctx.beginPath();
         ctx.moveTo(-halfW, 0);
         ctx.lineTo(-halfW, -wh);
@@ -182,7 +182,7 @@ export class BuildingRenderer {
         ctx.lineTo(0, -halfH);
         ctx.closePath();
         ctx.fill();
-        // 뒷벽 우 (top→right)
+        // Back wall right (top→right)
         ctx.fillStyle = this._lighten(style.wallColor, -5);
         ctx.beginPath();
         ctx.moveTo(halfW, 0);
@@ -192,7 +192,7 @@ export class BuildingRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // === 2. 내부 바닥 + 가구 (지붕 열릴 때 보임) ===
+        // === 2. Interior floor + furniture (visible when roof opens) ===
         if (alpha < 0.95) {
             ctx.save();
             ctx.globalAlpha = 1 - alpha;
@@ -200,10 +200,10 @@ export class BuildingRenderer {
             ctx.restore();
         }
 
-        // === 3. 앞벽 (에이전트 접근 시 페이드아웃) ===
+        // === 3. Front wall (fades out when agents approach) ===
         ctx.save();
         ctx.globalAlpha = alpha;
-        // 앞벽 좌 (left→bottom)
+        // Front wall left (left→bottom)
         ctx.fillStyle = style.wallColor;
         ctx.beginPath();
         ctx.moveTo(-halfW, 0);
@@ -212,7 +212,7 @@ export class BuildingRenderer {
         ctx.lineTo(-halfW, -wh);
         ctx.closePath();
         ctx.fill();
-        // 앞벽 우 (bottom→right)
+        // Front wall right (bottom→right)
         ctx.fillStyle = this._lighten(style.wallColor, 20);
         ctx.beginPath();
         ctx.moveTo(0, halfH);
@@ -222,11 +222,11 @@ export class BuildingRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // 앞벽 창문
+        // Front wall windows
         this._drawFrontWindows(ctx, halfW, halfH, wh, style);
         ctx.restore();
 
-        // === 4. 지붕 (에이전트 접근 시 페이드아웃) ===
+        // === 4. Roof (fades out when agents approach) ===
         if (alpha > 0.05) {
             ctx.save();
             ctx.globalAlpha = alpha;
@@ -238,7 +238,7 @@ export class BuildingRenderer {
             ctx.restore();
         }
 
-        // 뒷벽 창문 (항상 보임)
+        // Back wall windows (always visible)
         this._drawWindows(ctx, halfW, style);
 
         // Building-specific decorations
@@ -259,7 +259,7 @@ export class BuildingRenderer {
     }
 
     _drawInterior(ctx, building, halfW, halfH, style) {
-        // 내부 바닥 (밝은 톤)
+        // Interior floor (bright tone)
         ctx.fillStyle = this._lighten(style.wallColor, 40);
         ctx.beginPath();
         ctx.moveTo(0, -halfH);
@@ -269,7 +269,7 @@ export class BuildingRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // 바닥 격자 패턴
+        // Floor grid pattern
         ctx.strokeStyle = this._lighten(style.wallColor, 25);
         ctx.lineWidth = 0.5;
         for (let i = -2; i <= 2; i++) {
@@ -279,43 +279,43 @@ export class BuildingRenderer {
             ctx.stroke();
         }
 
-        // 건물별 내부 가구
+        // Building-specific interior furniture
         switch (building.type) {
             case 'command':
-                // 중앙 테이블
+                // Central table
                 ctx.fillStyle = '#6b4a2a';
                 ctx.fillRect(-10, -4, 20, 8);
-                // 모니터
+                // Monitors
                 ctx.fillStyle = '#1a3a5a';
                 ctx.fillRect(-7, -3, 6, 5);
                 ctx.fillRect(1, -3, 6, 5);
-                // 화면 빛
+                // Screen glow
                 ctx.fillStyle = 'rgba(74, 158, 255, 0.6)';
                 ctx.fillRect(-6, -2, 4, 3);
                 ctx.fillRect(2, -2, 4, 3);
                 break;
             case 'forge':
-                // 용광로
+                // Furnace
                 ctx.fillStyle = '#5a3a2a';
                 ctx.fillRect(-8, -6, 8, 8);
                 ctx.fillStyle = '#ff4400';
                 ctx.fillRect(-7, -4, 6, 4);
-                // 작업대
+                // Workbench
                 ctx.fillStyle = '#7a5a3a';
                 ctx.fillRect(2, -3, 10, 6);
                 break;
             case 'mine':
-                // 광석 더미
+                // Ore pile
                 ctx.fillStyle = '#8a7a5a';
                 ctx.beginPath();
                 ctx.arc(-5, 0, 5, 0, Math.PI * 2);
                 ctx.fill();
-                // 반짝이는 광석
+                // Sparkling ores
                 ctx.fillStyle = '#ffd700';
                 ctx.fillRect(-7, -2, 2, 2);
                 ctx.fillStyle = '#00ffff';
                 ctx.fillRect(-3, 1, 2, 2);
-                // 레일
+                // Rails
                 ctx.strokeStyle = '#888';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
@@ -328,20 +328,20 @@ export class BuildingRenderer {
                 ctx.stroke();
                 break;
             case 'taskboard':
-                // 칸반 보드
+                // Kanban board
                 ctx.fillStyle = '#eee';
                 ctx.fillRect(-10, -6, 20, 10);
                 ctx.strokeStyle = '#999';
                 ctx.lineWidth = 0.5;
                 ctx.strokeRect(-10, -6, 20, 10);
-                // 컬럼 구분선
+                // Column dividers
                 ctx.beginPath();
                 ctx.moveTo(-3, -6);
                 ctx.lineTo(-3, 4);
                 ctx.moveTo(4, -6);
                 ctx.lineTo(4, 4);
                 ctx.stroke();
-                // 포스트잇
+                // Post-it notes
                 ctx.fillStyle = '#ff6b6b';
                 ctx.fillRect(-8, -4, 4, 3);
                 ctx.fillStyle = '#ffd43b';
@@ -350,12 +350,12 @@ export class BuildingRenderer {
                 ctx.fillRect(5, -4, 4, 3);
                 break;
             case 'chathall':
-                // 둥근 테이블
+                // Round table
                 ctx.fillStyle = '#6b5a4a';
                 ctx.beginPath();
                 ctx.ellipse(0, 0, 8, 5, 0, 0, Math.PI * 2);
                 ctx.fill();
-                // 의자들
+                // Chairs
                 ctx.fillStyle = '#8b6a4a';
                 ctx.beginPath();
                 ctx.arc(-10, -2, 3, 0, Math.PI * 2);
@@ -369,16 +369,16 @@ export class BuildingRenderer {
 
     _drawTriangleRoof(ctx, halfW, halfH, style) {
         const wh = style.wallHeight;
-        const ov = 5; // 처마 오버행
-        const peakY = -wh - halfH - 12; // 지붕 꼭대기
+        const ov = 5; // Eave overhang
+        const peakY = -wh - halfH - 12; // Roof peak
 
-        // 처마 꼭짓점 (벽 상단 다이아몬드 + 오버행)
+        // Eave corners (wall top diamond + overhang)
         const left  = { x: -halfW - ov, y: -wh };
         const back  = { x: 0,           y: -halfH - wh - ov };
         const right = { x:  halfW + ov, y: -wh };
         const front = { x: 0,           y:  halfH - wh + ov };
 
-        // 1) 뒷면 좌 (가장 어두움 - 뒤에 있으니 먼저)
+        // 1) Back left face (darkest - behind everything, drawn first)
         ctx.fillStyle = this._lighten(style.roofColor, -15);
         ctx.beginPath();
         ctx.moveTo(left.x, left.y);
@@ -387,7 +387,7 @@ export class BuildingRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // 2) 뒷면 우
+        // 2) Back right face
         ctx.fillStyle = this._lighten(style.roofColor, -5);
         ctx.beginPath();
         ctx.moveTo(back.x, back.y);
@@ -396,7 +396,7 @@ export class BuildingRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // 3) 앞면 좌 (시청자한테 보이는 면)
+        // 3) Front left face (visible to viewer)
         ctx.fillStyle = style.roofColor;
         ctx.beginPath();
         ctx.moveTo(left.x, left.y);
@@ -405,7 +405,7 @@ export class BuildingRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // 4) 앞면 우 (가장 밝음 - 가장 잘 보이는 면)
+        // 4) Front right face (brightest - most visible)
         ctx.fillStyle = this._lighten(style.roofColor, 20);
         ctx.beginPath();
         ctx.moveTo(front.x, front.y);
@@ -414,7 +414,7 @@ export class BuildingRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // 지붕 능선 라인
+        // Roof ridge line
         ctx.strokeStyle = this._lighten(style.roofColor, -25);
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -432,7 +432,7 @@ export class BuildingRenderer {
         const wh = style.wallHeight;
         const ov = 5;
 
-        // 지붕 받침 (벽 상단 다이아몬드 + 오버행)
+        // Roof base (wall top diamond + overhang)
         ctx.fillStyle = this._lighten(style.roofColor, -15);
         ctx.beginPath();
         ctx.moveTo(-halfW - ov, -wh);
@@ -442,13 +442,13 @@ export class BuildingRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // 돔 본체
+        // Dome body
         ctx.fillStyle = style.roofColor;
         ctx.beginPath();
         ctx.ellipse(0, -wh, halfW + ov, halfH + 14, 0, Math.PI, 0);
         ctx.fill();
 
-        // 돔 하이라이트
+        // Dome highlight
         ctx.fillStyle = this._lighten(style.roofColor, 20);
         ctx.beginPath();
         ctx.ellipse(0, -wh, halfW * 0.65, halfH + 6, 0, Math.PI, 0);
@@ -458,18 +458,18 @@ export class BuildingRenderer {
     _drawFrontWindows(ctx, halfW, halfH, wh, style) {
         const glow = style.windowGlow ? 'rgba(255, 200, 50, 0.7)' : 'rgba(100, 150, 200, 0.5)';
         ctx.fillStyle = glow;
-        // 앞벽 좌 창문
+        // Front wall left window
         const lx = -halfW / 2;
         const ly = -wh / 2;
         ctx.fillRect(lx - 3, ly - 2, 5, 5);
-        // 앞벽 우 창문
+        // Front wall right window
         const rx = halfW / 2;
         ctx.fillRect(rx - 3, ly - 2, 5, 5);
-        // 문 (앞벽 아래 중앙)
+        // Door (front wall bottom center)
         ctx.fillStyle = this._lighten(style.wallColor, -20);
         ctx.fillRect(-3, halfH - wh / 3 - 2, 6, wh / 3);
         ctx.fillStyle = '#ffd700';
-        ctx.fillRect(1, halfH - wh / 5, 1.5, 1.5); // 문 손잡이
+        ctx.fillRect(1, halfH - wh / 5, 1.5, 1.5); // Door handle
     }
 
     _drawWindows(ctx, halfW, style) {

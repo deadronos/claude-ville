@@ -1,8 +1,8 @@
 /**
- * OpenClaw 어댑터
- * 데이터 소스: ~/.openclaw/agents/{agentId}/sessions/
+ * OpenClaw adapter
+ * Data source: ~/.openclaw/agents/{agentId}/sessions/
  *
- * 세션 포맷 (JSONL):
+ * Session format (JSONL):
  *   {"type":"session","version":3,"id":"...","timestamp":"...","cwd":"..."}
  *   {"type":"model_change","provider":"github-copilot","modelId":"gpt-5-mini",...}
  *   {"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"..."}],"model":"...","usage":{...}},...}
@@ -14,7 +14,7 @@ const os = require('os');
 const OPENCLAW_DIR = path.join(os.homedir(), '.openclaw');
 const AGENTS_DIR = path.join(OPENCLAW_DIR, 'agents');
 
-// ─── 유틸 ─────────────────────────────────────────────
+// ─── Utility ─────────────────────────────────────────────
 
 async function readLines(filePath, { from = 'end', count = 50 } = {}) {
   try {
@@ -32,12 +32,12 @@ function parseJsonLines(lines) {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* 무시 */ }
+    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
   }
   return results;
 }
 
-// ─── 롤아웃 파싱 ──────────────────────────────────────
+// ─── Session parsing ──────────────────────────────────────
 
 async function parseSession(filePath) {
   const detail = {
@@ -52,26 +52,26 @@ async function parseSession(filePath) {
   const lines = await readLines(filePath, { from: 'end', count: 80 });
   const entries = parseJsonLines(lines);
 
-  // 마지막부터 역순으로 탐색
+  // Iterate in reverse from the end
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
 
-    // 세션 시작에서 cwd/프로젝트 추출
+    // Extract cwd/project from session start
     if (!detail.project && entry.type === 'session' && entry.cwd) {
       detail.project = entry.cwd;
     }
 
-    // 모델 변경
+    // Model change
     if (!detail.model && entry.type === 'model_change') {
       detail.model = entry.modelId || null;
       detail.provider = entry.provider || null;
     }
 
-    // 메시지
+    // Message
     if (entry.type === 'message' && entry.message) {
       const msg = entry.message;
 
-      // 모델
+      // Model
       if (!detail.model && msg.model) {
         detail.model = msg.model;
       }
@@ -79,7 +79,7 @@ async function parseSession(filePath) {
         detail.provider = msg.provider;
       }
 
-      // 마지막 텍스트 메시지
+      // Last text message
       if (!detail.lastMessage && msg.content) {
         const text = extractText(msg.content);
         if (text) {
@@ -87,7 +87,7 @@ async function parseSession(filePath) {
         }
       }
 
-      // 도구 사용 (content에서 tool_use 블록)
+      // Tool usage (tool_use block in content)
       if (!detail.lastTool && msg.content) {
         for (const block of msg.content) {
           if (block.type === 'tool_use' || block.name) {
@@ -119,7 +119,7 @@ function extractText(content) {
   return '';
 }
 
-// ─── 도구 히스토리 ────────────────────────────────────
+// ─── Tool history ────────────────────────────────────
 
 async function getToolHistory(filePath, maxItems = 15) {
   const tools = [];
@@ -147,11 +147,11 @@ async function getToolHistory(filePath, maxItems = 15) {
         });
       }
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return tools.slice(-maxItems);
 }
 
-// ─── 최근 메시지 ──────────────────────────────────────
+// ─── Recent messages ──────────────────────────────────────
 
 async function getRecentMessages(filePath, maxItems = 5) {
   const messages = [];
@@ -173,7 +173,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
         ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
       });
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return messages.slice(-maxItems);
 }
 
@@ -212,7 +212,7 @@ function parseSessionId(sessionId) {
   };
 }
 
-// ─── 세션 스캔 ────────────────────────────────────────
+// ─── Session scan ────────────────────────────────────────
 
 async function scanAllSessionFiles(activeThresholdMs) {
   const results = [];
@@ -257,12 +257,12 @@ async function scanAllSessionFiles(activeThresholdMs) {
     for (const group of agentResults) {
       results.push(...group);
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
 
   return results;
 }
 
-// ─── 어댑터 클래스 ─────────────────────────────────────
+// ─── Adapter class ─────────────────────────────────────
 
 class OpenClawAdapter {
   get name() { return 'OpenClaw'; }
@@ -342,7 +342,7 @@ class OpenClawAdapter {
           paths.push({ type: 'directory', path: sessionsDir, filter: '.jsonl' });
         }
       }
-    } catch { /* 무시 */ }
+    } catch { /* ignore */ }
 
     return paths;
   }

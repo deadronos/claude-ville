@@ -103,14 +103,14 @@
     color: #f97316;
 }
 
-/* ── 구분선 ── */
+/* ── Divider ── */
 .topbar__divider {
     width: 1px;
     height: 24px;
     background: rgba(139, 139, 158, 0.3);
 }
 
-/* ── 계정/구독 섹션 ── */
+/* ── Account/subscription section ── */
 .topbar__account {
     display: flex;
     align-items: center;
@@ -131,7 +131,7 @@
     color: #8b8b9e;
 }
 
-/* ── Quota 프로그레스 바 ── */
+/* ── Quota progress bar ── */
 .topbar__quota {
     display: flex;
     align-items: center;

@@ -19,11 +19,11 @@ export class AgentSprite {
         this.statusAnim = 0;
         this._lastBuildingType = null;
 
-        // 대화 시스템
-        this.chatPartner = null;     // 대화 상대 AgentSprite
-        this.chatting = false;       // 대화 중 여부
-        this.chatTimer = 0;          // 대화 애니메이션 타이머
-        this.chatBubbleAnim = 0;     // 말풍선 애니메이션
+        // Chat system
+        this.chatPartner = null;     // Chat partner AgentSprite
+        this.chatting = false;       // Currently chatting
+        this.chatTimer = 0;          // Chat animation timer
+        this.chatBubbleAnim = 0;     // Speech bubble animation
 
         const screen = agent.position.toScreen(TILE_WIDTH, TILE_HEIGHT);
         this.x = screen.x;
@@ -33,7 +33,7 @@ export class AgentSprite {
     }
 
     _pickTarget() {
-        // 대화 상대가 있으면 상대 위치로 이동
+        // If there's a chat partner, move to their location
         if (this.chatPartner) {
             this.targetX = this.chatPartner.x + (this.x < this.chatPartner.x ? -25 : 25);
             this.targetY = this.chatPartner.y;
@@ -42,7 +42,7 @@ export class AgentSprite {
             return;
         }
 
-        // WORKING일 때만 도구 기반 이동, IDLE/WAITING이면 자유 이동
+        // Only move to building based on tool when WORKING, free roam when IDLE/WAITING
         const isWorking = this.agent.status === AgentStatus.WORKING;
         const buildingType = isWorking ? this.agent.targetBuildingType : null;
         let building = null;
@@ -52,7 +52,7 @@ export class AgentSprite {
         }
 
         if (!building) {
-            // 매핑 없으면 랜덤 건물 70%, 빈 땅 30%
+            // No mapping: 70% random building, 30% empty land
             if (Math.random() < 0.7) {
                 building = BUILDING_DEFS[Math.floor(Math.random() * BUILDING_DEFS.length)];
             } else {
@@ -68,7 +68,7 @@ export class AgentSprite {
             }
         }
 
-        // 건물 내부로 이동 (건물 중심 부근)
+        // Move inside building (near center of building)
         const tx = building.x + 0.3 * building.width + Math.random() * 0.4 * building.width;
         const ty = building.y + 0.3 * building.height + Math.random() * 0.4 * building.height;
         const target = new Position(tx, ty);
@@ -82,17 +82,17 @@ export class AgentSprite {
     update(particleSystem) {
         this.statusAnim += 0.05;
 
-        // 대화 중 상태 처리
+        // Handle chatting state
         if (this.chatting) {
             this.chatBubbleAnim += 0.06;
-            // 대화 상대가 가까이 있으면 서로 마주보기
+            // Face the chat partner if nearby
             if (this.chatPartner) {
                 this.facingLeft = this.chatPartner.x < this.x;
             }
-            return; // 대화 중엔 이동 안 함
+            return; // Don't move while chatting
         }
 
-        // 대화 상대를 향해 이동 중 → 가까워지면 대화 시작
+        // Moving toward chat partner → start chat when close enough
         if (this.chatPartner) {
             const cpDx = this.chatPartner.x - this.x;
             const cpDy = this.chatPartner.y - this.y;
@@ -103,7 +103,7 @@ export class AgentSprite {
                 this.moving = false;
                 this.walkFrame = 0;
                 this.facingLeft = cpDx < 0;
-                // 상대도 대화 상태로
+                // Set partner to chatting too
                 if (!this.chatPartner.chatting) {
                     this.chatPartner.chatPartner = this;
                     this.chatPartner.chatting = true;
@@ -114,12 +114,12 @@ export class AgentSprite {
                 }
                 return;
             }
-            // 상대 위치가 변하면 타겟 갱신
+            // Update target if partner position changed
             this.targetX = this.chatPartner.x + (this.x < this.chatPartner.x ? -25 : 25);
             this.targetY = this.chatPartner.y;
         }
 
-        // WORKING 상태에서 도구가 바뀌면 즉시 새 건물로 방향 전환
+        // When WORKING status and tool changes, immediately turn toward new building
         if (this.agent.status === AgentStatus.WORKING && !this.chatPartner) {
             const curBuilding = this.agent.targetBuildingType;
             if (curBuilding && curBuilding !== this._lastBuildingType) {
@@ -154,7 +154,7 @@ export class AgentSprite {
             return;
         }
 
-        const speed = this.chatPartner ? 2.5 : 1.5; // 대화하러 갈 땐 좀 더 빨리
+        const speed = this.chatPartner ? 2.5 : 1.5; // Move faster when going to chat
         this.x += (dx / dist) * speed;
         this.y += (dy / dist) * speed;
         this.walkFrame += 0.15;
@@ -165,20 +165,20 @@ export class AgentSprite {
         }
     }
 
-    /** 대화 시작 (IsometricRenderer에서 호출) */
+    /** Start chat (called from IsometricRenderer) */
     startChat(partnerSprite) {
         this.chatPartner = partnerSprite;
         this.chatting = false;
         this.chatBubbleAnim = 0;
-        this._pickTarget(); // 상대에게 이동 시작
+        this._pickTarget(); // Start moving toward partner
     }
 
-    /** 대화 종료 */
+    /** End chat */
     endChat() {
         this.chatPartner = null;
         this.chatting = false;
         this.chatBubbleAnim = 0;
-        this._pickTarget(); // 원래 행동 복귀
+        this._pickTarget(); // Resume normal behavior
     }
 
     draw(ctx, zoom = 1) {
@@ -248,7 +248,7 @@ export class AgentSprite {
 
         ctx.restore();
 
-        // 대화 중 이펙트
+        // Chat effect
         if (this.chatting) {
             this._drawChatEffect(ctx);
         }
@@ -373,14 +373,14 @@ export class AgentSprite {
         const agent = this.agent;
         const t = this.statusAnim;
         const bubble = agent.bubbleText;
-        const s = 1 / (this._zoom || 1); // 줌 역보정
+        const s = 1 / (this._zoom || 1); // Zoom inverse correction
 
         if (agent.status === AgentStatus.WORKING || (agent.status === AgentStatus.WAITING && bubble)) {
             this._drawBubble(ctx, bubble || '...', agent.status === AgentStatus.WORKING ? THEME.working : '#f97316');
         } else if (agent.status === AgentStatus.IDLE) {
             ctx.save();
             ctx.translate(this.x, this.y);
-            ctx.scale(s, s); // 줌 역보정
+            ctx.scale(s, s); // Zoom inverse correction
             ctx.fillStyle = THEME.idle;
             ctx.textAlign = 'center';
             const offsetY = Math.sin(t * 1.5) * 4;
@@ -396,7 +396,7 @@ export class AgentSprite {
         } else if (agent.status === AgentStatus.WAITING) {
             ctx.save();
             ctx.translate(this.x, this.y);
-            ctx.scale(s, s); // 줌 역보정
+            ctx.scale(s, s); // Zoom inverse correction
             ctx.translate(0, -36);
             ctx.fillStyle = 'rgba(26, 26, 46, 0.9)';
             ctx.strokeStyle = '#f97316';
@@ -415,16 +415,16 @@ export class AgentSprite {
 
     _drawBubble(ctx, text, accentColor) {
         ctx.save();
-        const s = 1 / (this._zoom || 1); // 줌 역보정
+        const s = 1 / (this._zoom || 1); // Zoom inverse correction
 
         ctx.translate(this.x, this.y);
-        ctx.scale(s, s); // 화면 기준 고정 크기
+        ctx.scale(s, s); // Fixed size relative to screen
 
-        // 텍스트 크기 측정 + 자동 잘림
+        // Measure text size + auto-truncate
         ctx.font = 'bold 11px sans-serif';
         const maxWidth = 180;
         let displayText = text;
-        // 글자 수 대신 실제 픽셀 폭 기준으로 잘라내기
+        // Truncate by actual pixel width, not character count
         while (displayText.length > 0 && ctx.measureText(displayText).width > maxWidth) {
             displayText = displayText.substring(0, displayText.length - 1);
         }
@@ -438,7 +438,7 @@ export class AgentSprite {
 
         ctx.translate(0, -38);
 
-        // 말풍선 배경
+        // Speech bubble background
         const halfW = bubbleW / 2;
         ctx.fillStyle = 'rgba(26, 26, 46, 0.92)';
         ctx.strokeStyle = accentColor;
@@ -460,7 +460,7 @@ export class AgentSprite {
         ctx.fill();
         ctx.stroke();
 
-        // 텍스트
+        // Text
         ctx.fillStyle = '#eee';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -496,11 +496,11 @@ export class AgentSprite {
 
         const t = this.chatBubbleAnim;
 
-        // 말풍선 (번갈아 나타나는 효과)
+        // Speech bubble (alternating effect)
         const phase = Math.floor(t * 1.5) % 3;
         const bubbleY = -38;
 
-        // 배경 원
+        // Background circle
         ctx.fillStyle = 'rgba(26, 26, 46, 0.92)';
         ctx.strokeStyle = '#4ade80';
         ctx.lineWidth = 1.5;
@@ -509,7 +509,7 @@ export class AgentSprite {
         ctx.fill();
         ctx.stroke();
 
-        // 꼬리
+        // Tail
         ctx.fillStyle = 'rgba(26, 26, 46, 0.92)';
         ctx.beginPath();
         ctx.moveTo(-3, bubbleY + 12);
@@ -517,7 +517,7 @@ export class AgentSprite {
         ctx.lineTo(3, bubbleY + 12);
         ctx.fill();
 
-        // 대화 아이콘 (말풍선 안에 점점점 애니메이션)
+        // Chat icon (animated dots inside bubble)
         ctx.fillStyle = '#4ade80';
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'center';
@@ -525,7 +525,7 @@ export class AgentSprite {
         const dots = ['.', '..', '...'][phase];
         ctx.fillText(dots, 0, bubbleY - 1);
 
-        // 위에 떠다니는 이모지 파티클
+        // Floating emoji particles above
         const floatY = -56 + Math.sin(t * 2) * 4;
         ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3);
         ctx.font = '12px sans-serif';
@@ -538,9 +538,9 @@ export class AgentSprite {
 
     _drawNameTag(ctx) {
         ctx.save();
-        const s = 1 / (this._zoom || 1); // 줌 역보정
+        const s = 1 / (this._zoom || 1); // Zoom inverse correction
         ctx.translate(this.x, this.y);
-        ctx.scale(s, s); // 화면 기준 고정 크기
+        ctx.scale(s, s); // Fixed size relative to screen
         ctx.translate(0, 24);
         const name = this.agent.name;
         ctx.font = 'bold 10px sans-serif';

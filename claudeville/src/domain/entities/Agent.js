@@ -58,7 +58,7 @@ export class Agent {
     }
 
     /**
-     * 현재 도구에 따른 목표 건물 타입 반환
+     * Returns target building type based on current tool
      */
     get targetBuildingType() {
         if (!this.currentTool) return null;
@@ -73,7 +73,7 @@ export class Agent {
     }
 
     /**
-     * 말풍선에 표시할 텍스트
+     * Text to display in speech bubble
      */
     get bubbleText() {
         if (this.currentTool) {

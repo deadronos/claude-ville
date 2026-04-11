@@ -1,8 +1,8 @@
 /**
- * OpenAI Codex CLI 어댑터
- * 데이터 소스: ~/.codex/
+ * OpenAI Codex CLI adapter
+ * Data source: ~/.codex/
  *
- * 세션 롤아웃 포맷 (JSONL):
+ * Session rollout format (JSONL):
  *   {"type":"session_meta","payload":{"id":"...","cwd":"/path","cli_version":"..."}}
  *   {"type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"ls"}}
  *   {"type":"response_item","payload":{"type":"message","role":"assistant","content":[...]}}
@@ -15,7 +15,7 @@ const os = require('os');
 const CODEX_DIR = path.join(os.homedir(), '.codex');
 const SESSIONS_DIR = path.join(CODEX_DIR, 'sessions');
 
-// ─── 유틸 ─────────────────────────────────────────────
+// ─── Utility ─────────────────────────────────────────────
 
 async function readLines(filePath, { from = 'end', count = 50 } = {}) {
   try {
@@ -33,16 +33,16 @@ function parseJsonLines(lines) {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* 무시 */ }
+    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
   }
   return results;
 }
 
-// ─── 롤아웃 파싱 ──────────────────────────────────────
+// ─── Rollout parsing ──────────────────────────────────────
 
 /**
- * Codex 롤아웃 JSONL에서 세션 메타/도구/메시지 추출
- * 실제 포맷: 모든 데이터가 entry.payload 안에 있음
+ * Extract session meta/tools/messages from Codex rollout JSONL
+ * Actual format: all data is inside entry.payload
  */
 async function parseRollout(filePath) {
   const detail = {
@@ -53,7 +53,7 @@ async function parseRollout(filePath) {
     lastMessage: null,
   };
 
-  // session_meta는 파일 첫 줄에 있음 → 먼저 읽기
+  // session_meta is on the first line of the file → read first
   const firstLines = await readLines(filePath, { from: 'start', count: 5 });
   const firstEntries = parseJsonLines(firstLines);
   for (const entry of firstEntries) {
@@ -64,7 +64,7 @@ async function parseRollout(filePath) {
     }
   }
 
-  // 최근 도구/메시지는 파일 끝에서 읽기
+  // Recent tools/messages are read from end of file
   const lastLines = await readLines(filePath, { from: 'end', count: 50 });
   const entries = parseJsonLines(lastLines);
 
@@ -74,7 +74,7 @@ async function parseRollout(filePath) {
 
     // response_item
     if (entry.type === 'response_item') {
-      // 도구 사용 (function_call)
+      // Tool usage (function_call)
       if (!detail.lastTool && (payload.type === 'function_call' || payload.type === 'command_execution')) {
         detail.lastTool = payload.name || payload.type;
         if (payload.arguments) {
@@ -86,7 +86,7 @@ async function parseRollout(filePath) {
         }
       }
 
-      // 텍스트 메시지 (assistant)
+      // Text message (assistant)
       if (!detail.lastMessage && payload.type === 'message' && payload.role === 'assistant') {
         const content = payload.content;
         if (typeof content === 'string') {
@@ -106,7 +106,7 @@ async function parseRollout(filePath) {
       }
     }
 
-    // model이 없을 경우 turn_context 또는 event_msg에서 추출 시도
+    // If model is missing, try to extract from turn_context or event_msg
     if (!detail.model && entry.type === 'turn_context' && payload.model) {
       detail.model = payload.model;
     }
@@ -119,7 +119,7 @@ async function parseRollout(filePath) {
 }
 
 /**
- * Codex 롤아웃에서 도구 히스토리 추출
+ * Extract tool history from Codex rollout
  */
 async function getToolHistory(filePath, maxItems = 15) {
   const tools = [];
@@ -147,12 +147,12 @@ async function getToolHistory(filePath, maxItems = 15) {
         });
       }
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return tools.slice(-maxItems);
 }
 
 /**
- * Codex 롤아웃에서 최근 메시지 추출
+ * Extract recent messages from Codex rollout
  */
 async function getRecentMessages(filePath, maxItems = 5) {
   const messages = [];
@@ -189,12 +189,12 @@ async function getRecentMessages(filePath, maxItems = 5) {
         });
       }
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return messages.slice(-maxItems);
 }
 
 /**
- * 최근 날짜 디렉토리에서 롤아웃 파일 스캔
+ * Scan rollout files from recent date directories
  */
 async function scanRecentRollouts(activeThresholdMs) {
   const results = [];
@@ -203,13 +203,13 @@ async function scanRecentRollouts(activeThresholdMs) {
   const now = Date.now();
 
   try {
-    // YYYY 디렉토리 순회
+    // Iterate YYYY directories
     const years = (await fs.promises.readdir(SESSIONS_DIR, { withFileTypes: true }))
       .filter(d => d.isDirectory())
       .map(d => d.name)
       .sort()
       .reverse()
-      .slice(0, 2); // 최근 2년만
+      .slice(0, 2); // Last 2 years only
 
     const yearResults = await Promise.all(years.map(async (year) => {
       const yearDir = path.join(SESSIONS_DIR, year);
@@ -219,7 +219,7 @@ async function scanRecentRollouts(activeThresholdMs) {
           .map(d => d.name)
           .sort()
           .reverse()
-          .slice(0, 2); // 최근 2개월만
+          .slice(0, 2); // Last 2 months only
 
         const monthResults = await Promise.all(months.map(async (month) => {
           const monthDir = path.join(yearDir, month);
@@ -229,7 +229,7 @@ async function scanRecentRollouts(activeThresholdMs) {
               .map(d => d.name)
               .sort()
               .reverse()
-              .slice(0, 3); // 최근 3일만
+              .slice(0, 3); // Last 3 days only
 
             const dayResults = await Promise.all(days.map(async (day) => {
               const dayDir = path.join(monthDir, day);
@@ -267,12 +267,12 @@ async function scanRecentRollouts(activeThresholdMs) {
     for (const group of yearResults) {
       results.push(...group);
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
 
   return results;
 }
 
-// ─── 어댑터 클래스 ────────────────────────────────────
+// ─── Adapter class ────────────────────────────────────
 
 class CodexAdapter {
   get name() { return 'Codex CLI'; }
@@ -287,7 +287,7 @@ class CodexAdapter {
     const rollouts = await scanRecentRollouts(activeThresholdMs);
     const sessions = await Promise.all(rollouts.map(async ({ filePath, mtime, fileName }) => {
       const detail = await parseRollout(filePath);
-      // 파일명에서 세션 ID 추출: rollout-2025-01-22T10-30-00-abc123.jsonl
+      // Extract session ID from filename: rollout-2025-01-22T10-30-00-abc123.jsonl
       const sessionId = fileName.replace('rollout-', '').replace('.jsonl', '');
 
       return {
@@ -319,9 +319,9 @@ class CodexAdapter {
       };
     }
 
-    // sessionId에서 파일 찾기
+    // Find file from sessionId
     const cleanId = sessionId.replace('codex-', '');
-    const rollouts = await scanRecentRollouts(30 * 60 * 1000); // 30분 범위로 확대
+    const rollouts = await scanRecentRollouts(30 * 60 * 1000); // Expand to 30 min range
 
     for (const { filePath, fileName } of rollouts) {
       const fileId = fileName.replace('rollout-', '').replace('.jsonl', '');

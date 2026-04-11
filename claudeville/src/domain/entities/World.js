@@ -47,7 +47,7 @@ export class World {
             else if (agent.status === 'waiting') waiting++;
         }
 
-        return { totalTokens, totalCost, working, idle, waiting, total: this.agents.size };
+        return { working, idle, waiting, total: this.agents.size };
     }
 
     get activeTime() {

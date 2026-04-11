@@ -6,7 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { buildRuntimeConfig } = require('../runtime-config.shared');
 
-// ─── 어댑터 로드 ─────────────────────────────────────
+// ─── Adapter load ─────────────────────────────────────
 const {
   getAllSessions,
   getSessionDetailByProvider,
@@ -15,18 +15,18 @@ const {
   adapters,
 } = require('./adapters');
 
-// ─── Usage Quota 서비스 ──────────────────────────────
+// ─── Usage Quota service ──────────────────────────────
 const usageQuota = require('./services/usageQuota');
 
-// Claude 어댑터 (팀/태스크는 Claude 전용)
+// Claude adapter (teams/tasks are Claude-only)
 const claudeAdapter = adapters.find(a => a.provider === 'claude');
 
-// ─── 설정 ───────────────────────────────────────────────
+// ─── Config ────────────────────────────────────────────────
 const PORT = 4000;
 const STATIC_DIR = __dirname;
-const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2분
+const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
-// ─── MIME 타입 매핑 ─────────────────────────────────────
+// ─── MIME type mapping ─────────────────────────────────────
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -44,10 +44,10 @@ const MIME_TYPES = {
   '.ttf': 'font/ttf',
 };
 
-// ─── WebSocket 클라이언트 관리 ──────────────────────────
+// ─── WebSocket client management ──────────────────────────
 const wsClients = new Set();
 
-// ─── 유틸리티 함수 ──────────────────────────────────────
+// ─── Utility functions ──────────────────────────────────────
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -65,53 +65,53 @@ function sendError(res, statusCode, message) {
   sendJson(res, statusCode, { error: message });
 }
 
-// ─── API 핸들러 ─────────────────────────────────────────
+// ─── API handlers ─────────────────────────────────────────
 
 /**
  * GET /api/sessions
- * 모든 활성 어댑터에서 세션 수집
+ * Collect sessions from all active adapters
  */
 async function handleGetSessions(req, res) {
   try {
     const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
     sendJson(res, 200, { sessions, count: sessions.length, timestamp: Date.now() });
   } catch (err) {
-    console.error('세션 조회 실패:', err.message);
-    sendError(res, 500, '세션 정보를 불러올 수 없습니다.');
+    console.error('session query failed:', err.message);
+    sendError(res, 500, 'failed to load session info');
   }
 }
 
 /**
  * GET /api/teams
- * Claude 팀 정보 (Claude 전용)
+ * Claude team info (Claude only)
  */
 async function handleGetTeams(req, res) {
   try {
     const teams = claudeAdapter ? await claudeAdapter.getTeams() : [];
     sendJson(res, 200, { teams, count: teams.length });
   } catch (err) {
-    console.error('팀 조회 실패:', err.message);
-    sendError(res, 500, '팀 정보를 불러올 수 없습니다.');
+    console.error('team query failed:', err.message);
+    sendError(res, 500, 'failed to load team info');
   }
 }
 
 /**
  * GET /api/tasks
- * Claude 태스크 정보 (Claude 전용)
+ * Claude task info (Claude only)
  */
 async function handleGetTasks(req, res) {
   try {
     const taskGroups = claudeAdapter ? await claudeAdapter.getTasks() : [];
     sendJson(res, 200, { taskGroups, totalGroups: taskGroups.length });
   } catch (err) {
-    console.error('태스크 조회 실패:', err.message);
-    sendError(res, 500, '태스크 정보를 불러올 수 없습니다.');
+    console.error('task query failed:', err.message);
+    sendError(res, 500, 'failed to load task info');
   }
 }
 
 /**
  * GET /api/session-detail?sessionId=xxx&project=xxx&provider=claude
- * 특정 세션의 도구 히스토리 + 최근 메시지 반환
+ * Returns tool history + recent messages for a specific session
  */
 async function handleGetSessionDetail(req, res) {
   try {
@@ -120,47 +120,47 @@ async function handleGetSessionDetail(req, res) {
     const project = url.searchParams.get('project');
     const provider = url.searchParams.get('provider') || 'claude';
 
-    if (!sessionId) return sendError(res, 400, 'sessionId 필수');
+    if (!sessionId) return sendError(res, 400, 'sessionId required');
 
     const result = await getSessionDetailByProvider(provider, sessionId, project);
     sendJson(res, 200, result);
   } catch (err) {
-    console.error('세션 상세 조회 실패:', err.message);
-    sendError(res, 500, '세션 상세 정보를 불러올 수 없습니다.');
+    console.error('session detail query failed:', err.message);
+    sendError(res, 500, 'failed to load session detail');
   }
 }
 
 /**
  * GET /api/providers
- * 활성 프로바이더 목록
+ * List of active providers
  */
 function handleGetProviders(req, res) {
   try {
     const providers = getActiveProviders();
     sendJson(res, 200, { providers, count: providers.length });
   } catch (err) {
-    console.error('프로바이더 조회 실패:', err.message);
-    sendError(res, 500, '프로바이더 정보를 불러올 수 없습니다.');
+    console.error('provider query failed:', err.message);
+    sendError(res, 500, 'failed to load provider info');
   }
 }
 
 /**
  * GET /api/usage
- * Claude 사용량 / 구독 정보
+ * Claude usage / subscription info
  */
 function handleGetUsage(req, res) {
   try {
     const usage = usageQuota.fetchUsage();
     sendJson(res, 200, usage);
   } catch (err) {
-    console.error('사용량 조회 실패:', err.message);
-    sendError(res, 500, '사용량 정보를 불러올 수 없습니다.');
+    console.error('usage query failed:', err.message);
+    sendError(res, 500, 'failed to load usage info');
   }
 }
 
 /**
  * GET /api/history?lines=100
- * 최근 메시지 이력 반환
+ * Returns recent message history
  */
 async function handleGetHistory(req, res) {
   try {
@@ -188,12 +188,12 @@ async function handleGetHistory(req, res) {
     entries.sort((a, b) => a.ts - b.ts);
     sendJson(res, 200, { entries: entries.slice(-safeLimit) });
   } catch (err) {
-    console.error('히스토리 조회 실패:', err.message);
-    sendError(res, 500, '히스토리 정보를 불러올 수 없습니다.');
+    console.error('history query failed:', err.message);
+    sendError(res, 500, 'failed to load history');
   }
 }
 
-// ─── 정적 파일 서빙 ─────────────────────────────────────
+// ─── Static file serving ─────────────────────────────────────
 
 function handleStaticFile(req, res) {
   try {
@@ -234,13 +234,13 @@ function handleStaticFile(req, res) {
     const stream = fs.createReadStream(filePath, isText ? { encoding: 'utf-8' } : undefined);
     stream.pipe(res);
     stream.on('error', (err) => {
-      console.error('파일 스트림 에러:', err.message);
+      console.error('file stream error:', err.message);
       if (!res.headersSent) {
         sendError(res, 500, 'Internal Server Error');
       }
     });
   } catch (err) {
-    console.error('정적 파일 서빙 실패:', err.message);
+    console.error('static file serving failed:', err.message);
     if (!res.headersSent) {
       sendError(res, 500, 'Internal Server Error');
     }
@@ -254,7 +254,7 @@ function handleRuntimeConfig(req, res) {
   res.end(`window.__CLAUDEVILLE_CONFIG__ = ${JSON.stringify(runtimeConfig)};\n`);
 }
 
-// ─── WebSocket 구현 (RFC 6455) ──────────────────────────
+// ─── WebSocket implementation (RFC 6455) ──────────────────────────
 
 const WS_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
@@ -402,7 +402,7 @@ function wsSend(socket, data) {
     }
   } catch (err) {
     if (err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
-      // 전송 에러 무시
+      // ignore send errors
     }
     wsClients.delete(socket);
   }
@@ -449,7 +449,7 @@ function reportWebSocketFrameIssue(socket, reason, err) {
   }
 }
 
-// ─── 데이터 브로드캐스트 ────────────────────────────────
+// ─── Data broadcast ────────────────────────────────
 
 async function sendInitialData(socket) {
   try {
@@ -465,7 +465,7 @@ async function sendInitialData(socket) {
       timestamp: Date.now(),
     });
   } catch (err) {
-    // 초기 데이터 전송 실패 무시
+    // ignore initial data send failure
   }
 }
 
@@ -493,7 +493,7 @@ async function broadcastUpdate() {
       timestamp: Date.now(),
     });
   } catch (err) {
-    console.error('[Watch] 데이터 처리 실패:', err.message);
+    console.error('[Watch] data processing failed:', err.message);
   } finally {
     broadcastInFlight = false;
     if (broadcastPendingCount > 0 && wsClients.size > 0) {
@@ -508,7 +508,7 @@ function debouncedBroadcast() {
   watchDebounce = setTimeout(() => { void broadcastUpdate(); }, 100);
 }
 
-// ─── 파일 감시 (멀티 프로바이더) ────────────────────────
+// ─── File watching (multi-provider) ────────────────────────
 
 function startFileWatcher() {
   const watchPaths = getAllWatchPaths();
@@ -531,20 +531,20 @@ function startFileWatcher() {
         watchCount++;
       }
     } catch {
-      // 감시 실패한 경로 무시
+      // ignore watch path failures
     }
   }
 
-  console.log(`[Watch] ${watchCount}개 경로 감시 시작`);
+  console.log(`[Watch] started watching ${watchCount} paths`);
 
-  // 주기적 폴링 (2초) - 놓치는 변경 방지
+  // Periodic polling (2s) - prevent missed updates
   setInterval(() => {
     if (wsClients.size > 0) void broadcastUpdate();
   }, 2000);
-  console.log('[Watch] 2초 주기 폴링 시작');
+  console.log('[Watch] polling started at 2s interval');
 }
 
-// ─── HTTP 서버 ──────────────────────────────────────────
+// ─── HTTP server ──────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
@@ -578,7 +578,7 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  // 위젯 파일 서빙 (/widget.html, /widget.css)
+  // Widget file serving (/widget.html, /widget.css)
   if (pathname === '/widget.html' || pathname === '/widget.css') {
     const widgetFile = path.join(__dirname, '..', 'widget', 'Resources', pathname);
     if (fs.existsSync(widgetFile)) {
@@ -601,7 +601,7 @@ server.on('upgrade', (req, socket, head) => {
   }
 });
 
-// ─── 서버 시작 ──────────────────────────────────────────
+// ─── Server startup ──────────────────────────────────────────
 
 const ASCII_LOGO = `
 ╔══════════════════════════════════════════════════════╗
@@ -626,55 +626,55 @@ const ASCII_LOGO = `
 
 server.listen(PORT, () => {
   console.log(ASCII_LOGO);
-  console.log(`  서버 실행 중: http://localhost:${PORT}`);
+  console.log(`  server running: http://localhost:${PORT}`);
   console.log('');
 
-  // 활성 프로바이더 표시
+  // Show active providers
   const providers = getActiveProviders();
   if (providers.length === 0) {
-    console.log('  [!] 활성 프로바이더 없음');
-    console.log('      ~/.claude/ , ~/.codex/ , ~/.gemini/ 중 하나가 필요합니다');
+    console.log('  [!] no active providers');
+    console.log('      one of ~/.claude/ , ~/.codex/ , ~/.gemini/ is required');
   } else {
-    console.log('  활성 프로바이더:');
+    console.log('  active providers:');
     for (const p of providers) {
       console.log(`    - ${p.name} (${p.homeDir})`);
     }
   }
   console.log('');
 
-  // Usage Quota 서비스 초기화
+  // Usage Quota service init
   usageQuota.init();
 
   startFileWatcher();
 });
 
-// ─── 에러 핸들링 ────────────────────────────────────────
+// ─── Error handling ────────────────────────────────────────
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`포트 ${PORT}가 이미 사용 중입니다.`);
+    console.error(`port ${PORT} is already in use`);
   } else {
-    console.error('서버 에러:', err.message);
+    console.error('server error:', err.message);
   }
 });
 
 process.on('uncaughtException', (err) => {
-  console.error('처리되지 않은 예외:', err.message);
+  console.error('unhandled exception:', err.message);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('처리되지 않은 프로미스 거부:', reason);
+  console.error('unhandled promise rejection:', reason);
 });
 
 process.on('SIGINT', () => {
-  console.log('\n서버를 종료합니다...');
+  console.log('\nshutting down server...');
   for (const socket of wsClients) {
     try {
       socket.end(createWebSocketFrame('', 0x8));
-    } catch { /* 무시 */ }
+    } catch { /* ignore */ }
   }
   server.close(() => {
-    console.log('서버 종료 완료');
+    console.log('server shut down');
     process.exit(0);
   });
 });

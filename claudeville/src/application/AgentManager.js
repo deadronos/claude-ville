@@ -39,16 +39,16 @@ export class AgentManager {
                 this._upsertAgent(session, this._teamMembers);
             }
 
-            console.log(`[AgentManager] ${this.world.agents.size}개 에이전트 로드 완료`);
+            console.log(`[AgentManager] Loaded ${this.world.agents.size} agents`);
         } catch (err) {
-            console.error('[AgentManager] 초기 데이터 로드 실패:', err.message);
+            console.error('[AgentManager] Failed to load initial data:', err.message);
         }
     }
 
     handleWebSocketMessage(data) {
         if (!data.sessions) return;
 
-        // 팀 데이터가 포함되어 있으면 갱신
+        // Update team data if included
         if (data.teams) {
             this._teamMembers = this._buildTeamMembers(data.teams);
         }
@@ -60,15 +60,15 @@ export class AgentManager {
             this._upsertAgent(session, this._teamMembers);
         }
 
-        // 서버 목록에 없는 에이전트 처리
+        // Handle agents not in server list
         const toRemove = [];
         for (const [id, agent] of this.world.agents) {
             if (!currentIds.has(id)) {
                 if (agent.status === AgentStatus.IDLE) {
-                    // 이미 IDLE이면 제거
+                    // Already IDLE, remove
                     toRemove.push(id);
                 } else {
-                    // 아직 활성이면 먼저 IDLE로
+                    // Still active, set to IDLE first
                     this.world.updateAgent(id, { status: AgentStatus.IDLE, currentTool: null, currentToolInput: null });
                 }
             }
@@ -88,7 +88,7 @@ export class AgentManager {
             output: tokenUsage.totalOutput || 0,
         } : { input: 0, output: 0 });
 
-        // 팀 이름: teamInfo에서 가져오거나, 프로젝트 경로에서 추출
+        // Team name: from teamInfo, or extracted from project path
         const teamName = teamInfo?.teamName
             || (session.project ? session.project.split('/').filter(Boolean).pop() : null);
 

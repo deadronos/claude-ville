@@ -1,14 +1,14 @@
-/* ═══ 대시보드 모드 ═══ */
-/* .content__dashboard 기본 레이아웃은 layout.css에서 관리 */
+/* ═══ Dashboard mode ═══ */
+/* .content__dashboard basic layout is managed in layout.css */
 
-/* 그리드 레이아웃 - 섹션 기반 */
+/* Grid layout - section based */
 .dashboard__grid {
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
 
-/* ═══ 프로젝트 섹션 ═══ */
+/* ═══ Project section ═══ */
 .dashboard__section {
     background: rgba(20, 20, 35, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -66,7 +66,7 @@
     align-content: start;
 }
 
-/* 빈 상태 */
+/* Empty state */
 .dashboard__empty {
     display: none;
     flex-direction: column;
@@ -100,7 +100,7 @@
     font-family: 'Press Start 2P', monospace;
 }
 
-/* ═══ 에이전트 카드 ═══ */
+/* ═══ Agent card ═══ */
 .dash-card {
     background: rgba(15, 15, 25, 0.95);
     border: 1px solid rgba(232, 212, 77, 0.15);
@@ -117,7 +117,7 @@
 .dash-card--idle    { border-left: 3px solid #60a5fa; }
 .dash-card--waiting { border-left: 3px solid #f97316; }
 
-/* ─ 카드 헤더 ─ */
+/* ─ Card header ─ */
 .dash-card__header {
     display: flex;
     align-items: center;
@@ -209,7 +209,7 @@
     50% { opacity: 0.3; }
 }
 
-/* ─ 현재 활동 ─ */
+/* ─ Current activity ─ */
 .dash-card__activity {
     padding: 8px 12px;
     border-bottom: 1px solid rgba(232, 212, 77, 0.08);
@@ -270,7 +270,7 @@
     font-style: italic;
 }
 
-/* ─ 도구 히스토리 ─ */
+/* ─ Tool history ─ */
 .dash-card__tools {
     padding: 6px 12px 10px;
     max-height: 180px;
@@ -336,7 +336,7 @@
     flex: 1;
 }
 
-/* ─ 도구 카테고리 색상 ─ */
+/* ─ Tool category colors ─ */
 .tool-cat--read    { color: #60a5fa; }
 .tool-cat--write   { color: #f59e0b; }
 .tool-cat--exec    { color: #ef4444; }
@@ -344,7 +344,7 @@
 .tool-cat--task    { color: #34d399; }
 .tool-cat--other   { color: #8b8b9e; }
 
-/* ─ 로딩 중 스피너 ─ */
+/* ─ Loading spinner ─ */
 .dash-card__loading {
     padding: 12px;
     text-align: center;

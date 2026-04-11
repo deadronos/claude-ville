@@ -1,8 +1,8 @@
 /**
- * GitHub Copilot CLI 어댑터
- * 데이터 소스: ~/.copilot/
+ * GitHub Copilot CLI adapter
+ * Data source: ~/.copilot/
  *
- * 세션 포맷 (JSONL per session UUID):
+ * Session format (JSONL per session UUID):
  *   ~/.copilot/session-state/{uuid}/events.jsonl
  *
  *   {"type":"session.start","data":{"sessionId":"...","selectedModel":"gpt-5-mini",
@@ -17,7 +17,7 @@ const os = require('os');
 const COPILOT_DIR = path.join(os.homedir(), '.copilot');
 const SESSION_STATE_DIR = path.join(COPILOT_DIR, 'session-state');
 
-// ─── 유틸 ─────────────────────────────────────────────
+// ─── Utility ─────────────────────────────────────────────
 
 async function readLines(filePath, { from = 'end', count = 50 } = {}) {
   try {
@@ -35,12 +35,12 @@ function parseJsonLines(lines) {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* 무시 */ }
+    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
   }
   return results;
 }
 
-// ─── 롤아웃 파싱 ──────────────────────────────────────
+// ─── Session parsing ──────────────────────────────────────
 
 async function parseSession(filePath) {
   const detail = {
@@ -51,7 +51,7 @@ async function parseSession(filePath) {
     lastMessage: null,
   };
 
-  // session.start에서 메타데이터 추출
+  // Extract metadata from session.start
   const firstLines = await readLines(filePath, { from: 'start', count: 5 });
   const firstEntries = parseJsonLines(firstLines);
   for (const entry of firstEntries) {
@@ -66,7 +66,7 @@ async function parseSession(filePath) {
     }
   }
 
-  // 나머지에서 도구/메시지 추출
+  // Extract tools/messages from the rest
   const lastLines = await readLines(filePath, { from: 'end', count: 80 });
   const entries = parseJsonLines(lastLines);
 
@@ -77,12 +77,12 @@ async function parseSession(filePath) {
     if (entry.type === 'assistant.message' && entry.data) {
       const msg = entry.data;
 
-      // 모델
+      // Model
       if (!detail.model && msg.selectedModel) {
         detail.model = msg.selectedModel;
       }
 
-      // 텍스트
+      // Text
       if (!detail.lastMessage && msg.content) {
         const text = extractText(msg.content);
         if (text) {
@@ -90,7 +90,7 @@ async function parseSession(filePath) {
         }
       }
 
-      // 도구
+      // Tool
       if (!detail.lastTool && msg.toolCalls && Array.isArray(msg.toolCalls)) {
         for (const tc of msg.toolCalls) {
           detail.lastTool = tc.name || 'tool_call';
@@ -106,7 +106,7 @@ async function parseSession(filePath) {
       if (detail.lastMessage && detail.model) break;
     }
 
-    // tool_call 결과
+    // tool_call result
     if (!detail.lastTool && entry.type === 'tool_call' && entry.data) {
       const tc = entry.data;
       detail.lastTool = tc.name || 'tool_call';
@@ -132,7 +132,7 @@ function extractText(content) {
   return '';
 }
 
-// ─── 도구 히스토리 ────────────────────────────────────
+// ─── Tool history ────────────────────────────────────
 
 async function getToolHistory(filePath, maxItems = 15) {
   const tools = [];
@@ -171,11 +171,11 @@ async function getToolHistory(filePath, maxItems = 15) {
         tools.push({ tool: toolName, detail: toolInput || '', ts });
       }
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return tools.slice(-maxItems);
 }
 
-// ─── 최근 메시지 ──────────────────────────────────────
+// ─── Recent messages ──────────────────────────────────────
 
 async function getRecentMessages(filePath, maxItems = 5) {
   const messages = [];
@@ -196,11 +196,11 @@ async function getRecentMessages(filePath, maxItems = 5) {
         ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
       });
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return messages.slice(-maxItems);
 }
 
-// ─── 세션 스캔 ────────────────────────────────────────
+// ─── Session scan ────────────────────────────────────────
 
 async function scanAllSessions(activeThresholdMs) {
   const results = [];
@@ -229,12 +229,12 @@ async function scanAllSessions(activeThresholdMs) {
     }));
 
     results.push(...dirResults.filter(Boolean));
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
 
   return results;
 }
 
-// ─── 어댑터 클래스 ─────────────────────────────────────
+// ─── Adapter class ─────────────────────────────────────
 
 class CopilotAdapter {
   get name() { return 'GitHub Copilot'; }
