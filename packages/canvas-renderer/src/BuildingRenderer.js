@@ -1,5 +1,5 @@
-import { TILE_WIDTH, TILE_HEIGHT } from '../../config/constants.js';
-import { THEME } from '../../config/theme.js';
+import { TILE_WIDTH, TILE_HEIGHT } from './config/constants.js';
+import { THEME } from './config/theme.js';
 
 const BUILDING_STYLES = {
     command: {

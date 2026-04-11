@@ -1,6 +1,6 @@
-import { TILE_WIDTH, TILE_HEIGHT, MAP_SIZE } from '../../config/constants.js';
-import { THEME } from '../../config/theme.js';
-import { eventBus } from '../../domain/events/DomainEvent.js';
+import { TILE_WIDTH, TILE_HEIGHT, MAP_SIZE } from './config/constants.js';
+import { THEME } from './config/theme.js';
+import { eventBus } from './domain/events/DomainEvent.js';
 import { Camera } from './Camera.js';
 import { ParticleSystem } from './ParticleSystem.js';
 import { AgentSprite } from './AgentSprite.js';

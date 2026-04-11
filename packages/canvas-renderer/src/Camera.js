@@ -1,4 +1,4 @@
-import { TILE_WIDTH, TILE_HEIGHT, MAP_SIZE } from '../../config/constants.js';
+import { TILE_WIDTH, TILE_HEIGHT, MAP_SIZE } from './config/constants.js';
 
 export class Camera {
     constructor(canvas) {
