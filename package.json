@@ -10,5 +10,5 @@
     "widget:build": "cd widget && bash build.sh",
     "widget": "open widget/ClaudeVilleWidget.app"
   },
-  "packageManager": "pnpm@9"
+  "packageManager": "pnpm@9.15.0"
 }
