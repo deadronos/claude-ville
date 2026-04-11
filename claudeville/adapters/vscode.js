@@ -18,6 +18,29 @@ const STORAGE_ROOTS = [
   { channel: 'vscode-insiders', workspaceStorageDir: path.join(VSCODE_INSIDERS_USER_DIR, 'workspaceStorage') },
 ];
 
+const DEFAULT_MIN_ACTIVE_WINDOW_MS = 30 * 60 * 1000;
+const MIN_ACTIVE_WINDOW_MS = Math.max(
+  60 * 1000,
+  Number(process.env.VSCODE_ACTIVE_WINDOW_MS || DEFAULT_MIN_ACTIVE_WINDOW_MS)
+);
+
+const SOURCE_PRIORITY = {
+  debug: 3,
+  transcript: 2,
+  resource: 1,
+};
+
+function shouldReplaceCandidate(existing, incoming) {
+  if (!existing) return true;
+  const existingPriority = SOURCE_PRIORITY[existing.sourceType] || 0;
+  const incomingPriority = SOURCE_PRIORITY[incoming.sourceType] || 0;
+
+  if (incomingPriority > existingPriority) return true;
+  if (incomingPriority < existingPriority) return false;
+
+  return incoming.mtime > existing.mtime;
+}
+
 async function readLines(filePath, { from = 'end', count = 60 } = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
@@ -49,6 +72,48 @@ function summarizeJson(value, maxLength = 80) {
   if (value === null || value === undefined) return '';
   const raw = typeof value === 'string' ? value : JSON.stringify(value);
   return raw.substring(0, maxLength);
+}
+
+function getResourceSessionRoot(filePath) {
+  if (!filePath.endsWith('content.txt')) return null;
+  const callDir = path.dirname(filePath);
+  return path.dirname(callDir);
+}
+
+async function scanResourceSessionContents(filePath) {
+  const sessionRoot = getResourceSessionRoot(filePath);
+  if (!sessionRoot || !fs.existsSync(sessionRoot)) return [];
+
+  let entries = [];
+  try {
+    const children = await fs.promises.readdir(sessionRoot, { withFileTypes: true });
+    const contentRows = await Promise.all(children
+      .filter(d => d.isDirectory())
+      .map(async (dirent) => {
+        const contentPath = path.join(sessionRoot, dirent.name, 'content.txt');
+        if (!fs.existsSync(contentPath)) return null;
+        try {
+          const [text, stat] = await Promise.all([
+            fs.promises.readFile(contentPath, 'utf-8'),
+            fs.promises.stat(contentPath),
+          ]);
+          return {
+            callId: dirent.name,
+            filePath: contentPath,
+            text: String(text || '').trim(),
+            ts: stat.mtimeMs,
+          };
+        } catch {
+          return null;
+        }
+      }));
+
+    entries = contentRows.filter(Boolean).sort((a, b) => a.ts - b.ts);
+  } catch {
+    entries = [];
+  }
+
+  return entries;
 }
 
 function extractAssistantText(responseRaw) {
@@ -157,12 +222,14 @@ async function getToolHistory(filePath, maxItems = 15) {
   const tools = [];
 
   if (filePath.endsWith('content.txt')) {
-    const base = path.basename(path.dirname(filePath));
-    tools.push({
-      tool: base.startsWith('toolu_') ? 'tool_result' : 'call_result',
-      detail: base.substring(0, 120),
-      ts: toTimestamp(fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0),
-    });
+    const entries = await scanResourceSessionContents(filePath);
+    for (const entry of entries) {
+      tools.push({
+        tool: entry.callId.startsWith('toolu_') ? 'tool_result' : 'call_result',
+        detail: entry.callId.substring(0, 120),
+        ts: toTimestamp(entry.ts),
+      });
+    }
     return tools.slice(-maxItems);
   }
 
@@ -197,18 +264,32 @@ async function getRecentMessages(filePath, maxItems = 5) {
   const messages = [];
 
   if (filePath.endsWith('content.txt')) {
-    try {
-      const text = (await fs.promises.readFile(filePath, 'utf-8')).trim();
-      if (text) {
-        messages.push({
-          role: 'assistant',
-          text: text.substring(0, 200),
-          ts: toTimestamp(fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0),
-        });
-      }
-    } catch {
-      // 무시
+    const entries = await scanResourceSessionContents(filePath);
+    for (const entry of entries) {
+      if (!entry.text) continue;
+      messages.push({
+        role: 'assistant',
+        text: entry.text.substring(0, 200),
+        ts: toTimestamp(entry.ts),
+      });
     }
+
+    // 빈 메시지면 현재 파일 텍스트만이라도 보존
+    if (messages.length === 0) {
+      try {
+        const text = (await fs.promises.readFile(filePath, 'utf-8')).trim();
+        if (text) {
+          messages.push({
+            role: 'assistant',
+            text: text.substring(0, 200),
+            ts: toTimestamp(fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0),
+          });
+        }
+      } catch {
+        // 무시
+      }
+    }
+
     return messages.slice(-maxItems);
   }
 
@@ -278,6 +359,7 @@ function parseSessionId(sessionId) {
 
 async function scanAllSessions(activeThresholdMs) {
   const now = Date.now();
+  const effectiveThresholdMs = Math.max(Number(activeThresholdMs || 0), MIN_ACTIVE_WINDOW_MS);
   const results = [];
 
   for (const root of STORAGE_ROOTS) {
@@ -319,11 +401,12 @@ async function scanAllSessions(activeThresholdMs) {
 
               try {
                 const stat = await fs.promises.stat(mainLogFile);
-                if (now - stat.mtimeMs > activeThresholdMs) return null;
+                if (now - stat.mtimeMs > effectiveThresholdMs) return null;
                 return {
                   channel: root.channel,
                   workspaceId,
                   rawSessionId: logDir.name,
+                  sourceType: 'debug',
                   filePath: mainLogFile,
                   project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
@@ -352,12 +435,13 @@ async function scanAllSessions(activeThresholdMs) {
               const transcriptPath = path.join(transcriptsDir, file);
               try {
                 const stat = await fs.promises.stat(transcriptPath);
-                if (now - stat.mtimeMs > activeThresholdMs) return null;
+                if (now - stat.mtimeMs > effectiveThresholdMs) return null;
 
                 return {
                   channel: root.channel,
                   workspaceId,
                   rawSessionId: file.replace('.jsonl', ''),
+                  sourceType: 'transcript',
                   filePath: transcriptPath,
                   project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
@@ -407,12 +491,13 @@ async function scanAllSessions(activeThresholdMs) {
               }
 
               if (!newest) return null;
-              if (now - newest.mtime > activeThresholdMs) return null;
+              if (now - newest.mtime > effectiveThresholdMs) return null;
 
               return {
                 channel: root.channel,
                 workspaceId,
                 rawSessionId: sessionDir.name,
+                sourceType: 'resource',
                 filePath: newest.filePath,
                 project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                 mtime: newest.mtime,
@@ -426,7 +511,7 @@ async function scanAllSessions(activeThresholdMs) {
         for (const item of candidates) {
           const key = `${item.channel}:${item.workspaceId}:${item.rawSessionId}`;
           const existing = bySession.get(key);
-          if (!existing || item.mtime > existing.mtime) {
+          if (shouldReplaceCandidate(existing, item)) {
             bySession.set(key, item);
           }
         }

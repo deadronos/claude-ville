@@ -8,6 +8,7 @@ const { GeminiAdapter } = require('./gemini');
 const { OpenClawAdapter } = require('./openclaw');
 const { CopilotAdapter } = require('./copilot');
 const { VSCodeAdapter } = require('./vscode');
+const { sanitizeSessionDetail, sanitizeSessionSummary } = require('./sanitize');
 
 const CLAUDE_RATE_TABLE = {
   'claude-opus-4-6': { input: 15, output: 75 },
@@ -38,8 +39,9 @@ async function getAllSessions(activeThresholdMs) {
     try {
       const sessions = await adapter.getActiveSessions(activeThresholdMs);
       return await Promise.all(sessions.map(async (session) => {
-        const detail = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
-        const tokenUsage = detail.tokenUsage || null;
+        const detailRaw = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
+        const detail = sanitizeSessionDetail(detailRaw || {});
+        const tokenUsage = detailRaw?.tokenUsage || detail?.tokenUsage || null;
         const tokens = tokenUsage
           ? {
               input: tokenUsage.totalInput || 0,
@@ -47,12 +49,14 @@ async function getAllSessions(activeThresholdMs) {
             }
           : session.tokens || { input: 0, output: 0 };
 
+        const sanitizedSession = sanitizeSessionSummary(session);
+
         return {
-          ...session,
+          ...sanitizedSession,
           detail,
           tokenUsage,
           tokens,
-          estimatedCost: estimateCost(session.model, tokens),
+          estimatedCost: estimateCost(sanitizedSession.model, tokens),
         };
       }));
     } catch (err) {
@@ -71,7 +75,8 @@ async function getSessionDetailByProvider(provider, sessionId, project) {
   const adapter = adapters.find(a => a.provider === provider);
   if (!adapter) return { toolHistory: [], messages: [] };
   try {
-    return await adapter.getSessionDetail(sessionId, project);
+    const detail = await adapter.getSessionDetail(sessionId, project);
+    return sanitizeSessionDetail(detail || {});
   } catch (err) {
     console.error(`[${adapter.name}] 세션 상세 조회 실패:`, err.message);
     return { toolHistory: [], messages: [] };
