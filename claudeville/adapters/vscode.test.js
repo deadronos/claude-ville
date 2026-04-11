@@ -81,3 +81,52 @@ test('collects VS Code + Insiders Copilot Chat sessions from debug logs', async 
     else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
   }
 });
+
+test('collects active session from chat-session-resources content files', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-vscode-resources-'));
+  const oldCodeDir = process.env.VSCODE_USER_DATA_DIR;
+  const oldInsidersDir = process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+
+  process.env.VSCODE_USER_DATA_DIR = path.join(tmpRoot, 'Code', 'User');
+  process.env.VSCODE_INSIDERS_USER_DATA_DIR = path.join(tmpRoot, 'Code - Insiders', 'User');
+
+  try {
+    const insidersWorkspace = path.join(process.env.VSCODE_INSIDERS_USER_DATA_DIR, 'workspaceStorage', 'ws-live');
+    fs.mkdirSync(insidersWorkspace, { recursive: true });
+    fs.writeFileSync(path.join(insidersWorkspace, 'workspace.json'), JSON.stringify({ folder: 'file:///tmp/project-live' }));
+
+    const contentFile = path.join(
+      insidersWorkspace,
+      'GitHub.copilot-chat',
+      'chat-session-resources',
+      'live-session-id',
+      'call_abc__vscode-123',
+      'content.txt'
+    );
+    fs.mkdirSync(path.dirname(contentFile), { recursive: true });
+    fs.writeFileSync(contentFile, 'Live running turn output from VS Code Copilot Chat');
+
+    delete require.cache[require.resolve('./vscode')];
+    const { VSCodeAdapter } = require('./vscode');
+    const adapter = new VSCodeAdapter();
+
+    const sessions = await adapter.getActiveSessions(60 * 1000);
+    assert.equal(sessions.length, 1);
+
+    const session = sessions[0];
+    assert.equal(session.provider, 'vscode');
+    assert.equal(session.project, '/tmp/project-live');
+    assert.match(session.sessionId, /^vscode:vscode-insiders:ws-live:live-session-id$/);
+    assert.equal(session.lastMessage, 'Live running turn output from VS Code Copilot Chat');
+
+    const detail = await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
+    assert.equal(detail.messages.length, 1);
+    assert.equal(detail.messages[0].text, 'Live running turn output from VS Code Copilot Chat');
+  } finally {
+    if (oldCodeDir === undefined) delete process.env.VSCODE_USER_DATA_DIR;
+    else process.env.VSCODE_USER_DATA_DIR = oldCodeDir;
+
+    if (oldInsidersDir === undefined) delete process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+    else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
+  }
+});

@@ -85,7 +85,20 @@ async function parseSession(filePath) {
     tokens: null,
   };
 
-  const lines = await readLines(filePath, { from: 'end', count: 200 });
+  if (filePath.endsWith('content.txt')) {
+    try {
+      const text = await fs.promises.readFile(filePath, 'utf-8');
+      const normalized = text.trim();
+      if (normalized) {
+        detail.lastMessage = normalized.substring(0, 120);
+      }
+    } catch {
+      // 무시
+    }
+    return detail;
+  }
+
+  const lines = await readLines(filePath, { from: 'end', count: 300 });
   const entries = parseJsonLines(lines);
 
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -93,6 +106,10 @@ async function parseSession(filePath) {
 
     if (!detail.model && entry.type === 'llm_request' && entry.attrs && entry.attrs.model) {
       detail.model = entry.attrs.model;
+    }
+
+    if (!detail.model && entry.type === 'session.start' && entry.data && entry.data.vscodeVersion) {
+      detail.model = `copilot-chat@${entry.data.vscodeVersion}`;
     }
 
     if (!detail.tokens && entry.type === 'llm_request' && entry.attrs) {
@@ -107,8 +124,26 @@ async function parseSession(filePath) {
       detail.lastToolInput = summarizeJson(entry.attrs && entry.attrs.args, 60);
     }
 
+    if (!detail.lastTool && entry.type === 'tool.execution_start' && entry.data) {
+      detail.lastTool = entry.data.toolName || 'tool.execution_start';
+      detail.lastToolInput = summarizeJson(entry.data.arguments, 60);
+    }
+
+    if (!detail.lastTool && entry.type === 'assistant.message' && entry.data && Array.isArray(entry.data.toolRequests)) {
+      const req = entry.data.toolRequests[0];
+      if (req) {
+        detail.lastTool = req.name || 'tool_request';
+        detail.lastToolInput = summarizeJson(req.arguments, 60);
+      }
+    }
+
     if (!detail.lastMessage && entry.type === 'agent_response' && entry.attrs) {
       const text = extractAssistantText(entry.attrs.response);
+      if (text) detail.lastMessage = text.substring(0, 120);
+    }
+
+    if (!detail.lastMessage && entry.type === 'assistant.message' && entry.data && typeof entry.data.content === 'string') {
+      const text = entry.data.content.trim();
       if (text) detail.lastMessage = text.substring(0, 120);
     }
 
@@ -120,6 +155,17 @@ async function parseSession(filePath) {
 
 async function getToolHistory(filePath, maxItems = 15) {
   const tools = [];
+
+  if (filePath.endsWith('content.txt')) {
+    const base = path.basename(path.dirname(filePath));
+    tools.push({
+      tool: base.startsWith('toolu_') ? 'tool_result' : 'call_result',
+      detail: base.substring(0, 120),
+      ts: toTimestamp(fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0),
+    });
+    return tools.slice(-maxItems);
+  }
+
   try {
     const lines = await readLines(filePath, { from: 'end', count: 300 });
     const entries = parseJsonLines(lines);
@@ -132,6 +178,16 @@ async function getToolHistory(filePath, maxItems = 15) {
         ts: toTimestamp(entry.ts),
       });
     }
+
+    for (const entry of entries) {
+      if (entry.type === 'tool.execution_start' && entry.data) {
+        tools.push({
+          tool: entry.data.toolName || 'tool.execution_start',
+          detail: summarizeJson(entry.data.arguments, 120),
+          ts: toTimestamp(entry.timestamp),
+        });
+      }
+    }
   } catch { /* 무시 */ }
 
   return tools.slice(-maxItems);
@@ -139,6 +195,23 @@ async function getToolHistory(filePath, maxItems = 15) {
 
 async function getRecentMessages(filePath, maxItems = 5) {
   const messages = [];
+
+  if (filePath.endsWith('content.txt')) {
+    try {
+      const text = (await fs.promises.readFile(filePath, 'utf-8')).trim();
+      if (text) {
+        messages.push({
+          role: 'assistant',
+          text: text.substring(0, 200),
+          ts: toTimestamp(fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0),
+        });
+      }
+    } catch {
+      // 무시
+    }
+    return messages.slice(-maxItems);
+  }
+
   try {
     const lines = await readLines(filePath, { from: 'end', count: 300 });
     const entries = parseJsonLines(lines);
@@ -151,6 +224,17 @@ async function getRecentMessages(filePath, maxItems = 5) {
         role: 'assistant',
         text: text.substring(0, 200),
         ts: toTimestamp(entry.ts),
+      });
+    }
+
+    for (const entry of entries) {
+      if (entry.type !== 'assistant.message' || !entry.data || typeof entry.data.content !== 'string') continue;
+      const text = entry.data.content.trim();
+      if (!text) continue;
+      messages.push({
+        role: 'assistant',
+        text: text.substring(0, 200),
+        ts: toTimestamp(entry.timestamp),
       });
     }
   } catch { /* 무시 */ }
@@ -211,42 +295,143 @@ async function scanAllSessions(activeThresholdMs) {
       .map(async (workspaceDir) => {
         const workspaceId = workspaceDir.name;
         const workspacePath = path.join(root.workspaceStorageDir, workspaceId);
-        const debugLogsDir = path.join(workspacePath, 'GitHub.copilot-chat', 'debug-logs');
-        if (!fs.existsSync(debugLogsDir)) return [];
+        const copilotChatDir = path.join(workspacePath, 'GitHub.copilot-chat');
+        if (!fs.existsSync(copilotChatDir)) return [];
 
         const projectPath = await readWorkspacePath(workspacePath);
-        let debugLogDirs = [];
+        const candidates = [];
 
-        try {
-          debugLogDirs = await fs.promises.readdir(debugLogsDir, { withFileTypes: true });
-        } catch {
-          return [];
+        // legacy/new debug logs
+        const debugLogsDir = path.join(copilotChatDir, 'debug-logs');
+        if (fs.existsSync(debugLogsDir)) {
+          let debugLogDirs = [];
+          try {
+            debugLogDirs = await fs.promises.readdir(debugLogsDir, { withFileTypes: true });
+          } catch {
+            debugLogDirs = [];
+          }
+
+          const debugEntries = await Promise.all(debugLogDirs
+            .filter(d => d.isDirectory())
+            .map(async (logDir) => {
+              const mainLogFile = path.join(debugLogsDir, logDir.name, 'main.jsonl');
+              if (!fs.existsSync(mainLogFile)) return null;
+
+              try {
+                const stat = await fs.promises.stat(mainLogFile);
+                if (now - stat.mtimeMs > activeThresholdMs) return null;
+                return {
+                  channel: root.channel,
+                  workspaceId,
+                  rawSessionId: logDir.name,
+                  filePath: mainLogFile,
+                  project: projectPath || `vscode:${root.channel}:${workspaceId}`,
+                  mtime: stat.mtimeMs,
+                };
+              } catch {
+                return null;
+              }
+            }));
+
+          candidates.push(...debugEntries.filter(Boolean));
         }
 
-        const fileEntries = await Promise.all(debugLogDirs
-          .filter(d => d.isDirectory())
-          .map(async (logDir) => {
-            const mainLogFile = path.join(debugLogsDir, logDir.name, 'main.jsonl');
-            if (!fs.existsSync(mainLogFile)) return null;
+        // transcript jsonl
+        const transcriptsDir = path.join(copilotChatDir, 'transcripts');
+        if (fs.existsSync(transcriptsDir)) {
+          let transcriptFiles = [];
+          try {
+            transcriptFiles = await fs.promises.readdir(transcriptsDir);
+          } catch {
+            transcriptFiles = [];
+          }
 
-            try {
-              const stat = await fs.promises.stat(mainLogFile);
-              if (now - stat.mtimeMs > activeThresholdMs) return null;
+          const transcriptEntries = await Promise.all(transcriptFiles
+            .filter(f => f.endsWith('.jsonl'))
+            .map(async (file) => {
+              const transcriptPath = path.join(transcriptsDir, file);
+              try {
+                const stat = await fs.promises.stat(transcriptPath);
+                if (now - stat.mtimeMs > activeThresholdMs) return null;
+
+                return {
+                  channel: root.channel,
+                  workspaceId,
+                  rawSessionId: file.replace('.jsonl', ''),
+                  filePath: transcriptPath,
+                  project: projectPath || `vscode:${root.channel}:${workspaceId}`,
+                  mtime: stat.mtimeMs,
+                };
+              } catch {
+                return null;
+              }
+            }));
+
+          candidates.push(...transcriptEntries.filter(Boolean));
+        }
+
+        // live chat resources (often newest while a turn is running)
+        const resourcesDir = path.join(copilotChatDir, 'chat-session-resources');
+        if (fs.existsSync(resourcesDir)) {
+          let sessionDirs = [];
+          try {
+            sessionDirs = await fs.promises.readdir(resourcesDir, { withFileTypes: true });
+          } catch {
+            sessionDirs = [];
+          }
+
+          const resourceEntries = await Promise.all(sessionDirs
+            .filter(d => d.isDirectory())
+            .map(async (sessionDir) => {
+              const sessionRoot = path.join(resourcesDir, sessionDir.name);
+              let toolDirs = [];
+              try {
+                toolDirs = await fs.promises.readdir(sessionRoot, { withFileTypes: true });
+              } catch {
+                return null;
+              }
+
+              let newest = null;
+              for (const td of toolDirs) {
+                if (!td.isDirectory()) continue;
+                const contentFile = path.join(sessionRoot, td.name, 'content.txt');
+                if (!fs.existsSync(contentFile)) continue;
+                try {
+                  const stat = await fs.promises.stat(contentFile);
+                  if (!newest || stat.mtimeMs > newest.mtime) {
+                    newest = { filePath: contentFile, mtime: stat.mtimeMs };
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+
+              if (!newest) return null;
+              if (now - newest.mtime > activeThresholdMs) return null;
 
               return {
                 channel: root.channel,
                 workspaceId,
-                debugLogId: logDir.name,
-                filePath: mainLogFile,
+                rawSessionId: sessionDir.name,
+                filePath: newest.filePath,
                 project: projectPath || `vscode:${root.channel}:${workspaceId}`,
-                mtime: stat.mtimeMs,
+                mtime: newest.mtime,
               };
-            } catch {
-              return null;
-            }
-          }));
+            }));
 
-        return fileEntries.filter(Boolean);
+          candidates.push(...resourceEntries.filter(Boolean));
+        }
+        // dedupe by raw session key, keep newest source
+        const bySession = new Map();
+        for (const item of candidates) {
+          const key = `${item.channel}:${item.workspaceId}:${item.rawSessionId}`;
+          const existing = bySession.get(key);
+          if (!existing || item.mtime > existing.mtime) {
+            bySession.set(key, item);
+          }
+        }
+
+        return Array.from(bySession.values());
       }));
 
     for (const group of entries) {
@@ -268,10 +453,10 @@ class VSCodeAdapter {
 
   async getActiveSessions(activeThresholdMs) {
     const logs = await scanAllSessions(activeThresholdMs);
-    const sessions = await Promise.all(logs.map(async ({ channel, workspaceId, debugLogId, filePath, project, mtime }) => {
+    const sessions = await Promise.all(logs.map(async ({ channel, workspaceId, rawSessionId, filePath, project, mtime }) => {
       const detail = await parseSession(filePath);
       return {
-        sessionId: buildSessionId(channel, workspaceId, debugLogId),
+        sessionId: buildSessionId(channel, workspaceId, rawSessionId),
         provider: 'vscode',
         agentId: null,
         agentType: 'main',
@@ -307,7 +492,7 @@ class VSCodeAdapter {
     const found = sessions.find(s => (
       s.channel === parsed.channel
       && s.workspaceId === parsed.workspaceId
-      && s.debugLogId === parsed.debugLogId
+      && s.rawSessionId === parsed.debugLogId
     ));
 
     if (!found) return { toolHistory: [], messages: [] };
@@ -327,7 +512,13 @@ class VSCodeAdapter {
         type: 'directory',
         path: root.workspaceStorageDir,
         recursive: true,
-        filter: 'main.jsonl',
+        filter: '.jsonl',
+      });
+      paths.push({
+        type: 'directory',
+        path: root.workspaceStorageDir,
+        recursive: true,
+        filter: 'content.txt',
       });
     }
     return paths;
