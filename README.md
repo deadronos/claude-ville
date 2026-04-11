@@ -35,7 +35,7 @@ Watch your AI agent teams come alive in an isometric pixel world
 
 ## What is ClaudeVille?
 
-ClaudeVille is a **universal dashboard** for AI coding agents. It visualizes sessions from **Claude Code**, **OpenAI Codex CLI**, **Google Gemini CLI**, **OpenClaw**, and **GitHub Copilot CLI**. Agents appear as pixel characters roaming an isometric village, or as real-time monitoring cards in dashboard mode.
+ClaudeVille is a **universal dashboard** for AI coding agents. It visualizes sessions from **Claude Code**, **OpenAI Codex CLI**, **Google Gemini CLI**, **OpenClaw**, **GitHub Copilot CLI**, and **VS Code / VS Code Insiders Copilot Chat** debug sessions. Agents appear as pixel characters roaming an isometric village, or as real-time monitoring cards in dashboard mode.
 
 Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one app, or as a split stack where a collector on the source machine streams snapshots to a hubreceiver and the frontend connects remotely.
 
@@ -48,6 +48,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `~/.gemini/` | 🔵 Blue |
 | OpenClaw | `~/.openclaw/` | 🟠 Orange |
 | GitHub Copilot CLI | `~/.copilot/` | 🔵 Cyan |
+| VS Code / VS Code Insiders Copilot Chat | `~/Library/Application Support/Code*/User/workspaceStorage/.../GitHub.copilot-chat/debug-logs/.../main.jsonl` | 🩵 Light Blue |
 
 > Only installed CLIs are detected. You don't need all three — ClaudeVille works with whichever ones you have.
 
@@ -55,7 +56,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 
 - **World Mode** — Isometric pixel village where agents roam as characters with unique appearances
 - **Dashboard Mode** — Real-time agent cards showing tool usage, messages, and activity
-- **Multi-Provider** — Claude Code + Codex CLI + Gemini CLI + OpenClaw + Copilot CLI
+- **Multi-Provider** — Claude Code + Codex CLI + Gemini CLI + OpenClaw + Copilot CLI + VS Code Copilot Chat logs
 - **Live Detection** — WebSocket + file watcher for instant session updates
 - **Agent Team & Swarm** — Auto-detects Claude Code teams, swarms, and sub-agents
 - **Project Grouping** — Agents grouped by project with color-coded sections
@@ -155,7 +156,22 @@ Each CLI stores session logs in its own directory. ClaudeVille uses an **adapter
 ~/.gemini/                          # Gemini CLI
 └── tmp/{project_hash}/chats/
     └── session-*.json
+
+~/Library/Application Support/Code/User/workspaceStorage/                   # VS Code
+└── {workspaceId}/GitHub.copilot-chat/debug-logs/{sessionId}/main.jsonl
+
+~/Library/Application Support/Code - Insiders/User/workspaceStorage/        # VS Code Insiders
+└── {workspaceId}/GitHub.copilot-chat/debug-logs/{sessionId}/main.jsonl
 ```
+
+### VS Code adapter behavior
+
+- Provider key is `vscode` (shared for stable UI grouping across Code + Insiders).
+- Session IDs are namespaced as `vscode:<channel>:<workspaceId>:<sessionId>`.
+- Project path is resolved from each workspace storage folder's `workspace.json`.
+- Optional path overrides:
+  - `VSCODE_USER_DATA_DIR`
+  - `VSCODE_INSIDERS_USER_DATA_DIR`
 
 ## Architecture
 
@@ -168,7 +184,10 @@ claude-ville/
 │   │   ├── index.js             #   Adapter registry
 │   │   ├── claude.js            #   Claude Code adapter
 │   │   ├── codex.js             #   Codex CLI adapter
-│   │   └── gemini.js            #   Gemini CLI adapter
+│   │   ├── gemini.js            #   Gemini CLI adapter
+│   │   ├── copilot.js           #   Copilot CLI adapter
+│   │   ├── openclaw.js          #   OpenClaw adapter
+│   │   └── vscode.js            #   VS Code / Insiders adapter
 │   ├── services/                # Backend services
 │   │   └── usageQuota.js        #   Account & usage data
 │   ├── css/                     # Stylesheets
