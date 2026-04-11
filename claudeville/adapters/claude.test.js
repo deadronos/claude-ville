@@ -14,7 +14,7 @@ test('uses stable encoded project fallback for orphan sessions', () => {
     const projectsDir = path.join(tmpHome, '.claude', 'projects', encodedProjectDir);
     fs.mkdirSync(projectsDir, { recursive: true });
 
-    // history.jsonl이 없거나 비어있어 projectPathMap에 경로가 없는 상황을 재현
+    // Reproduce scenario where history.jsonl is empty/missing and projectPathMap has no path
     fs.writeFileSync(path.join(tmpHome, '.claude', 'history.jsonl'), '');
 
     const orphanFile = path.join(projectsDir, 'orphan-1.jsonl');

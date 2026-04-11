@@ -1,6 +1,6 @@
 /**
- * VS Code / VS Code Insiders Copilot Chat 어댑터
- * 데이터 소스:
+ * VS Code / VS Code Insiders Copilot Chat adapter
+ * Data source:
  *   ~/Library/Application Support/Code/User/workspaceStorage/<workspaceId>/GitHub.copilot-chat/debug-logs/<sessionId>/main.jsonl
  *   ~/Library/Application Support/Code - Insiders/User/workspaceStorage/<workspaceId>/GitHub.copilot-chat/debug-logs/<sessionId>/main.jsonl
  */
@@ -57,7 +57,7 @@ function parseJsonLines(lines) {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* 무시 */ }
+    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
   }
   return results;
 }
@@ -134,7 +134,7 @@ function extractAssistantText(responseRaw) {
       }
     }
   } catch {
-    // JSON 파싱 실패 시 원문 일부를 그대로 사용
+    // JSON parse failed; use raw text as-is
     return responseRaw.substring(0, 200).trim();
   }
 
@@ -158,7 +158,7 @@ async function parseSession(filePath) {
         detail.lastMessage = normalized.substring(0, 120);
       }
     } catch {
-      // 무시
+      // ignore
     }
     return detail;
   }
@@ -255,7 +255,7 @@ async function getToolHistory(filePath, maxItems = 15) {
         });
       }
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
 
   return tools.slice(-maxItems);
 }
@@ -274,7 +274,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
       });
     }
 
-    // 빈 메시지면 현재 파일 텍스트만이라도 보존
+    // preserve file text if messages are empty
     if (messages.length === 0) {
       try {
         const text = (await fs.promises.readFile(filePath, 'utf-8')).trim();
@@ -286,7 +286,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
           });
         }
       } catch {
-        // 무시
+        // ignore
       }
     }
 
@@ -318,7 +318,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
         ts: toTimestamp(entry.timestamp),
       });
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
 
   return messages.slice(-maxItems);
 }
@@ -336,7 +336,7 @@ async function readWorkspacePath(workspaceDir) {
       return decodeURIComponent(uri.replace('file://', ''));
     }
   } catch {
-    // 무시
+    // ignore
   }
 
   return null;

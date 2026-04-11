@@ -8,7 +8,7 @@ export class Toast {
     }
 
     show(message, type = 'info') {
-        // 최대 개수 초과 시 가장 오래된 것 제거
+        // Remove oldest when exceeding max count
         while (this.toasts.length >= MAX_TOASTS) {
             this._remove(this.toasts[0]);
         }

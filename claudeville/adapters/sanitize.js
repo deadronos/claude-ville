@@ -1,7 +1,7 @@
 /**
- * 어댑터 공통 텍스트 정리 유틸
- * - UI에 노이즈성 문자열이 그대로 노출되는 것을 완화
- * - provider별 파서가 raw 데이터를 유지하더라도 공통 레이어에서 표시용으로 정리
+ * Shared text sanitization utilities for adapters
+ * - Prevents noisy machine-generated strings from appearing in the UI
+ * - Provider parsers keep raw data; this layer cleans it for display
  */
 
 function normalizeWhitespace(value) {

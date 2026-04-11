@@ -1,4 +1,4 @@
-/* ─── 우측 실시간 활동 패널 ──────────────────────── */
+/* ─── Right-side real-time activity panel ──────────────── */
 
 .activity-panel {
     width: 320px;
@@ -17,7 +17,7 @@
     to { width: 320px; opacity: 1; }
 }
 
-/* ─── 헤더 ─────────────────────────────────────── */
+/* ─── Header ─────────────────────────────────────── */
 
 .activity-panel__header {
     display: flex;
@@ -68,7 +68,7 @@
     border-color: #ef4444;
 }
 
-/* ─── 메타 정보 ────────────────────────────────── */
+/* ─── Meta info ────────────────────────────────── */
 
 .activity-panel__meta {
     padding: 10px 14px;
@@ -100,7 +100,7 @@
     text-overflow: ellipsis;
 }
 
-/* ─── 섹션 공통 ────────────────────────────────── */
+/* ─── Section common ────────────────────────────────── */
 
 .activity-panel__section {
     padding: 10px 14px;
@@ -124,7 +124,7 @@
     margin-bottom: 8px;
 }
 
-/* ─── 현재 도구 ────────────────────────────────── */
+/* ─── Current tool ────────────────────────────────── */
 
 .activity-panel__current-tool {
     display: flex;
@@ -165,7 +165,7 @@
     white-space: nowrap;
 }
 
-/* ─── 도구 히스토리 ────────────────────────────── */
+/* ─── Tool history ────────────────────────────── */
 
 .activity-panel__tool-history {
     flex: 1;
@@ -218,7 +218,7 @@
     min-width: 0;
 }
 
-/* ─── 메시지 ───────────────────────────────────── */
+/* ─── Messages ───────────────────────────────────── */
 
 .activity-panel__messages {
     max-height: 140px;
@@ -263,7 +263,9 @@
     margin-bottom: 2px;
 }
 
-/* ─── 토큰 사용량 ─────────────────────────────── */
+/* ─── Token usage ─────────────────────────────── */
+
+/* ─── Token usage ─────────────────────────────── */
 
 .activity-panel__token-usage {
     display: flex;
@@ -342,7 +344,7 @@
     color: #e8d44d;
 }
 
-/* ─── 비어있음 ────────────────────────────────── */
+/* ─── Empty state ────────────────────────────────── */
 
 .activity-panel__empty {
     color: #555;

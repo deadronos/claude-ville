@@ -1,6 +1,6 @@
 /**
- * Claude Code CLI 어댑터
- * 데이터 소스: ~/.claude/
+ * Claude Code CLI adapter
+ * Data source: ~/.claude/
  */
 const fs = require('fs');
 const path = require('path');
@@ -14,12 +14,12 @@ const TASKS_DIR = path.join(CLAUDE_DIR, 'tasks');
 function resolveProjectDisplayPath(projectPathMap, encodedProjectDirName) {
   const mapped = projectPathMap.get(encodedProjectDirName);
   if (mapped) return mapped;
-  // 인코딩된 프로젝트 디렉토리명은 '/' -> '-' 변환이라 역변환이 손실될 수 있음.
-  // 잘못된 경로를 추정하지 않고 안정적인 식별자 형태로 노출한다.
+  // Encoded project dir names use '/' -> '-' substitution; reverse-transform loses info.
+  // Instead of guessing a wrong path, expose a stable identifier.
   return `claude:projects:${encodedProjectDirName}`;
 }
 
-// ─── 유틸 ─────────────────────────────────────────────
+// ─── Utility ─────────────────────────────────────────────
 
 function readLastLines(filePath, lineCount) {
   try {
@@ -36,12 +36,12 @@ function parseJsonLines(lines) {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* 무시 */ }
+    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
   }
   return results;
 }
 
-// ─── 세션 파싱 ────────────────────────────────────────
+// ─── Session parsing ─────────────────────────────────────
 
 function getSessionDetail(sessionId, projectPath) {
   const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
@@ -82,7 +82,7 @@ function getSessionDetail(sessionId, projectPath) {
       }
       if (detail.model && detail.lastTool && detail.lastMessage) break;
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
 
   return detail;
 }
@@ -119,7 +119,7 @@ function getSubAgentDetail(filePath) {
       }
       if (detail.model && detail.lastTool && detail.lastMessage) break;
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return detail;
 }
 
@@ -150,7 +150,7 @@ function getToolHistory(sessionFilePath, maxItems = 15) {
         tools.push({ tool: block.name || 'unknown', detail, ts: entry.timestamp || 0 });
       }
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return tools.slice(-maxItems);
 }
 
@@ -173,7 +173,7 @@ function getRecentMessages(sessionFilePath, maxItems = 5) {
         messages.push({ role: msg.role, text: text.substring(0, 200), ts: entry.timestamp || 0 });
       }
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return messages.slice(-maxItems);
 }
 
@@ -183,7 +183,7 @@ function getTokenUsage(sessionFilePath) {
     totalOutput: 0,
     cacheRead: 0,
     cacheCreate: 0,
-    contextWindow: 0,  // 마지막 턴의 컨텍스트 크기
+    contextWindow: 0,  // last turn context size
     turnCount: 0,
   };
   try {
@@ -203,14 +203,14 @@ function getTokenUsage(sessionFilePath) {
       lastUsage = u;
     }
 
-    // 마지막 턴의 컨텍스트 = input + cache_read + cache_create
+    // last turn context = input + cache_read + cache_create
     if (lastUsage) {
       usage.contextWindow =
         (lastUsage.input_tokens || 0) +
         (lastUsage.cache_read_input_tokens || 0) +
         (lastUsage.cache_creation_input_tokens || 0);
     }
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return usage;
 }
 
@@ -228,7 +228,7 @@ function resolveSessionFilePath(sessionId, project) {
         const agentFile = path.join(projectsDir, dir.name, 'subagents', `agent-${agentId}.jsonl`);
         if (fs.existsSync(agentFile)) return agentFile;
       }
-    } catch { /* 무시 */ }
+    } catch { /* ignore */ }
     return null;
   }
 
@@ -242,11 +242,11 @@ function getSessionFileActivity(sessionId, project) {
   const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
   try {
     if (fs.existsSync(sessionFile)) return fs.statSync(sessionFile).mtimeMs;
-  } catch { /* 무시 */ }
+  } catch { /* ignore */ }
   return 0;
 }
 
-// ─── 어댑터 클래스 ────────────────────────────────────
+// ─── Adapter class ──────────────────────────────────────
 
 class ClaudeAdapter {
   get name() { return 'Claude Code'; }
@@ -262,11 +262,11 @@ class ClaudeAdapter {
     const entries = parseJsonLines(lines);
     const now = Date.now();
     const sessionsMap = new Map();
-    const projectPathMap = new Map(); // 인코딩된 디렉토리명 → 실제 경로
+    const projectPathMap = new Map(); // encoded dir name -> actual path
 
     const HISTORY_SCAN_MS = 10 * 60 * 1000;
     for (const entry of entries) {
-      // 모든 엔트리에서 프로젝트 경로 맵 구축 (활성 여부 무관)
+      // Build project path map from all entries (regardless of active status)
       if (entry.project) {
         const encoded = entry.project.replace(/\//g, '-');
         projectPathMap.set(encoded, entry.project);
@@ -310,10 +310,10 @@ class ClaudeAdapter {
 
     mainSessions.sort((a, b) => b.lastActivity - a.lastActivity);
 
-    // 서브에이전트 (프로젝트 경로 맵 전달)
+    // Sub-agents (pass project path map)
     const subAgents = this._getActiveSubAgents(activeThresholdMs, projectPathMap);
 
-    // 고아 세션 (history.jsonl에 없고 subagents/에도 없는 팀 멤버 등)
+    // Orphan sessions (not in history.jsonl or subagents/)
     const knownIds = new Set([
       ...Array.from(sessionsMap.keys()),
       ...subAgents.map(s => s.sessionId.replace('subagent-', '')),
@@ -361,7 +361,7 @@ class ClaudeAdapter {
 
             const agentId = agentFile.replace('agent-', '').replace('.jsonl', '');
             const detail = getSubAgentDetail(filePath);
-            // projectPathMap에서 정확한 경로 조회, 없으면 폴백 (하이픈 포함 경로 깨짐 방지)
+            // Look up exact path from projectPathMap; fall back if hyphens in path broke decoding
             const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
 
             results.push({
@@ -381,7 +381,7 @@ class ClaudeAdapter {
           }
         }
       }
-    } catch { /* 무시 */ }
+    } catch { /* ignore */ }
 
     return results;
   }
@@ -407,7 +407,7 @@ class ClaudeAdapter {
 
         for (const file of files) {
           const sessionId = file.replace('.jsonl', '');
-          // 이미 알려진 세션이면 스킵
+          // Skip if session is already known
           if (knownIds.has(sessionId)) continue;
 
           const filePath = path.join(projPath, file);
@@ -434,7 +434,7 @@ class ClaudeAdapter {
           });
         }
       }
-    } catch { /* 무시 */ }
+    } catch { /* ignore */ }
 
     return results;
   }
@@ -458,7 +458,7 @@ class ClaudeAdapter {
       paths.push({ type: 'file', path: HISTORY_FILE });
     }
 
-    // 프로젝트 디렉토리 (recursive로 서브에이전트 파일도 감지)
+    // Project directories (recursive to also catch sub-agent files)
     const projectsDir = path.join(CLAUDE_DIR, 'projects');
     if (fs.existsSync(projectsDir)) {
       try {
@@ -472,10 +472,10 @@ class ClaudeAdapter {
             recursive: true,
           });
         }
-      } catch { /* 무시 */ }
+      } catch { /* ignore */ }
     }
 
-    // 팀 디렉토리 감시 (팀 생성/변경 감지)
+    // Teams directory (detect team creation/changes)
     if (fs.existsSync(TEAMS_DIR)) {
       paths.push({
         type: 'directory',
@@ -488,7 +488,7 @@ class ClaudeAdapter {
     return paths;
   }
 
-  // ─── 팀/태스크 (Claude 전용) ──────────────────────
+  // ─── Teams/tasks (Claude only) ──────────────────────
 
   async getTeams() {
     try {
@@ -503,7 +503,7 @@ class ClaudeAdapter {
             return { teamName: dir.name, ...config };
           } catch (err) {
             if (err.code === 'ENOENT') return null;
-            return { teamName: dir.name, error: '파싱 실패' };
+            return { teamName: dir.name, error: 'parse failed' };
           }
         });
 

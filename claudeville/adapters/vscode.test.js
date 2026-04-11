@@ -214,7 +214,7 @@ test('keeps vscode session active with provider minimum window', async () => {
     fs.writeFileSync(contentFile, 'still active between turns');
 
     const nowSec = Date.now() / 1000;
-    const oldSec = nowSec - 300; // 5분 전
+    const oldSec = nowSec - 300; // 5 minutes ago
     fs.utimesSync(contentFile, oldSec, oldSec);
 
     delete require.cache[require.resolve('./vscode')];
@@ -341,7 +341,7 @@ test('parses transcript format with assistant.message and tool.execution_start',
     assert.equal(sessions[0].project, '/tmp/project-transcript');
     assert.match(sessions[0].model, /^copilot-chat@/);
     assert.equal(sessions[0].lastMessage, 'Transcript assistant response');
-    // assistant.message의 toolRequests가 tool.execution_start보다 우선(last)으로 반영됨
+    // assistant.message toolRequests take priority over tool.execution_start (last wins)
     assert.equal(sessions[0].lastTool, 'list_dir');
 
     const detail = await adapter.getSessionDetail(sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
@@ -464,7 +464,7 @@ test('dedupe prefers debug-log source over newer transcript/resource for same se
     fs.mkdirSync(path.dirname(resourceFile), { recursive: true });
     fs.writeFileSync(resourceFile, 'newest resource message');
 
-    // mtime을 resource > transcript > debug 순으로 만들어도 debug가 선택되어야 함
+    // Even with mtime in resource > transcript > debug order, debug should be selected
     const nowSec = Date.now() / 1000;
     fs.utimesSync(debugFile, nowSec - 30, nowSec - 30);
     fs.utimesSync(transcriptFile, nowSec - 20, nowSec - 20);

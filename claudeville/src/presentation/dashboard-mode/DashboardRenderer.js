@@ -70,11 +70,11 @@ export class DashboardRenderer {
         this.gridEl.style.display = '';
         this.emptyEl.classList.remove('dashboard__empty--visible');
 
-        // 프로젝트별 그룹핑
+        // Group by project
         const groups = this._groupByProject(agents);
         this._assignProjectColors(groups);
 
-        // 상태 순서: working > waiting > idle
+        // Status order: working > waiting > idle
         const order = { working: 0, waiting: 1, idle: 2 };
 
         const existingIds = new Set();
@@ -84,7 +84,7 @@ export class DashboardRenderer {
             existingSections.add(projectPath);
             groupAgents.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
 
-            // 섹션 엘리먼트 생성/가져오기
+            // Create or get section element
             let sectionEl = this._sectionEls.get(projectPath);
             if (!sectionEl) {
                 sectionEl = this._createSection(projectPath);
@@ -104,7 +104,7 @@ export class DashboardRenderer {
                     this.cards.set(agent.id, cardEl);
                 }
 
-                // 카드가 이 섹션에 없으면 이동
+                // Move card to this section if not already there
                 if (cardEl.parentElement !== gridInner) {
                     gridInner.appendChild(cardEl);
                 }
@@ -113,7 +113,7 @@ export class DashboardRenderer {
             }
         }
 
-        // 없어진 에이전트 카드 제거
+        // Remove cards for agents that no longer exist
         for (const [id, cardEl] of this.cards) {
             if (!existingIds.has(id)) {
                 cardEl.remove();
@@ -122,7 +122,7 @@ export class DashboardRenderer {
             }
         }
 
-        // 없어진 섹션 제거
+        // Remove sections for projects that no longer exist
         for (const [path, sectionEl] of this._sectionEls) {
             if (!existingSections.has(path)) {
                 sectionEl.remove();
@@ -155,7 +155,7 @@ export class DashboardRenderer {
         if (!path || path === '_unknown') return i18n.t('unknownProject');
         const parts = path.replace(/\/+$/, '').split('/').filter(Boolean);
         const last = parts[parts.length - 1] || path;
-        // 홈 디렉토리 자체인 경우 (예: /Users/username) → ~ 로 표시
+        // For home directory itself (e.g. /Users/username) → show as ~
         if (parts.length <= 2 && parts[0] === 'Users') return '~';
         return last;
     }
@@ -183,20 +183,20 @@ export class DashboardRenderer {
         sectionEl.querySelector('.dashboard__section-name').textContent = name;
         sectionEl.querySelector('.dashboard__section-count').textContent = i18n.t('nAgents')(agents.length);
 
-        // 축약된 경로 표시
+        // Show shortened path
         const shortPath = projectPath === '_unknown' ? '' : this._truncatePath(projectPath);
         sectionEl.querySelector('.dashboard__section-path').textContent = shortPath;
     }
 
     _truncatePath(path) {
         if (!path) return '';
-        // ~/로 시작하도록 축약
+        // Truncate to show as ~/
         const home = '/Users/';
         if (path.startsWith(home)) {
             const afterHome = path.substring(home.length);
             const slashIdx = afterHome.indexOf('/');
             if (slashIdx >= 0) {
-                return '~' + afterHome.substring(slashIdx);
+                return '~/' + afterHome.substring(slashIdx);
             }
         }
         return path;
@@ -243,12 +243,12 @@ export class DashboardRenderer {
             </div>
         `;
 
-        // 아바타 캔버스
+        // Avatar canvas
         const avatarContainer = card.querySelector('.dash-card__avatar');
         const avatarCanvas = new AvatarCanvas(agent);
         avatarContainer.appendChild(avatarCanvas.canvas);
 
-        // 클릭 → 에이전트 선택
+        // Click → agent selection
         card.addEventListener('click', () => {
             eventBus.emit('agent:selected', agent);
         });
@@ -257,15 +257,15 @@ export class DashboardRenderer {
     }
 
     _updateCard(cardEl, agent) {
-        // 상태 클래스
+        // Status class
         cardEl.className = `dash-card dash-card--${agent.status}`;
 
-        // 헤더
+        // Header
         cardEl.querySelector('.dash-card__name').textContent = agent.name;
         cardEl.querySelector('.dash-card__model').textContent = this._shortModel(agent.model);
         cardEl.querySelector('.dash-card__role').textContent = agent.role || '';
 
-        // 프로바이더 뱃지
+        // Provider badge
         const badgeEl = cardEl.querySelector('.dash-card__provider-badge');
         const badge = PROVIDER_BADGES[agent.provider] || PROVIDER_BADGES.claude;
         badgeEl.textContent = badge.label;
@@ -277,7 +277,7 @@ export class DashboardRenderer {
         const statusKey = { working: 'statusWorking', idle: 'statusIdle', waiting: 'statusWaiting' };
         cardEl.querySelector('.dash-card__status-label').textContent = i18n.t(statusKey[agent.status] || agent.status);
 
-        // 현재 도구
+        // Current tool
         const toolBox = cardEl.querySelector('.dash-card__current-tool');
         const toolIcon = cardEl.querySelector('.dash-card__tool-icon');
         const toolName = cardEl.querySelector('.dash-card__tool-name');
@@ -295,7 +295,7 @@ export class DashboardRenderer {
             toolDetail.textContent = '';
         }
 
-        // 메시지
+        // Message
         const msgEl = cardEl.querySelector('.dash-card__message');
         if (agent.lastMessage) {
             msgEl.textContent = `"${agent.lastMessage}"`;
@@ -304,7 +304,7 @@ export class DashboardRenderer {
             msgEl.style.display = 'none';
         }
 
-        // 도구 히스토리 렌더
+        // Render tool history
         const history = this.toolHistories.get(agent.id);
         if (history) {
             this._renderToolHistory(cardEl, history);
@@ -318,7 +318,7 @@ export class DashboardRenderer {
             return;
         }
 
-        // 최신이 위로
+        // Most recent first
         const reversed = [...tools].reverse();
         listEl.innerHTML = reversed.map(t => {
             const cat = this._getToolCategory(t.tool);
@@ -335,7 +335,7 @@ export class DashboardRenderer {
 
     _startDetailFetching() {
         this._stopDetailFetching();
-        // 즉시 한 번 + 3초 간격
+        // Immediate once + every 3 seconds
         this._fetchAllDetails();
         this._globalFetchTimer = setInterval(() => this._fetchAllDetails(), 3000);
     }
@@ -369,13 +369,13 @@ export class DashboardRenderer {
                 if (cardEl) this._renderToolHistory(cardEl, data.toolHistory);
             }
         } catch {
-            // 네트워크 에러 무시
+            // Ignore network errors
         }
     }
 
     _getToolIcon(tool) {
         if (!tool) return '❓';
-        // MCP 도구
+        // MCP tools
         if (tool.startsWith('mcp__playwright__')) return '🎭';
         if (tool.startsWith('mcp__')) return '🔌';
         return TOOL_ICONS[tool] || '🔧';

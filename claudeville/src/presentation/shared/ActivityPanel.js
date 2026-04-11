@@ -98,7 +98,7 @@ export class ActivityPanel {
         }
     }
 
-    // ─── 실시간 폴링 ────────────────────────────────
+    // ─── Real-time polling ────────────────────────────────
 
     _startPolling() {
         this._stopPolling();
@@ -130,11 +130,11 @@ export class ActivityPanel {
                 this._renderMessages(data.messages || []);
             }
         } catch {
-            // 네트워크 에러 무시
+            // ignore network errors
         }
     }
 
-    // ─── 렌더링 ─────────────────────────────────────
+    // ─── Rendering ─────────────────────────────────────
 
     _renderToolHistory(tools) {
         const el = document.getElementById('panelToolHistory');
@@ -171,7 +171,7 @@ export class ActivityPanel {
         }).join('');
     }
 
-    // ─── 유틸 ───────────────────────────────────────
+    // ─── Utilities ───────────────────────────────────────
 
     _icon(tool) {
         if (!tool) return '\u2753';

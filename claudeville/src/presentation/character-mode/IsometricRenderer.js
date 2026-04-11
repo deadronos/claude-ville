@@ -213,7 +213,7 @@ export class IsometricRenderer {
     }
 
     _updateChatMatching() {
-        // 현재 SendMessage 사용 중인 에이전트 찾기
+        // Find agents currently using SendMessage
         const senders = new Set();
 
         for (const sprite of this.agentSprites.values()) {
@@ -221,10 +221,10 @@ export class IsometricRenderer {
             if (agent.currentTool === 'SendMessage' && agent.currentToolInput) {
                 senders.add(sprite);
 
-                // 이미 대화 중이면 스킵
+                // Skip if already chatting
                 if (sprite.chatPartner) continue;
 
-                // 수신자 이름으로 스프라이트 찾기
+                // Find target sprite by recipient name
                 const recipientName = agent.currentToolInput;
                 let target = null;
                 for (const other of this.agentSprites.values()) {
@@ -241,10 +241,10 @@ export class IsometricRenderer {
             }
         }
 
-        // SendMessage가 아닌 에이전트의 대화 상태 해제
+        // Release chat state for agents not using SendMessage
         for (const sprite of this.agentSprites.values()) {
             if (sprite.chatPartner && !senders.has(sprite)) {
-                // 상대방이 아직 SendMessage 중이면 유지
+                // Keep if partner is still using SendMessage
                 if (sprite.chatPartner.agent.currentTool === 'SendMessage') continue;
                 sprite.endChat();
             }
@@ -271,10 +271,10 @@ export class IsometricRenderer {
     _update() {
         this.waterFrame += 0.03;
 
-        // 카메라 팔로우 업데이트
+        // Update camera follow
         if (this.camera) this.camera.updateFollow();
 
-        // 대화 매칭: SendMessage 사용 중인 에이전트 → 수신자 스프라이트로 이동
+        // Chat matching: SendMessage users → move to recipient sprite
         this._updateChatMatching();
 
         // Update agent sprites
@@ -282,7 +282,7 @@ export class IsometricRenderer {
             sprite.update(this.particleSystem);
         }
 
-        // Update building renderer (에이전트 스프라이트 위치 전달)
+        // Update building renderer (pass agent sprite positions)
         this.buildingRenderer.setAgentSprites(Array.from(this.agentSprites.values()));
         this.buildingRenderer.update();
 
@@ -333,7 +333,7 @@ export class IsometricRenderer {
     }
 
     _drawTerrain(ctx) {
-        // 아이소메트릭은 다이아몬드 형태라 화면 네 모서리 모두 체크해야 함
+        // Isometric is diamond-shaped, so must check all four screen corners
         const w = this.canvas.width;
         const h = this.canvas.height;
         const c1 = this.camera.screenToTile(0, 0);

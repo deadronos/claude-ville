@@ -1,6 +1,6 @@
 /**
- * 어댑터 레지스트리
- * 모든 AI 코딩 CLI 어댑터를 등록하고 관리
+ * Adapter registry
+ * Registers and manages all AI coding CLI adapters
  */
 const { ClaudeAdapter } = require('./claude');
 const { CodexAdapter } = require('./codex');
@@ -31,7 +31,7 @@ const adapters = [
 ];
 
 /**
- * 모든 활성 어댑터에서 세션 수집
+ * Collect sessions from all active adapters
  */
 async function getAllSessions(activeThresholdMs) {
   const adapterResults = await Promise.all(adapters.map(async (adapter) => {
@@ -60,7 +60,7 @@ async function getAllSessions(activeThresholdMs) {
         };
       }));
     } catch (err) {
-      console.error(`[${adapter.name}] 세션 조회 실패:`, err.message);
+      console.error(`[${adapter.name}] session query failed:`, err.message);
       return [];
     }
   }));
@@ -69,7 +69,7 @@ async function getAllSessions(activeThresholdMs) {
 }
 
 /**
- * 특정 프로바이더의 세션 상세 조회
+ * Get session detail for a specific provider
  */
 async function getSessionDetailByProvider(provider, sessionId, project) {
   const adapter = adapters.find(a => a.provider === provider);
@@ -78,13 +78,13 @@ async function getSessionDetailByProvider(provider, sessionId, project) {
     const detail = await adapter.getSessionDetail(sessionId, project);
     return sanitizeSessionDetail(detail || {});
   } catch (err) {
-    console.error(`[${adapter.name}] 세션 상세 조회 실패:`, err.message);
+    console.error(`[${adapter.name}] session detail query failed:`, err.message);
     return { toolHistory: [], messages: [] };
   }
 }
 
 /**
- * 모든 활성 어댑터의 감시 경로 수집
+ * Collect all watch paths from active adapters
  */
 function getAllWatchPaths() {
   const paths = [];
@@ -93,14 +93,14 @@ function getAllWatchPaths() {
     try {
       paths.push(...adapter.getWatchPaths());
     } catch {
-      // 무시
+      // ignore
     }
   }
   return paths;
 }
 
 /**
- * 활성 어댑터 목록
+ * List active adapters
  */
 function getActiveProviders() {
   return adapters.filter(a => a.isAvailable()).map(a => ({

@@ -39,65 +39,65 @@ class App {
 
     async boot() {
         try {
-            console.log('[App] ClaudeVille 부팅 시작...');
+            console.log('[App] ClaudeVille booting...');
 
-            // 1. 도메인 초기화
+            // 1. Initialize domain
             this.world = new World();
             for (const def of BUILDING_DEFS) {
                 this.world.addBuilding(new Building(def));
             }
 
-            // 2. 인프라 초기화
+            // 2. Initialize infrastructure
             this.dataSource = new ClaudeDataSource();
             this.wsClient = new WebSocketClient();
 
-            // 3. UI 컴포넌트 초기화
+            // 3. Initialize UI components
             this.toast = new Toast();
             this.modal = new Modal();
             this.topBar = new TopBar(this.world);
             this.sidebar = new Sidebar(this.world);
 
-            // 4. 애플리케이션 서비스 초기화
+            // 4. Initialize application services
             this.agentManager = new AgentManager(this.world, this.dataSource);
             this.modeManager = new ModeManager();
             this.notificationService = new NotificationService(this.toast);
 
-            // 5. 초기 데이터 로드
+            // 5. Load initial data
             await this.agentManager.loadInitialData();
 
-            // 5-1. 초기 usage 데이터 로드
+            // 5-1. Load initial usage data
             this.dataSource.getUsage().then(usage => {
                 if (usage) eventBus.emit('usage:updated', usage);
             });
 
-            // 6. 세션 감시 시작
+            // 6. Start session watching
             this.sessionWatcher = new SessionWatcher(
                 this.agentManager, this.wsClient, this.dataSource
             );
             this.sessionWatcher.start();
 
-            // 7. 캔버스 리사이즈 핸들링 (렌더러보다 먼저 실행해야 캔버스 크기가 설정됨)
+            // 7. Handle canvas resize (must run before renderer to set canvas size)
             this._bindResize();
 
-            // 8. 캐릭터 렌더러 동적 로드
+            // 8. Dynamically load character renderer
             await this._loadRenderer();
 
-            // 8-1. 대시보드 렌더러 로드
+            // 8-1. Load dashboard renderer
             await this._loadDashboard();
 
-            // 9. 우측 실시간 활동 패널
+            // 9. Right-side real-time activity panel
             this.activityPanel = new ActivityPanel();
             this._bindAgentFollow();
 
-            // 10. 설정 버튼
+            // 10. Settings button
             this._bindSettings();
 
-            // 11. 초기 i18n 적용
+            // 11. Apply initial i18n
             this._applyI18n();
 
-            console.log('[App] ClaudeVille 부팅 완료!');
+            console.log('[App] ClaudeVille boot complete!');
         } catch (err) {
-            console.error('[App] 부팅 실패:', err);
+            console.error('[App] Boot failed:', err);
             this._showBootError(err);
         }
     }
@@ -110,17 +110,17 @@ class App {
             if (module.IsometricRenderer && canvas) {
                 this.renderer = new module.IsometricRenderer(this.world);
                 this.renderer.show(canvas);
-                // 캔버스 크기가 확정된 후 카메라 중앙 재조정
+                // Re-center camera after canvas size is determined
                 if (this.renderer.camera) {
                     this.renderer.camera.centerOnMap();
                 }
                 this.renderer.onAgentSelect = (agent) => {
                     if (agent) eventBus.emit('agent:selected', agent);
                 };
-                console.log('[App] IsometricRenderer 로드됨');
+                console.log('[App] IsometricRenderer loaded');
             }
         } catch (err) {
-            console.warn('[App] IsometricRenderer 아직 없음 (canvas-artist 작업 대기중):', err.message);
+            console.warn('[App] IsometricRenderer not yet available (waiting for canvas-artist):', err.message);
         }
     }
 
@@ -129,22 +129,22 @@ class App {
             const module = await import('./dashboard-mode/DashboardRenderer.js');
             if (module.DashboardRenderer) {
                 this.dashboardRenderer = new module.DashboardRenderer(this.world);
-                console.log('[App] DashboardRenderer 로드됨');
+                console.log('[App] DashboardRenderer loaded');
             }
         } catch (err) {
-            console.warn('[App] DashboardRenderer 로드 실패:', err.message);
+            console.warn('[App] DashboardRenderer load failed:', err.message);
         }
     }
 
     _bindAgentFollow() {
-        // 에이전트 선택 시 카메라 팔로우
+        // Follow camera when agent is selected
         eventBus.on('agent:selected', (agent) => {
             if (agent && this.renderer) {
                 this.renderer.selectAgentById(agent.id);
             }
         });
 
-        // 패널 닫기 시 팔로우 해제
+        // Release follow when panel is closed
         eventBus.on('agent:deselected', () => {
             if (this.renderer) {
                 this.renderer.selectAgentById(null);
@@ -169,7 +169,7 @@ class App {
             }
         };
 
-        // ResizeObserver로 컨테이너 크기 변화 감지 (푸터 열림/닫힘 포함)
+        // Use ResizeObserver to detect container size changes (including footer open/close)
         this._resizeObserver = new ResizeObserver(() => resize());
         this._resizeObserver.observe(container);
 
@@ -244,7 +244,7 @@ class App {
     }
 }
 
-// 부팅
+// Boot
 window.addEventListener('load', () => {
     const app = new App();
     app.boot();

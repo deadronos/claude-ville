@@ -1,7 +1,7 @@
 import { eventBus } from '../../domain/events/DomainEvent.js';
 import { i18n } from '../../config/i18n.js';
 
-// 프로젝트별 색상 팔레트
+// Project color palette
 const PROVIDER_ICONS = { claude: 'C', codex: 'X', gemini: 'G', openclaw: 'O', copilot: 'P' };
 const PROVIDER_COLORS = { claude: '#a78bfa', codex: '#4ade80', gemini: '#60a5fa', openclaw: '#f97316', copilot: '#22d3ee' };
 
@@ -40,7 +40,7 @@ export class Sidebar {
         const agents = Array.from(this.world.agents.values());
         this.countEl.textContent = agents.length;
 
-        // 프로젝트별 그룹핑
+        // Group by project
         const groups = this._groupByProject(agents);
         this._assignProjectColors(groups);
 
@@ -69,7 +69,7 @@ export class Sidebar {
 
         this.listEl.innerHTML = html;
 
-        // 클릭 이벤트 바인딩
+        // Click event binding
         this.listEl.querySelectorAll('.sidebar__agent').forEach(el => {
             el.addEventListener('click', () => {
                 const id = el.dataset.agentId;
@@ -112,7 +112,7 @@ export class Sidebar {
         if (!path || path === '_unknown') return i18n.t('unknownProject');
         const parts = path.replace(/\/+$/, '').split('/').filter(Boolean);
         const last = parts[parts.length - 1] || path;
-        // 홈 디렉토리 자체인 경우 (예: /Users/username) → ~ 로 표시
+        // For home directory itself (e.g. /Users/username) → show as ~
         if (parts.length <= 2 && parts[0] === 'Users') return '~';
         return last;
     }
