@@ -199,7 +199,7 @@ class App {
         const bubbleLabel = (preset) => i18n.t(preset.labelKey || `bubble${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
         const chatLabel  = (preset) => i18n.t(preset.labelKey || `chat${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
 
-        const bubbleBtns = (presets, currentKey, onSelect) => {
+        const bubbleBtns = (presets, currentKey) => {
             return presets.map(p => {
                 const active = currentKey === p.key ? ' settings-lang-btn--active' : '';
                 return `<button class="settings-lang-btn${active}" data-size="${p.key}">${bubbleLabel(p)}</button>`;
@@ -248,7 +248,7 @@ class App {
 
         btn.addEventListener('click', () => {
             const currentMode = getNameMode();
-            this.modal.open(i18n.t('settingsTitle'), buildForm());
+            this.modal.open(i18n.t('settingsTitle'), buildForm(currentMode));
 
             // Name mode buttons
             document.querySelectorAll('.settings-lang-btn[data-mode]').forEach(modeBtn => {
