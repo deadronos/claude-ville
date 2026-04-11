@@ -183,17 +183,17 @@ class App {
         if (!btn) return;
 
         const BUBBLE_PRESETS = [
-            { key: 'small',  labelKey: 'bubbleSmall',  fontSize: 9,  maxWidth: 120, bubbleH: 20, paddingH: 16 },
-            { key: 'medium', labelKey: 'bubbleMedium', fontSize: 11, maxWidth: 200, bubbleH: 24, paddingH: 20 },
-            { key: 'large',  labelKey: 'bubbleLarge',  fontSize: 14, maxWidth: 260, bubbleH: 30, paddingH: 24 },
-            { key: 'xlarge', labelKey: 'bubbleExtraLarge', fontSize: 18, maxWidth: 320, bubbleH: 38, paddingH: 30 },
+            { key: 'small',  labelKey: 'bubbleSmall',       fontSize: 10, maxWidth: 160, bubbleH: 22, paddingH: 18 },
+            { key: 'medium', labelKey: 'bubbleMedium',      fontSize: 14, maxWidth: 260, bubbleH: 28, paddingH: 24 },
+            { key: 'large',  labelKey: 'bubbleLarge',       fontSize: 20, maxWidth: 360, bubbleH: 38, paddingH: 32 },
+            { key: 'xlarge', labelKey: 'bubbleExtraLarge',  fontSize: 28, maxWidth: 480, bubbleH: 52, paddingH: 44 },
         ];
 
         const CHAT_PRESETS = [
-            { key: 'small',  fontSize: 9  },
-            { key: 'medium', fontSize: 11 },
-            { key: 'large',  fontSize: 14 },
-            { key: 'xlarge', fontSize: 18 },
+            { key: 'small',  fontSize: 10 },
+            { key: 'medium', fontSize: 14 },
+            { key: 'large',  fontSize: 20 },
+            { key: 'xlarge', fontSize: 28 },
         ];
 
         const bubbleLabel = (preset) => i18n.t(preset.labelKey || `bubble${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);

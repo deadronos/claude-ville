@@ -4,12 +4,12 @@
  */
 
 const DEFAULTS = {
-  statusFontSize: 11,
-  statusMaxWidth: 200,
-  statusBubbleH: 24,
-  statusPaddingH: 20,
-  chatFontSize: 11,
-  chatMaxWidth: 200,
+  statusFontSize: 14,
+  statusMaxWidth: 260,
+  statusBubbleH: 28,
+  statusPaddingH: 24,
+  chatFontSize: 14,
+  chatMaxWidth: 260,
 };
 
 function load() {
