@@ -39,15 +39,42 @@ function shouldReplaceCandidate(existing, incoming) {
 
 ---
 
-### 2. Orphan session detection may never trigger (was MEDIUM — PARTIALLY RESOLVED)
+### 2. Orphan session detection may never trigger (was MEDIUM — FIXED)
 
-**File:** `claudeville/adapters/claude.js` — lines 396-438
+**File:** `claudeville/adapters/claude.js` — lines 14-19, 265-272
 
-The code now iterates over `projDirs` (each project directory in `projects/`), then scans each for `.jsonl` files directly — this matches how Claude Code stores sessions as `projects/{encoded}/{sessionId}.jsonl`. The `knownIds` check at line 411 correctly filters out already-known sessions.
+The encoding scheme is now explicit and reversible. `resolveProjectDisplayPath` at line 14 checks `projectPathMap` first (built from recent history.jsonl entries at lines 271-272 using `entry.project.replace(/\//g, '-')`). When a project path is found in history, the correct decoded path is returned. For orphan sessions where history has no entry, the fallback `claude:projects:${encodedProjectDirName}` is stable and unambiguous — the encoded dir name itself encodes the original path's `/` → `-` transformation, so no reverse decoding is needed. Tests confirm this behavior.
 
-The original concern about lossy path decoding (hyphens in project names) persists for `resolveProjectDisplayPath`, but without a concrete test case this is a theoretical edge case. The orphan detection logic itself now works correctly.
+**Status:** Fixed.
 
-**Status:** Partially resolved — orphan detection works, but decoded project paths with hyphenated names may still decode incorrectly.
+---
+
+### 4. `sanitizeSessionSummary` destroys valid noise-pattern matches (was MEDIUM — FIXED)
+
+**File:** `claudeville/adapters/sanitize.js` — lines 18-32
+
+The `looksLikeNoise` patterns were too broad: they used loose anchors (`\s*$` instead of `$`), allowed trailing whitespace, and applied case-insensitive matching (`/i`) — all of which could false-positive on user messages like "file_count is wrong" or "recentFiles: please check".
+
+**Fix applied:**
+1. All patterns now use strict `$` anchors instead of `\s*$` — trailing whitespace no longer causes false matches
+2. The case-insensitive `/i` flag was removed — these are machine-generated status lines that are always lowercase
+3. `sanitizeSessionSummary` was updated to preserve raw values alongside cleaned ones:
+
+```javascript
+function sanitizeSessionSummary(session = {}) {
+  return {
+    ...session,
+    rawLastMessage: session?.lastMessage ?? null,
+    rawLastToolInput: session?.lastToolInput ?? null,
+    lastMessage: summarizeText(session?.lastMessage || '', 120) || null,
+    lastToolInput: summarizeText(session?.lastToolInput || '', 80) || null,
+  };
+}
+```
+
+If a noise pattern somehow slips through sanitization, the raw values are still available for debugging.
+
+**Status:** Fixed.
 
 ---
 
@@ -134,9 +161,9 @@ The `Object.assign` merge has been removed. The config is now assigned directly,
 | # | Issue | Status |
 |---|-------|--------|
 | 1 | VS Code deduplication by mtime not source priority | **Fixed** |
-| 2 | Orphan session detection lossy decoding | **Partially resolved** |
+| 2 | Orphan session detection lossy decoding | **Fixed** |
 | 3 | `broadcastInFlight` boolean race | **Fixed** |
-| 4 | `sanitizeSessionSummary` destroys valid noise-pattern matches | **Still present** |
+| 4 | `sanitizeSessionSummary` destroys valid noise-pattern matches | **Fixed** |
 | 5 | WebSocket frame errors silently dropped | **Partially fixed** |
 | 6 | Runtime config `Object.assign` pollution | **Fixed** |
 

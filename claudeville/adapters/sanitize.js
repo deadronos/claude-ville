@@ -18,14 +18,17 @@ function summarizeText(value, maxLen = 200) {
 function looksLikeNoise(text) {
   if (!text) return true;
 
+  // Match only complete status-line patterns that never appear in real user messages.
+  // Each pattern must anchor at start (^) and end ($) — partial matches within
+  // user text should not be flagged.
   const patterns = [
-    /^file_count\s+\d+\s+ageSec=\s*\d+(?:\s+size=.*)?\s*$/i,
-    /^providers?=\s*\[[^\]]*\]\s*$/i,
-    /^vscodeCount=\s*\d+\s*$/i,
-    /^toolHistoryCount=\s*\d+\s*$/i,
-    /^messagesCount=\s*\d+\s*$/i,
-    /^recentFiles:\s*$/i,
-    /^ageSec=\s*\d+\s+mtime=/i,
+    /^file_count\s+\d+\s+ageSec=\s*\d+(?:\s+size=.*)?$/,
+    /^providers?=\s*\[[^\]]*\]$/,
+    /^vscodeCount=\s*\d+$/,
+    /^toolHistoryCount=\s*\d+$/,
+    /^messagesCount=\s*\d+$/,
+    /^recentFiles:$/,
+    /^ageSec=\s*\d+\s+mtime=/,
   ];
 
   return patterns.some((re) => re.test(text));
