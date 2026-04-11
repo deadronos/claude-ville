@@ -286,7 +286,13 @@ class App {
                         statusMaxWidth: preset.maxWidth,
                         statusBubbleH: preset.bubbleH,
                         statusPaddingH: preset.paddingH,
-                        chatFontSize: chatPreset ? chatPreset.fontSize : cfg.chatFontSize,
+                        chatFontSize: chatPreset ? chatPreset.fontSize : getBubbleConfig().chatFontSize,
+                    });
+                    // Update active states on the currently shown buttons
+                    const cfg = getBubbleConfig();
+                    document.querySelectorAll('.settings-lang-btn[data-size]').forEach(btn => {
+                        const p = BUBBLE_PRESETS.find(bp => bp.key === btn.dataset.size);
+                        btn.classList.toggle('settings-lang-btn--active', p && p.fontSize === cfg.statusFontSize);
                     });
                     if (this.toast) {
                         this.toast.show(i18n.t('settingsSaved'), 'success');
