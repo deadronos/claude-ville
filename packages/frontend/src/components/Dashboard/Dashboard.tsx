@@ -1,7 +1,7 @@
 // packages/frontend/src/components/Dashboard/Dashboard.tsx
 
 import * as React from 'react';
-import { useAtomValue } from 'jotai';
+import { useAtom, useAtomValue } from 'jotai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { sessionsAtom, selectedAgentIdAtom, panelOpenAtom } from '../../store';
 import { pixelTheme } from '@claude-ville/ui';
