@@ -51,6 +51,9 @@ export function Modal() {
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
             style={{
               backgroundColor: pixelTheme.colors.surface,
               border: `1px solid ${pixelTheme.colors.border}`,
@@ -68,11 +71,12 @@ export function Modal() {
                 borderBottom: `1px solid ${pixelTheme.colors.border}`,
               }}
             >
-              <span style={{ fontFamily: pixelTheme.fontFamily.pixel, fontSize: pixelTheme.fontSize.xs, color: pixelTheme.colors.text }}>
+              <span id="modal-title" style={{ fontFamily: pixelTheme.fontFamily.pixel, fontSize: pixelTheme.fontSize.xs, color: pixelTheme.colors.text }}>
                 {title}
               </span>
               <button
                 onClick={close}
+                aria-label="Close"
                 style={{
                   background: 'none',
                   border: 'none',
