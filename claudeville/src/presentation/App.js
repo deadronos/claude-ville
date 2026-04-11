@@ -206,7 +206,7 @@ class App {
             }).join('');
         };
 
-        const buildForm = () => {
+        const buildForm = (currentMode) => {
             const cfg = getBubbleConfig();
             const sizeToKey = (v, fallback) => {
                 const found = BUBBLE_PRESETS.find(p => p.fontSize === v);
