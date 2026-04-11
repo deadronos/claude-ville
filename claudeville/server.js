@@ -290,7 +290,10 @@ function handleWebSocketUpgrade(req, socket) {
     try {
       handleWebSocketFrame(socket, buffer);
     } catch (err) {
-      // 프레임 처리 에러 무시
+      // 프레임 처리 에러 무시 (필요 시 trace 로그)
+      if (process.env.CLAUDEVILLE_TRACE_WS === '1') {
+        console.warn('[WebSocket] frame handling error:', err instanceof Error ? err.message : String(err));
+      }
     }
   });
 

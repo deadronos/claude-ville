@@ -24,6 +24,23 @@ const MIN_ACTIVE_WINDOW_MS = Math.max(
   Number(process.env.VSCODE_ACTIVE_WINDOW_MS || DEFAULT_MIN_ACTIVE_WINDOW_MS)
 );
 
+const SOURCE_PRIORITY = {
+  debug: 3,
+  transcript: 2,
+  resource: 1,
+};
+
+function shouldReplaceCandidate(existing, incoming) {
+  if (!existing) return true;
+  const existingPriority = SOURCE_PRIORITY[existing.sourceType] || 0;
+  const incomingPriority = SOURCE_PRIORITY[incoming.sourceType] || 0;
+
+  if (incomingPriority > existingPriority) return true;
+  if (incomingPriority < existingPriority) return false;
+
+  return incoming.mtime > existing.mtime;
+}
+
 async function readLines(filePath, { from = 'end', count = 60 } = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
@@ -389,6 +406,7 @@ async function scanAllSessions(activeThresholdMs) {
                   channel: root.channel,
                   workspaceId,
                   rawSessionId: logDir.name,
+                  sourceType: 'debug',
                   filePath: mainLogFile,
                   project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
@@ -423,6 +441,7 @@ async function scanAllSessions(activeThresholdMs) {
                   channel: root.channel,
                   workspaceId,
                   rawSessionId: file.replace('.jsonl', ''),
+                  sourceType: 'transcript',
                   filePath: transcriptPath,
                   project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
@@ -478,6 +497,7 @@ async function scanAllSessions(activeThresholdMs) {
                 channel: root.channel,
                 workspaceId,
                 rawSessionId: sessionDir.name,
+                sourceType: 'resource',
                 filePath: newest.filePath,
                 project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                 mtime: newest.mtime,
@@ -491,7 +511,7 @@ async function scanAllSessions(activeThresholdMs) {
         for (const item of candidates) {
           const key = `${item.channel}:${item.workspaceId}:${item.rawSessionId}`;
           const existing = bySession.get(key);
-          if (!existing || item.mtime > existing.mtime) {
+          if (shouldReplaceCandidate(existing, item)) {
             bySession.set(key, item);
           }
         }

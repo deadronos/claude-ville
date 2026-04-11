@@ -15,13 +15,13 @@ function looksLikeNoise(text) {
   if (!text) return true;
 
   const patterns = [
-    /^file_count\b/i,
-    /^ageSec=\s*\d+/i,
-    /^providers?=\s*\[/i,
-    /^vscodeCount=\s*\d+/i,
-    /^toolHistoryCount=\s*\d+/i,
-    /^messagesCount=\s*\d+/i,
-    /^recentFiles:/i,
+    /^file_count\s+\d+\s+ageSec=\s*\d+(?:\s+size=.*)?\s*$/i,
+    /^providers?=\s*\[[^\]]*\]\s*$/i,
+    /^vscodeCount=\s*\d+\s*$/i,
+    /^toolHistoryCount=\s*\d+\s*$/i,
+    /^messagesCount=\s*\d+\s*$/i,
+    /^recentFiles:\s*$/i,
+    /^ageSec=\s*\d+\s+mtime=/i,
   ];
 
   return patterns.some((re) => re.test(text));

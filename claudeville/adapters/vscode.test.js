@@ -350,3 +350,82 @@ test('resolves session detail by sessionId when filePath is not provided', async
     else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
   }
 });
+
+test('dedupe prefers debug-log source over newer transcript/resource for same session id', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-vscode-priority-'));
+  const oldCodeDir = process.env.VSCODE_USER_DATA_DIR;
+  const oldInsidersDir = process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+
+  process.env.VSCODE_USER_DATA_DIR = path.join(tmpRoot, 'Code', 'User');
+  process.env.VSCODE_INSIDERS_USER_DATA_DIR = path.join(tmpRoot, 'Code - Insiders', 'User');
+
+  try {
+    const codeWorkspace = path.join(process.env.VSCODE_USER_DATA_DIR, 'workspaceStorage', 'ws-priority');
+    fs.mkdirSync(codeWorkspace, { recursive: true });
+    fs.writeFileSync(path.join(codeWorkspace, 'workspace.json'), JSON.stringify({ folder: 'file:///tmp/project-priority' }));
+
+    const sessionId = 'same-session-id';
+    const debugFile = path.join(codeWorkspace, 'GitHub.copilot-chat', 'debug-logs', sessionId, 'main.jsonl');
+    writeJsonLines(debugFile, [
+      {
+        ts: Date.now() - 1500,
+        type: 'llm_request',
+        name: 'chat:gpt-5',
+        attrs: { model: 'gpt-5', inputTokens: 5, outputTokens: 2 },
+      },
+      {
+        ts: Date.now() - 1200,
+        type: 'tool_call',
+        name: 'read_file',
+        attrs: { args: { filePath: '/tmp/project-priority/a.js' } },
+      },
+      {
+        ts: Date.now() - 1000,
+        type: 'agent_response',
+        attrs: { response: JSON.stringify([{ role: 'assistant', parts: [{ type: 'text', content: 'debug source message' }] }]) },
+      },
+    ]);
+
+    const transcriptFile = path.join(codeWorkspace, 'GitHub.copilot-chat', 'transcripts', `${sessionId}.jsonl`);
+    writeJsonLines(transcriptFile, [
+      {
+        type: 'assistant.message',
+        data: { content: 'newer transcript message' },
+        timestamp: new Date(Date.now() - 500).toISOString(),
+      },
+    ]);
+
+    const resourceFile = path.join(
+      codeWorkspace,
+      'GitHub.copilot-chat',
+      'chat-session-resources',
+      sessionId,
+      'call_xyz__vscode-1',
+      'content.txt'
+    );
+    fs.mkdirSync(path.dirname(resourceFile), { recursive: true });
+    fs.writeFileSync(resourceFile, 'newest resource message');
+
+    // mtime을 resource > transcript > debug 순으로 만들어도 debug가 선택되어야 함
+    const nowSec = Date.now() / 1000;
+    fs.utimesSync(debugFile, nowSec - 30, nowSec - 30);
+    fs.utimesSync(transcriptFile, nowSec - 20, nowSec - 20);
+    fs.utimesSync(resourceFile, nowSec - 10, nowSec - 10);
+
+    delete require.cache[require.resolve('./vscode')];
+    const { VSCodeAdapter } = require('./vscode');
+    const adapter = new VSCodeAdapter();
+
+    const sessions = await adapter.getActiveSessions(2 * 60 * 1000);
+    assert.equal(sessions.length, 1);
+    assert.ok(sessions[0].filePath.endsWith(path.join('debug-logs', sessionId, 'main.jsonl')));
+    assert.equal(sessions[0].lastMessage, 'debug source message');
+    assert.equal(sessions[0].lastTool, 'read_file');
+  } finally {
+    if (oldCodeDir === undefined) delete process.env.VSCODE_USER_DATA_DIR;
+    else process.env.VSCODE_USER_DATA_DIR = oldCodeDir;
+
+    if (oldInsidersDir === undefined) delete process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+    else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
+  }
+});

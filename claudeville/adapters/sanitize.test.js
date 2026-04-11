@@ -17,6 +17,11 @@ test('cleanText filters noisy diagnostics lines', () => {
   assert.equal(cleanText('providers= [\'claude\',\'vscode\']'), '');
 });
 
+test('cleanText keeps legitimate human text with diagnostic words', () => {
+  assert.equal(cleanText('file_count is wrong in this report'), 'file_count is wrong in this report');
+  assert.equal(cleanText('Can you check ageSec= values in the table?'), 'Can you check ageSec= values in the table?');
+});
+
 test('sanitizeSessionSummary cleans last message and tool input', () => {
   const session = sanitizeSessionSummary({
     lastMessage: '  useful update from model  ',
