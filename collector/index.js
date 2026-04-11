@@ -3,7 +3,6 @@ require('../load-local-env');
 const fs = require('fs');
 const crypto = require('crypto');
 const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters');
-const usageQuota = require('../claudeville/services/usageQuota');
 
 const HUB_URL = process.env.HUB_URL || 'http://localhost:3030';
 const HUB_AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
@@ -75,7 +74,6 @@ async function buildSnapshot() {
     teams,
     taskGroups,
     providers: getActiveProviders(),
-    usage: usageQuota.fetchUsage(),
     sessionDetails,
   };
 }
@@ -164,7 +162,6 @@ function startWatchers() {
 }
 
 async function main() {
-  usageQuota.init();
   startWatchers();
   await publishSnapshot();
 
