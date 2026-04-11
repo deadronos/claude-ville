@@ -251,7 +251,7 @@ function handleRuntimeConfig(req, res) {
   const runtimeConfig = buildRuntimeConfig(process.env);
   setCorsHeaders(res);
   res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
-  res.end(`window.__CLAUDEVILLE_CONFIG__ = Object.assign(window.__CLAUDEVILLE_CONFIG__ || {}, ${JSON.stringify(runtimeConfig)});\n`);
+  res.end(`window.__CLAUDEVILLE_CONFIG__ = ${JSON.stringify(runtimeConfig)};\n`);
 }
 
 // ─── WebSocket 구현 (RFC 6455) ──────────────────────────
@@ -443,12 +443,12 @@ async function sendInitialData(socket) {
 
 let watchDebounce = null;
 let broadcastInFlight = false;
-let broadcastNeedsRefresh = false;
+let broadcastPendingCount = 0;
 
 async function broadcastUpdate() {
   if (wsClients.size === 0) return;
   if (broadcastInFlight) {
-    broadcastNeedsRefresh = true;
+    broadcastPendingCount++;
     return;
   }
   broadcastInFlight = true;
@@ -468,8 +468,8 @@ async function broadcastUpdate() {
     console.error('[Watch] 데이터 처리 실패:', err.message);
   } finally {
     broadcastInFlight = false;
-    if (broadcastNeedsRefresh && wsClients.size > 0) {
-      broadcastNeedsRefresh = false;
+    if (broadcastPendingCount > 0 && wsClients.size > 0) {
+      broadcastPendingCount = 0;
       void broadcastUpdate();
     }
   }

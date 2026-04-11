@@ -11,6 +11,14 @@ const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const TEAMS_DIR = path.join(CLAUDE_DIR, 'teams');
 const TASKS_DIR = path.join(CLAUDE_DIR, 'tasks');
 
+function resolveProjectDisplayPath(projectPathMap, encodedProjectDirName) {
+  const mapped = projectPathMap.get(encodedProjectDirName);
+  if (mapped) return mapped;
+  // 인코딩된 프로젝트 디렉토리명은 '/' -> '-' 변환이라 역변환이 손실될 수 있음.
+  // 잘못된 경로를 추정하지 않고 안정적인 식별자 형태로 노출한다.
+  return `claude:projects:${encodedProjectDirName}`;
+}
+
 // ─── 유틸 ─────────────────────────────────────────────
 
 function readLastLines(filePath, lineCount) {
@@ -354,8 +362,7 @@ class ClaudeAdapter {
             const agentId = agentFile.replace('agent-', '').replace('.jsonl', '');
             const detail = getSubAgentDetail(filePath);
             // projectPathMap에서 정확한 경로 조회, 없으면 폴백 (하이픈 포함 경로 깨짐 방지)
-            const decodedProject = projectPathMap.get(projDir.name)
-              || '/' + projDir.name.replace(/^-/, '').replace(/-/g, '/');
+            const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
 
             results.push({
               sessionId: `subagent-${agentId}`,
@@ -410,8 +417,7 @@ class ClaudeAdapter {
           if (now - stat.mtimeMs > activeThresholdMs) continue;
 
           const detail = getSubAgentDetail(filePath);
-          const decodedProject = projectPathMap.get(projDir.name)
-            || '/' + projDir.name.replace(/^-/, '').replace(/-/g, '/');
+          const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
 
           results.push({
             sessionId,
