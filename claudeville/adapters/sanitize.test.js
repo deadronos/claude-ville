@@ -30,6 +30,20 @@ test('sanitizeSessionSummary cleans last message and tool input', () => {
 
   assert.equal(session.lastMessage, 'useful update from model');
   assert.equal(session.lastToolInput, '/Users/me/project/file.js');
+  assert.equal(session.rawLastMessage, '  useful update from model  ');
+  assert.equal(session.rawLastToolInput, '   /Users/me/project/file.js   ');
+});
+
+test('sanitizeSessionSummary preserves noisy raw values', () => {
+  const session = sanitizeSessionSummary({
+    lastMessage: 'file_count 279 ageSec=0 size=...',
+    lastToolInput: 'vscodeCount= 1',
+  });
+
+  assert.equal(session.lastMessage, 'file_count 279 ageSec=0 size=...');
+  assert.equal(session.lastToolInput, 'vscodeCount= 1');
+  assert.equal(session.rawLastMessage, 'file_count 279 ageSec=0 size=...');
+  assert.equal(session.rawLastToolInput, 'vscodeCount= 1');
 });
 
 test('sanitizeSessionDetail drops noisy messages and keeps valid ones', () => {

@@ -144,8 +144,10 @@ test('getAllSessions aggregates, sanitizes, and forwards filePath for detail loo
     assert.equal(sessions[1].sessionId, 'c-1');
 
     const claudeSession = sessions.find((s) => s.sessionId === 'c-1');
-    assert.equal(claudeSession.lastMessage, null);
+    assert.equal(claudeSession.lastMessage, 'file_count 279 ageSec=0');
     assert.equal(claudeSession.lastToolInput, '/tmp/path');
+    assert.equal(claudeSession.rawLastMessage, 'file_count 279 ageSec=0');
+    assert.equal(claudeSession.rawLastToolInput, '  /tmp/path  ');
     assert.equal(claudeSession.detail.messages.length, 1);
     assert.equal(claudeSession.detail.messages[0].text, 'meaningful output');
     assert.deepEqual(claudeSession.tokens, { input: 1200, output: 300 });

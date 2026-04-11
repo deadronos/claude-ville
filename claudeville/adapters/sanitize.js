@@ -11,6 +11,10 @@ function normalizeWhitespace(value) {
     .trim();
 }
 
+function summarizeText(value, maxLen = 200) {
+  return normalizeWhitespace(value).substring(0, maxLen);
+}
+
 function looksLikeNoise(text) {
   if (!text) return true;
 
@@ -28,9 +32,9 @@ function looksLikeNoise(text) {
 }
 
 function cleanText(value, maxLen = 200) {
-  const text = normalizeWhitespace(value);
+  const text = summarizeText(value, maxLen);
   if (!text || looksLikeNoise(text)) return '';
-  return text.substring(0, maxLen);
+  return text;
 }
 
 function sanitizeToolHistory(toolHistory = []) {
@@ -39,7 +43,7 @@ function sanitizeToolHistory(toolHistory = []) {
   return toolHistory
     .map((item) => ({
       ...item,
-      tool: cleanText(item?.tool || '', 80) || (item?.tool || 'unknown'),
+      tool: summarizeText(item?.tool || '', 80) || (item?.tool || 'unknown'),
       detail: cleanText(item?.detail || '', 140),
     }))
     .filter((item) => item.tool || item.detail);
@@ -67,8 +71,10 @@ function sanitizeSessionDetail(detail = {}) {
 function sanitizeSessionSummary(session = {}) {
   return {
     ...session,
-    lastMessage: cleanText(session?.lastMessage || '', 120) || null,
-    lastToolInput: cleanText(session?.lastToolInput || '', 80) || null,
+    rawLastMessage: session?.lastMessage ?? null,
+    rawLastToolInput: session?.lastToolInput ?? null,
+    lastMessage: summarizeText(session?.lastMessage || '', 120) || null,
+    lastToolInput: summarizeText(session?.lastToolInput || '', 80) || null,
   };
 }
 
@@ -76,4 +82,5 @@ module.exports = {
   cleanText,
   sanitizeSessionDetail,
   sanitizeSessionSummary,
+  summarizeText,
 };
