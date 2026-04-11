@@ -174,3 +174,61 @@ test('keeps vscode session active with provider minimum window', async () => {
     else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
   }
 });
+
+test('aggregates detail from all chat-session-resources content files', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-vscode-detail-'));
+  const oldCodeDir = process.env.VSCODE_USER_DATA_DIR;
+  const oldInsidersDir = process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+
+  process.env.VSCODE_USER_DATA_DIR = path.join(tmpRoot, 'Code', 'User');
+  process.env.VSCODE_INSIDERS_USER_DATA_DIR = path.join(tmpRoot, 'Code - Insiders', 'User');
+
+  try {
+    const insidersWorkspace = path.join(process.env.VSCODE_INSIDERS_USER_DATA_DIR, 'workspaceStorage', 'ws-detail');
+    fs.mkdirSync(insidersWorkspace, { recursive: true });
+    fs.writeFileSync(path.join(insidersWorkspace, 'workspace.json'), JSON.stringify({ folder: 'file:///tmp/project-detail' }));
+
+    const base = path.join(
+      insidersWorkspace,
+      'GitHub.copilot-chat',
+      'chat-session-resources',
+      'detail-session-id'
+    );
+
+    const entries = [
+      { dir: 'call_A__vscode-1', text: 'first call result text', tsOffsetSec: 6 },
+      { dir: 'toolu_bdrk_ABC__vscode-2', text: 'tool output text', tsOffsetSec: 4 },
+      { dir: 'call_B__vscode-3', text: 'second call result text', tsOffsetSec: 2 },
+    ];
+
+    const nowSec = Date.now() / 1000;
+    for (const entry of entries) {
+      const file = path.join(base, entry.dir, 'content.txt');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, entry.text);
+      const t = nowSec - entry.tsOffsetSec;
+      fs.utimesSync(file, t, t);
+    }
+
+    delete require.cache[require.resolve('./vscode')];
+    const { VSCodeAdapter } = require('./vscode');
+    const adapter = new VSCodeAdapter();
+
+    const sessions = await adapter.getActiveSessions(2 * 60 * 1000);
+    assert.equal(sessions.length, 1);
+
+    const detail = await adapter.getSessionDetail(sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
+    assert.ok(detail.toolHistory.length >= 3);
+    assert.ok(detail.messages.length >= 3);
+
+    const tools = detail.toolHistory.map(t => t.tool);
+    assert.ok(tools.includes('call_result'));
+    assert.ok(tools.includes('tool_result'));
+  } finally {
+    if (oldCodeDir === undefined) delete process.env.VSCODE_USER_DATA_DIR;
+    else process.env.VSCODE_USER_DATA_DIR = oldCodeDir;
+
+    if (oldInsidersDir === undefined) delete process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+    else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
+  }
+});
