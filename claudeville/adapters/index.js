@@ -7,6 +7,7 @@ const { CodexAdapter } = require('./codex');
 const { GeminiAdapter } = require('./gemini');
 const { OpenClawAdapter } = require('./openclaw');
 const { CopilotAdapter } = require('./copilot');
+const { VSCodeAdapter } = require('./vscode');
 
 const CLAUDE_RATE_TABLE = {
   'claude-opus-4-6': { input: 15, output: 75 },
@@ -25,6 +26,7 @@ const adapters = [
   new GeminiAdapter(),
   new OpenClawAdapter(),
   new CopilotAdapter(),
+  new VSCodeAdapter(),
 ];
 
 /**
