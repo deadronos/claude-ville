@@ -39,6 +39,12 @@ export interface Settings {
   chatFontSize: number;
 }
 
+// ─── Modal atoms ─────────────────────────────────────────
+
+export const modalOpenAtom = atom<boolean>(false);
+export const modalTitleAtom = atom<string>('');
+export const modalContentAtom = atom<string>('');
+
 // ─── Core atoms ──────────────────────────────────────────
 
 export const sessionsAtom = atom<Session[]>([]);
