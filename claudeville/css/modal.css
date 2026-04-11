@@ -233,3 +233,9 @@
     background: #e8d44d;
     border-color: #e8d44d;
 }
+
+.settings-divider {
+    height: 1px;
+    background: rgba(232, 212, 77, 0.1);
+    margin: 4px 0;
+}

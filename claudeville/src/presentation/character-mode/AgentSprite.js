@@ -3,6 +3,7 @@ import { AgentStatus } from '../../domain/value-objects/AgentStatus.js';
 import { TILE_WIDTH, TILE_HEIGHT, AGENT_SPEED } from '../../config/constants.js';
 import { BUILDING_DEFS } from '../../config/buildings.js';
 import { THEME } from '../../config/theme.js';
+import { getBubbleConfig } from '../../config/bubbleConfig.js';
 
 export class AgentSprite {
     constructor(agent) {
@@ -416,13 +417,14 @@ export class AgentSprite {
     _drawBubble(ctx, text, accentColor) {
         ctx.save();
         const s = 1 / (this._zoom || 1); // Zoom inverse correction
+        const cfg = getBubbleConfig();
 
         ctx.translate(this.x, this.y);
         ctx.scale(s, s); // Fixed size relative to screen
 
         // Measure text size + auto-truncate
-        ctx.font = 'bold 11px sans-serif';
-        const maxWidth = 180;
+        ctx.font = `bold ${cfg.statusFontSize}px sans-serif`;
+        const maxWidth = cfg.statusMaxWidth;
         let displayText = text;
         // Truncate by actual pixel width, not character count
         while (displayText.length > 0 && ctx.measureText(displayText).width > maxWidth) {
@@ -432,8 +434,8 @@ export class AgentSprite {
             displayText = displayText.substring(0, displayText.length - 1) + '…';
         }
         const textWidth = ctx.measureText(displayText).width;
-        const bubbleW = textWidth + 20;
-        const bubbleH = 24;
+        const bubbleW = textWidth + cfg.statusPaddingH;
+        const bubbleH = cfg.statusBubbleH;
         const radius = 6;
 
         ctx.translate(0, -38);
@@ -491,6 +493,7 @@ export class AgentSprite {
     _drawChatEffect(ctx) {
         ctx.save();
         const s = 1 / (this._zoom || 1);
+        const cfg = getBubbleConfig();
         ctx.translate(this.x, this.y);
         ctx.scale(s, s);
 
@@ -519,7 +522,7 @@ export class AgentSprite {
 
         // Chat icon (animated dots inside bubble)
         ctx.fillStyle = '#4ade80';
-        ctx.font = 'bold 12px sans-serif';
+        ctx.font = `bold ${cfg.chatFontSize}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const dots = ['.', '..', '...'][phase];
@@ -528,7 +531,7 @@ export class AgentSprite {
         // Floating emoji particles above
         const floatY = -56 + Math.sin(t * 2) * 4;
         ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3);
-        ctx.font = '12px sans-serif';
+        ctx.font = `${cfg.chatFontSize + 1}px sans-serif`;
         const emojis = ['\u{1F4AC}', '\u{1F4AD}', '\u2728'];
         ctx.fillText(emojis[Math.floor(t) % emojis.length], 0, floatY);
         ctx.globalAlpha = 1;

@@ -37,6 +37,17 @@ const STRINGS = {
     pooledRandomNames: 'Pooled random',
     providerNameModeNote: 'Provider overrides from the environment can still force a mode for specific providers.',
     nameModeChanged: (label) => `Name mode set to ${label}`,
+    bubbleSize: 'Speech bubble size',
+    bubbleSmall: 'Small',
+    bubbleMedium: 'Medium',
+    bubbleLarge: 'Large',
+    bubbleExtraLarge: 'Extra large',
+    chatSize: 'Chat bubble size',
+    chatSmall: 'Small',
+    chatMedium: 'Medium',
+    chatLarge: 'Large',
+    chatExtraLarge: 'Extra large',
+    settingsSaved: 'Settings saved',
 };
 
 class I18n {

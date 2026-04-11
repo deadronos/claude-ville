@@ -12,6 +12,7 @@ import { ModeManager } from '../application/ModeManager.js';
 import { SessionWatcher } from '../application/SessionWatcher.js';
 import { NotificationService } from '../application/NotificationService.js';
 import { getNameMode, setNameMode } from '../config/agentNames.js';
+import { getBubbleConfig, updateBubbleConfig } from '../config/bubbleConfig.js';
 
 import { TopBar } from './shared/TopBar.js';
 import { Sidebar } from './shared/Sidebar.js';
@@ -181,9 +182,44 @@ class App {
         const btn = document.getElementById('btnSettings');
         if (!btn) return;
 
-        btn.addEventListener('click', () => {
-            const currentMode = getNameMode();
-            this.modal.open(i18n.t('settingsTitle'), `
+        const BUBBLE_PRESETS = [
+            { key: 'small',  labelKey: 'bubbleSmall',  fontSize: 9,  maxWidth: 120, bubbleH: 20, paddingH: 16 },
+            { key: 'medium', labelKey: 'bubbleMedium', fontSize: 11, maxWidth: 200, bubbleH: 24, paddingH: 20 },
+            { key: 'large',  labelKey: 'bubbleLarge',  fontSize: 14, maxWidth: 260, bubbleH: 30, paddingH: 24 },
+            { key: 'xlarge', labelKey: 'bubbleExtraLarge', fontSize: 18, maxWidth: 320, bubbleH: 38, paddingH: 30 },
+        ];
+
+        const CHAT_PRESETS = [
+            { key: 'small',  fontSize: 9  },
+            { key: 'medium', fontSize: 11 },
+            { key: 'large',  fontSize: 14 },
+            { key: 'xlarge', fontSize: 18 },
+        ];
+
+        const bubbleLabel = (preset) => i18n.t(preset.labelKey || `bubble${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
+        const chatLabel  = (preset) => i18n.t(preset.labelKey || `chat${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
+
+        const bubbleBtns = (presets, currentKey, onSelect) => {
+            return presets.map(p => {
+                const active = currentKey === p.key ? ' settings-lang-btn--active' : '';
+                return `<button class="settings-lang-btn${active}" data-size="${p.key}">${bubbleLabel(p)}</button>`;
+            }).join('');
+        };
+
+        const buildForm = () => {
+            const cfg = getBubbleConfig();
+            const sizeToKey = (v, fallback) => {
+                const found = BUBBLE_PRESETS.find(p => p.fontSize === v);
+                return found ? found.key : fallback;
+            };
+            const chatSizeToKey = (v) => {
+                const found = CHAT_PRESETS.find(p => p.fontSize === v);
+                return found ? found.key : 'medium';
+            };
+            const currentBubble = sizeToKey(cfg.statusFontSize, 'medium');
+            const currentChat = chatSizeToKey(cfg.chatFontSize);
+
+            return `
                 <div class="settings-form">
                     <div class="settings-row">
                         <span class="settings-label">${i18n.t('nameMode')}</span>
@@ -193,10 +229,29 @@ class App {
                         </div>
                     </div>
                     <div class="settings-note">${i18n.t('providerNameModeNote')}</div>
+                    <div class="settings-divider"></div>
+                    <div class="settings-row">
+                        <span class="settings-label">${i18n.t('bubbleSize')}</span>
+                        <div class="settings-lang-btns">
+                            ${bubbleBtns(BUBBLE_PRESETS, currentBubble)}
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">${i18n.t('chatSize')}</span>
+                        <div class="settings-lang-btns">
+                            ${bubbleBtns(CHAT_PRESETS, currentChat)}
+                        </div>
+                    </div>
                 </div>
-            `);
+            `;
+        };
 
-            document.querySelectorAll('.settings-lang-btn').forEach(modeBtn => {
+        btn.addEventListener('click', () => {
+            const currentMode = getNameMode();
+            this.modal.open(i18n.t('settingsTitle'), buildForm());
+
+            // Name mode buttons
+            document.querySelectorAll('.settings-lang-btn[data-mode]').forEach(modeBtn => {
                 modeBtn.addEventListener('click', () => {
                     const nextMode = modeBtn.dataset.mode;
                     if (nextMode === getNameMode()) return;
@@ -215,6 +270,26 @@ class App {
                     this.modal.close();
                     if (this.toast) {
                         this.toast.show(i18n.t('nameModeChanged')(i18n.t(nextMode === 'pooled' ? 'pooledRandomNames' : 'autodetectedNames')), 'success');
+                    }
+                });
+            });
+
+            // Status bubble size buttons
+            document.querySelectorAll('.settings-lang-btn[data-size]').forEach(sizeBtn => {
+                sizeBtn.addEventListener('click', () => {
+                    const key = sizeBtn.dataset.size;
+                    const preset = BUBBLE_PRESETS.find(p => p.key === key);
+                    const chatPreset = CHAT_PRESETS.find(p => p.key === key);
+                    if (!preset) return;
+                    updateBubbleConfig({
+                        statusFontSize: preset.fontSize,
+                        statusMaxWidth: preset.maxWidth,
+                        statusBubbleH: preset.bubbleH,
+                        statusPaddingH: preset.paddingH,
+                        chatFontSize: chatPreset ? chatPreset.fontSize : cfg.chatFontSize,
+                    });
+                    if (this.toast) {
+                        this.toast.show(i18n.t('settingsSaved'), 'success');
                     }
                 });
             });
