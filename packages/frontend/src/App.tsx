@@ -1,9 +1,15 @@
 import * as React from 'react';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
+import { WorldCanvas } from './components/WorldCanvas';
+import { ActivityPanel } from './components/ActivityPanel';
+import { ToastContainer } from './components/Toast';
+import { useHubClient } from './hub-client';
 import { pixelTheme } from '@claude-ville/ui';
 
 function AppInner() {
+  useHubClient();
+
   return (
     <div
       style={{
@@ -17,22 +23,11 @@ function AppInner() {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar />
         <main style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: pixelTheme.colors.border,
-              fontFamily: pixelTheme.fontFamily.pixel,
-              fontSize: pixelTheme.fontSize.sm,
-            }}
-          >
-            CANVAS LOADING...
-          </div>
+          <WorldCanvas />
         </main>
+        <ActivityPanel />
       </div>
+      <ToastContainer />
     </div>
   );
 }
