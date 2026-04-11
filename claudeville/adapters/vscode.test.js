@@ -130,3 +130,47 @@ test('collects active session from chat-session-resources content files', async 
     else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
   }
 });
+
+test('keeps vscode session active with provider minimum window', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-vscode-window-'));
+  const oldCodeDir = process.env.VSCODE_USER_DATA_DIR;
+  const oldInsidersDir = process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+
+  process.env.VSCODE_USER_DATA_DIR = path.join(tmpRoot, 'Code', 'User');
+  process.env.VSCODE_INSIDERS_USER_DATA_DIR = path.join(tmpRoot, 'Code - Insiders', 'User');
+
+  try {
+    const insidersWorkspace = path.join(process.env.VSCODE_INSIDERS_USER_DATA_DIR, 'workspaceStorage', 'ws-window');
+    fs.mkdirSync(insidersWorkspace, { recursive: true });
+    fs.writeFileSync(path.join(insidersWorkspace, 'workspace.json'), JSON.stringify({ folder: 'file:///tmp/project-window' }));
+
+    const contentFile = path.join(
+      insidersWorkspace,
+      'GitHub.copilot-chat',
+      'chat-session-resources',
+      'window-session-id',
+      'call_old__vscode-123',
+      'content.txt'
+    );
+    fs.mkdirSync(path.dirname(contentFile), { recursive: true });
+    fs.writeFileSync(contentFile, 'still active between turns');
+
+    const nowSec = Date.now() / 1000;
+    const oldSec = nowSec - 300; // 5분 전
+    fs.utimesSync(contentFile, oldSec, oldSec);
+
+    delete require.cache[require.resolve('./vscode')];
+    const { VSCodeAdapter } = require('./vscode');
+    const adapter = new VSCodeAdapter();
+
+    const sessions = await adapter.getActiveSessions(2 * 60 * 1000);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].project, '/tmp/project-window');
+  } finally {
+    if (oldCodeDir === undefined) delete process.env.VSCODE_USER_DATA_DIR;
+    else process.env.VSCODE_USER_DATA_DIR = oldCodeDir;
+
+    if (oldInsidersDir === undefined) delete process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+    else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
+  }
+});

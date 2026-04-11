@@ -18,6 +18,8 @@ const STORAGE_ROOTS = [
   { channel: 'vscode-insiders', workspaceStorageDir: path.join(VSCODE_INSIDERS_USER_DIR, 'workspaceStorage') },
 ];
 
+const MIN_ACTIVE_WINDOW_MS = 10 * 60 * 1000;
+
 async function readLines(filePath, { from = 'end', count = 60 } = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
@@ -278,6 +280,7 @@ function parseSessionId(sessionId) {
 
 async function scanAllSessions(activeThresholdMs) {
   const now = Date.now();
+  const effectiveThresholdMs = Math.max(Number(activeThresholdMs || 0), MIN_ACTIVE_WINDOW_MS);
   const results = [];
 
   for (const root of STORAGE_ROOTS) {
@@ -319,7 +322,7 @@ async function scanAllSessions(activeThresholdMs) {
 
               try {
                 const stat = await fs.promises.stat(mainLogFile);
-                if (now - stat.mtimeMs > activeThresholdMs) return null;
+                if (now - stat.mtimeMs > effectiveThresholdMs) return null;
                 return {
                   channel: root.channel,
                   workspaceId,
@@ -352,7 +355,7 @@ async function scanAllSessions(activeThresholdMs) {
               const transcriptPath = path.join(transcriptsDir, file);
               try {
                 const stat = await fs.promises.stat(transcriptPath);
-                if (now - stat.mtimeMs > activeThresholdMs) return null;
+                if (now - stat.mtimeMs > effectiveThresholdMs) return null;
 
                 return {
                   channel: root.channel,
@@ -407,7 +410,7 @@ async function scanAllSessions(activeThresholdMs) {
               }
 
               if (!newest) return null;
-              if (now - newest.mtime > activeThresholdMs) return null;
+              if (now - newest.mtime > effectiveThresholdMs) return null;
 
               return {
                 channel: root.channel,
