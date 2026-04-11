@@ -1,4 +1,4 @@
-import { eventBus } from '../events/DomainEvent.js';
+import { eventBus } from '../../domain/events/DomainEvent.js';
 
 export class World {
     constructor() {
