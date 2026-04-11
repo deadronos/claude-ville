@@ -71,12 +71,6 @@ export function WorldCanvas() {
     rendererRef.current.selectAgentById(selectedAgentId ?? null);
   }, [selectedAgentId]);
 
-  // Rebuild world when sessions change (Phase 2 — full re-sync in Phase 3)
-  React.useEffect(() => {
-    // In Phase 3 when we have the full adapter, we'll update the world incrementally
-    // For Phase 2, the canvas re-mounts on session changes via the dynamic import
-  }, [sessions]);
-
   return (
     <div
       ref={containerRef}

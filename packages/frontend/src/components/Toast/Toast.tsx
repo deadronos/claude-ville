@@ -31,7 +31,7 @@ export function ToastContainer() {
         pointerEvents: 'none',
       }}
     >
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {toasts.map(toast => (
           <motion.div
             key={toast.id}
