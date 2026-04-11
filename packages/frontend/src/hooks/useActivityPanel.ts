@@ -20,12 +20,13 @@ export function useActivityPanel(agent: Session | null) {
       return;
     }
 
+    const sessionId = agent.sessionId;
     setCurrentTool(agent.currentTool?.name || null);
 
     async function fetchDetail() {
       try {
         const params = new URLSearchParams({
-          sessionId: agent.sessionId,
+          sessionId: sessionId,
           project: agent.project || '',
           provider: agent.provider || 'claude',
         });
@@ -43,12 +44,10 @@ export function useActivityPanel(agent: Session | null) {
     }
 
     fetchDetail();
-    pollTimerRef.current = setInterval(fetchDetail, 2000);
+    const timer = setInterval(fetchDetail, 2000);
 
-    return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    };
-  }, [agent?.sessionId]);
+    return () => clearInterval(timer);
+  }, [agent]);
 
   return { detail, currentTool };
 }
