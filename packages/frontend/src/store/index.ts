@@ -14,18 +14,20 @@ export interface Session {
     name: string;
     input?: string;
   };
-  detail?: {
-    messages: Array<{
-      role: string;
-      text: string;
-      ts: number;
-    }>;
-    toolHistory: Array<{
-      name: string;
-      ts: number;
-      input?: string;
-    }>;
-  };
+  detail?: SessionDetail;
+}
+
+export interface SessionDetail {
+  messages: Array<{
+    role: string;
+    text: string;
+    ts: number;
+  }>;
+  toolHistory: Array<{
+    name: string;
+    ts: number;
+    input?: string;
+  }>;
 }
 
 export interface Toast {

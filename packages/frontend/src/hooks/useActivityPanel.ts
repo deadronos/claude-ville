@@ -1,12 +1,7 @@
 // packages/frontend/src/hooks/useActivityPanel.ts
 
 import { useState, useEffect, useRef } from 'react';
-import type { Session } from '../store';
-
-interface SessionDetail {
-  messages: Array<{ role: string; text: string; ts: number }>;
-  toolHistory: Array<{ name: string; ts: number; input?: string }>;
-}
+import type { Session, SessionDetail } from '../store';
 
 export function useActivityPanel(agent: Session | null) {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
