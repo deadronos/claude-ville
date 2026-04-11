@@ -232,3 +232,121 @@ test('aggregates detail from all chat-session-resources content files', async ()
     else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
   }
 });
+
+test('parses transcript format with assistant.message and tool.execution_start', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-vscode-transcript-'));
+  const oldCodeDir = process.env.VSCODE_USER_DATA_DIR;
+  const oldInsidersDir = process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+
+  process.env.VSCODE_USER_DATA_DIR = path.join(tmpRoot, 'Code', 'User');
+  process.env.VSCODE_INSIDERS_USER_DATA_DIR = path.join(tmpRoot, 'Code - Insiders', 'User');
+
+  try {
+    const codeWorkspace = path.join(process.env.VSCODE_USER_DATA_DIR, 'workspaceStorage', 'ws-transcript');
+    fs.mkdirSync(codeWorkspace, { recursive: true });
+    fs.writeFileSync(path.join(codeWorkspace, 'workspace.json'), JSON.stringify({ folder: 'file:///tmp/project-transcript' }));
+
+    const transcriptFile = path.join(
+      codeWorkspace,
+      'GitHub.copilot-chat',
+      'transcripts',
+      'session-transcript-1.jsonl'
+    );
+
+    writeJsonLines(transcriptFile, [
+      {
+        type: 'session.start',
+        data: { sessionId: 'session-transcript-1', vscodeVersion: '1.116.0-insider' },
+        timestamp: new Date(Date.now() - 1500).toISOString(),
+      },
+      {
+        type: 'tool.execution_start',
+        data: { toolName: 'read_file', arguments: { filePath: '/tmp/project-transcript/a.js' } },
+        timestamp: new Date(Date.now() - 1200).toISOString(),
+      },
+      {
+        type: 'assistant.message',
+        data: {
+          content: 'Transcript assistant response',
+          toolRequests: [{ name: 'list_dir', arguments: '{"path":"/tmp/project-transcript"}' }],
+        },
+        timestamp: new Date(Date.now() - 1000).toISOString(),
+      },
+    ]);
+
+    delete require.cache[require.resolve('./vscode')];
+    const { VSCodeAdapter } = require('./vscode');
+    const adapter = new VSCodeAdapter();
+
+    const sessions = await adapter.getActiveSessions(60 * 1000);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].project, '/tmp/project-transcript');
+    assert.match(sessions[0].model, /^copilot-chat@/);
+    assert.equal(sessions[0].lastMessage, 'Transcript assistant response');
+    // assistant.message의 toolRequests가 tool.execution_start보다 우선(last)으로 반영됨
+    assert.equal(sessions[0].lastTool, 'list_dir');
+
+    const detail = await adapter.getSessionDetail(sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
+    assert.ok(detail.toolHistory.some((t) => t.tool === 'read_file'));
+    assert.ok(detail.messages.some((m) => m.text === 'Transcript assistant response'));
+  } finally {
+    if (oldCodeDir === undefined) delete process.env.VSCODE_USER_DATA_DIR;
+    else process.env.VSCODE_USER_DATA_DIR = oldCodeDir;
+
+    if (oldInsidersDir === undefined) delete process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+    else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
+  }
+});
+
+test('resolves session detail by sessionId when filePath is not provided', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ville-vscode-detail-lookup-'));
+  const oldCodeDir = process.env.VSCODE_USER_DATA_DIR;
+  const oldInsidersDir = process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+
+  process.env.VSCODE_USER_DATA_DIR = path.join(tmpRoot, 'Code', 'User');
+  process.env.VSCODE_INSIDERS_USER_DATA_DIR = path.join(tmpRoot, 'Code - Insiders', 'User');
+
+  try {
+    const codeWorkspace = path.join(process.env.VSCODE_USER_DATA_DIR, 'workspaceStorage', 'ws-lookup');
+    fs.mkdirSync(codeWorkspace, { recursive: true });
+    fs.writeFileSync(path.join(codeWorkspace, 'workspace.json'), JSON.stringify({ folder: 'file:///tmp/project-lookup' }));
+
+    const transcriptFile = path.join(
+      codeWorkspace,
+      'GitHub.copilot-chat',
+      'transcripts',
+      'lookup-session.jsonl'
+    );
+
+    writeJsonLines(transcriptFile, [
+      {
+        type: 'assistant.message',
+        data: { content: 'lookup message text' },
+        timestamp: new Date(Date.now() - 1200).toISOString(),
+      },
+      {
+        type: 'tool.execution_start',
+        data: { toolName: 'read_file', arguments: { filePath: '/tmp/project-lookup/README.md' } },
+        timestamp: new Date(Date.now() - 1000).toISOString(),
+      },
+    ]);
+
+    delete require.cache[require.resolve('./vscode')];
+    const { VSCodeAdapter } = require('./vscode');
+    const adapter = new VSCodeAdapter();
+
+    const sessions = await adapter.getActiveSessions(60 * 1000);
+    assert.equal(sessions.length, 1);
+    const sessionId = sessions[0].sessionId;
+
+    const detail = await adapter.getSessionDetail(sessionId, '/tmp/project-lookup');
+    assert.ok(detail.messages.some((m) => m.text === 'lookup message text'));
+    assert.ok(detail.toolHistory.some((t) => t.tool === 'read_file'));
+  } finally {
+    if (oldCodeDir === undefined) delete process.env.VSCODE_USER_DATA_DIR;
+    else process.env.VSCODE_USER_DATA_DIR = oldCodeDir;
+
+    if (oldInsidersDir === undefined) delete process.env.VSCODE_INSIDERS_USER_DATA_DIR;
+    else process.env.VSCODE_INSIDERS_USER_DATA_DIR = oldInsidersDir;
+  }
+});
