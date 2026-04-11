@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node claudeville/server.js",
+    "dev": "pnpm -r --parallel dev",
+    "dev:frontend": "pnpm --filter frontend dev",
     "dev:collector": "node collector/index.js",
-    "dev:hubreceiver": "node hubreceiver/server.js",
-    "dev:frontend": "node frontend/server.js",
+    "dev:hub": "node hubreceiver/server.js",
     "widget:build": "cd widget && bash build.sh",
     "widget": "open widget/ClaudeVilleWidget.app"
-  }
+  },
+  "packageManager": "pnpm@9"
 }
