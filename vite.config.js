@@ -1,8 +1,30 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+require("./load-local-env");
 const vite_1 = require("vite");
+const runtime_config_shared_1 = require("./runtime-config.shared");
+const runtimeConfig = (0, runtime_config_shared_1.buildRuntimeConfig)(process.env);
+function serializeRuntimeConfig(config) {
+    return JSON.stringify(config).replace(/</g, '\\u003c');
+}
 exports.default = (0, vite_1.defineConfig)({
     root: 'claudeville',
+    plugins: [
+        {
+            name: 'claudeville-runtime-config',
+            transformIndexHtml() {
+                return {
+                    tags: [
+                        {
+                            tag: 'script',
+                            injectTo: 'head-prepend',
+                            children: `window.__CLAUDEVILLE_CONFIG__ = ${serializeRuntimeConfig(runtimeConfig)};`
+                        }
+                    ]
+                };
+            }
+        }
+    ],
     server: {
         port: 3001,
         proxy: {
