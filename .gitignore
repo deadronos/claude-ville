@@ -8,3 +8,14 @@ docs/plans/
 .env
 .env.local
 
+
+# tsgo emitted files
+claudeville/**/*.js
+!claudeville/widget/**/*.js
+frontend/**/*.js
+hubreceiver/**/*.js
+collector/**/*.js
+load-local-env.js
+demo-server.js
+runtime-config.shared.js
+

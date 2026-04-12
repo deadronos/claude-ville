@@ -3,16 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node claudeville/server.ts",
-    "dev:collector": "node collector/index.ts",
-    "dev:hubreceiver": "node hubreceiver/server.ts",
-    "dev:frontend": "node frontend/server.ts",
+    "dev": "node claudeville/server.js",
+    "dev:collector": "node collector/index.js",
+    "dev:hubreceiver": "node hubreceiver/server.js",
+    "dev:frontend": "node frontend/server.js",
     "widget:build": "cd widget && bash build.sh",
     "widget": "open widget/ClaudeVilleWidget.app",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsgo || true"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.6.0"
+  },
+  "dependencies": {
+    "@typescript/native-preview": "^7.0.0-dev.20260412.1",
     "typescript": "^6.0.2"
   }
 }
