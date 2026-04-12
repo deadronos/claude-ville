@@ -59,4 +59,24 @@ function loadLocalEnv(filePath = path.join(__dirname, '.env.local')) {
 
 loadLocalEnv();
 
+const Mod = require('module');
+if (Mod && Mod._resolveFilename) {
+  const orig = Mod._resolveFilename;
+  Mod._resolveFilename = function(req, parent, isMain, options) {
+    try {
+      return orig.apply(this, arguments);
+    } catch (e) {
+      if (e.code === 'MODULE_NOT_FOUND') {
+        try {
+          return orig.call(this, req + '.ts', parent, isMain, options);
+        } catch (noop) {}
+        try {
+          return orig.call(this, req + '/index.ts', parent, isMain, options);
+        } catch (noop) {}
+      }
+      throw e;
+    }
+  };
+}
+
 module.exports = loadLocalEnv;

@@ -1,4 +1,4 @@
-require('../load-local-env');
+require('../load-local-env.ts');
 
 const http = require('http');
 const fs = require('fs');
@@ -75,6 +75,15 @@ const server = http.createServer((req, res) => {
   }
 
   filePath = resolvedPath.split('?')[0];
+
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.js' && !fs.existsSync(filePath)) {
+    const tsPath = filePath.slice(0, -3) + '.ts';
+    if (fs.existsSync(tsPath)) {
+      filePath = tsPath;
+    }
+  }
+
   if (!fs.existsSync(filePath)) {
     sendError(res, 404, 'Not Found');
     return;
@@ -89,7 +98,31 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  serveFile(req, res, filePath);
+  const actualExt = path.extname(filePath).toLowerCase();
+  const reqExt = url.pathname.endsWith('.js') ? '.js' : actualExt;
+  const contentType = MIME_TYPES[reqExt] || 'application/octet-stream';
+  
+  setCorsHeaders(res);
+  res.writeHead(200, {
+    'Content-Type': contentType,
+    'Cache-Control': 'no-cache',
+  });
+
+  if (actualExt === '.ts' || actualExt === '.tsx') {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    try {
+      const { stripTypeScriptTypes } = require('module');
+      const stripped = stripTypeScriptTypes(content);
+      res.end(stripped);
+    } catch(e) {
+       // fallback if strip fails
+       res.end(content);
+    }
+  } else {
+    fs.createReadStream(filePath, contentType.startsWith('text') || contentType.includes('javascript') || contentType.includes('json') || contentType.includes('svg')
+      ? { encoding: 'utf-8' }
+      : undefined).pipe(res);
+  }
 });
 
 server.listen(PORT, () => {

@@ -1,4 +1,4 @@
-require('../load-local-env');
+require('../load-local-env.ts');
 
 const fs = require('fs');
 const crypto = require('crypto');

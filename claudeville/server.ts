@@ -1,4 +1,4 @@
-require('../load-local-env');
+require('../load-local-env.ts');
 
 const http = require('http');
 const fs = require('fs');
@@ -206,6 +206,14 @@ function handleStaticFile(req, res) {
 
     filePath = resolvedPath.split('?')[0];
 
+    let ext = path.extname(filePath).toLowerCase();
+    if (ext === '.js' && !fs.existsSync(filePath)) {
+      const tsPath = filePath.slice(0, -3) + '.ts';
+      if (fs.existsSync(tsPath)) {
+        filePath = tsPath;
+      }
+    }
+
     if (!fs.existsSync(filePath)) {
       return sendError(res, 404, 'Not Found');
     }
@@ -218,8 +226,9 @@ function handleStaticFile(req, res) {
       }
     }
 
-    const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const actualExt = path.extname(filePath).toLowerCase();
+    const reqExt = req.url.split('?')[0].endsWith('.js') ? '.js' : actualExt;
+    const contentType = MIME_TYPES[reqExt] || 'application/octet-stream';
     const isText = contentType.includes('text') ||
                    contentType.includes('javascript') ||
                    contentType.includes('json') ||
@@ -231,14 +240,25 @@ function handleStaticFile(req, res) {
       'Cache-Control': 'no-cache',
     });
 
-    const stream = fs.createReadStream(filePath, isText ? { encoding: 'utf-8' } : undefined);
-    stream.pipe(res);
-    stream.on('error', (err) => {
-      console.error('file stream error:', err.message);
-      if (!res.headersSent) {
-        sendError(res, 500, 'Internal Server Error');
+    if (actualExt === '.ts' || actualExt === '.tsx') {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      try {
+        const { stripTypeScriptTypes } = require('module');
+        const stripped = stripTypeScriptTypes(content);
+        res.end(stripped);
+      } catch(e) {
+         res.end(content);
       }
-    });
+    } else {
+      const stream = fs.createReadStream(filePath, isText ? { encoding: 'utf-8' } : undefined);
+      stream.pipe(res);
+      stream.on('error', (err) => {
+        console.error('file stream error:', err.message);
+        if (!res.headersSent) {
+          sendError(res, 500, 'Internal Server Error');
+        }
+      });
+    }
   } catch (err) {
     console.error('static file serving failed:', err.message);
     if (!res.headersSent) {
