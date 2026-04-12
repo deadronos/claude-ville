@@ -6,8 +6,18 @@
     "dev": "node claudeville/server.js",
     "dev:collector": "node collector/index.js",
     "dev:hubreceiver": "node hubreceiver/server.js",
-    "dev:frontend": "node frontend/server.js",
+    "dev:frontend": "vite",
+    "build:frontend": "vite build",
     "widget:build": "cd widget && bash build.sh",
-    "widget": "open widget/ClaudeVilleWidget.app"
+    "widget": "open widget/ClaudeVilleWidget.app",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "vite": "^8.0.8"
+  },
+  "dependencies": {
+    "typescript": "^6.0.2"
   }
 }
