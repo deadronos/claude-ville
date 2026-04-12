@@ -29,7 +29,7 @@ function toList(value) {
         .filter(Boolean);
 }
 
-function normalizeNamePools(rawPools: any = {}) {
+function normalizeNamePools(rawPools: Record<string, unknown> = {}) {
     const agent = toList(rawPools.agent || rawPools.en || rawPools.agentNames || rawPools.agentNamePool);
     const session = toList(rawPools.session || rawPools.sessions || rawPools.sessionNamePool);
     return {
@@ -40,9 +40,10 @@ function normalizeNamePools(rawPools: any = {}) {
 
 function getNamePools() {
     const runtime = getRuntimeConfig();
+    const namePools = (runtime.namePools as Record<string, unknown>) || {};
     return normalizeNamePools({
-        agent: runtime.agentNamePool || runtime.agentNames || runtime.namePools?.agent || DEFAULT_AGENT_NAME_POOLS.agent,
-        session: runtime.sessionNamePool || runtime.namePools?.session || DEFAULT_AGENT_NAME_POOLS.session,
+        agent: runtime.agentNamePool || runtime.agentNames || namePools.agent || DEFAULT_AGENT_NAME_POOLS.agent,
+        session: runtime.sessionNamePool || namePools.session || DEFAULT_AGENT_NAME_POOLS.session,
     });
 }
 

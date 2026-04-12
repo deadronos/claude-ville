@@ -329,6 +329,12 @@ function handleWebSocketFrame(socket, buffer) {
     offset = 10;
   }
 
+  // Guard: reject frames larger than 100MB to prevent memory exhaustion
+  if (payloadLength > 100 * 1024 * 1024) {
+    reportWebSocketFrameIssue(socket, `frame too large: ${payloadLength} bytes`);
+    return;
+  }
+
   if (buffer.length < offset + 4) return;
   const maskKey = buffer.slice(offset, offset + 4);
   offset += 4;
@@ -345,11 +351,19 @@ function handleWebSocketFrame(socket, buffer) {
       handleTextMessage(socket, payload.toString('utf-8'));
       break;
     case 0x8:
-      socket.end(createWebSocketFrame('', 0x8));
+      try {
+        socket.end(createWebSocketFrame('', 0x8));
+      } catch (err) {
+        socket.destroy();
+      }
       wsClients.delete(socket);
       break;
     case 0x9:
-      socket.write(createWebSocketFrame(payload, 0xa));
+      try {
+        socket.write(createWebSocketFrame(payload, 0xa));
+      } catch (err) {
+        reportWebSocketFrameIssue(socket, `pong frame creation failed`);
+      }
       break;
     case 0xa:
       break;
@@ -375,6 +389,11 @@ function createWebSocketFrame(data, opcode = 0x1) {
   const payload = isBuffer ? data : Buffer.from(String(data), 'utf-8');
   const length = payload.length;
 
+  // Guard: reject frames larger than 100MB to prevent memory exhaustion
+  if (length > 100 * 1024 * 1024) {
+    throw new Error(`Frame payload too large: ${length} bytes`);
+  }
+
   let header;
   if (length < 126) {
     header = Buffer.alloc(2);
@@ -389,6 +408,10 @@ function createWebSocketFrame(data, opcode = 0x1) {
     header = Buffer.alloc(10);
     header[0] = 0x80 | opcode;
     header[1] = 127;
+    // Guard: check BigInt doesn't exceed JS safe integer range
+    if (length > Number.MAX_SAFE_INTEGER) {
+      throw new Error(`Frame payload exceeds safe size: ${length} bytes`);
+    }
     header.writeBigUInt64BE(BigInt(length), 2);
   }
 
@@ -398,28 +421,52 @@ function createWebSocketFrame(data, opcode = 0x1) {
 function wsSend(socket: any, data: any) {
   try {
     if (!socket.destroyed && socket.writable) {
-      socket.write(createWebSocketFrame(JSON.stringify(data)));
+      socket.write(createWebSocketFrame(JSON.stringify(data)), (err) => {
+        if (err && err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
+          console.error(`[WebSocket] send failed (${err.code}): ${err.message}`);
+        }
+      });
+    } else {
+      wsClients.delete(socket);
     }
   } catch (err: any) {
-    if (err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
-      // ignore send errors
-    }
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[WebSocket] send error: ${msg}`);
     wsClients.delete(socket);
   }
 }
 
 function wsBroadcast(data: any) {
-  const frame = createWebSocketFrame(JSON.stringify(data));
+  let frame: Buffer;
+  try {
+    frame = createWebSocketFrame(JSON.stringify(data));
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[WebSocket] broadcast frame creation failed: ${msg}`);
+    return;
+  }
+
+  const deadSockets: any[] = [];
   for (const socket of wsClients as Set<any>) {
     try {
-      if (socket.writable) {
-        socket.write(frame);
+      if (!socket.destroyed && socket.writable) {
+        socket.write(frame, (err) => {
+          if (err && err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
+            console.error(`[WebSocket] broadcast send failed (${err.code}): ${err.message}`);
+          }
+        });
       } else {
-        wsClients.delete(socket);
+        deadSockets.push(socket);
       }
-    } catch {
-      wsClients.delete(socket);
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[WebSocket] broadcast error: ${msg}`);
+      deadSockets.push(socket);
     }
+  }
+  // Clean up dead sockets
+  for (const socket of deadSockets) {
+    wsClients.delete(socket);
   }
 }
 

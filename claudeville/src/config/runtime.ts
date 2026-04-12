@@ -1,14 +1,20 @@
-const config = (window as any).__CLAUDEVILLE_CONFIG__ || {};
+interface RuntimeConfig {
+    hubHttpUrl?: string;
+    hubWsUrl?: string;
+    [key: string]: unknown;
+}
 
-function fallbackWsUrl() {
+const config: RuntimeConfig = ((window as unknown as Record<string, unknown>).__CLAUDEVILLE_CONFIG__ || {}) as RuntimeConfig;
+
+function fallbackWsUrl(): string {
     return `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 }
 
-export function getHubHttpUrl() {
+export function getHubHttpUrl(): string {
     return config.hubHttpUrl || window.location.origin;
 }
 
-export function getHubApiUrl(pathname: string, searchParams?: any) {
+export function getHubApiUrl(pathname: string, searchParams?: URLSearchParams | string | Record<string, string | number | boolean | null | undefined>): string {
     const url = new URL(pathname, getHubHttpUrl());
 
     if (searchParams instanceof URLSearchParams) {
@@ -28,10 +34,10 @@ export function getHubApiUrl(pathname: string, searchParams?: any) {
     return url.toString();
 }
 
-export function getHubWsUrl() {
+export function getHubWsUrl(): string {
     return config.hubWsUrl || fallbackWsUrl();
 }
 
-export function getRuntimeConfig() {
-    return (window as any).__CLAUDEVILLE_CONFIG__ || config;
+export function getRuntimeConfig(): RuntimeConfig {
+    return (window as unknown as Record<string, unknown>).__CLAUDEVILLE_CONFIG__ as RuntimeConfig || config;
 }
