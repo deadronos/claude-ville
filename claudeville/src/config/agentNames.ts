@@ -29,7 +29,7 @@ function toList(value) {
         .filter(Boolean);
 }
 
-function normalizeNamePools(rawPools = {}) {
+function normalizeNamePools(rawPools: any = {}) {
     const agent = toList(rawPools.agent || rawPools.en || rawPools.agentNames || rawPools.agentNamePool);
     const session = toList(rawPools.session || rawPools.sessions || rawPools.sessionNamePool);
     return {

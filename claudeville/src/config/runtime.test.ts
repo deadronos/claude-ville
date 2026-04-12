@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 test('runtime config with values', async () => {
-    globalThis.window = {
+    (globalThis.window as any) = {
         __CLAUDEVILLE_CONFIG__: {
             hubHttpUrl: 'https://config-hub.com',
             hubWsUrl: 'wss://config-hub.com'
@@ -20,14 +20,14 @@ test('runtime config with values', async () => {
 
     assert.strictEqual(getHubHttpUrl(), 'https://config-hub.com');
     assert.strictEqual(getHubWsUrl(), 'wss://config-hub.com');
-    assert.deepEqual(getRuntimeConfig(), globalThis.window.__CLAUDEVILLE_CONFIG__);
+    assert.deepEqual(getRuntimeConfig(), (globalThis.window as any).__CLAUDEVILLE_CONFIG__);
 
     const url = getHubApiUrl('/api/test', { q: 'search' });
     assert.strictEqual(url, 'https://config-hub.com/api/test?q=search');
 });
 
 test('runtime config fallback to window.location', async () => {
-    globalThis.window = {
+    (globalThis.window as any) = {
         __CLAUDEVILLE_CONFIG__: {},
         location: {
             origin: 'https://window-origin.com',
@@ -40,11 +40,11 @@ test('runtime config fallback to window.location', async () => {
 
     assert.strictEqual(getHubHttpUrl(), 'https://window-origin.com');
     assert.strictEqual(getHubWsUrl(), 'wss://window-origin.com');
-    assert.deepEqual(getRuntimeConfig(), globalThis.window.__CLAUDEVILLE_CONFIG__);
+    assert.deepEqual(getRuntimeConfig(), (globalThis.window as any).__CLAUDEVILLE_CONFIG__);
 });
 
 test('runtime config fallback with http protocol', async () => {
-    globalThis.window = {
+    (globalThis.window as any) = {
         __CLAUDEVILLE_CONFIG__: {},
         location: {
             origin: 'http://window-origin.com',
@@ -59,7 +59,7 @@ test('runtime config fallback with http protocol', async () => {
 });
 
 test('getHubApiUrl handles various searchParams types', async () => {
-    globalThis.window = {
+    (globalThis.window as any) = {
         __CLAUDEVILLE_CONFIG__: { hubHttpUrl: 'http://localhost' },
         location: { origin: 'http://localhost' }
     };

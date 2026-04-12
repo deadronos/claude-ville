@@ -1,5 +1,7 @@
 // Singleton event bus (observer pattern)
 class DomainEvent {
+    listeners: Map<string, Set<Function>>;
+
     constructor() {
         this.listeners = new Map();
     }
@@ -22,7 +24,7 @@ class DomainEvent {
         }
     }
 
-    emit(event, data) {
+    emit(event: string, data?: any) {
         const callbacks = this.listeners.get(event);
         if (callbacks) {
             for (const callback of callbacks) {

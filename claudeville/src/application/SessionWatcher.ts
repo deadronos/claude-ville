@@ -2,6 +2,16 @@ import { eventBus } from '../domain/events/DomainEvent.js';
 import { REFRESH_INTERVAL } from '../config/constants.js';
 
 export class SessionWatcher {
+    agentManager: any;
+    wsClient: any;
+    dataSource: any;
+    pollTimer: any;
+    running: boolean;
+    _onWsInit: (data: any) => void;
+    _onWsUpdate: (data: any) => void;
+    _onWsDisconnected: () => void;
+    _onWsConnected: () => void;
+
     constructor(agentManager, wsClient, dataSource) {
         this.agentManager = agentManager;
         this.wsClient = wsClient;

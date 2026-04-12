@@ -1,6 +1,14 @@
 import { Position } from '../value-objects/Position.js';
 
 export class Building {
+    type: string;
+    position: Position;
+    width: number;
+    height: number;
+    label: string;
+    icon: string;
+    description: string;
+
     constructor({ type, x, y, width, height, label, icon, description }) {
         this.type = type;
         this.position = new Position(x, y);

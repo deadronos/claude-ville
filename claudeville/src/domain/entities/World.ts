@@ -1,6 +1,10 @@
 import { eventBus } from '../events/DomainEvent.js';
 
 export class World {
+    agents: Map<string, any>;
+    buildings: Map<string, any>;
+    startTime: number;
+
     constructor() {
         this.agents = new Map();
         this.buildings = new Map();

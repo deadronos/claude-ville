@@ -1,6 +1,11 @@
 import { eventBus } from '../../domain/events/DomainEvent.js';
 
 export class TopBar {
+    world: any;
+    els: { [key: string]: HTMLElement | null };
+    timeInterval: any;
+    _onUpdate: () => void;
+
     constructor(world) {
         this.world = world;
         this.els = {

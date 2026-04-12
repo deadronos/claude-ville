@@ -7,6 +7,14 @@ const ACCESSORIES = ['none', 'crown', 'glasses', 'headphones', 'hat'];
 const EYE_STYLES = ['normal', 'happy', 'determined', 'sleepy'];
 
 export class Appearance {
+    skin: string;
+    shirt: string;
+    hair: string;
+    hairStyle: string;
+    pants: string;
+    accessory: string;
+    eyeStyle: string;
+
     constructor({ skin, shirt, hair, hairStyle, pants, accessory, eyeStyle }) {
         this.skin = skin;
         this.shirt = shirt;

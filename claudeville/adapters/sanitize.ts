@@ -63,7 +63,7 @@ function sanitizeMessages(messages = []) {
     .filter((msg) => msg.text);
 }
 
-function sanitizeSessionDetail(detail = {}) {
+function sanitizeSessionDetail(detail: any = {}) {
   return {
     ...detail,
     toolHistory: sanitizeToolHistory(detail?.toolHistory || []),
@@ -71,7 +71,7 @@ function sanitizeSessionDetail(detail = {}) {
   };
 }
 
-function sanitizeSessionSummary(session = {}) {
+function sanitizeSessionSummary(session: any = {}) {
   return {
     ...session,
     rawLastMessage: session?.lastMessage ?? null,

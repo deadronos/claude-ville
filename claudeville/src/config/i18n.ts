@@ -1,4 +1,6 @@
-const STRINGS = {
+import { eventBus } from '../domain/events/DomainEvent.js';
+
+const STRINGS: any = {
     time: 'TIME',
     working: 'WORKING',
     idle: 'IDLE',
@@ -14,7 +16,7 @@ const STRINGS = {
     noActiveAgentsSub: 'Start a Claude Code session to see agents here',
     toolHistory: 'TOOL HISTORY',
     noToolUsage: 'No tool usage yet',
-    nAgents: (n) => `${n} agents`,
+    nAgents: (n: number) => `${n} agents`,
 
     model: 'MODEL',
     role: 'ROLE',
@@ -24,8 +26,8 @@ const STRINGS = {
     statusIdle: 'IDLE',
     statusWaiting: 'WAITING',
 
-    agentJoined: (name) => `${name} joined the village`,
-    agentLeft: (name) => `${name} left the village`,
+    agentJoined: (name: string) => `${name} joined the village`,
+    agentLeft: (name: string) => `${name} left the village`,
     serverConnected: 'Server connected',
     serverDisconnected: 'Server disconnected, retrying...',
     modeSwitchWorld: 'Switched to World mode',
@@ -36,7 +38,7 @@ const STRINGS = {
     autodetectedNames: 'Autodetected',
     pooledRandomNames: 'Pooled random',
     providerNameModeNote: 'Provider overrides from the environment can still force a mode for specific providers.',
-    nameModeChanged: (label) => `Name mode set to ${label}`,
+    nameModeChanged: (data: { mode: string }) => `Name mode set to ${data.mode}`,
     bubbleSize: 'Speech bubble size',
     bubbleSmall: 'Small',
     bubbleMedium: 'Medium',
@@ -50,22 +52,27 @@ const STRINGS = {
     settingsSaved: 'Settings saved',
 };
 
-class I18n {
-    constructor() {
-        this._lang = 'en';
-    }
+export const i18n: any = {
+    _lang: 'en',
 
     get lang() {
-        return 'en';
-    }
+        return this._lang;
+    },
 
-    set lang(val) {
-        this._lang = 'en';
-    }
+    set lang(value: string) {
+        if (value === this._lang) return;
+        this._lang = value;
+        localStorage.setItem('claudeville-lang', value);
+        eventBus.emit('i18n:language-changed', value);
+    },
 
-    t(key) {
-        return STRINGS[key] ?? key;
+    t(key: string, data?: any) {
+        const val = STRINGS[key] ?? key;
+        if (typeof val === 'function') {
+            return val(data);
+        }
+        return val;
     }
-}
+};
 
-export const i18n = new I18n();
+export default i18n;

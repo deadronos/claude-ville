@@ -3,6 +3,9 @@
  * Statically recreates AgentSprite drawing logic
  */
 export class AvatarCanvas {
+    agent: any;
+    canvas: HTMLCanvasElement;
+
     constructor(agent) {
         this.agent = agent;
         this.canvas = document.createElement('canvas');

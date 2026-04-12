@@ -1,4 +1,11 @@
 export class Modal {
+    overlay: HTMLElement | null;
+    titleEl: HTMLElement | null;
+    contentEl: HTMLElement | null;
+    closeBtn: HTMLElement | null;
+    _onClose: () => void;
+    _onKeydown: (e: KeyboardEvent) => void;
+
     constructor() {
         this.overlay = document.getElementById('modalOverlay');
         this.titleEl = document.getElementById('modalTitle');

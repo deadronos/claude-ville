@@ -3,6 +3,10 @@ import { AgentStatus } from '../domain/value-objects/AgentStatus.js';
 import { resolveAgentDisplayName } from '../config/agentNames.js';
 
 export class AgentManager {
+    world: any;
+    dataSource: any;
+    _teamMembers: Map<string, any>;
+
     constructor(world, dataSource) {
         this.world = world;
         this.dataSource = dataSource;
@@ -92,7 +96,7 @@ export class AgentManager {
         const teamName = teamInfo?.teamName
             || (session.project ? session.project.split('/').filter(Boolean).pop() : null);
 
-        const agentData = {
+        const agentData: any = {
             model: teamInfo?.model || session.model || 'unknown',
             status: this._resolveStatus(session),
             role: teamInfo?.agentType || session.agentType || 'general',
@@ -124,10 +128,11 @@ export class AgentManager {
                 teamName,
                 tokens: agentData.tokens,
                 projectPath: session.project || null,
-                lastTool: session.lastTool,
-                lastToolInput: session.lastToolInput,
-                lastMessage: session.lastMessage,
+                lastTool: agentData.currentTool,
+                lastToolInput: agentData.currentToolInput,
+                lastMessage: agentData._lastMessage,
                 provider: session.provider || 'claude',
+                messages: session.messages || [],
             });
             this.world.addAgent(agent);
         }

@@ -2,6 +2,9 @@ const MAX_TOASTS = 5;
 const AUTO_DISMISS_MS = 3000;
 
 export class Toast {
+    container: HTMLElement | null;
+    toasts: { el: HTMLElement; timer: any }[];
+
     constructor() {
         this.container = document.getElementById('toastContainer');
         this.toasts = [];

@@ -6,6 +6,24 @@ import { THEME } from '../../config/theme.js';
 import { getBubbleConfig } from '../../config/bubbleConfig.js';
 
 export class AgentSprite {
+    agent: any;
+    x: number;
+    y: number;
+    targetX: number;
+    targetY: number;
+    moving: boolean;
+    facingLeft: boolean;
+    walkFrame: number;
+    waitTimer: number;
+    selected: boolean;
+    statusAnim: number;
+    _lastBuildingType: string | null;
+    chatPartner: AgentSprite | null;
+    chatting: boolean;
+    chatTimer: number;
+    chatBubbleAnim: number;
+    _zoom: number;
+
     constructor(agent) {
         this.agent = agent;
         this.x = 0;

@@ -32,6 +32,18 @@ const PROJECT_COLORS = [
 ];
 
 export class DashboardRenderer {
+    world: any;
+    gridEl: HTMLElement | null;
+    emptyEl: HTMLElement | null;
+    cards: Map<string, HTMLElement>;
+    toolHistories: Map<string, any[]>;
+    active: boolean;
+    _fetchTimers: Map<string, any>;
+    _projectColorMap: Map<string, string>;
+    _sectionEls: Map<string, HTMLElement>;
+    _onAgentChanged: () => void;
+    _globalFetchTimer: any;
+
     constructor(world) {
         this.world = world;
         this.gridEl = document.getElementById('dashboardGrid');
@@ -181,7 +193,7 @@ export class DashboardRenderer {
     _updateSectionHeader(sectionEl, projectPath, agents) {
         const name = this._shortProjectName(projectPath);
         sectionEl.querySelector('.dashboard__section-name').textContent = name;
-        sectionEl.querySelector('.dashboard__section-count').textContent = i18n.t('nAgents')(agents.length);
+        sectionEl.querySelector('.dashboard__section-count').textContent = i18n.t('nAgents', agents.length);
 
         // Show shortened path
         const shortPath = projectPath === '_unknown' ? '' : this._truncatePath(projectPath);

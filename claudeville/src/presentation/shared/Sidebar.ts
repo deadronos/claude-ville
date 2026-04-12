@@ -11,6 +11,15 @@ const PROJECT_COLORS = [
 ];
 
 export class Sidebar {
+    world: any;
+    listEl: HTMLElement | null;
+    countEl: HTMLElement | null;
+    selectedId: string | null;
+    _projectColorMap: Map<string, string>;
+    _onUpdate: () => void;
+    _onAgentSelected: (agent: any) => void;
+    _onAgentDeselected: () => void;
+
     constructor(world) {
         this.world = world;
         this.listEl = document.getElementById('agentList');
@@ -38,7 +47,7 @@ export class Sidebar {
 
     render() {
         const agents = Array.from(this.world.agents.values());
-        this.countEl.textContent = agents.length;
+        if (this.countEl) this.countEl.textContent = String(agents.length);
 
         // Group by project
         const groups = this._groupByProject(agents);
@@ -67,25 +76,30 @@ export class Sidebar {
             html += '</div>';
         }
 
-        this.listEl.innerHTML = html;
+        if (this.listEl) this.listEl.innerHTML = html;
 
         // Click event binding
-        this.listEl.querySelectorAll('.sidebar__agent').forEach(el => {
-            el.addEventListener('click', () => {
-                const id = el.dataset.agentId;
-                const agent = this.world.agents.get(id);
-                if (this.selectedId === id) {
-                    this.selectedId = null;
-                    eventBus.emit('agent:deselected');
-                } else {
-                    this.selectedId = id;
-                    if (agent) {
-                        eventBus.emit('agent:selected', agent);
+        if (this.listEl) {
+            this.listEl.querySelectorAll('.sidebar__agent').forEach(elNode => {
+                const el = elNode as HTMLElement;
+                el.addEventListener('click', () => {
+                    const id = el.dataset.agentId;
+                    if (id) {
+                        const agent = this.world.agents.get(id);
+                        if (this.selectedId === id) {
+                            this.selectedId = null;
+                            eventBus.emit('agent:deselected');
+                        } else {
+                            this.selectedId = id;
+                            if (agent) {
+                                eventBus.emit('agent:selected', agent);
+                            }
+                        }
+                        this.render();
                     }
-                }
-                this.render();
+                });
             });
-        });
+        }
     }
 
     _groupByProject(agents) {

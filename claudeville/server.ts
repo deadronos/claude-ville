@@ -395,12 +395,12 @@ function createWebSocketFrame(data, opcode = 0x1) {
   return Buffer.concat([header, payload]);
 }
 
-function wsSend(socket, data) {
+function wsSend(socket: any, data: any) {
   try {
     if (!socket.destroyed && socket.writable) {
       socket.write(createWebSocketFrame(JSON.stringify(data)));
     }
-  } catch (err) {
+  } catch (err: any) {
     if (err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
       // ignore send errors
     }
@@ -408,9 +408,9 @@ function wsSend(socket, data) {
   }
 }
 
-function wsBroadcast(data) {
+function wsBroadcast(data: any) {
   const frame = createWebSocketFrame(JSON.stringify(data));
-  for (const socket of wsClients) {
+  for (const socket of wsClients as Set<any>) {
     try {
       if (socket.writable) {
         socket.write(frame);
@@ -426,7 +426,7 @@ function wsBroadcast(data) {
 const WS_FRAME_ISSUE_WINDOW_MS = 5000;
 const WS_FRAME_ISSUE_CLOSE_THRESHOLD = 3;
 
-function reportWebSocketFrameIssue(socket, reason, err) {
+function reportWebSocketFrameIssue(socket: any, reason: string, err?: any) {
   const now = Date.now();
   const state = socket._claudevilleWsFrameIssue || { count: 0, lastLoggedAt: 0 };
   state.count += 1;
@@ -437,7 +437,7 @@ function reportWebSocketFrameIssue(socket, reason, err) {
     state.lastLoggedAt = now;
   }
 
-  socket._claudevilleWsFrameIssue = state;
+  (socket as any)._claudevilleWsFrameIssue = state;
 
   if (state.count >= WS_FRAME_ISSUE_CLOSE_THRESHOLD && !socket.destroyed) {
     try {
@@ -668,7 +668,7 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('SIGINT', () => {
   console.log('\nshutting down server...');
-  for (const socket of wsClients) {
+  for (const socket of wsClients as Set<any>) {
     try {
       socket.end(createWebSocketFrame('', 0x8));
     } catch { /* ignore */ }

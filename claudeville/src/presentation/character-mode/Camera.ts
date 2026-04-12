@@ -1,6 +1,20 @@
 import { TILE_WIDTH, TILE_HEIGHT, MAP_SIZE } from '../../config/constants.js';
 
 export class Camera {
+    canvas: HTMLCanvasElement;
+    x: number;
+    y: number;
+    zoom: number;
+    minZoom: number;
+    maxZoom: number;
+    dragging: boolean;
+    dragStartX: number;
+    dragStartY: number;
+    camStartX: number;
+    camStartY: number;
+    followTarget: any;
+    followSmoothing: number;
+
     constructor(canvas) {
         this.canvas = canvas;
         this.x = 0;

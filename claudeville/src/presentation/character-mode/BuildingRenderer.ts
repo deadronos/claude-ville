@@ -46,6 +46,13 @@ const BUILDING_STYLES = {
 };
 
 export class BuildingRenderer {
+    particleSystem: any;
+    buildings: any[];
+    hoveredBuilding: any;
+    torchFrame: number;
+    agentSprites: any[];
+    roofAlpha: Map<any, number>;
+
     constructor(particleSystem) {
         this.particleSystem = particleSystem;
         this.buildings = [];

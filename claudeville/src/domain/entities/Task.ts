@@ -1,4 +1,12 @@
 export class Task {
+    id: string;
+    subject: string;
+    description: string;
+    status: string;
+    owner: string;
+    blockedBy: any[];
+    activeForm: any;
+
     constructor({ id, subject, description, status, owner, blockedBy, activeForm }) {
         this.id = id;
         this.subject = subject;

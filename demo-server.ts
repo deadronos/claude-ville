@@ -93,7 +93,7 @@ const server = http.createServer((req, res) => {
       let body = '';
       req.on('data', chunk => body += chunk);
       req.on('end', () => {
-        let parsed = {};
+        let parsed: any = {};
         try { parsed = JSON.parse(body); } catch(e) {}
 
         const tool = parsed.tool || parsed.name || '';

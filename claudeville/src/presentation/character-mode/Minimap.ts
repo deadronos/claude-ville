@@ -12,6 +12,11 @@ const BUILDING_COLORS = {
 };
 
 export class Minimap {
+    canvas: HTMLCanvasElement;
+    ctx: CanvasRenderingContext2D | null;
+    scale: number;
+    onNavigate: ((tileX: number, tileY: number) => void) | null;
+
     constructor() {
         this.canvas = document.createElement('canvas');
         this.canvas.width = MINIMAP_SIZE;

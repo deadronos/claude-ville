@@ -3,6 +3,12 @@ import { WS_RECONNECT_INTERVAL } from '../config/constants.js';
 import { getHubWsUrl } from '../config/runtime.js';
 
 export class WebSocketClient {
+    ws: WebSocket | null;
+    connected: boolean;
+    reconnectTimer: any;
+    reconnectAttempts: number;
+    url: string;
+
     constructor() {
         this.ws = null;
         this.connected = false;

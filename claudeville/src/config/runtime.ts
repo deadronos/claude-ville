@@ -1,4 +1,4 @@
-const config = window.__CLAUDEVILLE_CONFIG__ || {};
+const config = (window as any).__CLAUDEVILLE_CONFIG__ || {};
 
 function fallbackWsUrl() {
     return `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
@@ -8,7 +8,7 @@ export function getHubHttpUrl() {
     return config.hubHttpUrl || window.location.origin;
 }
 
-export function getHubApiUrl(pathname, searchParams) {
+export function getHubApiUrl(pathname: string, searchParams?: any) {
     const url = new URL(pathname, getHubHttpUrl());
 
     if (searchParams instanceof URLSearchParams) {
@@ -33,5 +33,5 @@ export function getHubWsUrl() {
 }
 
 export function getRuntimeConfig() {
-    return window.__CLAUDEVILLE_CONFIG__ || config;
+    return (window as any).__CLAUDEVILLE_CONFIG__ || config;
 }

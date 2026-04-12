@@ -2,6 +2,15 @@ import { eventBus } from '../domain/events/DomainEvent.js';
 import { i18n } from '../config/i18n.js';
 
 export class NotificationService {
+    toast: any;
+    knownAgents: Set<string>;
+    wsEverConnected: boolean;
+    _onAgentAdded: (agent: any) => void;
+    _onAgentRemoved: (agent: any) => void;
+    _onWsConnected: () => void;
+    _onWsDisconnected: () => void;
+    _onModeChanged: (mode: string) => void;
+
     constructor(toast) {
         this.toast = toast;
         this.knownAgents = new Set();
@@ -9,15 +18,13 @@ export class NotificationService {
 
         this._onAgentAdded = (agent) => {
             if (this.knownAgents.size > 0) {
-                const msg = i18n.t('agentJoined');
-                this.toast.show(typeof msg === 'function' ? msg(agent.name) : msg, 'info');
+                this.toast.show(i18n.t('agentJoined', agent.name), 'info');
             }
             this.knownAgents.add(agent.id);
         };
 
         this._onAgentRemoved = (agent) => {
-            const msg = i18n.t('agentLeft');
-            this.toast.show(typeof msg === 'function' ? msg(agent.name) : msg, 'warning');
+            this.toast.show(i18n.t('agentLeft', agent.name), 'warning');
             this.knownAgents.delete(agent.id);
         };
 

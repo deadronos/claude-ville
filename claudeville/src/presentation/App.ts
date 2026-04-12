@@ -21,6 +21,22 @@ import { Modal } from './shared/Modal.js';
 import { ActivityPanel } from './shared/ActivityPanel.js';
 
 class App {
+    world: World | null;
+    dataSource: ClaudeDataSource | null;
+    wsClient: WebSocketClient | null;
+    agentManager: AgentManager | null;
+    modeManager: ModeManager | null;
+    sessionWatcher: SessionWatcher | null;
+    notificationService: NotificationService | null;
+    topBar: TopBar | null;
+    sidebar: Sidebar | null;
+    toast: Toast | null;
+    modal: Modal | null;
+    renderer: any;
+    dashboardRenderer: any;
+    activityPanel: ActivityPanel | null;
+    _resizeObserver: ResizeObserver | null;
+
     constructor() {
         this.world = null;
         this.dataSource = null;
@@ -154,7 +170,7 @@ class App {
     }
 
     _bindResize() {
-        const canvas = document.getElementById('worldCanvas');
+        const canvas = document.getElementById('worldCanvas') as HTMLCanvasElement;
         const container = canvas?.parentElement;
         if (!canvas || !container) return;
 
@@ -196,23 +212,22 @@ class App {
             { key: 'xlarge', fontSize: 28 },
         ];
 
-        const bubbleLabel = (preset) => i18n.t(preset.labelKey || `bubble${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
-        const chatLabel  = (preset) => i18n.t(preset.labelKey || `chat${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
+        const bubbleLabel = (preset: any) => i18n.t(preset.labelKey || `bubble${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
 
-        const bubbleBtns = (presets, currentKey) => {
+        const bubbleBtns = (presets: any[], currentKey: string) => {
             return presets.map(p => {
                 const active = currentKey === p.key ? ' settings-lang-btn--active' : '';
                 return `<button class="settings-lang-btn${active}" data-size="${p.key}">${bubbleLabel(p)}</button>`;
             }).join('');
         };
 
-        const buildForm = (currentMode) => {
+        const buildForm = (currentMode: string) => {
             const cfg = getBubbleConfig();
-            const sizeToKey = (v, fallback) => {
+            const sizeToKey = (v: number, fallback: string) => {
                 const found = BUBBLE_PRESETS.find(p => p.fontSize === v);
                 return found ? found.key : fallback;
             };
-            const chatSizeToKey = (v) => {
+            const chatSizeToKey = (v: number) => {
                 const found = CHAT_PRESETS.find(p => p.fontSize === v);
                 return found ? found.key : 'medium';
             };
@@ -248,18 +263,21 @@ class App {
 
         btn.addEventListener('click', () => {
             const currentMode = getNameMode();
-            this.modal.open(i18n.t('settingsTitle'), buildForm(currentMode));
+            if (this.modal) this.modal.open(i18n.t('settingsTitle'), buildForm(currentMode));
 
             // Name mode buttons
-            document.querySelectorAll('.settings-lang-btn[data-mode]').forEach(modeBtn => {
+            document.querySelectorAll('.settings-lang-btn[data-mode]').forEach(modeBtnNode => {
+                const modeBtn = modeBtnNode as HTMLElement;
                 modeBtn.addEventListener('click', () => {
                     const nextMode = modeBtn.dataset.mode;
                     if (nextMode === getNameMode()) return;
-                    setNameMode(nextMode);
-                    for (const agent of this.world.agents.values()) {
-                        agent.regenerateName();
+                    if (nextMode) setNameMode(nextMode);
+                    if (this.world) {
+                        for (const agent of this.world.agents.values()) {
+                            agent.regenerateName();
+                        }
                     }
-                    this.sidebar.render();
+                    if (this.sidebar) this.sidebar.render();
                     if (this.dashboardRenderer && this.dashboardRenderer.active) {
                         this.dashboardRenderer.render();
                     }
@@ -267,15 +285,17 @@ class App {
                         this.activityPanel._updateInfo(this.activityPanel.currentAgent);
                         this.activityPanel._updateCurrentTool(this.activityPanel.currentAgent);
                     }
-                    this.modal.close();
+                    if (this.modal) this.modal.close();
                     if (this.toast) {
-                        this.toast.show(i18n.t('nameModeChanged')(i18n.t(nextMode === 'pooled' ? 'pooledRandomNames' : 'autodetectedNames')), 'success');
+                        const modeLabel = i18n.t(nextMode === 'pooled' ? 'pooledRandomNames' : 'autodetectedNames');
+                        this.toast.show(i18n.t('nameModeChanged', { mode: modeLabel }), 'success');
                     }
                 });
             });
 
             // Status bubble size buttons
-            document.querySelectorAll('.settings-lang-btn[data-size]').forEach(sizeBtn => {
+            document.querySelectorAll('.settings-lang-btn[data-size]').forEach(sizeBtnNode => {
+                const sizeBtn = sizeBtnNode as HTMLElement;
                 sizeBtn.addEventListener('click', () => {
                     const key = sizeBtn.dataset.size;
                     const preset = BUBBLE_PRESETS.find(p => p.key === key);
@@ -290,9 +310,10 @@ class App {
                     });
                     // Update active states on the currently shown buttons
                     const cfg = getBubbleConfig();
-                    document.querySelectorAll('.settings-lang-btn[data-size]').forEach(btn => {
+                    document.querySelectorAll('.settings-lang-btn[data-size]').forEach(btnNode => {
+                        const btn = btnNode as HTMLElement;
                         const p = BUBBLE_PRESETS.find(bp => bp.key === btn.dataset.size);
-                        btn.classList.toggle('settings-lang-btn--active', p && p.fontSize === cfg.statusFontSize);
+                        btn.classList.toggle('settings-lang-btn--active', p !== undefined && p.fontSize === cfg.statusFontSize);
                     });
                     if (this.toast) {
                         this.toast.show(i18n.t('settingsSaved'), 'success');
@@ -303,8 +324,10 @@ class App {
     }
 
     _applyI18n() {
-        document.querySelectorAll('[data-i18n]').forEach(el => {
+        document.querySelectorAll('[data-i18n]').forEach(elNode => {
+            const el = elNode as HTMLElement;
             const key = el.dataset.i18n;
+            if (!key) return;
             const val = i18n.t(key);
             if (typeof val === 'string') {
                 el.textContent = val;
@@ -312,7 +335,7 @@ class App {
         });
     }
 
-    _showBootError(err) {
+    _showBootError(err: any) {
         document.body.innerHTML = `
             <div style="display:flex;align-items:center;justify-content:center;height:100vh;
                         font-family:'Press Start 2P',monospace;color:#ef4444;font-size:10px;

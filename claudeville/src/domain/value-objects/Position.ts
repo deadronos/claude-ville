@@ -1,4 +1,7 @@
 export class Position {
+    tileX: number;
+    tileY: number;
+
     constructor(tileX, tileY) {
         this.tileX = tileX;
         this.tileY = tileY;

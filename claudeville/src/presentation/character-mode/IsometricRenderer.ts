@@ -8,6 +8,27 @@ import { BuildingRenderer } from './BuildingRenderer.js';
 import { Minimap } from './Minimap.js';
 
 export class IsometricRenderer {
+    world: any;
+    canvas: HTMLCanvasElement | null;
+    ctx: CanvasRenderingContext2D | null;
+    camera: any;
+    particleSystem: ParticleSystem;
+    buildingRenderer: BuildingRenderer;
+    minimap: Minimap;
+    agentSprites: Map<string, AgentSprite>;
+    running: boolean;
+    frameId: number | null;
+    terrainCache: any;
+    terrainSeed: number[];
+    waterFrame: number;
+    selectedAgent: any;
+    onAgentSelect: ((agent: any) => void) | null;
+    pathTiles: Set<string>;
+    waterTiles: Set<string>;
+    _unsubscribers: Function[];
+    _onClick: (e: MouseEvent) => void;
+    _onMouseMoveMain: (e: MouseEvent) => void;
+
     constructor(world) {
         this.world = world;
         this.canvas = null;
@@ -43,7 +64,7 @@ export class IsometricRenderer {
     }
 
     _generatePaths() {
-        const buildingDefs = Array.from(this.world.buildings.values());
+        const buildingDefs = Array.from(this.world.buildings.values()) as any[];
         for (const b of buildingDefs) {
             // Paths around buildings
             for (let x = b.position.tileX - 1; x <= b.position.tileX + b.width; x++) {
@@ -104,6 +125,15 @@ export class IsometricRenderer {
         for (const agent of this.world.agents.values()) {
             this._addAgentSprite(agent);
         }
+
+        // 3. Selection UI (labels/health etc if needed, but here just name sync)
+        eventBus.on('agent:selected', (agent: any) => {
+            this.selectAgentById(agent?.id);
+        });
+
+        eventBus.on('agent:deselected', () => {
+            this.selectAgentById(null);
+        });
 
         // Subscribe to domain events
         this._unsubscribers.push(

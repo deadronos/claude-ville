@@ -65,7 +65,7 @@ function wsSend(socket, data) {
 
 function wsBroadcast(data) {
   const frame = createWebSocketFrame(JSON.stringify(data));
-  for (const socket of wsClients) {
+  for (const socket of wsClients as Set<any>) {
     try {
       if (socket.writable) {
         socket.write(frame);

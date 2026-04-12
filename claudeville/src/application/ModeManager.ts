@@ -1,6 +1,12 @@
 import { eventBus } from '../domain/events/DomainEvent.js';
 
 export class ModeManager {
+    currentMode: string;
+    characterEl: HTMLElement | null;
+    dashboardEl: HTMLElement | null;
+    btnCharacter: HTMLElement | null;
+    btnDashboard: HTMLElement | null;
+
     constructor() {
         this.currentMode = 'character';
 

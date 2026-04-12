@@ -22,6 +22,8 @@ function loadIndexWithMocks(configByProvider) {
 
       const cfg = configByProvider[meta.provider] || {};
       class MockAdapter {
+        _cfg: any;
+        calls: any[];
         constructor() {
           this._cfg = cfg;
           this.calls = [];
@@ -37,10 +39,10 @@ function loadIndexWithMocks(configByProvider) {
 
         async getActiveSessions() {
           if (this._cfg.getActiveSessionsThrows) throw new Error('boom');
-          return (this._cfg.sessions || []).map((s) => ({ ...s }));
+          return (this._cfg.sessions || []).map((s: any) => ({ ...s }));
         }
 
-        async getSessionDetail(sessionId, project, filePath) {
+        async getSessionDetail(sessionId: string, project: string, filePath: string) {
           this.calls.push([sessionId, project, filePath]);
           if (this._cfg.getSessionDetailThrows) throw new Error('detail boom');
           if (typeof this._cfg.getSessionDetail === 'function') {
@@ -61,7 +63,7 @@ function loadIndexWithMocks(configByProvider) {
         filename: resolved,
         loaded: true,
         exports: { [meta.exportName]: MockAdapter },
-      };
+      } as any;
     }
 
     delete require.cache[indexPath];

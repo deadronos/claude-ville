@@ -1,4 +1,13 @@
 class Particle {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    life: number;
+    maxLife: number;
+    color: string;
+    size: number;
+
     constructor(x, y, vx, vy, life, color, size) {
         this.x = x;
         this.y = y;
@@ -82,6 +91,8 @@ function pick(arr) {
 }
 
 export class ParticleSystem {
+    particles: Particle[];
+
     constructor() {
         this.particles = [];
     }

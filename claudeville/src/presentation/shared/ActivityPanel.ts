@@ -12,6 +12,11 @@ const TOOL_ICONS = {
 };
 
 export class ActivityPanel {
+    panelEl: HTMLElement | null;
+    closeBtn: HTMLElement | null;
+    currentAgent: any;
+    _pollTimer: any;
+
     constructor() {
         this.panelEl = document.getElementById('activityPanel');
         this.closeBtn = document.getElementById('panelClose');

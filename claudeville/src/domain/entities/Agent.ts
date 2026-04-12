@@ -1,10 +1,33 @@
-import { AgentStatus } from '../value-objects/AgentStatus.js';
+import { AgentStatus, AgentStatusType } from '../value-objects/AgentStatus.js';
 import { Position } from '../value-objects/Position.js';
 import { Appearance } from '../value-objects/Appearance.js';
 import { generateAgentDisplayName, resolveAgentDisplayName } from '../../config/agentNames.js';
 import { estimateClaudeCost } from '../../config/costs.js';
 
 export class Agent {
+    id: string;
+    nameSeed: string;
+    nameKind: string;
+    nameMode: string;
+    nameHint: string | null;
+    name: string;
+    model: string;
+    status: AgentStatusType;
+    role: string;
+    tokens: { input: number; output: number };
+    messages: any[];
+    teamName: string | null;
+    projectPath: string | null;
+    provider: string;
+    currentTool: string | null;
+    currentToolInput: string | null;
+    _lastMessage: string | null;
+    appearance: Appearance;
+    position: Position;
+    targetPosition: Position | null;
+    walkFrame: number;
+    lastActive: number;
+
     constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
         this.id = id;
         this.nameSeed = nameSeed || id;
