@@ -20,6 +20,7 @@ const usageQuota = require('./services/usageQuota');
 const { setCorsHeaders, sendJson, sendError, safeLimit } = require('../shared/http-utils');
 const { createWebSocketFrame, computeAcceptKey } = require('../shared/ws-utils');
 const { createFileWatchers } = require('../shared/watch-utils');
+const { DISCONNECTED_CODES } = require('../shared/ws-helpers');
 
 // Claude adapter (teams/tasks are Claude-only)
 const claudeAdapter = adapters.find(a => a.provider === 'claude');
@@ -351,7 +352,7 @@ function wsSend(socket: any, data: any) {
   try {
     if (!socket.destroyed && socket.writable) {
       socket.write(createWebSocketFrame(JSON.stringify(data)), (err) => {
-        if (err && err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
+        if (err && !DISCONNECTED_CODES.has(err.code)) {
           console.error(`[WebSocket] send failed (${err.code}): ${err.message}`);
         }
       });
@@ -380,7 +381,7 @@ function wsBroadcast(data: any) {
     try {
       if (!socket.destroyed && socket.writable) {
         socket.write(frame, (err) => {
-          if (err && err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
+          if (err && !DISCONNECTED_CODES.has(err.code)) {
             console.error(`[WebSocket] broadcast send failed (${err.code}): ${err.message}`);
           }
         });

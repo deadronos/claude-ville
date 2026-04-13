@@ -10,29 +10,9 @@ const wsClients = new Set();
 
 const { setCorsHeaders, sendJson, sendError, safeLimit } = require('../shared/http-utils');
 const { createWebSocketFrame, computeAcceptKey } = require('../shared/ws-utils');
+const { wsSend, wsBroadcast } = require('../shared/ws-helpers');
 
 const { MIME_TYPES } = require('../shared/mime-types');
-
-function wsSend(socket, data) {
-  if (!socket.destroyed && socket.writable) {
-    socket.write(createWebSocketFrame(JSON.stringify(data)));
-  }
-}
-
-function wsBroadcast(data) {
-  const frame = createWebSocketFrame(JSON.stringify(data));
-  for (const socket of wsClients as Set<any>) {
-    try {
-      if (socket.writable) {
-        socket.write(frame);
-      } else {
-        wsClients.delete(socket);
-      }
-    } catch {
-      wsClients.delete(socket);
-    }
-  }
-}
 
 function handleWebSocketUpgrade(req, socket) {
   const key = req.headers['sec-websocket-key'];

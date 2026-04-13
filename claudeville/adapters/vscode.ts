@@ -42,26 +42,7 @@ function shouldReplaceCandidate(existing, incoming) {
   return incoming.mtime > existing.mtime;
 }
 
-async function readLines(filePath, { from = 'end', count = 60 } = {}) {
-  try {
-    if (!fs.existsSync(filePath)) return [];
-    const content = await fs.promises.readFile(filePath, 'utf-8');
-    const lines = content.trim().split('\n');
-    if (from === 'start') return lines.slice(0, count);
-    return lines.slice(-count);
-  } catch {
-    return [];
-  }
-}
-
-function parseJsonLines(lines) {
-  const results = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
-  }
-  return results;
-}
+const { readLines, parseJsonLines } = require('./jsonl-utils');
 
 function summarizeJson(value, maxLength = 80) {
   if (value === null || value === undefined) return '';
