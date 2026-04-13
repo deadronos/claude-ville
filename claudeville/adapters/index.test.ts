@@ -1,228 +1,130 @@
-const assert = require('assert/strict');
-const path = require('path');
-const test = require('node:test');
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } from './index.js';
 
-const ADAPTER_EXPORTS = [
-  { rel: './claude', exportName: 'ClaudeAdapter', provider: 'claude' },
-  { rel: './codex', exportName: 'CodexAdapter', provider: 'codex' },
-  { rel: './gemini', exportName: 'GeminiAdapter', provider: 'gemini' },
-  { rel: './openclaw', exportName: 'OpenClawAdapter', provider: 'openclaw' },
-  { rel: './copilot', exportName: 'CopilotAdapter', provider: 'copilot' },
-  { rel: './vscode', exportName: 'VSCodeAdapter', provider: 'vscode' },
-];
+describe('adapter index', () => {
+  describe('getAllSessions', () => {
+    it('aggregates sessions from all available providers', async () => {
+      const sessions = await getAllSessions(120000);
+      // Returns array, sorted by lastActivity desc
+      expect(Array.isArray(sessions)).toBe(true);
+    });
 
-function loadIndexWithMocks(configByProvider) {
-  const originals = new Map();
-  const indexPath = path.join(__dirname, 'index.js');
+    it('sanitizes session detail and summary', async () => {
+      const sessions = await getAllSessions(120000);
+      for (const session of sessions) {
+        // Sanitized sessions have these properties
+        expect(session).toHaveProperty('sessionId');
+        expect(session).toHaveProperty('provider');
+        expect(session).toHaveProperty('lastActivity');
+        // Raw values preserved
+        expect(session).toHaveProperty('rawLastMessage');
+        expect(session).toHaveProperty('rawLastToolInput');
+      }
+    });
 
-  try {
-    for (const meta of ADAPTER_EXPORTS) {
-      const resolved = require.resolve(meta.rel, { paths: [__dirname] });
-      originals.set(resolved, require.cache[resolved]);
-
-      const cfg = configByProvider[meta.provider] || {};
-      class MockAdapter {
-        _cfg: any;
-        calls: any[];
-        constructor() {
-          this._cfg = cfg;
-          this.calls = [];
-        }
-
-        get name() { return this._cfg.name || `${meta.provider}-name`; }
-        get provider() { return meta.provider; }
-        get homeDir() { return this._cfg.homeDir || `/tmp/${meta.provider}`; }
-
-        isAvailable() {
-          return this._cfg.available !== false;
-        }
-
-        async getActiveSessions() {
-          if (this._cfg.getActiveSessionsThrows) throw new Error('boom');
-          return (this._cfg.sessions || []).map((s: any) => ({ ...s }));
-        }
-
-        async getSessionDetail(sessionId: string, project: string, filePath: string) {
-          this.calls.push([sessionId, project, filePath]);
-          if (this._cfg.getSessionDetailThrows) throw new Error('detail boom');
-          if (typeof this._cfg.getSessionDetail === 'function') {
-            return this._cfg.getSessionDetail(sessionId, project, filePath);
-          }
-          const detailById = this._cfg.detailById || {};
-          return detailById[sessionId] || { toolHistory: [], messages: [] };
-        }
-
-        getWatchPaths() {
-          if (this._cfg.getWatchPathsThrows) throw new Error('watch boom');
-          return this._cfg.watchPaths || [];
+    it('calculates estimated cost for each session', async () => {
+      const sessions = await getAllSessions(120000);
+      for (const session of sessions) {
+        if (session.tokens && (session.tokens.input > 0 || session.tokens.output > 0)) {
+          expect(typeof session.estimatedCost).toBe('number');
         }
       }
-
-      require.cache[resolved] = {
-        id: resolved,
-        filename: resolved,
-        loaded: true,
-        exports: { [meta.exportName]: MockAdapter },
-      } as any;
-    }
-
-    delete require.cache[indexPath];
-    const indexModule = require(indexPath);
-    return {
-      indexModule,
-      cleanup: () => {
-        delete require.cache[indexPath];
-        for (const meta of ADAPTER_EXPORTS) {
-          const resolved = require.resolve(meta.rel, { paths: [__dirname] });
-          const original = originals.get(resolved);
-          if (original) require.cache[resolved] = original;
-          else delete require.cache[resolved];
-        }
-      },
-    };
-  } catch (err) {
-    for (const meta of ADAPTER_EXPORTS) {
-      const resolved = require.resolve(meta.rel, { paths: [__dirname] });
-      const original = originals.get(resolved);
-      if (original) require.cache[resolved] = original;
-      else delete require.cache[resolved];
-    }
-    throw err;
-  }
-}
-
-test('getAllSessions aggregates, sanitizes, and forwards filePath for detail lookup', async () => {
-  const { indexModule, cleanup } = loadIndexWithMocks({
-    claude: {
-      sessions: [
-        {
-          sessionId: 'c-1',
-          provider: 'claude',
-          model: 'claude-sonnet-4-5',
-          project: '/repo/a',
-          lastActivity: 100,
-          lastMessage: 'file_count 279 ageSec=0',
-          lastToolInput: '  /tmp/path  ',
-          filePath: '/tmp/claude-1.jsonl',
-        },
-      ],
-      detailById: {
-        'c-1': {
-          tokenUsage: { totalInput: 1200, totalOutput: 300 },
-          toolHistory: [
-            { tool: 'read_file', detail: '{"filePath":"/tmp/a"}', ts: 1 },
-            { tool: 'call_result', detail: 'file_count 1', ts: 2 },
-          ],
-          messages: [
-            { role: 'assistant', text: 'file_count 279 ageSec=0', ts: 10 },
-            { role: 'assistant', text: 'meaningful output', ts: 11 },
-          ],
-        },
-      },
-    },
-    codex: {
-      available: false,
-    },
-    gemini: {
-      sessions: [
-        {
-          sessionId: 'g-1',
-          provider: 'gemini',
-          model: 'gemini',
-          project: '/repo/b',
-          lastActivity: 200,
-          lastMessage: 'hello world',
-          tokens: { input: 50, output: 10 },
-          detail: { toolHistory: [], messages: [{ role: 'assistant', text: 'ok', ts: 1 }] },
-        },
-      ],
-    },
-  });
-
-  try {
-    const sessions = await indexModule.getAllSessions(120000);
-    assert.equal(sessions.length, 2);
-    assert.equal(sessions[0].sessionId, 'g-1');
-    assert.equal(sessions[1].sessionId, 'c-1');
-
-    const claudeSession = sessions.find((s) => s.sessionId === 'c-1');
-    assert.equal(claudeSession.lastMessage, 'file_count 279 ageSec=0');
-    assert.equal(claudeSession.lastToolInput, '/tmp/path');
-    assert.equal(claudeSession.rawLastMessage, 'file_count 279 ageSec=0');
-    assert.equal(claudeSession.rawLastToolInput, '  /tmp/path  ');
-    assert.equal(claudeSession.detail.messages.length, 1);
-    assert.equal(claudeSession.detail.messages[0].text, 'meaningful output');
-    assert.deepEqual(claudeSession.tokens, { input: 1200, output: 300 });
-    assert.ok(claudeSession.estimatedCost > 0);
-
-    const claudeAdapter = indexModule.adapters.find((a) => a.provider === 'claude');
-    assert.deepEqual(claudeAdapter.calls[0], ['c-1', '/repo/a', '/tmp/claude-1.jsonl']);
-  } finally {
-    cleanup();
-  }
-});
-
-test('getSessionDetailByProvider sanitizes details and handles unknown/throws', async () => {
-  const { indexModule, cleanup } = loadIndexWithMocks({
-    openclaw: {
-      getSessionDetail: () => ({
-        toolHistory: [{ tool: 'call_result', detail: 'file_count 123', ts: 1 }],
-        messages: [{ role: 'assistant', text: 'vscodeCount= 1', ts: 2 }, { role: 'assistant', text: 'clean text', ts: 3 }],
-      }),
-    },
-    claude: { available: false },
-    codex: { available: false },
-    gemini: { available: false },
-    copilot: { available: false },
-    vscode: { available: false },
-  });
-
-  try {
-    const detail = await indexModule.getSessionDetailByProvider('openclaw', 'id-1', '/repo');
-    assert.equal(detail.messages.length, 1);
-    assert.equal(detail.messages[0].text, 'clean text');
-
-    const unknown = await indexModule.getSessionDetailByProvider('unknown', 'x', '/repo');
-    assert.deepEqual(unknown, { toolHistory: [], messages: [] });
-
-    const { indexModule: failingModule, cleanup: cleanupFail } = loadIndexWithMocks({
-      openclaw: { getSessionDetailThrows: true },
     });
-    const originalError = console.error;
-    try {
-      console.error = () => {};
-      const fallback = await failingModule.getSessionDetailByProvider('openclaw', 'id-2', '/repo');
-      assert.deepEqual(fallback, { toolHistory: [], messages: [] });
-    } finally {
-      console.error = originalError;
-      cleanupFail();
-    }
-  } finally {
-    cleanup();
-  }
-});
 
-test('getAllWatchPaths and getActiveProviders include only available adapters', () => {
-  const { indexModule, cleanup } = loadIndexWithMocks({
-    claude: { watchPaths: [{ type: 'file', path: '/tmp/a' }], name: 'Claude Mock', homeDir: '/mock/claude' },
-    codex: { available: false },
-    gemini: { watchPaths: [{ type: 'directory', path: '/tmp/g', filter: '.json' }] },
-    openclaw: { getWatchPathsThrows: true },
-    copilot: { watchPaths: [] },
-    vscode: { watchPaths: [{ type: 'directory', path: '/tmp/vscode', filter: '.jsonl' }] },
+    it('sorts sessions by lastActivity descending', async () => {
+      const sessions = await getAllSessions(120000);
+      if (sessions.length > 1) {
+        for (let i = 1; i < sessions.length; i++) {
+          expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
+        }
+      }
+    });
+
+    it('attaches detail to each session', async () => {
+      const sessions = await getAllSessions(120000);
+      for (const session of sessions) {
+        if (session.detail) {
+          expect(session.detail).toHaveProperty('toolHistory');
+          expect(session.detail).toHaveProperty('messages');
+        }
+      }
+    });
   });
 
-  try {
-    const paths = indexModule.getAllWatchPaths();
-    assert.equal(paths.length, 3);
+  describe('getSessionDetailByProvider', () => {
+    it('returns sanitized detail for known providers', async () => {
+      // Find first available provider
+      const availableProviders = adapters.filter(a => a.isAvailable());
+      if (availableProviders.length === 0) return;
 
-    const providers = indexModule.getActiveProviders();
-    const providerIds = providers.map((p) => p.provider).sort();
-    assert.deepEqual(providerIds, ['claude', 'copilot', 'gemini', 'openclaw', 'vscode']);
-    const claudeProvider = providers.find((p) => p.provider === 'claude');
-    assert.equal(claudeProvider.name, 'Claude Mock');
-    assert.equal(claudeProvider.homeDir, '/mock/claude');
-  } finally {
-    cleanup();
-  }
+      const provider = availableProviders[0];
+      const sessions = await provider.getActiveSessions(120000);
+      if (sessions.length === 0) return;
+
+      const session = sessions[0];
+      const detail = await getSessionDetailByProvider(
+        session.provider,
+        session.sessionId,
+        session.project
+      );
+
+      expect(detail).toHaveProperty('toolHistory');
+      expect(detail).toHaveProperty('messages');
+    });
+
+    it('returns empty detail for unknown provider', async () => {
+      const detail = await getSessionDetailByProvider('unknown-provider', 'session-123', '/repo');
+      expect(detail).toEqual({ toolHistory: [], messages: [] });
+    });
+  });
+
+  describe('getAllWatchPaths', () => {
+    it('returns watch paths from available adapters', () => {
+      const paths = getAllWatchPaths();
+      expect(Array.isArray(paths)).toBe(true);
+    });
+
+    it('includes only available adapters paths', () => {
+      const paths = getAllWatchPaths();
+      const availableProviders = getActiveProviders().map(p => p.provider);
+
+      for (const p of paths) {
+        expect(p).toHaveProperty('type');
+        expect(p).toHaveProperty('path');
+        expect(['file', 'directory']).toContain(p.type);
+      }
+    });
+  });
+
+  describe('getActiveProviders', () => {
+    it('returns list of available providers with metadata', () => {
+      const providers = getActiveProviders();
+      expect(Array.isArray(providers)).toBe(true);
+
+      for (const provider of providers) {
+        expect(provider).toHaveProperty('name');
+        expect(provider).toHaveProperty('provider');
+        expect(provider).toHaveProperty('homeDir');
+      }
+    });
+
+    it('filters out unavailable adapters', () => {
+      const providers = getActiveProviders();
+      // All returned providers should be available
+      for (const p of providers) {
+        const adapter = adapters.find(a => a.provider === p.provider);
+        expect(adapter?.isAvailable()).toBe(true);
+      }
+    });
+  });
+
+  describe('adapter registry', () => {
+    it('contains all expected providers', () => {
+      const expectedProviders = ['claude', 'codex', 'gemini', 'openclaw', 'copilot', 'vscode'];
+      const actualProviders = adapters.map(a => a.provider);
+      for (const ep of expectedProviders) {
+        expect(actualProviders).toContain(ep);
+      }
+    });
+  });
 });

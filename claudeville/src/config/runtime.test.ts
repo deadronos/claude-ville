@@ -1,78 +1,154 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Window } from 'happy-dom';
 
-test('runtime config with values', async () => {
-    (globalThis.window as any) = {
-        __CLAUDEVILLE_CONFIG__: {
-            hubHttpUrl: 'https://config-hub.com',
-            hubWsUrl: 'wss://config-hub.com'
-        },
-        location: {
-            origin: 'https://window-origin.com',
-            protocol: 'https:',
-            host: 'window-origin.com'
-        }
-    };
+describe('runtime config', () => {
+  let originalWindow: any;
 
-    // Use cache busting to ensure we get a fresh module evaluation if needed,
-    // though for the first one it's not strictly necessary.
-    const { getHubHttpUrl, getHubWsUrl, getHubApiUrl, getRuntimeConfig } = await import(`./runtime.js?t=${Date.now()}`);
+  beforeEach(() => {
+    // Save original window
+    originalWindow = (globalThis as any).window;
+  });
 
-    assert.strictEqual(getHubHttpUrl(), 'https://config-hub.com');
-    assert.strictEqual(getHubWsUrl(), 'wss://config-hub.com');
-    assert.deepEqual(getRuntimeConfig(), (globalThis.window as any).__CLAUDEVILLE_CONFIG__);
+  afterEach(() => {
+    // Restore original window
+    if (originalWindow !== undefined) {
+      (globalThis as any).window = originalWindow;
+    } else {
+      delete (globalThis as any).window;
+    }
+  });
 
-    const url = getHubApiUrl('/api/test', { q: 'search' });
-    assert.strictEqual(url, 'https://config-hub.com/api/test?q=search');
-});
+  function setupWindow(config: any, location: any) {
+    const window = new Window();
+    (globalThis as any).window = window;
+    window.document.body.innerHTML = '<div></div>';
+    (window as any).__CLAUDEVILLE_CONFIG__ = config;
+    (window as any).location = location;
+    return window;
+  }
 
-test('runtime config fallback to window.location', async () => {
-    (globalThis.window as any) = {
-        __CLAUDEVILLE_CONFIG__: {},
-        location: {
-            origin: 'https://window-origin.com',
-            protocol: 'https:',
-            host: 'window-origin.com'
-        }
-    };
+  describe('getHubHttpUrl', () => {
+    it('returns config hubHttpUrl when provided', async () => {
+      setupWindow({ hubHttpUrl: 'https://config-hub.com' }, { origin: 'https://fallback.com' });
 
-    const { getHubHttpUrl, getHubWsUrl, getRuntimeConfig } = await import(`./runtime.js?t=${Date.now() + 1}`);
+      const { getHubHttpUrl } = await import('./runtime.js');
+      expect(getHubHttpUrl()).toBe('https://config-hub.com');
+    });
 
-    assert.strictEqual(getHubHttpUrl(), 'https://window-origin.com');
-    assert.strictEqual(getHubWsUrl(), 'wss://window-origin.com');
-    assert.deepEqual(getRuntimeConfig(), (globalThis.window as any).__CLAUDEVILLE_CONFIG__);
-});
+    it('falls back to window.location.origin when config is empty', async () => {
+      setupWindow({}, { origin: 'https://window-origin.com' });
 
-test('runtime config fallback with http protocol', async () => {
-    (globalThis.window as any) = {
-        __CLAUDEVILLE_CONFIG__: {},
-        location: {
-            origin: 'http://window-origin.com',
-            protocol: 'http:',
-            host: 'window-origin.com'
-        }
-    };
+      const { getHubHttpUrl } = await import('./runtime.js');
+      expect(getHubHttpUrl()).toBe('https://window-origin.com');
+    });
 
-    const { getHubWsUrl } = await import(`./runtime.js?t=${Date.now() + 2}`);
+    it('falls back to window.location.origin when config is undefined', async () => {
+      setupWindow(undefined, { origin: 'http://localhost:8080' });
 
-    assert.strictEqual(getHubWsUrl(), 'ws://window-origin.com');
-});
+      const { getHubHttpUrl } = await import('./runtime.js');
+      expect(getHubHttpUrl()).toBe('http://localhost:8080');
+    });
+  });
 
-test('getHubApiUrl handles various searchParams types', async () => {
-    (globalThis.window as any) = {
-        __CLAUDEVILLE_CONFIG__: { hubHttpUrl: 'http://localhost' },
-        location: { origin: 'http://localhost' }
-    };
-    const { getHubApiUrl } = await import(`./runtime.js?t=${Date.now() + 3}`);
+  describe('getHubWsUrl', () => {
+    it('returns config hubWsUrl when provided', async () => {
+      setupWindow({ hubWsUrl: 'wss://config-ws.com' }, { protocol: 'http:', host: 'localhost' });
 
-    // URLSearchParams
-    const params = new URLSearchParams({ a: '1' });
-    assert.strictEqual(getHubApiUrl('/p', params), 'http://localhost/p?a=1');
+      const { getHubWsUrl } = await import('./runtime.js');
+      expect(getHubWsUrl()).toBe('wss://config-ws.com');
+    });
 
-    // String
-    assert.strictEqual(getHubApiUrl('/p', 'a=1'), 'http://localhost/p?a=1');
-    assert.strictEqual(getHubApiUrl('/p', '?a=1'), 'http://localhost/p?a=1');
+    it('falls back to wss when window is https', async () => {
+      setupWindow({}, { protocol: 'https:', host: 'window-origin.com', origin: 'https://window-origin.com' });
 
-    // Object
-    assert.strictEqual(getHubApiUrl('/p', { a: 1, b: null, c: undefined, d: '' }), 'http://localhost/p?a=1');
+      const { getHubWsUrl } = await import('./runtime.js');
+      expect(getHubWsUrl()).toBe('wss://window-origin.com');
+    });
+
+    it('falls back to ws when window is http', async () => {
+      setupWindow({}, { protocol: 'http:', host: 'window-origin.com', origin: 'http://window-origin.com' });
+
+      const { getHubWsUrl } = await import('./runtime.js');
+      expect(getHubWsUrl()).toBe('ws://window-origin.com');
+    });
+  });
+
+  describe('getHubApiUrl', () => {
+    it('builds URL with pathname only', async () => {
+      setupWindow({ hubHttpUrl: 'http://localhost' }, { origin: 'http://localhost' });
+
+      const { getHubApiUrl } = await import('./runtime.js');
+
+      expect(getHubApiUrl('/api/test')).toBe('http://localhost/api/test');
+      expect(getHubApiUrl('/')).toBe('http://localhost/');
+    });
+
+    it('handles URLSearchParams', async () => {
+      setupWindow({ hubHttpUrl: 'http://localhost' }, { origin: 'http://localhost' });
+
+      const { getHubApiUrl } = await import('./runtime.js');
+
+      const params = new URLSearchParams({ q: 'search', page: '1' });
+      expect(getHubApiUrl('/api/search', params)).toBe('http://localhost/api/search?q=search&page=1');
+    });
+
+    it('handles string query', async () => {
+      setupWindow({ hubHttpUrl: 'http://localhost' }, { origin: 'http://localhost' });
+
+      const { getHubApiUrl } = await import('./runtime.js');
+
+      expect(getHubApiUrl('/api/search', 'q=test')).toBe('http://localhost/api/search?q=test');
+      expect(getHubApiUrl('/api/search', '?q=test')).toBe('http://localhost/api/search?q=test');
+    });
+
+    it('handles object query params', async () => {
+      setupWindow({ hubHttpUrl: 'http://localhost' }, { origin: 'http://localhost' });
+
+      const { getHubApiUrl } = await import('./runtime.js');
+
+      expect(getHubApiUrl('/api/search', { q: 'test' })).toBe('http://localhost/api/search?q=test');
+    });
+
+    it('filters out null, undefined, and empty string values', async () => {
+      setupWindow({ hubHttpUrl: 'http://localhost' }, { origin: 'http://localhost' });
+
+      const { getHubApiUrl } = await import('./runtime.js');
+
+      const url = getHubApiUrl('/api/search', { a: 1, b: null, c: undefined, d: '' });
+      expect(url).toBe('http://localhost/api/search?a=1');
+      expect(url).not.toContain('b=');
+      expect(url).not.toContain('c=');
+      expect(url).not.toContain('d=');
+    });
+
+    it('handles already existing query params in pathname', async () => {
+      setupWindow({ hubHttpUrl: 'http://localhost' }, { origin: 'http://localhost' });
+
+      const { getHubApiUrl } = await import('./runtime.js');
+
+      const url = getHubApiUrl('/api/search?existing=val', { new: 'param' });
+      expect(url).toContain('existing=val');
+      expect(url).toContain('new=param');
+    });
+  });
+
+  describe('getRuntimeConfig', () => {
+    it('returns __CLAUDEVILLE_CONFIG__ from window', async () => {
+      const config = { hubHttpUrl: 'https://custom.com', customKey: 'value' };
+      setupWindow(config, { origin: 'http://localhost' });
+
+      const { getRuntimeConfig } = await import('./runtime.js');
+
+      expect(getRuntimeConfig()).toEqual(config);
+      expect(getRuntimeConfig().customKey).toBe('value');
+    });
+
+    it('returns empty object when config is undefined', async () => {
+      setupWindow(undefined, { origin: 'http://localhost' });
+
+      const { getRuntimeConfig } = await import('./runtime.js');
+
+      expect(getRuntimeConfig()).toEqual({});
+    });
+  });
 });
