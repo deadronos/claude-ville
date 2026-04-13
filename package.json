@@ -6,7 +6,7 @@
     "dev": "tsx claudeville/server.ts",
     "dev:collector": "tsx collector/index.ts",
     "dev:hubreceiver": "tsx hubreceiver/server.ts",
-    "dev:frontend": "concurrently -n server,vite -c blue,green \"tsx claudeville/server.ts\" \"vite\"",
+    "dev:frontend": "npx concurrently --names \"server,vite\" --prefix-colors \"blue,green\" \"tsx claudeville/server.ts\" \"vite\"",
     "build:frontend": "vite build",
     "widget:build": "cd widget && bash build.sh",
     "widget": "open widget/ClaudeVilleWidget.app",
