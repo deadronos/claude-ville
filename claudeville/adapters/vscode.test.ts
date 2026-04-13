@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VSCodeAdapter } from './vscode.js';
+import { VSCodeAdapter } from './vscode';
 
 describe('vscode adapter', () => {
   describe('VSCodeAdapter class', () => {

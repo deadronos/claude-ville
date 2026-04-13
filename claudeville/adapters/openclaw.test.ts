@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { OpenClawAdapter } from './openclaw.js';
+import { OpenClawAdapter } from './openclaw';
 
 describe('openclaw adapter', () => {
   describe('OpenClawAdapter class', () => {

@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node claudeville/server.js",
-    "dev:collector": "node collector/index.js",
-    "dev:hubreceiver": "node hubreceiver/server.js",
+    "dev:collector": "tsx collector/index.ts",
+    "dev:hubreceiver": "tsx hubreceiver/server.ts",
     "dev:frontend": "vite",
     "build:frontend": "vite build",
     "widget:build": "cd widget && bash build.sh",
@@ -19,6 +19,7 @@
     "@types/node": "^25.6.0",
     "@vitest/ui": "^4.1.4",
     "happy-dom": "^20.8.9",
+    "tsx": "^4.21.0",
     "vite": "^8.0.8",
     "vitest": "^4.1.4"
   },

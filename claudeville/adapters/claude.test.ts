@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ClaudeAdapter } from './claude.js';
+import { ClaudeAdapter } from './claude';
 
 describe('claude adapter', () => {
   describe('ClaudeAdapter class', () => {

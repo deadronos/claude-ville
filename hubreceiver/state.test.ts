@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { applySnapshot, getCurrentState, getSessionDetail, getHistory, defaultUsage } from './state.js';
+import { applySnapshot, getCurrentState, getSessionDetail, getHistory, defaultUsage } from './state';
 
 describe('hubreceiver state', () => {
   describe('applySnapshot', () => {

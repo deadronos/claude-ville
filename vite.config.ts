@@ -15,6 +15,7 @@ export default defineConfig({
       name: 'claudeville-runtime-config',
       transformIndexHtml() {
         return {
+          html: '',
           tags: [
             {
               tag: 'script',

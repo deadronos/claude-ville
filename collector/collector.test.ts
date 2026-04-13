@@ -105,7 +105,7 @@ describe('collector', () => {
     });
 
     it('normalizeSession handles partial tokenUsage', () => {
-      const tokenUsage = { totalInput: 5000 };
+      const tokenUsage = { totalInput: 5000 } as { totalInput?: number; totalOutput?: number } | null;
       const tokens = tokenUsage
         ? { input: Number(tokenUsage.totalInput || 0), output: Number(tokenUsage.totalOutput || 0) }
         : { input: 0, output: 0 };
