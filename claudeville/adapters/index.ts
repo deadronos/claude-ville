@@ -2,14 +2,15 @@
  * Adapter registry
  * Registers and manages all AI coding CLI adapters
  */
-const { ClaudeAdapter } = require('./claude');
-const { CodexAdapter } = require('./codex');
-const { GeminiAdapter } = require('./gemini');
-const { OpenClawAdapter } = require('./openclaw');
-const { CopilotAdapter } = require('./copilot');
-const { VSCodeAdapter } = require('./vscode');
-const { sanitizeSessionDetail, sanitizeSessionSummary } = require('./sanitize');
 import { estimateCost } from '../../shared/cost.js';
+import { normalizeTokens } from '../../shared/session-utils.js';
+import { sanitizeSessionDetail, sanitizeSessionSummary } from './sanitize.js';
+import { ClaudeAdapter } from './claude.js';
+import { CodexAdapter } from './codex.js';
+import { GeminiAdapter } from './gemini.js';
+import { OpenClawAdapter } from './openclaw.js';
+import { CopilotAdapter } from './copilot.js';
+import { VSCodeAdapter } from './vscode.js';
 
 const adapters = [
   new ClaudeAdapter(),
@@ -31,20 +32,14 @@ async function getAllSessions(activeThresholdMs) {
       return await Promise.all(sessions.map(async (session) => {
         const detailRaw = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
         const detail = sanitizeSessionDetail(detailRaw || {});
-        const tokenUsage = detailRaw?.tokenUsage || detail?.tokenUsage || null;
-        const tokens = tokenUsage
-          ? {
-              input: tokenUsage.totalInput || 0,
-              output: tokenUsage.totalOutput || 0,
-            }
-          : session.tokens || { input: 0, output: 0 };
+        const tokens = normalizeTokens(detailRaw?.tokenUsage, session.tokens || null);
 
         const sanitizedSession = sanitizeSessionSummary(session);
 
         return {
           ...sanitizedSession,
           detail,
-          tokenUsage,
+          tokenUsage: detailRaw?.tokenUsage || null,
           tokens,
           estimatedCost: estimateCost(sanitizedSession.model, tokens),
         };

@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { readLines, parseJsonLines } = require('./jsonl-utils');
 
 const VSCODE_USER_DIR = process.env.VSCODE_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User');
@@ -60,12 +61,6 @@ function parseJsonLines(lines) {
     try { results.push(JSON.parse(line)); } catch { /* ignore */ }
   }
   return results;
-}
-
-function toTimestamp(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  const parsed = Date.parse(value || '');
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function summarizeJson(value, maxLength = 80) {
@@ -227,7 +222,7 @@ async function getToolHistory(filePath, maxItems = 15) {
       tools.push({
         tool: entry.callId.startsWith('toolu_') ? 'tool_result' : 'call_result',
         detail: entry.callId.substring(0, 120),
-        ts: toTimestamp(entry.ts),
+        ts: typeof entry.ts === 'number' ? entry.ts : 0,
       });
     }
     return tools.slice(-maxItems);
@@ -242,7 +237,7 @@ async function getToolHistory(filePath, maxItems = 15) {
       tools.push({
         tool: entry.name || 'tool_call',
         detail: summarizeJson(entry.attrs && entry.attrs.args, 120),
-        ts: toTimestamp(entry.ts),
+        ts: typeof entry.ts === 'number' ? entry.ts : 0,
       });
     }
 
@@ -251,7 +246,7 @@ async function getToolHistory(filePath, maxItems = 15) {
         tools.push({
           tool: entry.data.toolName || 'tool.execution_start',
           detail: summarizeJson(entry.data.arguments, 120),
-          ts: toTimestamp(entry.timestamp),
+        ts: typeof entry.timestamp === 'number' ? entry.timestamp : 0,
         });
       }
     }
@@ -270,7 +265,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
       messages.push({
         role: 'assistant',
         text: entry.text.substring(0, 200),
-        ts: toTimestamp(entry.ts),
+        ts: typeof entry.ts === 'number' ? entry.ts : 0,
       });
     }
 
@@ -282,7 +277,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
           messages.push({
             role: 'assistant',
             text: text.substring(0, 200),
-            ts: toTimestamp(fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0),
+            ts: fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0,
           });
         }
       } catch {
@@ -304,7 +299,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
       messages.push({
         role: 'assistant',
         text: text.substring(0, 200),
-        ts: toTimestamp(entry.ts),
+        ts: typeof entry.ts === 'number' ? entry.ts : 0,
       });
     }
 
@@ -315,7 +310,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
       messages.push({
         role: 'assistant',
         text: text.substring(0, 200),
-        ts: toTimestamp(entry.timestamp),
+        ts: typeof entry.timestamp === 'number' ? entry.timestamp : 0,
       });
     }
   } catch { /* ignore */ }
