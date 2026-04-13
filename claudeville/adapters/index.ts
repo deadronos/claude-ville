@@ -9,17 +9,7 @@ const { OpenClawAdapter } = require('./openclaw');
 const { CopilotAdapter } = require('./copilot');
 const { VSCodeAdapter } = require('./vscode');
 const { sanitizeSessionDetail, sanitizeSessionSummary } = require('./sanitize');
-
-const CLAUDE_RATE_TABLE = {
-  'claude-opus-4-6': { input: 15, output: 75 },
-  'claude-sonnet-4-5': { input: 3, output: 15 },
-  'claude-haiku-4-5': { input: 0.8, output: 4 },
-};
-
-function estimateCost(model, tokens = { input: 0, output: 0 }) {
-  const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-  return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
-}
+import { estimateCost } from '../../shared/cost.js';
 
 const adapters = [
   new ClaudeAdapter(),

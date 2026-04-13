@@ -30,8 +30,7 @@ export default defineConfig({
   server: {
     port: 3001,
     proxy: {
-      '/api': 'http://localhost:4000',
-      '/runtime-config.js': 'http://localhost:4000'
+      '/api': 'http://localhost:4000'
     }
   },
   build: {

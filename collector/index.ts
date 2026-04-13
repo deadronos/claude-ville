@@ -3,6 +3,7 @@ require('../load-local-env');
 const fs = require('fs');
 const crypto = require('crypto');
 const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters');
+import { estimateCost } from '../shared/cost.js';
 
 const HUB_URL = process.env.HUB_URL || 'http://localhost:3030';
 const HUB_AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
@@ -12,23 +13,10 @@ const FLUSH_INTERVAL_MS = Number(process.env.FLUSH_INTERVAL_MS || 2000);
 const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
 const claudeAdapter = adapters.find((adapter) => adapter.provider === 'claude');
 
-const CLAUDE_RATE_TABLE = {
-  'claude-opus-4-6': { input: 15, output: 75 },
-  'claude-sonnet-4-5': { input: 3, output: 15 },
-  'claude-haiku-4-5': { input: 0.8, output: 4 },
-};
-
 let flushTimer = null;
 let dirty = true;
 let sending = false;
 let lastSentHash = '';
-
-function estimateCost(model, tokens) {
-  const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-  const input = Number(tokens?.input || 0);
-  const output = Number(tokens?.output || 0);
-  return (input * rate.input + output * rate.output) / 1000000;
-}
 
 function normalizeSession(session, detail) {
   const tokenUsage = detail?.tokenUsage || session.tokenUsage || null;
