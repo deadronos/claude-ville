@@ -19,4 +19,6 @@ function estimateCost(model, tokens) {
   return (input * rate.input + output * rate.output) / 1000000;
 }
 
+export { CLAUDE_RATE_TABLE, estimateCost };
+
 module.exports = { CLAUDE_RATE_TABLE, estimateCost };
