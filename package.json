@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
   "devDependencies": {
