@@ -1,19 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-
-// adapters/index.ts uses CommonJS require() and instantiates all adapters
-// at load time, which makes direct importing complex in the ESM test env.
-// We test the core logic patterns here directly.
-
-const CLAUDE_RATE_TABLE = {
-  'claude-opus-4-6': { input: 15, output: 75 },
-  'claude-sonnet-4-5': { input: 3, output: 15 },
-  'claude-haiku-4-5': { input: 0.8, output: 4 },
-};
-
-function estimateCost(model: string, tokens = { input: 0, output: 0 }) {
-  const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-  return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
-}
+import { CLAUDE_RATE_TABLE, estimateCost } from '../../shared/cost.js';
 
 describe('adapter registry logic', () => {
   describe('estimateCost', () => {

@@ -19,6 +19,7 @@ const usageQuota = require('./services/usageQuota');
 
 const { setCorsHeaders, sendJson, sendError, safeLimit } = require('../shared/http-utils');
 const { createWebSocketFrame, computeAcceptKey } = require('../shared/ws-utils');
+const { createFileWatchers } = require('../shared/watch-utils');
 
 // Claude adapter (teams/tasks are Claude-only)
 const claudeAdapter = adapters.find(a => a.provider === 'claude');
@@ -28,23 +29,7 @@ const PORT = 4000;
 const STATIC_DIR = __dirname;
 const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
-// ─── MIME type mapping ─────────────────────────────────────
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.mjs': 'application/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf',
-};
+const { MIME_TYPES } = require('../shared/mime-types');
 
 // ─── WebSocket client management ──────────────────────────
 const wsClients = new Set();
@@ -502,30 +487,7 @@ function debouncedBroadcast() {
 // ─── File watching (multi-provider) ────────────────────────
 
 function startFileWatcher() {
-  const watchPaths = getAllWatchPaths();
-  let watchCount = 0;
-
-  for (const wp of watchPaths) {
-    try {
-      if (wp.type === 'file') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, (eventType) => {
-          if (eventType === 'change') debouncedBroadcast();
-        });
-        watchCount++;
-      } else if (wp.type === 'directory') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, { recursive: wp.recursive || false }, (eventType, filename) => {
-          if (wp.filter && filename && !filename.endsWith(wp.filter)) return;
-          debouncedBroadcast();
-        });
-        watchCount++;
-      }
-    } catch {
-      // ignore watch path failures
-    }
-  }
-
+  const { watchCount } = createFileWatchers(getAllWatchPaths(), debouncedBroadcast);
   console.log(`[Watch] started watching ${watchCount} paths`);
 
   // Periodic polling (2s) - prevent missed updates

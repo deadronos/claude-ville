@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
+import { CLAUDE_RATE_TABLE, estimateCost } from '../shared/cost.js';
 
 // Note: We don't import from collector/index.ts because it has side effects (require load-local-env)
 // Instead we test the concepts and patterns used in the collector
@@ -30,18 +31,7 @@ describe('collector', () => {
     });
 
     it('sessions include normalized tokens and cost', () => {
-      // Simulating the collector's normalizeSession logic
-      const CLAUDE_RATE_TABLE = {
-        'claude-opus-4-6': { input: 15, output: 75 },
-        'claude-sonnet-4-5': { input: 3, output: 15 },
-        'claude-haiku-4-5': { input: 0.8, output: 4 },
-      };
-
-      const estimateCost = (model, tokens) => {
-        const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-        return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
-      };
-
+      // Using shared/cost.js values
       const tokens = { input: 1000, output: 500 };
       const cost = estimateCost('claude-sonnet-4-5', tokens);
 
@@ -50,17 +40,6 @@ describe('collector', () => {
     });
 
     it('estimateCost uses correct rate table for known models', () => {
-      const CLAUDE_RATE_TABLE = {
-        'claude-opus-4-6': { input: 15, output: 75 },
-        'claude-sonnet-4-5': { input: 3, output: 15 },
-        'claude-haiku-4-5': { input: 0.8, output: 4 },
-      };
-
-      const estimateCost = (model, tokens) => {
-        const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-        return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
-      };
-
       // Opus: 1M input + 500K output = $15 + $37.50 = $52.50
       const opusTokens = { input: 1000000, output: 500000 };
       const opusCost = estimateCost('claude-opus-4-6', opusTokens);
@@ -78,17 +57,6 @@ describe('collector', () => {
     });
 
     it('estimateCost falls back to sonnet rate for unknown models', () => {
-      const CLAUDE_RATE_TABLE = {
-        'claude-opus-4-6': { input: 15, output: 75 },
-        'claude-sonnet-4-5': { input: 3, output: 15 },
-        'claude-haiku-4-5': { input: 0.8, output: 4 },
-      };
-
-      const estimateCost = (model, tokens) => {
-        const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-        return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
-      };
-
       const tokens = { input: 1000000, output: 1000000 };
       const cost = estimateCost('unknown-model', tokens);
       // Falls back to sonnet: 1M * 3 + 1M * 15 = $18
@@ -114,29 +82,11 @@ describe('collector', () => {
     });
 
     it('estimateCost handles zero tokens', () => {
-      const CLAUDE_RATE_TABLE = {
-        'claude-sonnet-4-5': { input: 3, output: 15 },
-      };
-
-      const estimateCost = (model, tokens) => {
-        const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-        return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
-      };
-
       const cost = estimateCost('claude-sonnet-4-5', { input: 0, output: 0 });
       expect(cost).toBe(0);
     });
 
     it('estimateCost handles missing token properties', () => {
-      const CLAUDE_RATE_TABLE = {
-        'claude-sonnet-4-5': { input: 3, output: 15 },
-      };
-
-      const estimateCost = (model, tokens) => {
-        const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-        return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
-      };
-
       const cost = estimateCost('claude-sonnet-4-5', {});
       expect(cost).toBe(0);
     });

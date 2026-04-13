@@ -1,6 +1,6 @@
 require('../load-local-env');
 
-const fs = require('fs');
+const { createFileWatchers } = require('../shared/watch-utils');
 const crypto = require('crypto');
 const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters');
 import { estimateCost } from '../shared/cost.js';
@@ -121,30 +121,7 @@ function scheduleFlush() {
 }
 
 function startWatchers() {
-  const watchPaths = getAllWatchPaths();
-  let watchCount = 0;
-
-  for (const wp of watchPaths) {
-    try {
-      if (wp.type === 'file') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, (eventType) => {
-          if (eventType === 'change') scheduleFlush();
-        });
-        watchCount++;
-      } else if (wp.type === 'directory') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, { recursive: wp.recursive || false }, (_eventType, filename) => {
-          if (wp.filter && filename && !filename.endsWith(wp.filter)) return;
-          scheduleFlush();
-        });
-        watchCount++;
-      }
-    } catch {
-      // ignore individual watch failures
-    }
-  }
-
+  const { watchCount } = createFileWatchers(getAllWatchPaths(), scheduleFlush);
   // eslint-disable-next-line no-console
   console.log(`[collector] watching ${watchCount} path(s)`);
 }
