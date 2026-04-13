@@ -1,7 +1,6 @@
 require('../load-local-env');
 
 const http = require('http');
-const crypto = require('crypto');
 const { applySnapshot, getCurrentState, getSessionDetail, getHistory, defaultUsage } = require('./state');
 
 const PORT = Number(process.env.HUB_PORT || 3030);
@@ -9,53 +8,14 @@ const AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
 
 const wsClients = new Set();
 
+const { setCorsHeaders, sendJson, sendError, safeLimit } = require('../shared/http-utils');
+const { createWebSocketFrame, computeAcceptKey } = require('../shared/ws-utils');
+
 const MIME_TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
 };
-
-const WS_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-}
-
-function sendJson(res, statusCode, data) {
-  setCorsHeaders(res);
-  res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify(data));
-}
-
-function sendError(res, statusCode, message) {
-  sendJson(res, statusCode, { error: message });
-}
-
-function createWebSocketFrame(data, opcode = 0x1) {
-  const payload = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf-8');
-  const length = payload.length;
-  let header;
-
-  if (length < 126) {
-    header = Buffer.alloc(2);
-    header[0] = 0x80 | opcode;
-    header[1] = length;
-  } else if (length < 65536) {
-    header = Buffer.alloc(4);
-    header[0] = 0x80 | opcode;
-    header[1] = 126;
-    header.writeUInt16BE(length, 2);
-  } else {
-    header = Buffer.alloc(10);
-    header[0] = 0x80 | opcode;
-    header[1] = 127;
-    header.writeBigUInt64BE(BigInt(length), 2);
-  }
-
-  return Buffer.concat([header, payload]);
-}
 
 function wsSend(socket, data) {
   if (!socket.destroyed && socket.writable) {
@@ -85,7 +45,7 @@ function handleWebSocketUpgrade(req, socket) {
     return;
   }
 
-  const acceptKey = crypto.createHash('sha1').update(key + WS_MAGIC_STRING).digest('base64');
+  const acceptKey = computeAcceptKey(key);
   const responseStr =
     'HTTP/1.1 101 Switching Protocols\r\n' +
     'Upgrade: websocket\r\n' +
@@ -215,9 +175,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && pathname === '/api/history') {
-    const limit = Number(url.searchParams.get('lines') || 100);
-    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
-    sendJson(res, 200, { entries: getHistory(safeLimit) });
+    const limit = safeLimit(url.searchParams.get('lines'));
+    sendJson(res, 200, { entries: getHistory(limit) });
     return;
   }
 
