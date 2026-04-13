@@ -9,7 +9,7 @@ const { OpenClawAdapter } = require('./openclaw');
 const { CopilotAdapter } = require('./copilot');
 const { VSCodeAdapter } = require('./vscode');
 const { sanitizeSessionDetail, sanitizeSessionSummary } = require('./sanitize');
-const { estimateCost } = require('../../shared/cost');
+import { estimateCost } from '../../shared/cost.js';
 
 const adapters = [
   new ClaudeAdapter(),

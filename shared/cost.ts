@@ -19,7 +19,3 @@ export function estimateCost(model: string, tokens: { input?: number; output?: n
   const output = Number(tokens?.output ?? 0);
   return (input * rate.input + output * rate.output) / 1000000;
 }
-
-// CommonJS fallback — used by collector/index.ts and claudeville/adapters/index.ts
-// (which run under tsx / plain Node.js require())
-module.exports = { CLAUDE_RATE_TABLE, estimateCost };
