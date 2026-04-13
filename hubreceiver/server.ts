@@ -11,11 +11,7 @@ const wsClients = new Set();
 const { setCorsHeaders, sendJson, sendError, safeLimit } = require('../shared/http-utils');
 const { createWebSocketFrame, computeAcceptKey } = require('../shared/ws-utils');
 
-const MIME_TYPES = {
-  '.json': 'application/json; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.txt': 'text/plain; charset=utf-8',
-};
+const { MIME_TYPES } = require('../shared/mime-types');
 
 function wsSend(socket, data) {
   if (!socket.destroyed && socket.writable) {

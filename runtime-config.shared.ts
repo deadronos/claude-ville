@@ -1,29 +1,4 @@
-const DEFAULT_AGENT_NAME_POOL = [
-  'Atlas', 'Nova', 'Cipher', 'Pixel', 'Spark',
-  'Bolt', 'Echo', 'Flux', 'Helix', 'Onyx',
-  'Prism', 'Qubit', 'Rune', 'Sage', 'Vex',
-];
-
-const DEFAULT_SESSION_NAME_POOL = [
-  'Orbit', 'Beacon', 'Relay', 'Pulse', 'Signal',
-  'Vector', 'Comet', 'Drift', 'Trace', 'Kernel',
-  'Node', 'Echo', 'Wisp', 'Shard', 'Tide',
-];
-
-function toList(value) {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-
-  if (typeof value !== 'string') {
-    return [];
-  }
-
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
+const { DEFAULT_AGENT_NAME_POOL, DEFAULT_SESSION_NAME_POOL, toList } = require('./shared/name-pools');
 
 function normalizeAgentNamePool(rawPool = '') {
   const pool = toList(rawPool);

@@ -1,9 +1,10 @@
 require('../load-local-env');
 
-const fs = require('fs');
+const { createFileWatchers } = require('../shared/watch-utils');
 const crypto = require('crypto');
 const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters');
 import { estimateCost } from '../shared/cost.js';
+import { normalizeTokens } from '../shared/session-utils.js';
 
 const HUB_URL = process.env.HUB_URL || 'http://localhost:3030';
 const HUB_AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
@@ -19,18 +20,12 @@ let sending = false;
 let lastSentHash = '';
 
 function normalizeSession(session, detail) {
-  const tokenUsage = detail?.tokenUsage || session.tokenUsage || null;
-  const tokens = tokenUsage
-    ? {
-        input: Number(tokenUsage.totalInput || 0),
-        output: Number(tokenUsage.totalOutput || 0),
-      }
-    : { input: 0, output: 0 };
+  const tokens = normalizeTokens(detail?.tokenUsage, session.tokens || null);
 
   return {
     ...session,
     tokens,
-    tokenUsage,
+    tokenUsage: detail?.tokenUsage || null,
     estimatedCost: estimateCost(session.model, tokens),
   };
 }
@@ -121,30 +116,7 @@ function scheduleFlush() {
 }
 
 function startWatchers() {
-  const watchPaths = getAllWatchPaths();
-  let watchCount = 0;
-
-  for (const wp of watchPaths) {
-    try {
-      if (wp.type === 'file') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, (eventType) => {
-          if (eventType === 'change') scheduleFlush();
-        });
-        watchCount++;
-      } else if (wp.type === 'directory') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, { recursive: wp.recursive || false }, (_eventType, filename) => {
-          if (wp.filter && filename && !filename.endsWith(wp.filter)) return;
-          scheduleFlush();
-        });
-        watchCount++;
-      }
-    } catch {
-      // ignore individual watch failures
-    }
-  }
-
+  const { watchCount } = createFileWatchers(getAllWatchPaths(), scheduleFlush);
   // eslint-disable-next-line no-console
   console.log(`[collector] watching ${watchCount} path(s)`);
 }

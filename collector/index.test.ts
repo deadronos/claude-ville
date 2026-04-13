@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { estimateCost } from '../shared/cost.js';
 
 // Test collector logic patterns
 // Since collector/index.ts has side effects (require load-local-env),
@@ -6,19 +7,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 describe('collector logic', () => {
   describe('estimateCost', () => {
-    const CLAUDE_RATE_TABLE = {
-      'claude-opus-4-6': { input: 15, output: 75 },
-      'claude-sonnet-4-5': { input: 3, output: 15 },
-      'claude-haiku-4-5': { input: 0.8, output: 4 },
-    };
-
-    const estimateCost = (model: string, tokens: { input?: number; output?: number }) => {
-      const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-      const input = Number(tokens?.input || 0);
-      const output = Number(tokens?.output || 0);
-      return (input * rate.input + output * rate.output) / 1000000;
-    };
-
     it('calculates cost for Opus model', () => {
       // 1M input @ $15/M = $15, 500K output @ $75/M = $37.50
       const cost = estimateCost('claude-opus-4-6', { input: 1000000, output: 500000 });
@@ -59,15 +47,6 @@ describe('collector logic', () => {
   });
 
   describe('normalizeSession', () => {
-    const CLAUDE_RATE_TABLE = {
-      'claude-sonnet-4-5': { input: 3, output: 15 },
-    };
-
-    const estimateCost = (model: string, tokens: { input?: number; output?: number }) => {
-      const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-      return ((tokens?.input || 0) * rate.input + (tokens?.output || 0) * rate.output) / 1000000;
-    };
-
     const normalizeSession = (session: any, detail: any) => {
       const tokenUsage = detail?.tokenUsage || session.tokenUsage || null;
       const tokens = tokenUsage
