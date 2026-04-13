@@ -3,7 +3,7 @@ node_modules/
 *.log
 docs/plans/
 
-
+coverage
 
 .env
 .env.local
