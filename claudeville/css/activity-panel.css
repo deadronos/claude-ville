@@ -8,7 +8,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    font-family: 'Press Start 2P', monospace;
+    font-family: var(--font-mono);
     animation: ap-slide-in 0.2s ease;
 }
 
