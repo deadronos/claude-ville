@@ -97,7 +97,7 @@ const server = http.createServer((req, res) => {
             providers: state.providers,
             usage: state.usage,
             timestamp: state.timestamp || Date.now(),
-          });
+          }, wsClients);
           console.log(`[hubreceiver] snapshot accepted ${Buffer.byteLength(body, 'utf8')} bytes → ${state.sessions.length} sessions`);
           sendJson(res, 200, { ok: true, sessions: state.sessions.length });
         } catch (error) {
