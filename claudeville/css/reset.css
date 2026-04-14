@@ -54,4 +54,5 @@ a {
 :root {
     --font-retro: 'Press Start 2P', monospace;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    --text-scale: 1.0; /* set by bubbleConfig.applyTextScale() on boot + settings change */
 }
