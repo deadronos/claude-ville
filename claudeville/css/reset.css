@@ -8,7 +8,7 @@ html, body {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    font-family: 'Press Start 2P', monospace;
+    font-family: var(--font-mono);
     background: #0a0a0f;
     color: #e8d44d;
     -webkit-font-smoothing: none;
