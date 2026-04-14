@@ -30,7 +30,7 @@ function readProviderNameModes(env = process.env) {
 }
 
 function buildRuntimeConfig(env = process.env) {
-  const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:3030';
+  const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:4000';
   const hubWsUrl = env.HUB_WS_URL || `${hubHttpUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws`;
 
   return {
