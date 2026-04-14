@@ -29,6 +29,7 @@
 }
 
 .modal__title {
+    font-family: var(--font-retro);
     font-size: 12px;
     color: #e8d44d;
     letter-spacing: 1px;
@@ -49,6 +50,7 @@
 }
 
 .modal__content {
+    font-family: var(--font-mono);
     padding: 16px;
     overflow-y: auto;
     font-size: 11px;
@@ -201,6 +203,7 @@
 }
 
 .settings-label {
+    font-family: var(--font-mono);
     font-size: 11px;
     color: #e8d44d;
     letter-spacing: 1px;
@@ -212,6 +215,7 @@
 }
 
 .settings-lang-btn {
+    font-family: var(--font-mono);
     font-size: 10px;
     padding: 6px 14px;
     border: 1px solid rgba(232, 212, 77, 0.3);
@@ -220,7 +224,6 @@
     background: transparent;
     cursor: pointer;
     transition: all 0.15s;
-    font-family: 'Press Start 2P', monospace;
 }
 
 .settings-lang-btn:hover {
