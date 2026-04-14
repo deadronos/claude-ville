@@ -39,16 +39,12 @@ const STRINGS: any = {
     pooledRandomNames: 'Pooled random',
     providerNameModeNote: 'Provider overrides from the environment can still force a mode for specific providers.',
     nameModeChanged: (data: { mode: string }) => `Name mode set to ${data.mode}`,
+    textSize: 'Text size',
     bubbleSize: 'Speech bubble size',
     bubbleSmall: 'Small',
     bubbleMedium: 'Medium',
     bubbleLarge: 'Large',
     bubbleExtraLarge: 'Extra large',
-    chatSize: 'Chat bubble size',
-    chatSmall: 'Small',
-    chatMedium: 'Medium',
-    chatLarge: 'Large',
-    chatExtraLarge: 'Extra large',
     settingsSaved: 'Settings saved',
 };
 
