@@ -84,21 +84,21 @@
 .dashboard__empty-icon {
     font-size: 36px;
     color: #8b8b9e;
-    font-family: 'Press Start 2P', monospace;
+    font-family: var(--font-retro);
 }
 
 .dashboard__empty-text {
     font-size: 13px;
     color: #e8d44d;
     letter-spacing: 3px;
-    font-family: 'Press Start 2P', monospace;
+    font-family: var(--font-retro);
 }
 
 .dashboard__empty-sub {
     font-size: 10px;
     color: #8b8b9e;
     letter-spacing: 1px;
-    font-family: 'Press Start 2P', monospace;
+    font-family: var(--font-retro);
 }
 
 /* ═══ Agent card ═══ */
