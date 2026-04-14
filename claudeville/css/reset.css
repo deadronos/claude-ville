@@ -49,3 +49,9 @@ a {
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(232, 212, 77, 0.5);
 }
+
+/* ─── Typography scale ─── */
+:root {
+    --font-retro: 'Press Start 2P', monospace;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
