@@ -341,8 +341,8 @@ export class DashboardRenderer {
         }
 
         // Update tool count badge
-        const badge = cardEl.querySelector('.dash-card__tool-count-badge');
-        if (badge) badge.textContent = String((history || []).length);
+        const toolCountBadge = cardEl.querySelector('.dash-card__tool-count-badge');
+        if (toolCountBadge) toolCountBadge.textContent = String((history || []).length);
 
         // Update context bar
         const contextPct = agent.usage?.contextPercent ?? 0;
