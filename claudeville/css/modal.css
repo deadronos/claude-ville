@@ -30,13 +30,13 @@
 
 .modal__title {
     font-family: var(--font-retro);
-    font-size: 12px;
+    font-size: calc(12px * var(--text-scale));
     color: #e8d44d;
     letter-spacing: 1px;
 }
 
 .modal__close {
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     color: #8b8b9e;
     padding: 4px 8px;
     border: 1px solid rgba(139, 139, 158, 0.3);
@@ -53,7 +53,7 @@
     font-family: var(--font-mono);
     padding: 16px;
     overflow-y: auto;
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     color: #8b8b9e;
     line-height: 1.8;
 }
@@ -75,19 +75,19 @@
 }
 
 .agent-detail__name {
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     color: #e8d44d;
 }
 
 .agent-detail__status {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     padding: 2px 8px;
     border-radius: 3px;
 }
 
 .agent-detail__close {
     margin-left: auto;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: #8b8b9e;
     padding: 4px 8px;
     border: 1px solid rgba(139, 139, 158, 0.3);
@@ -113,19 +113,19 @@
 }
 
 .agent-detail__label {
-    font-size: 7px;
+    font-size: calc(7px * var(--text-scale));
     color: #8b8b9e;
     letter-spacing: 1px;
 }
 
 .agent-detail__value {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     color: #e8d44d;
 }
 
 .agent-detail__message {
     width: 100%;
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     color: #8b8b9e;
     padding: 6px 10px;
     background: rgba(255, 255, 255, 0.03);
@@ -150,7 +150,7 @@
 .toast {
     padding: 10px 16px;
     border-radius: 4px;
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     border: 1px solid;
     background: rgba(15, 15, 25, 0.95);
     pointer-events: auto;
@@ -204,7 +204,7 @@
 
 .settings-label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     color: #e8d44d;
     letter-spacing: 1px;
 }
@@ -216,7 +216,7 @@
 
 .settings-lang-btn {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     padding: 6px 14px;
     border: 1px solid rgba(232, 212, 77, 0.3);
     border-radius: 4px;

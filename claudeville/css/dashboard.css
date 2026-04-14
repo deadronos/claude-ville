@@ -34,14 +34,14 @@
 }
 
 .dashboard__section-name {
-    font-size: 12px;
+    font-size: calc(12px * var(--text-scale));
     font-weight: bold;
     color: #eee;
     font-family: var(--font-retro);
 }
 
 .dashboard__section-path {
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: #666;
     flex: 1;
     overflow: hidden;
@@ -51,7 +51,7 @@
 }
 
 .dashboard__section-count {
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: #8b8b9e;
     background: rgba(255, 255, 255, 0.06);
     padding: 2px 8px;
@@ -82,20 +82,20 @@
 }
 
 .dashboard__empty-icon {
-    font-size: 36px;
+    font-size: calc(36px * var(--text-scale));
     color: #8b8b9e;
     font-family: var(--font-retro);
 }
 
 .dashboard__empty-text {
-    font-size: 13px;
+    font-size: calc(13px * var(--text-scale));
     color: #e8d44d;
     letter-spacing: 3px;
     font-family: var(--font-retro);
 }
 
 .dashboard__empty-sub {
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: #8b8b9e;
     letter-spacing: 1px;
     font-family: var(--font-retro);
@@ -166,7 +166,7 @@
 }
 
 .dash-card__name {
-    font-size: 12px;
+    font-size: calc(12px * var(--text-scale));
     font-weight: bold;
     color: #e8d44d;
     font-family: var(--font-mono);
@@ -177,7 +177,7 @@
     align-items: center;
     gap: 8px;
     margin-top: 4px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: #8b8b9e;
     font-family: var(--font-mono);
 }
@@ -185,7 +185,7 @@
 .dash-card__provider-badge {
     padding: 1px 6px;
     border-radius: 3px;
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     font-weight: bold;
     letter-spacing: 0.5px;
 }
@@ -195,13 +195,13 @@
     color: #4a9eff;
     padding: 1px 6px;
     border-radius: 3px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     font-family: var(--font-mono);
 }
 
 .dash-card__role {
     color: #8b8b9e;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     font-family: var(--font-mono);
 }
 
@@ -209,7 +209,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     font-weight: bold;
     text-transform: uppercase;
     flex-shrink: 0;
@@ -256,7 +256,7 @@
 }
 
 .dash-card__tool-icon {
-    font-size: 16px;
+    font-size: calc(16px * var(--text-scale));
     flex-shrink: 0;
     width: 20px;
     text-align: center;
@@ -268,14 +268,14 @@
 }
 
 .dash-card__tool-name {
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     font-weight: bold;
     color: #eee;
     font-family: var(--font-mono);
 }
 
 .dash-card__tool-detail {
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: #8b8b9e;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -287,7 +287,7 @@
 .dash-card__message {
     margin-top: 6px;
     padding: 5px 8px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: #b0b0c0;
     background: rgba(255, 255, 255, 0.03);
     border-radius: 4px;
@@ -314,7 +314,7 @@
 }
 
 .dash-card__tools-title {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     color: #8b8b9e;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -343,12 +343,12 @@
 .dash-card__tool-item-icon {
     width: 16px;
     text-align: center;
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     flex-shrink: 0;
 }
 
 .dash-card__tool-item-name {
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: #ccc;
     flex-shrink: 0;
     min-width: 50px;
@@ -356,7 +356,7 @@
 }
 
 .dash-card__tool-item-detail {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     color: #666;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -378,7 +378,7 @@
     padding: 12px;
     text-align: center;
     color: #8b8b9e;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
 }
 
 .dash-card__loading-spinner {
@@ -423,7 +423,7 @@
 }
 
 .dash-card__tools-chevron {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     color: #8b8b9e;
     transition: transform 0.2s ease;
 }
@@ -443,7 +443,7 @@
 }
 
 .dash-card__tool-count-badge {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     color: #8b8b9e;
     background: rgba(255, 255, 255, 0.06);
     padding: 1px 6px;

@@ -17,14 +17,14 @@
 }
 
 .sidebar__title {
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     font-family: var(--font-retro);
     color: #e8d44d;
     letter-spacing: 2px;
 }
 
 .sidebar__count {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     font-family: var(--font-mono);
     color: #8b8b9e;
     background: rgba(255, 255, 255, 0.05);
@@ -92,7 +92,7 @@
 }
 
 .sidebar__agent-name {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     font-family: var(--font-mono);
     color: #e8d44d;
     display: block;
@@ -102,7 +102,7 @@
 }
 
 .sidebar__agent-model {
-    font-size: 7px;
+    font-size: calc(7px * var(--text-scale));
     font-family: var(--font-mono);
     color: #8b8b9e;
     display: block;
@@ -134,7 +134,7 @@
 }
 
 .sidebar__project-name {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     font-family: var(--font-mono);
     color: #b0b0c0;
     letter-spacing: 1px;
@@ -146,7 +146,7 @@
 }
 
 .sidebar__project-count {
-    font-size: 7px;
+    font-size: calc(7px * var(--text-scale));
     color: #8b8b9e;
     background: rgba(255, 255, 255, 0.06);
     padding: 1px 6px;
