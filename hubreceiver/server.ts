@@ -5,10 +5,11 @@ const { applySnapshot, getCurrentState, getSessionDetail, getHistory, defaultUsa
 
 const PORT = Number(process.env.HUB_PORT || 3030);
 const AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
+const MAX_SNAPSHOT_BYTES = Number(process.env.MAX_SNAPSHOT_BYTES || 10 * 1024 * 1024); // 10 MB default
 
 const wsClients = new Set();
 
-const { setCorsHeaders, sendJson, sendError, safeLimit } = require('../shared/http-utils');
+const { setCorsHeaders, sendJson, sendError, safeLimit, readBoundedBody } = require('../shared/http-utils');
 const { createWebSocketFrame, computeAcceptKey } = require('../shared/ws-utils');
 const { wsSend, wsBroadcast } = require('../shared/ws-helpers');
 
@@ -83,29 +84,36 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk;
-    });
-
-    req.on('end', () => {
-      try {
-        const snapshot = JSON.parse(body || '{}');
-        const state = applySnapshot(snapshot);
-        wsBroadcast({
-          ...buildWsPayload('update'),
-          sessions: state.sessions,
-          teams: state.teams,
-          taskGroups: state.taskGroups,
-          providers: state.providers,
-          usage: state.usage,
-          timestamp: state.timestamp || Date.now(),
-        });
-        sendJson(res, 200, { ok: true, sessions: state.sessions.length });
-      } catch (error) {
-        sendError(res, 400, error instanceof Error ? error.message : 'invalid snapshot');
-      }
-    });
+    readBoundedBody(req, MAX_SNAPSHOT_BYTES)
+      .then(({ body }) => {
+        try {
+          const snapshot = JSON.parse(body || '{}');
+          const state = applySnapshot(snapshot);
+          wsBroadcast({
+            ...buildWsPayload('update'),
+            sessions: state.sessions,
+            teams: state.teams,
+            taskGroups: state.taskGroups,
+            providers: state.providers,
+            usage: state.usage,
+            timestamp: state.timestamp || Date.now(),
+          });
+          console.log(`[hubreceiver] snapshot accepted ${Buffer.byteLength(body, 'utf8')} bytes → ${state.sessions.length} sessions`);
+          sendJson(res, 200, { ok: true, sessions: state.sessions.length });
+        } catch (error) {
+          console.error(`[hubreceiver] snapshot parse error (${Buffer.byteLength(body, 'utf8')} bytes): ${error instanceof Error ? error.message : error}`);
+          sendError(res, 400, error instanceof Error ? error.message : 'invalid snapshot');
+        }
+      })
+      .catch((err) => {
+        if (err && err.statusCode === 413) {
+          console.error(`[hubreceiver] snapshot rejected — ${err.message}`);
+          sendError(res, 413, err.message);
+        } else {
+          console.error(`[hubreceiver] snapshot read error: ${err}`);
+          sendError(res, 400, 'failed to read snapshot body');
+        }
+      });
     return;
   }
 
