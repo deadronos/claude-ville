@@ -52,6 +52,7 @@
 .topbar__stat-value {
     font-size: 11px;
     color: #e8d44d;
+    font-family: var(--font-mono);
 }
 
 .topbar__badges {
@@ -67,6 +68,7 @@
     padding: 3px 8px;
     border-radius: 3px;
     background: rgba(255, 255, 255, 0.05);
+    font-family: var(--font-mono);
 }
 
 .topbar__badge-dot {
@@ -195,6 +197,7 @@
     color: #8b8b9e;
     background: transparent;
     transition: all 0.15s;
+    font-family: var(--font-retro);
 }
 
 .topbar__mode-btn:hover {
