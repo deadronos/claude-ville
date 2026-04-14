@@ -37,7 +37,7 @@
     font-size: 12px;
     font-weight: bold;
     color: #eee;
-    font-family: 'Press Start 2P', monospace;
+    font-family: var(--font-retro);
 }
 
 .dashboard__section-path {
@@ -47,6 +47,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-family: var(--font-mono);
 }
 
 .dashboard__section-count {
@@ -113,6 +114,27 @@
     border-color: rgba(232, 212, 77, 0.4);
 }
 
+/* ─── Card entrance animation ─── */
+@keyframes card-enter {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.dash-card {
+    animation: card-enter 0.2s ease-out both;
+}
+
+/* ─── Working glow ─── */
+.dash-card--working {
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.15),
+                0 0 4px rgba(74, 222, 128, 0.1);
+}
+
+.dash-card--working:hover {
+    box-shadow: 0 0 18px rgba(74, 222, 128, 0.25),
+                0 0 6px rgba(74, 222, 128, 0.15);
+}
+
 .dash-card--working { border-left: 3px solid #4ade80; }
 .dash-card--idle    { border-left: 3px solid #60a5fa; }
 .dash-card--waiting { border-left: 3px solid #f97316; }
@@ -147,7 +169,7 @@
     font-size: 12px;
     font-weight: bold;
     color: #e8d44d;
-    font-family: 'Press Start 2P', monospace;
+    font-family: var(--font-mono);
 }
 
 .dash-card__meta {
@@ -157,6 +179,7 @@
     margin-top: 4px;
     font-size: 10px;
     color: #8b8b9e;
+    font-family: var(--font-mono);
 }
 
 .dash-card__provider-badge {
@@ -173,11 +196,13 @@
     padding: 1px 6px;
     border-radius: 3px;
     font-size: 10px;
+    font-family: var(--font-mono);
 }
 
 .dash-card__role {
     color: #8b8b9e;
     font-size: 10px;
+    font-family: var(--font-mono);
 }
 
 .dash-card__status {
@@ -246,6 +271,7 @@
     font-size: 11px;
     font-weight: bold;
     color: #eee;
+    font-family: var(--font-mono);
 }
 
 .dash-card__tool-detail {
@@ -255,6 +281,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     margin-top: 2px;
+    font-family: var(--font-mono);
 }
 
 .dash-card__message {
@@ -325,6 +352,7 @@
     color: #ccc;
     flex-shrink: 0;
     min-width: 50px;
+    font-family: var(--font-mono);
 }
 
 .dash-card__tool-item-detail {
@@ -334,6 +362,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+    font-family: var(--font-mono);
 }
 
 /* ─ Tool category colors ─ */
@@ -366,4 +395,58 @@
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* ─── Context progress bar ─── */
+.dash-card__context-bar-wrap {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.dash-card__context-bar {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #4ade80 0%, #e8d44d 60%, #ef4444 100%);
+    transition: width 0.5s ease;
+}
+
+/* ─── Tool history expand / collapse ─── */
+.dash-card__tools-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+}
+
+.dash-card__tools-chevron {
+    font-size: 8px;
+    color: #8b8b9e;
+    transition: transform 0.2s ease;
+}
+
+.dash-card__tools-chevron--open {
+    transform: rotate(90deg);
+}
+
+.dash-card__tools {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.2s ease;
+}
+
+.dash-card__tools--open {
+    max-height: 180px;
+}
+
+.dash-card__tool-count-badge {
+    font-size: 8px;
+    color: #8b8b9e;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: auto;
 }
