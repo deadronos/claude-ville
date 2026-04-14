@@ -68,6 +68,14 @@ export class DashboardRenderer {
                 this._stopDetailFetching();
             }
         });
+
+        document.addEventListener('click', (e) => {
+            const header = (e.target as Element).closest('.dash-card__tools-header');
+            if (header) {
+                const agentId = (header as HTMLElement).dataset.agentId;
+                if (agentId) this._toggleToolHistory(agentId);
+            }
+        });
     }
 
     render() {
@@ -219,6 +227,9 @@ export class DashboardRenderer {
         card.className = `dash-card dash-card--${agent.status}`;
         card.dataset.agentId = agent.id;
 
+        const contextPct = agent.usage?.contextPercent ?? 0;
+        const contextBarStyle = contextPct > 0 ? `width: ${contextPct}%` : `width: 0; opacity: 0`;
+
         card.innerHTML = `
             <div class="dash-card__header">
                 <div class="dash-card__avatar"></div>
@@ -228,6 +239,9 @@ export class DashboardRenderer {
                         <span class="dash-card__provider-badge"></span>
                         <span class="dash-card__model"></span>
                         <span class="dash-card__role"></span>
+                    </div>
+                    <div class="dash-card__context-bar-wrap">
+                        <div class="dash-card__context-bar" style="${contextBarStyle}"></div>
                     </div>
                 </div>
                 <div class="dash-card__status">
@@ -245,8 +259,12 @@ export class DashboardRenderer {
                 </div>
                 <div class="dash-card__message"></div>
             </div>
-            <div class="dash-card__tools">
-                <div class="dash-card__tools-title">${i18n.t('toolHistory')}</div>
+            <div class="dash-card__tools-header" data-agent-id="${agent.id}">
+                <span class="dash-card__tools-title">${i18n.t('toolHistory')}</span>
+                <span class="dash-card__tool-count-badge">0</span>
+                <span class="dash-card__tools-chevron" data-agent-id="${agent.id}">&#9654;</span>
+            </div>
+            <div class="dash-card__tools" id="card-tools-${agent.id}">
                 <div class="dash-card__tool-list">
                     <div class="dash-card__loading">
                         <span class="dash-card__loading-spinner"></span>Loading...
@@ -320,6 +338,23 @@ export class DashboardRenderer {
         const history = this.toolHistories.get(agent.id);
         if (history) {
             this._renderToolHistory(cardEl, history);
+        }
+
+        // Update tool count badge
+        const badge = cardEl.querySelector('.dash-card__tool-count-badge');
+        if (badge) badge.textContent = String((history || []).length);
+
+        // Update context bar
+        const contextPct = agent.usage?.contextPercent ?? 0;
+        const contextBar = cardEl.querySelector('.dash-card__context-bar') as HTMLElement;
+        if (contextBar) {
+            if (contextPct > 0) {
+                contextBar.style.width = `${contextPct}%`;
+                contextBar.style.opacity = '1';
+            } else {
+                contextBar.style.width = '0';
+                contextBar.style.opacity = '0';
+            }
         }
     }
 
@@ -413,6 +448,14 @@ export class DashboardRenderer {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    _toggleToolHistory(agentId: string) {
+        const toolsEl = document.getElementById(`card-tools-${agentId}`);
+        const chevronEl = document.querySelector(`.dash-card__tools-chevron[data-agent-id="${agentId}"]`);
+        if (!toolsEl || !chevronEl) return;
+        const isOpen = toolsEl.classList.toggle('dash-card__tools--open');
+        chevronEl.classList.toggle('dash-card__tools-chevron--open', isOpen);
     }
 
     destroy() {
