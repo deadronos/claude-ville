@@ -7,7 +7,7 @@ import { TILE_WIDTH } from '../../../../config/constants.js';
 import { THEME } from '../../../../config/theme.js';
 import { BUILDING_STYLES } from '../styles.js';
 import type { WorldSceneProps } from '../types.js';
-import { isoToScreen } from '../utils.js';
+import { getCameraFocusPosition, isoToScreen } from '../utils.js';
 import { AgentActor } from './AgentActor.js';
 import { BuildingActor } from './BuildingActor.js';
 import { ScreenSpaceCamera } from './ScreenSpaceCamera.js';
@@ -33,10 +33,9 @@ export function WorldScene({
     if (camera.followAgentId) {
       const target = sprites.find((sprite) => sprite.agent.id === camera.followAgentId);
       if (target) {
-        const targetX = -target.x + viewport.width / (2 * camera.zoom);
-        const targetY = -target.y + viewport.height / (2 * camera.zoom);
-        camera.x += (targetX - camera.x) * camera.followSmoothing;
-        camera.y += (targetY - camera.y) * camera.followSmoothing;
+        const focus = getCameraFocusPosition(target.x, target.y, viewport, camera.zoom);
+        camera.x += (focus.x - camera.x) * camera.followSmoothing;
+        camera.y += (focus.y - camera.y) * camera.followSmoothing;
       }
     }
 

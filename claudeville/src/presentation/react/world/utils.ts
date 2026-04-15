@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from '../../../config/constants.js';
-import type { CameraModel } from './types.js';
+import type { CameraModel, ViewportSize } from './types.js';
 
 // WorldView intentionally keeps the old canvas-style screen-space convention inside R3F:
 // +x moves right, +y moves down, and +z is used for painter-style depth ordering.
@@ -30,12 +30,20 @@ export function screenToTile(screenX: number, screenY: number, camera: CameraMod
   };
 }
 
+export function getCameraFocusPosition(targetX: number, targetY: number, viewport: ViewportSize, zoom: number) {
+  return {
+    x: -targetX + viewport.width / (2 * zoom),
+    y: -targetY + viewport.height / (2 * zoom),
+  };
+}
+
 export function createCenteredCamera(width: number, height: number, zoom = 1.2): CameraModel {
   const centerTile = MAP_SIZE / 2;
   const center = isoToScreen(centerTile, centerTile);
+  const focus = getCameraFocusPosition(center.x, center.y, { width, height }, zoom);
   return {
-    x: -center.x + width / (2 * zoom),
-    y: -center.y + height / (2 * zoom),
+    x: focus.x,
+    y: focus.y,
     zoom,
     minZoom: 0.5,
     maxZoom: 3,

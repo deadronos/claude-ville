@@ -8,7 +8,7 @@ import { MinimapOverlay } from './components/MinimapOverlay.js';
 import { WorldScene } from './components/WorldScene.js';
 import { useWorldSprites } from './hooks/useWorldSprites.js';
 import type { CameraModel, InteractionModel, ViewportSize, WorldViewProps } from './types.js';
-import { createCenteredCamera, isoToScreen, screenToWorld } from './utils.js';
+import { createCenteredCamera, getCameraFocusPosition, isoToScreen, screenToWorld } from './utils.js';
 
 export function WorldView({
   active,
@@ -43,18 +43,7 @@ export function WorldView({
 
   useEffect(() => {
     cameraRef.current.followAgentId = selectedAgentId;
-    if (!selectedAgentId || viewport.width <= 1 || viewport.height <= 1) {
-      return;
-    }
-
-    const sprite = spritesRef.current.get(selectedAgentId);
-    if (!sprite) {
-      return;
-    }
-
-    cameraRef.current.x = -sprite.x + viewport.width / (2 * cameraRef.current.zoom);
-    cameraRef.current.y = -sprite.y + viewport.height / (2 * cameraRef.current.zoom);
-  }, [selectedAgentId, viewport.height, viewport.width, active]);
+  }, [selectedAgentId]);
 
   useEffect(() => {
     if (!selectedAgentId) {
@@ -123,10 +112,11 @@ export function WorldView({
       if (previousCamera.followAgentId) {
         const sprite = spritesRef.current.get(previousCamera.followAgentId);
         if (sprite) {
+          const focus = getCameraFocusPosition(sprite.x, sprite.y, { width, height }, previousCamera.zoom);
           cameraRef.current = {
             ...previousCamera,
-            x: -sprite.x + width / (2 * previousCamera.zoom),
-            y: -sprite.y + height / (2 * previousCamera.zoom),
+            x: focus.x,
+            y: focus.y,
           };
           return;
         }
@@ -151,8 +141,9 @@ export function WorldView({
 
   const navigateToTile = (tileX: number, tileY: number) => {
     const screen = isoToScreen(tileX, tileY);
-    cameraRef.current.x = -screen.x + viewportRef.current.width / (2 * cameraRef.current.zoom);
-    cameraRef.current.y = -screen.y + viewportRef.current.height / (2 * cameraRef.current.zoom);
+    const focus = getCameraFocusPosition(screen.x, screen.y, viewportRef.current, cameraRef.current.zoom);
+    cameraRef.current.x = focus.x;
+    cameraRef.current.y = focus.y;
     cameraRef.current.followAgentId = null;
   };
 

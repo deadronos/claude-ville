@@ -9,12 +9,13 @@
     flex-direction: column;
     overflow: hidden;
     font-family: var(--font-mono);
+    will-change: transform, opacity;
     animation: ap-slide-in 0.2s ease;
 }
 
 @keyframes ap-slide-in {
-    from { width: 0; opacity: 0; }
-    to { width: 320px; opacity: 1; }
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
 }
 
 /* ─── Header ─────────────────────────────────────── */
