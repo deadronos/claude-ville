@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from '../../../config/constants.js';
-import { createCenteredCamera, getCameraFocusPosition, isoToScreen } from './utils.js';
+import { createCenteredCamera, getCameraFocusPosition, isoToScreen, screenToTile, screenToWorld } from './utils.js';
 
 describe('world utils camera helpers', () => {
   it('centers a target world point inside the viewport at the current zoom', () => {
@@ -34,6 +34,30 @@ describe('world utils camera helpers', () => {
     expect(screen).toEqual({
       x: (tile.x - tile.y) * TILE_WIDTH / 2,
       y: (tile.x + tile.y) * TILE_HEIGHT / 2,
+    });
+  });
+
+  it('round-trips world coordinates through a zoomed camera', () => {
+    const camera = {
+      x: -48,
+      y: 24,
+      zoom: 2,
+      minZoom: 0.5,
+      maxZoom: 3,
+      followAgentId: null,
+      followSmoothing: 0.08,
+    };
+    const screen = isoToScreen(7, 9);
+    const world = screenToWorld((screen.x + camera.x) * camera.zoom, (screen.y + camera.y) * camera.zoom, camera);
+
+    expect(world).toEqual({
+      x: screen.x,
+      y: screen.y,
+    });
+
+    expect(screenToTile((screen.x + camera.x) * camera.zoom, (screen.y + camera.y) * camera.zoom, camera)).toEqual({
+      tileX: 7,
+      tileY: 9,
     });
   });
 });
