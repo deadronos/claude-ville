@@ -6,6 +6,7 @@ export function ScreenSpaceCamera({ viewport }: { viewport: ViewportSize }) {
   return (
     <OrthographicCamera
       makeDefault
+      manual
       left={0}
       right={viewport.width}
       top={0}
