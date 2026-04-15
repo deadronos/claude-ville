@@ -1,7 +1,17 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from '../../../config/constants.js';
-import { createCenteredCamera, getCameraFocusPosition, isoToScreen, screenToTile, screenToWorld } from './utils.js';
+import {
+  createCenteredCamera,
+  createPolygonGeometry,
+  createRoundedRectGeometry,
+  getCameraFocusPosition,
+  isoToScreen,
+  lighten,
+  screenToTile,
+  screenToWorld,
+} from './utils.js';
 
 describe('world utils camera helpers', () => {
   it('centers a target world point inside the viewport at the current zoom', () => {
@@ -59,5 +69,56 @@ describe('world utils camera helpers', () => {
       tileX: 7,
       tileY: 9,
     });
+  });
+
+  it('handles tile boundaries and negative world coordinates', () => {
+    const camera = {
+      x: 0,
+      y: 0,
+      zoom: 1,
+      minZoom: 0.5,
+      maxZoom: 3,
+      followAgentId: null,
+      followSmoothing: 0.08,
+    };
+
+    expect(screenToTile(-1, -1, camera)).toEqual({
+      tileX: -1,
+      tileY: -1,
+    });
+
+    expect(screenToTile(0, TILE_HEIGHT / 2 - 0.01, camera)).toEqual({
+      tileX: 0,
+      tileY: 0,
+    });
+  });
+});
+
+describe('world utils geometry helpers', () => {
+  it('creates usable polygon geometry', () => {
+    const geometry = createPolygonGeometry([
+      [0, 0],
+      [10, 0],
+      [0, 10],
+    ]);
+
+    expect(geometry).toBeInstanceOf(THREE.ShapeGeometry);
+    expect(geometry.getAttribute('position').count).toBeGreaterThan(0);
+    geometry.dispose();
+  });
+
+  it('creates usable rounded rectangle geometry', () => {
+    const geometry = createRoundedRectGeometry(40, 24, 6);
+
+    expect(geometry).toBeInstanceOf(THREE.ShapeGeometry);
+    expect(geometry.getAttribute('position').count).toBeGreaterThan(0);
+    geometry.dispose();
+  });
+});
+
+describe('world utils color helpers', () => {
+  it('clamps lighten() output at both extremes', () => {
+    expect(lighten('#000000', -10)).toBe('rgb(0,0,0)');
+    expect(lighten('#ffffff', 10)).toBe('rgb(255,255,255)');
   });
 });

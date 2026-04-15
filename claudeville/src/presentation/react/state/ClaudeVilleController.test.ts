@@ -106,4 +106,58 @@ describe('ClaudeVilleController', () => {
 
     controller.dispose();
   });
+
+  it('keeps only the newest five toasts and clears timer-backed dismissals on dispose', () => {
+    vi.useFakeTimers();
+
+    const controller = new ClaudeVilleController();
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+
+    for (let index = 1; index <= 6; index += 1) {
+      controller.pushToast(`Toast ${index}`, 'info');
+    }
+
+    expect(controller.getSnapshot().toasts.map((toast) => toast.message)).toEqual([
+      'Toast 2',
+      'Toast 3',
+      'Toast 4',
+      'Toast 5',
+      'Toast 6',
+    ]);
+
+    controller.dispose();
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+
+    vi.advanceTimersByTime(3200);
+    expect(controller.getSnapshot().toasts.map((toast) => toast.message)).toEqual([
+      'Toast 2',
+      'Toast 3',
+      'Toast 4',
+      'Toast 5',
+      'Toast 6',
+    ]);
+
+    vi.useRealTimers();
+  });
+
+  it('saves settings without regenerating names when the mode is unchanged', () => {
+    const controller = new ClaudeVilleController();
+    const agent = makeAgent({ regenerateName: vi.fn() });
+    controller.world.agents.set(agent.id, agent);
+
+    controller.saveSettings('autodetected', 1.25, {
+      statusFontSize: 18,
+      statusMaxWidth: 300,
+      statusBubbleH: 32,
+      statusPaddingH: 28,
+      chatFontSize: 18,
+    });
+
+    const snapshot = controller.getSnapshot();
+    expect(agent.regenerateName).not.toHaveBeenCalled();
+    expect(snapshot.bubbleConfig.textScale).toBe(1.25);
+    expect(snapshot.toasts.at(-1)?.message).toContain('Settings saved');
+
+    controller.dispose();
+  });
 });
