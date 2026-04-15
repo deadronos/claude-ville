@@ -240,6 +240,22 @@ export class ClaudeVilleController {
     this.selectAgent(agentId);
   }
 
+  focusAgent(agentId: string) {
+    const agent = this.world.agents.get(agentId);
+    if (!agent) {
+      return;
+    }
+
+    this.selectedAgentId = agentId;
+    if (this.mode !== 'character') {
+      this.mode = 'character';
+      eventBus.emit('mode:changed', 'character');
+    }
+
+    eventBus.emit('agent:selected', agent);
+    this._emitChange();
+  }
+
   saveSettings(nextMode: string, textScale: number, bubblePatch: Partial<ReturnType<typeof getBubbleConfig>>) {
     const previousMode = getNameMode();
     const desiredMode = nextMode === 'pooled' ? 'pooled' : 'autodetected';

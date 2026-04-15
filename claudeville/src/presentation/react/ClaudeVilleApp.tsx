@@ -352,7 +352,7 @@ function AvatarPreview({ agent }: { agent: any }) {
   return <div ref={ref} className="dash-card__avatar" />;
 }
 
-function Sidebar({ agents, selectedAgentId, onToggle }: { agents: any[]; selectedAgentId: string | null; onToggle: (agentId: string) => void }) {
+function Sidebar({ agents, selectedAgentId, onFocus }: { agents: any[]; selectedAgentId: string | null; onFocus: (agentId: string) => void }) {
   const groups = useMemo(() => groupByProject(agents), [agents]);
   const projectKeys = useMemo(() => Array.from(groups.keys()), [groups]);
   const colors = useStableProjectColors(projectKeys);
@@ -380,7 +380,7 @@ function Sidebar({ agents, selectedAgentId, onToggle }: { agents: any[]; selecte
                   key={agent.id}
                   type="button"
                   className={`sidebar__agent ${selectedAgentId === agent.id ? 'sidebar__agent--selected' : ''}`}
-                  onClick={() => onToggle(agent.id)}
+                  onClick={() => onFocus(agent.id)}
                 >
                   <span className={`sidebar__agent-dot sidebar__agent-dot--${agent.status}`} />
                   <div className="sidebar__agent-info">
@@ -829,19 +829,19 @@ export function ClaudeVilleApp() {
 
       <div className="main">
         <div className="main__body">
-          <Sidebar agents={snapshot.agents} selectedAgentId={snapshot.selectedAgentId} onToggle={(agentId) => controller.toggleAgent(agentId)} />
+          <Sidebar agents={snapshot.agents} selectedAgentId={snapshot.selectedAgentId} onFocus={(agentId) => controller.focusAgent(agentId)} />
 
           <div className="content">
-            {snapshot.mode === 'character' ? (
-              <WorldView
-                agents={snapshot.agents}
-                buildings={snapshot.buildings}
-                selectedAgentId={snapshot.selectedAgentId}
-                bubbleConfig={snapshot.bubbleConfig}
-                onSelectAgent={(agentId) => controller.selectAgent(agentId)}
-                onClearSelection={() => controller.clearSelection()}
-              />
-            ) : null}
+            <WorldView
+              active={snapshot.mode === 'character'}
+              agents={snapshot.agents}
+              buildings={snapshot.buildings}
+              selectedAgentId={snapshot.selectedAgentId}
+              selectedAgentName={snapshot.selectedAgent?.name || null}
+              bubbleConfig={snapshot.bubbleConfig}
+              onSelectAgent={(agentId) => controller.selectAgent(agentId)}
+              onClearSelection={() => controller.clearSelection()}
+            />
             <DashboardView active={snapshot.mode === 'dashboard'} agents={snapshot.agents} onSelect={(agentId) => controller.selectAgent(agentId)} />
           </div>
 

@@ -159,10 +159,24 @@
 }
 
 .world-view {
-    position: relative;
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     background: #0a0a0f;
+    z-index: 1;
+}
+
+.world-view--active {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.world-view--inactive {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .world-view__canvas {
@@ -187,4 +201,100 @@
     display: block;
     image-rendering: -webkit-optimize-contrast;
     image-rendering: pixelated;
+}
+
+.world-view__selected-agent-marker {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 4;
+}
+
+.world-view__selected-agent-ring {
+    width: 34px;
+    height: 18px;
+    border: 2px solid rgba(232, 212, 77, 0.95);
+    border-radius: 999px;
+    box-shadow: 0 0 0 2px rgba(26, 26, 46, 0.95), 0 0 14px rgba(232, 212, 77, 0.35);
+    background: rgba(232, 212, 77, 0.08);
+}
+
+.world-view__selected-agent-label {
+    position: absolute;
+    left: 50%;
+    top: -24px;
+    transform: translateX(-50%);
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(232, 212, 77, 0.7);
+    background: rgba(10, 10, 15, 0.9);
+    color: #fff7c2;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    white-space: nowrap;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.world-view__focus-reticle {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 4;
+}
+
+.world-view__focus-cross {
+    width: 42px;
+    height: 42px;
+    border: 2px solid rgba(232, 212, 77, 0.95);
+    border-radius: 999px;
+    box-shadow: 0 0 0 2px rgba(26, 26, 46, 0.95), 0 0 18px rgba(232, 212, 77, 0.35);
+    position: relative;
+}
+
+.world-view__focus-cross::before,
+.world-view__focus-cross::after {
+    content: '';
+    position: absolute;
+    background: rgba(232, 212, 77, 0.95);
+}
+
+.world-view__focus-cross::before {
+    left: 50%;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    transform: translateX(-50%);
+}
+
+.world-view__focus-cross::after {
+    top: 50%;
+    left: 6px;
+    right: 6px;
+    height: 2px;
+    transform: translateY(-50%);
+}
+
+.world-view__focus-badge {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 4;
+    background: rgba(10, 10, 15, 0.92);
+    border: 1px solid rgba(232, 212, 77, 0.7);
+    border-radius: 999px;
+    color: #fff7c2;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 4px 10px;
+    white-space: nowrap;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.content__dashboard {
+    position: relative;
+    z-index: 2;
 }
