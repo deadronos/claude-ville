@@ -22,6 +22,11 @@ export default defineConfig({
         'node_modules',
         'claudeville/src/ui/**',
       ],
+      thresholds: {
+        statements: 70,
+        lines: 70,
+        functions: 70,
+      },
     },
   },
 });

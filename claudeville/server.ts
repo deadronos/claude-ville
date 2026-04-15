@@ -1,4 +1,4 @@
-require('../load-local-env');
+require('../load-local-env.ts');
 
 const http = require('http');
 const fs = require('fs');

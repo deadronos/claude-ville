@@ -20,7 +20,7 @@ import { Toast } from './shared/Toast.js';
 import { Modal } from './shared/Modal.js';
 import { ActivityPanel } from './shared/ActivityPanel.js';
 
-class App {
+export class App {
     world: World | null;
     dataSource: ClaudeDataSource | null;
     wsClient: WebSocketClient | null;
