@@ -52,6 +52,7 @@ export class ClaudeVilleController {
 
   private listeners: Set<() => void>;
   private unsubscribers: Array<() => void>;
+  private snapshot: ClaudeVilleSnapshot;
   private toastTimers: Map<string, number>;
   private knownAgents: Set<string>;
   private wsEverConnected: boolean;
@@ -77,6 +78,7 @@ export class ClaudeVilleController {
 
     this.listeners = new Set();
     this.unsubscribers = [];
+    this.snapshot = this._buildSnapshot();
     this.toastTimers = new Map();
     this.knownAgents = new Set();
     this.wsEverConnected = false;
@@ -162,7 +164,7 @@ export class ClaudeVilleController {
     };
   }
 
-  getSnapshot = (): ClaudeVilleSnapshot => {
+  private _buildSnapshot(): ClaudeVilleSnapshot {
     const agents = Array.from(this.world.agents.values());
     const selectedAgent = this.selectedAgentId ? this.world.agents.get(this.selectedAgentId) || null : null;
 
@@ -180,6 +182,10 @@ export class ClaudeVilleController {
       booted: this.booted,
       bootError: this.bootError,
     };
+  }
+
+  getSnapshot = (): ClaudeVilleSnapshot => {
+    return this.snapshot;
   };
 
   openSettings() {
@@ -281,6 +287,7 @@ export class ClaudeVilleController {
   }
 
   private _emitChange() {
+    this.snapshot = this._buildSnapshot();
     for (const listener of this.listeners) {
       listener();
     }
