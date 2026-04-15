@@ -93,11 +93,9 @@ async function publishSnapshot() {
     await sendSnapshot(snapshot);
     lastSentHash = fingerprint;
     dirty = false;
-    // eslint-disable-next-line no-console
     console.log(`[collector] published snapshot (${snapshot.sessions.length} sessions)`);
   } catch (error) {
     dirty = true;
-    // eslint-disable-next-line no-console
     console.error('[collector] publish failed:', error instanceof Error ? error.message : String(error));
   } finally {
     sending = false;
@@ -117,7 +115,6 @@ function scheduleFlush() {
 
 function startWatchers() {
   const { watchCount } = createFileWatchers(getAllWatchPaths(), scheduleFlush);
-  // eslint-disable-next-line no-console
   console.log(`[collector] watching ${watchCount} path(s)`);
 }
 
@@ -141,7 +138,6 @@ process.on('SIGTERM', () => {
 });
 
 void main().catch((error) => {
-  // eslint-disable-next-line no-console
   console.error('[collector] fatal error:', error);
   process.exit(1);
 });

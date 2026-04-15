@@ -51,7 +51,7 @@ export class WebSocketClient {
                 this._scheduleReconnect();
             };
 
-            this.ws.onerror = (err) => {
+            this.ws.onerror = () => {
                 console.error('[WS] Error occurred');
                 this.connected = false;
             };

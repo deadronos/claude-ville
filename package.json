@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx claudeville/server.ts",
+    "dev": "npx concurrently --names \"server,vite\" --prefix-colors \"blue,green\" \"tsx claudeville/server.ts\" \"vite\"",
+    "dev:server": "tsx claudeville/server.ts",
     "dev:collector": "tsx collector/index.ts",
     "dev:hubreceiver": "tsx hubreceiver/server.ts",
-    "dev:frontend": "npx concurrently --names \"server,vite\" --prefix-colors \"blue,green\" \"tsx claudeville/server.ts\" \"vite\"",
+    "dev:frontend": "vite",
     "build:frontend": "vite build",
     "widget:build": "cd widget && bash build.sh",
     "widget": "open widget/ClaudeVilleWidget.app",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck",
     "test": "vitest run",
@@ -17,18 +20,34 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.59.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react-swc": "^4.3.0",
     "@vitest/coverage-v8": "^4.1.4",
     "@vitest/ui": "^4.1.4",
     "concurrently": "^9.2.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
     "happy-dom": "^20.8.9",
     "jsdom": "^29.0.2",
     "tsx": "^4.21.0",
+    "typescript-eslint": "^8.58.2",
     "vite": "^8.0.8",
     "vitest": "^4.1.4"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "three": "^0.183.2",
     "typescript": "^6.0.2"
   }
 }

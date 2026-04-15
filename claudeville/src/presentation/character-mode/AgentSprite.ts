@@ -1,6 +1,6 @@
 import { Position } from '../../domain/value-objects/Position.js';
 import { AgentStatus } from '../../domain/value-objects/AgentStatus.js';
-import { TILE_WIDTH, TILE_HEIGHT, AGENT_SPEED } from '../../config/constants.js';
+import { TILE_WIDTH, TILE_HEIGHT } from '../../config/constants.js';
 import { BUILDING_DEFS } from '../../config/buildings.js';
 import { THEME } from '../../config/theme.js';
 import { getBubbleConfig } from '../../config/bubbleConfig.js';
