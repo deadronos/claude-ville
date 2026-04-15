@@ -174,6 +174,11 @@ describe('Agent', () => {
       expect(agent.lastMessage).toBe('c');
     });
 
+    it('returns text from structured message objects', () => {
+      const agent = new Agent({ ...makeProps(), messages: [{ role: 'assistant', text: 'structured hello' }] });
+      expect(agent.lastMessage).toBe('structured hello');
+    });
+
     it('prefers lastMessage over messages array', () => {
       const agent = new Agent({ ...makeProps(), lastMessage: 'direct', messages: ['a'] });
       expect(agent.lastMessage).toBe('direct');
@@ -249,6 +254,16 @@ describe('Agent', () => {
       expect(text).toContain('/path/to/file.ts');
     });
 
+    it('extracts command text from truncated JSON tool input', () => {
+      const agent = new Agent(makeProps({
+        lastTool: 'run_in_terminal',
+        lastToolInput: '{"command":"setopt errexit pipefail && npm run test","goal":"Run tests',
+      }));
+
+      expect(agent.bubbleText).toContain('Running');
+      expect(agent.bubbleText).toContain('setopt errexit pipefail');
+    });
+
     it('truncates bubbleText to 40 chars', () => {
       const agent = new Agent(makeProps({ lastTool: 'Bash', lastToolInput: 'a very long command that exceeds forty characters here' }));
       expect(agent.bubbleText!.length).toBeLessThanOrEqual(40);
@@ -257,6 +272,17 @@ describe('Agent', () => {
     it('returns truncated lastMessage when no currentTool', () => {
       const agent = new Agent({ ...makeProps(), lastTool: null, lastMessage: 'hello from the agent' });
       expect(agent.bubbleText).toBe('hello from the agent');
+    });
+
+    it('falls back to structured messages when direct lastMessage is missing', () => {
+      const agent = new Agent({
+        ...makeProps(),
+        lastTool: null,
+        lastMessage: null,
+        messages: [{ role: 'assistant', text: 'recent tool result summary' }],
+      });
+
+      expect(agent.bubbleText).toBe('recent tool result summary');
     });
 
     it('returns null when no tool and no lastMessage', () => {
