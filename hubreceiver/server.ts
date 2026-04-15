@@ -176,6 +176,5 @@ server.on('upgrade', (req, socket) => {
 });
 
 server.listen(PORT, () => {
-  // eslint-disable-next-line no-console
   console.log(`hubreceiver listening on http://localhost:${PORT}`);
 });

@@ -1,4 +1,4 @@
-import { TILE_WIDTH, TILE_HEIGHT, MAP_SIZE } from '../../config/constants.js';
+import { MAP_SIZE } from '../../config/constants.js';
 import { THEME } from '../../config/theme.js';
 
 const MINIMAP_SIZE = 150;
@@ -59,7 +59,7 @@ export class Minimap {
         this.onNavigate(tileX, tileY);
     }
 
-    _onMouseMove(e) {
+    _onMouseMove() {
         this.canvas.style.cursor = 'crosshair';
     }
 

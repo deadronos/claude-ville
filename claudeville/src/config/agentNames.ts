@@ -8,8 +8,8 @@ const DEFAULT_AGENT_NAME_POOLS = {
 };
 
 function normalizeNamePools(rawPools: Record<string, unknown> = {}) {
-    const agent = toList(rawPools.agent || rawPools.en || rawPools.agentNames || rawPools.agentNamePool);
-    const session = toList(rawPools.session || rawPools.sessions || rawPools.sessionNamePool);
+    const agent = toList((rawPools.agent || rawPools.en || rawPools.agentNames || rawPools.agentNamePool) as string | string[]);
+    const session = toList((rawPools.session || rawPools.sessions || rawPools.sessionNamePool) as string | string[]);
     return {
         agent: agent.length > 0 ? agent : DEFAULT_AGENT_NAME_POOLS.agent,
         session: session.length > 0 ? session : DEFAULT_AGENT_NAME_POOLS.session,

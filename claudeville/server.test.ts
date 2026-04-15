@@ -1,3 +1,4 @@
+import path from 'path';
 import { describe, it, expect, vi } from 'vitest';
 
 // Test server utility functions and patterns
@@ -253,7 +254,7 @@ describe('claudeville server utilities', () => {
     it('rejects paths outside static directory', () => {
       const STATIC_DIR = '/srv/static';
       const requestedPath = '/srv/static/../../../etc/passwd';
-      const resolvedPath = require('path').resolve(requestedPath);
+      const resolvedPath = path.resolve(requestedPath);
 
       const isSafe = resolvedPath.startsWith(STATIC_DIR);
       expect(isSafe).toBe(false);
@@ -262,7 +263,7 @@ describe('claudeville server utilities', () => {
     it('allows paths inside static directory', () => {
       const STATIC_DIR = '/srv/static';
       const requestedPath = '/srv/static/images/logo.png';
-      const resolvedPath = require('path').resolve(requestedPath);
+      const resolvedPath = path.resolve(requestedPath);
 
       const isSafe = resolvedPath.startsWith(STATIC_DIR);
       expect(isSafe).toBe(true);

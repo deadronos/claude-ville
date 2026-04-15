@@ -21,7 +21,7 @@ Watch your AI agent teams come alive in an isometric pixel world
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen)]()
+[![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20R3F-61dafb)]()
 
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Supported-a78bfa?logo=anthropic&logoColor=white)](https://docs.anthropic.com/en/docs/claude-code)
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-Supported-4ade80?logo=openai&logoColor=white)](https://github.com/openai/codex)
@@ -63,7 +63,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 - **Agent Team & Swarm** — Auto-detects Claude Code teams, swarms, and sub-agents
 - **Project Grouping** — Agents grouped by project with color-coded sections
 - **English-only UI** — Consistent English labels across the app
-- **Zero Dependencies** — Pure Node.js, no npm install needed
+- **React + React Three Fiber frontend** — Same isometric village, now powered by Vite, React, and WebGL rendering
 
 ## Quick Start
 
@@ -73,7 +73,16 @@ cd claude-ville
 npm run dev
 ```
 
-Open http://localhost:4000 in your browser. That's it.
+Open http://localhost:3001 in your browser. The backend/API still listens on http://localhost:4000, and `npm run dev` now launches both the API server and the Vite frontend together.
+
+### Production-ish frontend build
+
+```bash
+npm run build:frontend
+npm run dev:server
+```
+
+After building, the legacy server will automatically serve `dist/frontend/` on port `4000`.
 
 ### Split mode
 
@@ -216,8 +225,8 @@ claude-ville/
 
 | Layer | Technology |
 |---|---|
-| Frontend | Vanilla HTML / CSS / JavaScript (ES Modules) |
-| Rendering | Canvas 2D API (isometric pixel art) |
+| Frontend | React 19 + Vite |
+| Rendering | React Three Fiber / Three.js (orthographic isometric pixel-art scene) |
 | Server | Node.js built-in modules only |
 | Real-time | WebSocket (RFC 6455, hand-rolled) |
 | Data | Local CLI session files (read-only) |

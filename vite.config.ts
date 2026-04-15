@@ -1,5 +1,6 @@
 import './load-local-env.js';
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react-swc';
 import { buildRuntimeConfig } from './runtime-config.shared.js';
 
 const runtimeConfig = buildRuntimeConfig(process.env);
@@ -33,7 +34,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [claudeVilleRuntimeConfigPlugin()],
+  plugins: [react(), claudeVilleRuntimeConfigPlugin()],
   define: {
     // For production build: inline the values so runtime-config.ts uses them
     'import.meta.env.VITE_HUB_HTTP_URL': JSON.stringify(runtimeConfig.hubHttpUrl),
