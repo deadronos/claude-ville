@@ -282,6 +282,7 @@ describe('ClaudeVilleApp browser selection flow', () => {
 
       await page.waitForFunction(() => document.getElementById('agentCount')?.textContent === '2');
       await page.waitForFunction(() => document.querySelectorAll('#sidebar .sidebar__agent').length === 2);
+        await page.waitForTimeout(500); // Adjusted settle delay before live-refresh update snapshot
 
       await page.getByRole('button', { name: 'DASHBOARD' }).click();
       await page.waitForFunction(() => document.getElementById('dashboardMode') !== null);
@@ -311,6 +312,15 @@ describe('ClaudeVilleApp browser selection flow', () => {
       expect(canvasAfterSettled).not.toBeNull();
       expect(Math.abs((canvasAfterSelection?.width || 0) - (canvasAfterSettled?.width || 0))).toBeLessThan(2);
       expect(Math.abs((canvasAfterSelection?.height || 0) - (canvasAfterSettled?.height || 0))).toBeLessThan(2);
+
+      await page.evaluate(() => {
+        (window as any).__worldCanvas = document.querySelector('.content__canvas');
+      });
+      await page.waitForTimeout(2200);
+      const canvasStayedMounted = await page.evaluate(() => {
+        return document.querySelector('.content__canvas') === (window as any).__worldCanvas;
+      });
+      expect(canvasStayedMounted).toBe(true);
 
       const markerBox = await markerRing.boundingBox();
       const worldBox = await worldView.boundingBox();
@@ -348,112 +358,4 @@ describe('ClaudeVilleApp browser selection flow', () => {
     }
   }, 120000);
 
-  it('refreshes the sidebar when a new snapshot arrives', async () => {
-    const authToken = 'browser-test-token';
-    const hubPort = await getFreePort();
-    const hubreceiver = startTsx(hubreceiverEntrypoint, {
-      HUB_PORT: String(hubPort),
-      HUB_AUTH_TOKEN: authToken,
-    });
-    const timestamp = Date.now();
-    const project = '/Users/openclaw/Github/claude-ville/browser-fixture';
-    const initialSnapshot = {
-      collectorId: 'browser-fixture-live',
-      hostName: 'browser-host',
-      timestamp,
-      sessions: [
-        {
-          sessionId: 'alpha-session',
-          provider: 'claude',
-          project,
-          status: 'active',
-          lastActivity: timestamp - 2_000,
-          model: 'claude-sonnet-4-5',
-          displayName: 'Alpha',
-          agentName: 'Alpha',
-          lastTool: 'Bash',
-          lastToolInput: 'npm test',
-          lastMessage: 'Alpha is compiling',
-          tokens: { input: 24, output: 32 },
-          tokenUsage: { totalInput: 24, totalOutput: 32 },
-        },
-      ],
-      teams: [],
-      taskGroups: [],
-      providers: [],
-      sessionDetails: {
-        'claude:alpha-session': {
-          sessionId: 'alpha-session',
-          toolHistory: [{ tool: 'Bash', detail: 'npm test', ts: timestamp - 3_000 }],
-          messages: [{ role: 'assistant', text: 'Alpha is compiling', ts: timestamp - 1_000 }],
-          tokenUsage: { totalInput: 24, totalOutput: 32 },
-        },
-      },
-    };
-    const updatedSnapshot = {
-      ...initialSnapshot,
-      timestamp: timestamp + 10_000,
-      sessions: [
-        ...(initialSnapshot.sessions as any[]),
-        {
-          sessionId: 'beta-session',
-          provider: 'claude',
-          project,
-          status: 'active',
-          lastActivity: timestamp + 10_000,
-          model: 'claude-sonnet-4-5',
-          displayName: 'Beta',
-          agentName: 'Beta',
-          lastTool: 'Read',
-          lastToolInput: 'docs/architecture/006-r3f-components.md',
-          lastMessage: 'Beta is reading docs',
-          tokens: { input: 12, output: 18 },
-          tokenUsage: { totalInput: 12, totalOutput: 18 },
-        },
-      ],
-      sessionDetails: {
-        'claude:alpha-session': (initialSnapshot.sessionDetails as Record<string, unknown>)['claude:alpha-session'],
-        'claude:beta-session': {
-          sessionId: 'beta-session',
-          toolHistory: [{ tool: 'Read', detail: 'docs/architecture/006-r3f-components.md', ts: timestamp + 9_000 }],
-          messages: [{ role: 'assistant', text: 'Beta is reading docs', ts: timestamp + 9_500 }],
-          tokenUsage: { totalInput: 12, totalOutput: 18 },
-        },
-      },
-    };
-
-    let frontend: Awaited<ReturnType<typeof startFrontendServer>> | null = null;
-    let browser: Browser | null = null;
-    let page: Page | null = null;
-
-    try {
-      await waitForJson(`http://127.0.0.1:${hubPort}/health`, (json) => json.ok === true);
-      await postSnapshot(hubPort, authToken, initialSnapshot as Record<string, unknown>);
-
-      frontend = await startFrontendServer();
-      ({ browser, page } = await launchBrowser(frontend.url, hubPort));
-
-      await page.waitForFunction(() => document.getElementById('agentCount')?.textContent === '1');
-      await page.waitForFunction(() => document.querySelectorAll('#sidebar .sidebar__agent').length === 1);
-
-      await postSnapshot(hubPort, authToken, updatedSnapshot as Record<string, unknown>);
-
-      await page.waitForFunction(() => document.getElementById('agentCount')?.textContent === '2');
-      await page.waitForFunction(() => document.querySelectorAll('#sidebar .sidebar__agent').length === 2);
-    } catch (error) {
-      const hubOutput = hubreceiver.getOutput();
-      throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n[hubreceiver stdout]\n${hubOutput.stdout}\n[hubreceiver stderr]\n${hubOutput.stderr}`);
-    } finally {
-      if (page) {
-        await page.close();
-      }
-      if (browser) {
-        await browser.close();
-      }
-      if (frontend) {
-        await frontend.server.close();
-      }
-      await stopProcess(hubreceiver.child);
-    }
-  }, 120000);
 });

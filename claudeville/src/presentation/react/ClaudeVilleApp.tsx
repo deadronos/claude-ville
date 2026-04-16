@@ -214,6 +214,12 @@ function useWorldTimer(startTime: number) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+function WorldTimer({ startTime }: { startTime: number }) {
+  const runtime = useWorldTimer(startTime);
+
+  return <span id="statTime" className="topbar__stat-value">{runtime}</span>;
+}
+
 function useSessionDetail(agent: any | null, enabled: boolean, intervalMs: number) {
   const [detail, setDetail] = useState<{ toolHistory: any[]; messages: any[] }>({
     toolHistory: [],
@@ -759,7 +765,6 @@ export function ClaudeVilleApp() {
     ? snapshot.world.agents.get(snapshot.selectedAgentId) || null
     : null;
   const stats = snapshot.world.getStats();
-  const runtime = useWorldTimer(snapshot.world.startTime);
 
   useEffect(() => {
     void controller.boot().catch(() => {
@@ -790,7 +795,7 @@ export function ClaudeVilleApp() {
         <div className="topbar__center">
           <div className="topbar__stat">
             <span data-i18n="time" className="topbar__stat-label">{i18n.t('time')}</span>
-            <span id="statTime" className="topbar__stat-value">{runtime}</span>
+            <WorldTimer startTime={snapshot.world.startTime} />
           </div>
           <div className="topbar__badges">
             <span className="topbar__badge topbar__badge--working">
