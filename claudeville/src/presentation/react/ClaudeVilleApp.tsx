@@ -214,6 +214,12 @@ function useWorldTimer(startTime: number) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+function WorldTimer({ startTime }: { startTime: number }) {
+  const runtime = useWorldTimer(startTime);
+
+  return <span id="statTime" className="topbar__stat-value">{runtime}</span>;
+}
+
 function useSessionDetail(agent: any | null, enabled: boolean, intervalMs: number) {
   const [detail, setDetail] = useState<{ toolHistory: any[]; messages: any[] }>({
     toolHistory: [],
@@ -753,8 +759,12 @@ function ToastViewport({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: 
 export function ClaudeVilleApp() {
   const controller = useMemo(() => new ClaudeVilleController(), []);
   const snapshot = useClaudeVilleSnapshot(controller);
+  const agents = Array.from(snapshot.world.agents.values());
+  const buildings = Array.from(snapshot.world.buildings.values());
+  const selectedAgent = snapshot.selectedAgentId
+    ? snapshot.world.agents.get(snapshot.selectedAgentId) || null
+    : null;
   const stats = snapshot.world.getStats();
-  const runtime = useWorldTimer(snapshot.world.startTime);
 
   useEffect(() => {
     void controller.boot().catch(() => {
@@ -785,7 +795,7 @@ export function ClaudeVilleApp() {
         <div className="topbar__center">
           <div className="topbar__stat">
             <span data-i18n="time" className="topbar__stat-label">{i18n.t('time')}</span>
-            <span id="statTime" className="topbar__stat-value">{runtime}</span>
+            <WorldTimer startTime={snapshot.world.startTime} />
           </div>
           <div className="topbar__badges">
             <span className="topbar__badge topbar__badge--working">
@@ -829,23 +839,23 @@ export function ClaudeVilleApp() {
 
       <div className="main">
         <div className="main__body">
-          <Sidebar agents={snapshot.agents} selectedAgentId={snapshot.selectedAgentId} onFocus={(agentId) => controller.focusAgent(agentId)} />
+          <Sidebar agents={agents} selectedAgentId={snapshot.selectedAgentId} onFocus={(agentId) => controller.focusAgent(agentId)} />
 
           <div className="content">
             <WorldView
               active={snapshot.mode === 'character'}
-              agents={snapshot.agents}
-              buildings={snapshot.buildings}
+              agents={agents}
+              buildings={buildings}
               selectedAgentId={snapshot.selectedAgentId}
-              selectedAgentName={snapshot.selectedAgent?.name || null}
+              selectedAgentName={selectedAgent?.name || null}
               bubbleConfig={snapshot.bubbleConfig}
               onSelectAgent={(agentId) => controller.selectAgent(agentId)}
               onClearSelection={() => controller.clearSelection()}
             />
-            <DashboardView active={snapshot.mode === 'dashboard'} agents={snapshot.agents} onSelect={(agentId) => controller.selectAgent(agentId)} />
+            <DashboardView active={snapshot.mode === 'dashboard'} agents={agents} onSelect={(agentId) => controller.selectAgent(agentId)} />
           </div>
 
-          <ActivityPanel agent={snapshot.selectedAgent} onClose={() => controller.clearSelection()} />
+          <ActivityPanel agent={selectedAgent} onClose={() => controller.clearSelection()} />
         </div>
       </div>
 

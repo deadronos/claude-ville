@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 
-import * as React from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
 
 import { isoToScreen } from './utils.js';
@@ -24,6 +23,21 @@ vi.mock('@react-three/fiber', () => ({
   },
 }));
 
+vi.mock('react', async () => {
+  const actual = await vi.importActual<typeof import('react')>('react');
+  return {
+    ...actual,
+    useRef: () => ({
+      get current() {
+        return fiberMocks.rootNode;
+      },
+      set current(_) {
+        // React will try to attach the ref; the test keeps a stable mock node.
+      },
+    }),
+  };
+});
+
 vi.mock('./components/ScreenSpaceCamera.js', () => ({
   ScreenSpaceCamera: () => <div data-testid="screen-space-camera" />,
 }));
@@ -43,24 +57,10 @@ vi.mock('./components/BuildingActor.js', () => ({
 import { WorldScene } from './components/WorldScene.js';
 
 describe('WorldScene', () => {
-  const useRefSpy = vi.spyOn(React, 'useRef');
-
   beforeEach(() => {
     fiberMocks.frameCallback = null;
     fiberMocks.rootNode.position.set.mockClear();
     fiberMocks.rootNode.scale.set.mockClear();
-    useRefSpy.mockImplementation(() => ({
-      get current() {
-        return fiberMocks.rootNode;
-      },
-      set current(_) {
-        // React will try to attach the ref; the test keeps a stable mock node.
-      },
-    } as any));
-  });
-
-  afterEach(() => {
-    useRefSpy.mockReset();
   });
 
   it('eases the camera toward the follow target and updates the root transform', () => {

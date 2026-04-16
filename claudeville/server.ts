@@ -1,4 +1,4 @@
-require('../load-local-env');
+require('../load-local-env.ts');
 
 const http = require('http');
 const fs = require('fs');
@@ -26,7 +26,7 @@ const { DISCONNECTED_CODES } = require('../shared/ws-helpers');
 const claudeAdapter = adapters.find(a => a.provider === 'claude');
 
 // ─── Config ────────────────────────────────────────────────
-const PORT = 4000;
+const PORT = Number(process.env.PORT || 4000);
 const BUILT_FRONTEND_DIR = path.join(__dirname, '..', 'dist', 'frontend');
 const STATIC_DIR = fs.existsSync(path.join(BUILT_FRONTEND_DIR, 'index.html')) ? BUILT_FRONTEND_DIR : __dirname;
 const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes

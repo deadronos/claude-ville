@@ -1,0 +1,39 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: ClaudeVille
+      - generic [ref=e6]: v0.1
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]: TIME
+        - generic [ref=e10]: 00:00:22
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e14]: "0"
+          - generic [ref=e15]: WORKING
+        - generic [ref=e16]:
+          - generic [ref=e18]: "2"
+          - generic [ref=e19]: IDLE
+        - generic [ref=e20]:
+          - generic [ref=e22]: "0"
+          - generic [ref=e23]: WAITING
+    - generic [ref=e24]:
+      - button "WORLD" [ref=e25] [cursor=pointer]
+      - button "DASHBOARD" [ref=e26] [cursor=pointer]
+      - button "⚙" [ref=e27] [cursor=pointer]
+  - complementary [ref=e30]:
+    - generic [ref=e31]:
+      - generic [ref=e32]: AGENTS
+      - generic [ref=e33]: "2"
+    - generic [ref=e52]:
+      - generic [ref=e53]:
+        - generic [ref=e55]: manual
+        - generic [ref=e56]: "2"
+      - button "Beta C sonnet-4-5" [ref=e57] [cursor=pointer]:
+        - generic [ref=e59]:
+          - generic [ref=e60]: Beta
+          - generic [ref=e61]: C sonnet-4-5
+      - button "Alpha C sonnet-4-5" [ref=e62] [cursor=pointer]:
+        - generic [ref=e64]:
+          - generic [ref=e65]: Alpha
+          - generic [ref=e66]: C sonnet-4-5

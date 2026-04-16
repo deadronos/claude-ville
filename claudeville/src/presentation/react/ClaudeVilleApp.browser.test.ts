@@ -183,6 +183,20 @@ function createBrowserFixtureSnapshot() {
   };
 }
 
+async function postSnapshot(hubPort: number, authToken: string, snapshot: Record<string, unknown>) {
+  const response = await fetch(`http://127.0.0.1:${hubPort}/api/collector/snapshot`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify(snapshot),
+  });
+
+  expect(response.status).toBe(200);
+  return await response.json();
+}
+
 async function startFrontendServer() {
   const server = await createServer({
     configFile: viteConfigFile,
@@ -268,6 +282,7 @@ describe('ClaudeVilleApp browser selection flow', () => {
 
       await page.waitForFunction(() => document.getElementById('agentCount')?.textContent === '2');
       await page.waitForFunction(() => document.querySelectorAll('#sidebar .sidebar__agent').length === 2);
+        await page.waitForTimeout(500); // Adjusted settle delay before live-refresh update snapshot
 
       await page.getByRole('button', { name: 'DASHBOARD' }).click();
       await page.waitForFunction(() => document.getElementById('dashboardMode') !== null);
@@ -297,6 +312,15 @@ describe('ClaudeVilleApp browser selection flow', () => {
       expect(canvasAfterSettled).not.toBeNull();
       expect(Math.abs((canvasAfterSelection?.width || 0) - (canvasAfterSettled?.width || 0))).toBeLessThan(2);
       expect(Math.abs((canvasAfterSelection?.height || 0) - (canvasAfterSettled?.height || 0))).toBeLessThan(2);
+
+      await page.evaluate(() => {
+        (window as any).__worldCanvas = document.querySelector('.content__canvas');
+      });
+      await page.waitForTimeout(2200);
+      const canvasStayedMounted = await page.evaluate(() => {
+        return document.querySelector('.content__canvas') === (window as any).__worldCanvas;
+      });
+      expect(canvasStayedMounted).toBe(true);
 
       const markerBox = await markerRing.boundingBox();
       const worldBox = await worldView.boundingBox();
@@ -333,4 +357,5 @@ describe('ClaudeVilleApp browser selection flow', () => {
       await stopProcess(hubreceiver.child);
     }
   }, 120000);
+
 });

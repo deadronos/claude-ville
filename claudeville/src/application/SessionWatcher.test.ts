@@ -116,15 +116,15 @@ describe('SessionWatcher', () => {
       watcher2.stop();
     });
 
-    it('stops polling on ws:connected event', async () => {
+    it('does a catch-up poll on ws:connected event', async () => {
       const { eventBus } = await import('../domain/events/DomainEvent.js');
       watcher.start();
       const callsAfterStart = mockDataSource.getSessions.mock.calls.length;
       // Simulate disconnect then connect
       eventBus.emit('ws:disconnected');
       eventBus.emit('ws:connected');
-      // After connect, no new calls should be added (polling is stopped)
-      expect(mockDataSource.getSessions.mock.calls.length).toBe(callsAfterStart);
+      // After connect, a catch-up poll should run once and the fallback timer should stop.
+      expect(mockDataSource.getSessions.mock.calls.length).toBe(callsAfterStart + 1);
     });
   });
 

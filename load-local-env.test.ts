@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFileSync, unlinkSync, mkdirSync, existsSync, rmSync, readFileSync } from 'fs';
+import { writeFileSync, existsSync, rmSync, mkdtempSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -47,21 +47,18 @@ function testParseEnvFile(filePath: string, content: string): Record<string, str
 }
 
 describe('load-local-env', () => {
-  const testDir = path.join(os.tmpdir(), 'claudeville-test-env');
+  let testDir = '';
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
+    testDir = mkdtempSync(path.join(os.tmpdir(), 'claudeville-test-env-'));
+
     // Reset process.env
     for (const key of Object.keys(process.env)) {
       if (!originalEnv.hasOwnProperty(key)) {
         delete process.env[key];
       }
     }
-    // Clean up test directory
-    if (existsSync(testDir)) {
-      rmSync(testDir, { recursive: true, force: true });
-    }
-    mkdirSync(testDir, { recursive: true });
   });
 
   afterEach(() => {
@@ -70,6 +67,10 @@ describe('load-local-env', () => {
       if (!originalEnv.hasOwnProperty(key)) {
         delete process.env[key];
       }
+    }
+
+    if (testDir && existsSync(testDir)) {
+      rmSync(testDir, { recursive: true, force: true });
     }
   });
 
