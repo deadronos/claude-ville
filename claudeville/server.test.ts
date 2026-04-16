@@ -1,375 +1,161 @@
-import { describe, it, expect, vi } from 'vitest';
+import { spawn } from 'child_process';
+import { once } from 'events';
+import net from 'net';
+import path from 'path';
 
-// Test server utility functions and patterns
-// Full integration testing would require starting HTTP server
+import { describe, expect, it } from 'vitest';
 
-describe('claudeville server utilities', () => {
-  describe('setCorsHeaders', () => {
-    const setCorsHeaders = (res: any) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    };
+const repoRoot = process.cwd();
+const legacyServerEntrypoint = path.join(repoRoot, 'claudeville', 'server.ts');
 
-    it('sets CORS headers', () => {
-      const mockRes = {
-        setHeader: vi.fn(),
-      };
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-      setCorsHeaders(mockRes);
-
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', '*');
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Headers', 'Content-Type');
+async function getFreePort() {
+  return await new Promise<number>((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('Failed to allocate a port')));
+        return;
+      }
+      server.close(() => resolve(address.port));
     });
   });
+}
 
-  describe('sendJson', () => {
-    const sendJson = (res: any, statusCode: number, data: any) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.writeHead(statusCode);
-      res.end(JSON.stringify(data));
-    };
-
-    it('sends JSON with correct headers and status', () => {
-      const mockRes = {
-        setHeader: vi.fn(),
-        writeHead: vi.fn(),
-        end: vi.fn(),
-      };
-
-      sendJson(mockRes, 200, { ok: true });
-
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', '*');
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'application/json; charset=utf-8');
-      expect(mockRes.writeHead).toHaveBeenCalledWith(200);
-      expect(mockRes.end).toHaveBeenCalledWith(JSON.stringify({ ok: true }));
-    });
-
-    it('sends error responses', () => {
-      const mockRes = {
-        setHeader: vi.fn(),
-        writeHead: vi.fn(),
-        end: vi.fn(),
-      };
-
-      sendJson(mockRes, 404, { error: 'Not Found' });
-
-      expect(mockRes.writeHead).toHaveBeenCalledWith(404);
-      expect(mockRes.end).toHaveBeenCalledWith(JSON.stringify({ error: 'Not Found' }));
-    });
+function startTsx(entrypoint: string, env: Record<string, string>) {
+  const child = spawn(process.execPath, ['--import', 'tsx', entrypoint], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ...env,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  describe('sendError', () => {
-    const sendError = (res: any, statusCode: number, message: string) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.writeHead(statusCode);
-      res.end(JSON.stringify({ error: message }));
-    };
-
-    it('creates error response object', () => {
-      const mockRes = {
-        setHeader: vi.fn(),
-        writeHead: vi.fn(),
-        end: vi.fn(),
-      };
-
-      sendError(mockRes, 500, 'Internal Server Error');
-
-      expect(mockRes.end).toHaveBeenCalledWith(JSON.stringify({ error: 'Internal Server Error' }));
-    });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
   });
 
-  describe('MIME types', () => {
-    const MIME_TYPES = {
-      '.html': 'text/html; charset=utf-8',
-      '.css': 'text/css; charset=utf-8',
-      '.js': 'application/javascript; charset=utf-8',
-      '.json': 'application/json; charset=utf-8',
-      '.png': 'image/png',
-      '.svg': 'image/svg+xml',
-    };
+  return {
+    child,
+    getOutput: () => ({ stdout, stderr }),
+  };
+}
 
-    it('contains common MIME types', () => {
-      expect(MIME_TYPES['.html']).toBe('text/html; charset=utf-8');
-      expect(MIME_TYPES['.css']).toBe('text/css; charset=utf-8');
-      expect(MIME_TYPES['.js']).toBe('application/javascript; charset=utf-8');
-    });
+async function stopProcess(child: ReturnType<typeof spawn>) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
 
-    it('handles binary types', () => {
-      expect(MIME_TYPES['.png']).toBe('image/png');
-    });
+  child.kill('SIGTERM');
+  const exitPromise = once(child, 'exit');
+  const timeoutPromise = delay(2000).then(() => undefined);
+  await Promise.race([exitPromise, timeoutPromise]);
 
-    it('returns undefined for unknown extensions', () => {
-      expect(MIME_TYPES['.xyz']).toBeUndefined();
-    });
-  });
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill('SIGKILL');
+    await once(child, 'exit');
+  }
+}
 
-  describe('createWebSocketFrame', () => {
-    const createWebSocketFrame = (data: string | Buffer, opcode = 0x1) => {
-      const payload = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf-8');
-      const length = payload.length;
-      let header;
+async function waitForJson(url: string, predicate: (json: any) => boolean, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = 'no response yet';
 
-      if (length < 126) {
-        header = Buffer.alloc(2);
-        header[0] = 0x80 | opcode;
-        header[1] = length;
-      } else if (length < 65536) {
-        header = Buffer.alloc(4);
-        header[0] = 0x80 | opcode;
-        header[1] = 126;
-        header.writeUInt16BE(length, 2);
-      } else {
-        header = Buffer.alloc(10);
-        header[0] = 0x80 | opcode;
-        header[1] = 127;
-        header.writeBigUInt64BE(BigInt(length), 2);
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      const text = await response.text();
+      let json: any = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        lastError = `Non-JSON response (${response.status}): ${text.slice(0, 200)}`;
+        await delay(100);
+        continue;
       }
 
-      return Buffer.concat([header, payload]);
-    };
-
-    it('creates text frame with small payload', () => {
-      const frame = createWebSocketFrame('hello');
-
-      expect(frame[0]).toBe(0x81); // FIN + text opcode
-      expect(frame[1]).toBe(5); // payload length
-      expect(frame.slice(2).toString()).toBe('hello');
-    });
-
-    it('creates frame with 126 encoding for medium payloads', () => {
-      const data = 'a'.repeat(200);
-      const frame = createWebSocketFrame(data);
-
-      expect(frame[0]).toBe(0x81);
-      expect(frame[1]).toBe(126);
-      expect(frame.readUInt16BE(2)).toBe(200);
-    });
-
-    it('creates close frame', () => {
-      const frame = createWebSocketFrame('', 0x8);
-
-      expect(frame[0]).toBe(0x88); // FIN + close opcode
-    });
-
-    it('handles Buffer input', () => {
-      const buffer = Buffer.from('test buffer');
-      const frame = createWebSocketFrame(buffer);
-
-      expect(frame.slice(2).toString()).toBe('test buffer');
-    });
-
-    it('rejects frames larger than 100MB', () => {
-      // Guard check in the actual server
-      const tooLarge = 100 * 1024 * 1024 + 1;
-      expect(() => {
-        if (tooLarge > 100 * 1024 * 1024) {
-          throw new Error(`Frame payload too large: ${tooLarge} bytes`);
-        }
-      }).toThrow('Frame payload too large');
-    });
-  });
-
-  describe('WebSocket frame type handling', () => {
-    it('opcode 0x1 is text frame', () => {
-      expect(0x1).toBe(1); // TEXT
-    });
-
-    it('opcode 0x8 is close frame', () => {
-      expect(0x8).toBe(8); // CLOSE
-    });
-
-    it('opcode 0x9 is ping frame', () => {
-      expect(0x9).toBe(9); // PING
-    });
-
-    it('opcode 0xa is pong frame', () => {
-      expect(0xa).toBe(10); // PONG
-    });
-  });
-
-  describe('buildWsPayload structure', () => {
-    it('payload includes all state fields', () => {
-      const mockState = {
-        sessions: [],
-        teams: [],
-        taskGroups: [],
-        providers: [],
-        usage: {},
-        timestamp: Date.now(),
-      };
-
-      const payload = {
-        type: 'update',
-        sessions: mockState.sessions,
-        teams: mockState.teams,
-        taskGroups: mockState.taskGroups,
-        providers: mockState.providers,
-        usage: mockState.usage,
-        timestamp: mockState.timestamp,
-      };
-
-      expect(payload).toHaveProperty('type');
-      expect(payload).toHaveProperty('sessions');
-      expect(payload).toHaveProperty('teams');
-      expect(payload).toHaveProperty('taskGroups');
-      expect(payload).toHaveProperty('providers');
-      expect(payload).toHaveProperty('usage');
-      expect(payload).toHaveProperty('timestamp');
-    });
-  });
-
-  describe('maybeGetAuthToken', () => {
-    const maybeGetAuthToken = (req: any) => {
-      const header = req.headers?.authorization || '';
-      return header.replace(/^Bearer /i, '');
-    };
-
-    it('extracts Bearer token', () => {
-      const req = { headers: { authorization: 'Bearer my-token-123' } };
-      expect(maybeGetAuthToken(req)).toBe('my-token-123');
-    });
-
-    it('handles lowercase bearer', () => {
-      const req = { headers: { authorization: 'bearer my-token' } };
-      expect(maybeGetAuthToken(req)).toBe('my-token');
-    });
-
-    it('returns empty string when no authorization', () => {
-      const req = { headers: {} };
-      expect(maybeGetAuthToken(req)).toBe('');
-    });
-
-    it('returns empty string when null headers', () => {
-      const req = { headers: null };
-      expect(maybeGetAuthToken(req)).toBe('');
-    });
-  });
-
-  describe('path resolution security', () => {
-    it('rejects paths outside static directory', () => {
-      const STATIC_DIR = '/srv/static';
-      const requestedPath = '/srv/static/../../../etc/passwd';
-      const resolvedPath = require('path').resolve(requestedPath);
-
-      const isSafe = resolvedPath.startsWith(STATIC_DIR);
-      expect(isSafe).toBe(false);
-    });
-
-    it('allows paths inside static directory', () => {
-      const STATIC_DIR = '/srv/static';
-      const requestedPath = '/srv/static/images/logo.png';
-      const resolvedPath = require('path').resolve(requestedPath);
-
-      const isSafe = resolvedPath.startsWith(STATIC_DIR);
-      expect(isSafe).toBe(true);
-    });
-  });
-
-  describe('safeLimit calculation', () => {
-    it('clamps limit to valid range', () => {
-      const calculateSafeLimit = (limit: number) => {
-        return Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
-      };
-
-      expect(calculateSafeLimit(50)).toBe(50);
-      expect(calculateSafeLimit(0)).toBe(1);
-      expect(calculateSafeLimit(1000)).toBe(500);
-      expect(calculateSafeLimit(NaN)).toBe(100);
-      expect(calculateSafeLimit(Infinity)).toBe(100);
-    });
-  });
-
-  describe('debounced broadcast logic', () => {
-    it('debounce prevents rapid successive calls', () => {
-      let broadcastCount = 0;
-      let timeoutId: any = null;
-
-      const debouncedBroadcast = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          broadcastCount++;
-        }, 100);
-      };
-
-      // Simulate rapid calls
-      debouncedBroadcast();
-      debouncedBroadcast();
-      debouncedBroadcast();
-
-      // Only one should execute after 100ms
-      expect(broadcastCount).toBe(0); // Not fired yet
-
-      // After timeout
-      // (can't test actual timing in unit test)
-    });
-
-    it('handles broadcastInFlight state', () => {
-      let broadcastInFlight = false;
-      let pendingCount = 0;
-
-      // When broadcast is in flight, increment pending
-      broadcastInFlight = true;
-      if (broadcastInFlight) {
-        pendingCount++;
+      if (predicate(json)) {
+        return json;
       }
 
-      expect(pendingCount).toBe(1);
-      expect(broadcastInFlight).toBe(true);
+      lastError = `Unexpected payload from ${url}: ${JSON.stringify(json).slice(0, 400)}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await delay(100);
+  }
+
+  throw new Error(`Timed out waiting for ${url}: ${lastError}`);
+}
+
+async function waitForText(url: string, predicate: (text: string) => boolean, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = 'no response yet';
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      const text = await response.text();
+      if (predicate(text)) {
+        return text;
+      }
+      lastError = `Unexpected response from ${url}: ${text.slice(0, 200)}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await delay(100);
+  }
+
+  throw new Error(`Timed out waiting for ${url}: ${lastError}`);
+}
+
+describe('legacy server entrypoint', () => {
+  it('serves runtime config, JSON APIs, and CORS headers on a configurable port', async () => {
+    const port = await getFreePort();
+    const server = startTsx(legacyServerEntrypoint, {
+      PORT: String(port),
     });
-  });
 
-  describe('error handling patterns', () => {
-    it('handles network errors gracefully', () => {
-      const errorHandler = (err: Error) => {
-        console.error('[WebSocket] send failed:', err.message);
-      };
+    try {
+      const runtimeConfig = await waitForText(`http://127.0.0.1:${port}/runtime-config.js`, (text) => text.includes('window.__CLAUDEVILLE_CONFIG__'));
+      expect(runtimeConfig).toContain('window.__CLAUDEVILLE_CONFIG__');
 
-      expect(() => {
-        errorHandler(new Error('ECONNRESET'));
-      }).not.toThrow();
-    });
+      const runtimeResponse = await fetch(`http://127.0.0.1:${port}/runtime-config.js`);
+      expect(runtimeResponse.status).toBe(200);
+      expect(runtimeResponse.headers.get('content-type')).toContain('application/javascript');
 
-    it('handles JSON parse errors', () => {
-      const parseJson = (str: string) => {
-        try {
-          return JSON.parse(str);
-        } catch {
-          return null;
-        }
-      };
+      const optionsResponse = await fetch(`http://127.0.0.1:${port}/api/sessions`, { method: 'OPTIONS' });
+      expect(optionsResponse.status).toBe(204);
+      expect(optionsResponse.headers.get('access-control-allow-origin')).toBe('*');
 
-      expect(parseJson('invalid json')).toBeNull();
-      expect(parseJson('{"valid": true}')).toEqual({ valid: true });
-    });
-  });
+      const sessions = await waitForJson(`http://127.0.0.1:${port}/api/sessions`, (json) => Array.isArray(json.sessions) && typeof json.count === 'number');
+      expect(sessions).toMatchObject({
+        sessions: expect.any(Array),
+        count: expect.any(Number),
+        timestamp: expect.any(Number),
+      });
 
-  describe('file watching patterns', () => {
-    it('validates watch path type', () => {
-      const validWatchPath = (wp: any) => {
-        return wp.type === 'file' || wp.type === 'directory';
-      };
-
-      expect(validWatchPath({ type: 'file', path: '/a/b' })).toBe(true);
-      expect(validWatchPath({ type: 'directory', path: '/a/b' })).toBe(true);
-      expect(validWatchPath({ type: 'invalid', path: '/a/b' })).toBe(false);
-    });
-
-    it('applies filter for directory watching', () => {
-      const shouldWatch = (wp: any, filename: string) => {
-        if (wp.type !== 'directory') return true;
-        if (!wp.filter) return true;
-        return filename.endsWith(wp.filter);
-      };
-
-      const watchPath = { type: 'directory', filter: '.jsonl' };
-
-      expect(shouldWatch(watchPath, 'session.jsonl')).toBe(true);
-      expect(shouldWatch(watchPath, 'readme.md')).toBe(false);
-      expect(shouldWatch({ type: 'file' }, 'anything')).toBe(true);
-    });
+      const rootResponse = await fetch(`http://127.0.0.1:${port}/`);
+      expect(rootResponse.status).toBe(200);
+    } catch (error) {
+      const { stdout, stderr } = server.getOutput();
+      throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n[legacy stdout]\n${stdout}\n[legacy stderr]\n${stderr}`);
+    } finally {
+      await stopProcess(server.child);
+    }
   });
 });

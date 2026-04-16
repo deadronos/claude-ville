@@ -94,7 +94,7 @@ const server = http.createServer((req, res) => {
       req.on('data', chunk => body += chunk);
       req.on('end', () => {
         let parsed: any = {};
-        try { parsed = JSON.parse(body); } catch(e) {}
+        try { parsed = JSON.parse(body); } catch { parsed = {}; }
 
         const tool = parsed.tool || parsed.name || '';
 

@@ -87,6 +87,11 @@ export class AgentManager {
         const teamInfo = teamMembers ? teamMembers.get(session.agentId) : null;
         const resolvedName = resolveAgentDisplayName(session, teamInfo);
         const tokenUsage = session.tokenUsage || null;
+        const detailToolHistory = Array.isArray(session.detail?.toolHistory) ? session.detail.toolHistory : [];
+        const detailMessages = Array.isArray(session.detail?.messages) ? session.detail.messages : [];
+        const latestTool = detailToolHistory[detailToolHistory.length - 1] || null;
+        const latestMessage = detailMessages[detailMessages.length - 1]?.text || null;
+        const messages = Array.isArray(session.messages) && session.messages.length > 0 ? session.messages : detailMessages;
         const tokens = session.tokens || (tokenUsage ? {
             input: tokenUsage.totalInput || 0,
             output: tokenUsage.totalOutput || 0,
@@ -101,10 +106,11 @@ export class AgentManager {
             status: this._resolveStatus(session),
             role: teamInfo?.agentType || session.agentType || 'general',
             teamName,
-            currentTool: session.lastTool || null,
-            currentToolInput: session.lastToolInput || null,
+            currentTool: session.lastTool || latestTool?.tool || null,
+            currentToolInput: session.lastToolInput || latestTool?.detail || null,
             tokens,
-            _lastMessage: session.lastMessage || null,
+            messages,
+            _lastMessage: session.lastMessage || latestMessage || null,
             nameSeed: resolvedName.nameSeed,
             nameKind: resolvedName.nameKind,
             nameMode: resolvedName.nameMode,
@@ -132,7 +138,7 @@ export class AgentManager {
                 lastToolInput: agentData.currentToolInput,
                 lastMessage: agentData._lastMessage,
                 provider: session.provider || 'claude',
-                messages: session.messages || [],
+                messages,
             });
             this.world.addAgent(agent);
         }

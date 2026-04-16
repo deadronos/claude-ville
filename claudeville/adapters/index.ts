@@ -2,15 +2,15 @@
  * Adapter registry
  * Registers and manages all AI coding CLI adapters
  */
-import { estimateCost } from '../../shared/cost.js';
-import { normalizeTokens } from '../../shared/session-utils.js';
-import { sanitizeSessionDetail, sanitizeSessionSummary } from './sanitize.js';
-import { ClaudeAdapter } from './claude.js';
-import { CodexAdapter } from './codex.js';
-import { GeminiAdapter } from './gemini.js';
-import { OpenClawAdapter } from './openclaw.js';
-import { CopilotAdapter } from './copilot.js';
-import { VSCodeAdapter } from './vscode.js';
+const { estimateCost } = require('../../shared/cost.ts');
+const { normalizeTokens } = require('../../shared/session-utils.js');
+const { sanitizeSessionDetail, sanitizeSessionSummary } = require('./sanitize.ts');
+const { ClaudeAdapter } = require('./claude.ts');
+const { CodexAdapter } = require('./codex.ts');
+const { GeminiAdapter } = require('./gemini.ts');
+const { OpenClawAdapter } = require('./openclaw.ts');
+const { CopilotAdapter } = require('./copilot.ts');
+const { VSCodeAdapter } = require('./vscode.ts');
 
 const adapters = [
   new ClaudeAdapter(),

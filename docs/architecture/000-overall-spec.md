@@ -77,9 +77,11 @@ Infrastructure adapters provide transport and data access:
 
 ### `claudeville/src/presentation`
 
-UI rendering is split by mode:
+UI rendering is split by mode and runtime surface:
 
-- `character-mode/` for the isometric world renderer and camera system
+- `App.ts` for the legacy imperative shell
+- `react/` for the React shell, controller, world scene, and dashboard composition
+- `character-mode/` for the isometric world renderer and camera math reference
 - `dashboard-mode/` for project-grouped cards and per-session details
 - `shared/` for top bar, sidebar, modal, toast, and activity panel
 
@@ -124,8 +126,10 @@ The browser layout is intentionally fixed in broad structure, but implemented wi
 
 The content area switches between:
 
-- world mode: canvas-based isometric rendering
+- world mode: canvas-based isometric rendering inside the React shell, with a screen-space orthographic camera and DOM overlays for focus/selection markers
 - dashboard mode: card-based project grouping
+
+The optional right activity panel is a flex sibling; it should animate with transforms and opacity rather than width so the world viewport stays stable.
 
 ## Naming and identity
 
@@ -166,6 +170,7 @@ The branch introduces the following major architectural changes:
 - project grouping and provider-aware dashboard rendering
 - shared cost helper used by the world, top bar, and activity panel
 - expanded activity panel token / tool / message inspection
+- React presentation shell and R3F world scene with screen-space camera and transform helpers
 - legacy `/api/history` restored for local mode parity
 - richer docs and issue tracking for OpenClaw naming behavior
 
@@ -176,3 +181,4 @@ The branch introduces the following major architectural changes:
 - CommonJS in server / adapter entrypoints
 - port `4000` remains the legacy app default
 - CSS layout should remain flexbox-based for app chrome, with fixed positioning reserved for modal / toast only
+- canvas-adjacent panels should avoid width animations; use transform and opacity so the R3F viewport does not churn

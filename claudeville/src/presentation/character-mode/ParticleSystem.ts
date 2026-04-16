@@ -119,11 +119,12 @@ export class ParticleSystem {
                     vx = rand(-0.3, 0.3);
                     vy = speed * 0.3;
                     break;
-                case 'random':
+                case 'random': {
                     const angle = Math.random() * Math.PI * 2;
                     vx = Math.cos(angle) * speed;
                     vy = Math.sin(angle) * speed;
                     break;
+                }
             }
 
             const p = new Particle(x + rand(-3, 3), y + rand(-3, 3), vx, vy, life, color, size);

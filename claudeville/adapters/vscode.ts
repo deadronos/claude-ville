@@ -42,8 +42,6 @@ function shouldReplaceCandidate(existing, incoming) {
   return incoming.mtime > existing.mtime;
 }
 
-const { readLines, parseJsonLines } = require('./jsonl-utils');
-
 function summarizeJson(value, maxLength = 80) {
   if (value === null || value === undefined) return '';
   const raw = typeof value === 'string' ? value : JSON.stringify(value);

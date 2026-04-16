@@ -35,4 +35,29 @@ function safeLimit(limit) {
   return Number.isFinite(n) ? Math.min(Math.max(n, 1), 500) : 100;
 }
 
-module.exports = { setCorsHeaders, sendJson, sendError, safeLimit };
+/**
+ * Accumulate req body with an optional byte cap.
+ * Resolves with { body, truncated: boolean }.
+ * Rejects with a 413 if the limit is exceeded before 'end'.
+ */
+function readBoundedBody(req, maxBytes = Infinity) {
+  return new Promise((resolve, reject) => {
+    let body = Buffer.alloc(0);
+    let truncated = false;
+
+    req.on('data', (chunk) => {
+      if (body.length + chunk.length > maxBytes) {
+        truncated = true;
+        req.destroy();
+        reject({ statusCode: 413, message: `body exceeds ${maxBytes} bytes` });
+        return;
+      }
+      body = Buffer.concat([body, chunk]);
+    });
+
+    req.on('end', () => resolve({ body: body.toString('utf8'), truncated }));
+    req.on('error', reject);
+  });
+}
+
+module.exports = { setCorsHeaders, sendJson, sendError, safeLimit, readBoundedBody };

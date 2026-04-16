@@ -22,7 +22,9 @@ export class SessionWatcher {
         this._onWsInit = (data) => this.agentManager.handleWebSocketMessage(data);
         this._onWsUpdate = (data) => this.agentManager.handleWebSocketMessage(data);
         this._onWsDisconnected = () => this._startPolling();
-        this._onWsConnected = () => this._stopPolling();
+        this._onWsConnected = () => {
+            void this._poll();
+        };
     }
 
     start() {

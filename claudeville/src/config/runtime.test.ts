@@ -1,135 +1,65 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+/** @vitest-environment jsdom */
 
-// Inline copies of runtime functions to test logic without module-level window capture
-function getHubHttpUrlInline(config) {
-    return config?.hubHttpUrl || 'http://localhost:4000';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+type RuntimeModule = typeof import('./runtime.js');
+
+function setRuntimeConfig(config?: Record<string, unknown>) {
+  const target = window as Window & { __CLAUDEVILLE_CONFIG__?: Record<string, unknown> };
+  if (config) {
+    target.__CLAUDEVILLE_CONFIG__ = config;
+  } else {
+    delete target.__CLAUDEVILLE_CONFIG__;
+  }
 }
 
-function getHubApiUrlInline(config, pathname, searchParams) {
-    const base = config?.hubHttpUrl || 'http://localhost:4000';
-    const url = new URL(pathname, base);
-    if (searchParams instanceof URLSearchParams) {
-        searchParams.forEach((value, key) => url.searchParams.set(key, value));
-    } else if (typeof searchParams === 'string' && searchParams.length > 0) {
-        url.search = searchParams.startsWith('?') ? searchParams : `?${searchParams}`;
-    } else if (searchParams && typeof searchParams === 'object') {
-        for (const [key, value] of Object.entries(searchParams)) {
-            if (value !== undefined && value !== null && value !== '') {
-                url.searchParams.set(key, String(value));
-            }
-        }
-    }
-    return url.toString();
+async function loadRuntime(config?: Record<string, unknown>): Promise<RuntimeModule> {
+  vi.resetModules();
+  setRuntimeConfig(config);
+  return import('./runtime.js');
 }
 
-function fallbackWsUrlInline(origin) {
-    // Mirrors runtime.ts logic: wss:// for https, ws:// for http
-    const protocol = origin.startsWith('https:') ? 'wss:' : 'ws:';
-    // origin = 'https://host' or 'http://host', extract the host part
-    const host = origin.replace(/^https?:\/\//, '');
-    return protocol + '//' + host;
-}
+describe('runtime config helpers', () => {
+  afterEach(() => {
+    setRuntimeConfig();
+    vi.resetModules();
+  });
 
-function getHubWsUrlInline(config) {
-    if (config?.hubWsUrl) return config.hubWsUrl;
-    return fallbackWsUrlInline('http://localhost:4000');
-}
-
-describe('runtime.ts', () => {
-    describe('getHubHttpUrl', () => {
-        it('returns configured hubHttpUrl when set', () => {
-            expect(getHubHttpUrlInline({ hubHttpUrl: 'https://hub.example.com' })).toBe('https://hub.example.com');
-        });
-
-        it('returns localhost:4000 as default when hubHttpUrl not set', () => {
-            expect(getHubHttpUrlInline(undefined)).toBe('http://localhost:4000');
-            expect(getHubHttpUrlInline(null)).toBe('http://localhost:4000');
-        });
-
-        it('returns localhost:4000 when hubHttpUrl is empty string', () => {
-            expect(getHubHttpUrlInline({ hubHttpUrl: '' })).toBe('http://localhost:4000');
-        });
+  it('uses runtime overrides and builds API URLs from multiple query input shapes', async () => {
+    const { getHubHttpUrl, getHubApiUrl, getRuntimeConfig } = await loadRuntime({
+      hubHttpUrl: 'https://hub.example',
+      hubWsUrl: 'wss://hub.example/ws',
+      featureFlag: true,
     });
 
-    describe('getHubApiUrl', () => {
-        it('builds URL with just pathname', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions'))
-                .toBe('http://localhost:8080/api/sessions');
-        });
-
-        it('appends URLSearchParams object', () => {
-            const params = new URLSearchParams({ status: 'active', limit: '10' });
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', params))
-                .toBe('http://localhost:8080/api/sessions?status=active&limit=10');
-        });
-
-        it('appends string search params as-is', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', 'status=active&limit=10'))
-                .toBe('http://localhost:8080/api/sessions?status=active&limit=10');
-        });
-
-        it('strips leading ? from string params', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', '?status=active'))
-                .toBe('http://localhost:8080/api/sessions?status=active');
-        });
-
-        it('appends object key-value pairs', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', { status: 'active', limit: 10 }))
-                .toBe('http://localhost:8080/api/sessions?status=active&limit=10');
-        });
-
-        it('omits null/undefined/empty string values from object params', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', { status: null, limit: undefined, skip: '' }))
-                .toBe('http://localhost:8080/api/sessions');
-        });
-
-        it('coerces booleans and numbers to strings', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', { active: true, count: 42 }))
-                .toBe('http://localhost:8080/api/sessions?active=true&count=42');
-        });
-
-        it('returns base URL when searchParams is empty object', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', {}))
-                .toBe('http://localhost:8080/api/sessions');
-        });
-
-        it('returns base URL when searchParams is null', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', null))
-                .toBe('http://localhost:8080/api/sessions');
-        });
-
-        it('returns base URL when searchParams is undefined', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', undefined))
-                .toBe('http://localhost:8080/api/sessions');
-        });
-
-        it('handles boolean false as a valid value (not skipped)', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', { flag: false }))
-                .toBe('http://localhost:8080/api/sessions?flag=false');
-        });
-
-        it('handles numeric zero as valid value', () => {
-            expect(getHubApiUrlInline({ hubHttpUrl: 'http://localhost:8080' }, '/api/sessions', { offset: 0 }))
-                .toBe('http://localhost:8080/api/sessions?offset=0');
-        });
+    expect(getHubHttpUrl()).toBe('https://hub.example');
+    expect(getRuntimeConfig()).toMatchObject({
+      hubHttpUrl: 'https://hub.example',
+      hubWsUrl: 'wss://hub.example/ws',
+      featureFlag: true,
     });
 
-    describe('getHubWsUrl fallback logic', () => {
-        it('returns configured hubWsUrl when set', () => {
-            expect(getHubWsUrlInline({ hubWsUrl: 'wss://hub.example.com/ws' })).toBe('wss://hub.example.com/ws');
-        });
-
-        it('returns wss for https origin', () => {
-            expect(fallbackWsUrlInline('https://secure.example.com')).toBe('wss://secure.example.com');
-        });
-
-        it('returns ws for http origin', () => {
-            expect(fallbackWsUrlInline('http://localhost:4000')).toBe('ws://localhost:4000');
-        });
-
-        it('falls back to ws when hubWsUrl not set', () => {
-            expect(getHubWsUrlInline({})).toBe('ws://localhost:4000');
-            expect(getHubWsUrlInline(undefined)).toBe('ws://localhost:4000');
-        });
+    const withObject = getHubApiUrl('/api/sessions', {
+      q: 'alpha',
+      page: 2,
+      includeArchived: false,
+      empty: '',
+      nil: null,
+      skip: undefined,
     });
+    expect(withObject).toBe('https://hub.example/api/sessions?q=alpha&page=2&includeArchived=false');
+
+    const withParams = getHubApiUrl('/api/sessions', new URLSearchParams('page=3&sort=desc'));
+    expect(withParams).toBe('https://hub.example/api/sessions?page=3&sort=desc');
+
+    const withString = getHubApiUrl('/api/sessions', 'page=4&sort=asc');
+    expect(withString).toBe('https://hub.example/api/sessions?page=4&sort=asc');
+  });
+
+  it('falls back to window location when runtime config is absent', async () => {
+    const { getHubHttpUrl, getHubWsUrl } = await loadRuntime();
+
+    expect(getHubHttpUrl()).toBe(window.location.origin);
+    expect(getHubWsUrl()).toBe(`ws://${window.location.host}`);
+  });
 });
