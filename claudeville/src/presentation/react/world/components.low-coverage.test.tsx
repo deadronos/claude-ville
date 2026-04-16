@@ -133,7 +133,7 @@ describe('React world low-coverage components', () => {
       return animationCallbacks.length;
     });
     vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => context as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => context as any);
 
     const onNavigate = vi.fn();
     const spritesRef = {
