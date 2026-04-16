@@ -753,6 +753,11 @@ function ToastViewport({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: 
 export function ClaudeVilleApp() {
   const controller = useMemo(() => new ClaudeVilleController(), []);
   const snapshot = useClaudeVilleSnapshot(controller);
+  const agents = Array.from(snapshot.world.agents.values());
+  const buildings = Array.from(snapshot.world.buildings.values());
+  const selectedAgent = snapshot.selectedAgentId
+    ? snapshot.world.agents.get(snapshot.selectedAgentId) || null
+    : null;
   const stats = snapshot.world.getStats();
   const runtime = useWorldTimer(snapshot.world.startTime);
 
@@ -829,23 +834,23 @@ export function ClaudeVilleApp() {
 
       <div className="main">
         <div className="main__body">
-          <Sidebar agents={snapshot.agents} selectedAgentId={snapshot.selectedAgentId} onFocus={(agentId) => controller.focusAgent(agentId)} />
+          <Sidebar agents={agents} selectedAgentId={snapshot.selectedAgentId} onFocus={(agentId) => controller.focusAgent(agentId)} />
 
           <div className="content">
             <WorldView
               active={snapshot.mode === 'character'}
-              agents={snapshot.agents}
-              buildings={snapshot.buildings}
+              agents={agents}
+              buildings={buildings}
               selectedAgentId={snapshot.selectedAgentId}
-              selectedAgentName={snapshot.selectedAgent?.name || null}
+              selectedAgentName={selectedAgent?.name || null}
               bubbleConfig={snapshot.bubbleConfig}
               onSelectAgent={(agentId) => controller.selectAgent(agentId)}
               onClearSelection={() => controller.clearSelection()}
             />
-            <DashboardView active={snapshot.mode === 'dashboard'} agents={snapshot.agents} onSelect={(agentId) => controller.selectAgent(agentId)} />
+            <DashboardView active={snapshot.mode === 'dashboard'} agents={agents} onSelect={(agentId) => controller.selectAgent(agentId)} />
           </div>
 
-          <ActivityPanel agent={snapshot.selectedAgent} onClose={() => controller.clearSelection()} />
+          <ActivityPanel agent={selectedAgent} onClose={() => controller.clearSelection()} />
         </div>
       </div>
 
