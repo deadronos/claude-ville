@@ -151,6 +151,7 @@
     padding: 10px 16px;
     border-radius: 4px;
     font-size: calc(9px * var(--text-scale));
+    font-family: var(--font-mono);
     border: 1px solid;
     background: rgba(15, 15, 25, 0.95);
     pointer-events: auto;

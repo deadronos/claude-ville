@@ -147,6 +147,7 @@
 
 .sidebar__project-count {
     font-size: calc(7px * var(--text-scale));
+    font-family: var(--font-mono);
     color: #8b8b9e;
     background: rgba(255, 255, 255, 0.06);
     padding: 1px 6px;

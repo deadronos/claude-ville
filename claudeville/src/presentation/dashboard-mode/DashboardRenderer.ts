@@ -69,13 +69,6 @@ export class DashboardRenderer {
             }
         });
 
-        document.addEventListener('click', (e) => {
-            const header = (e.target as Element).closest('.dash-card__tools-header');
-            if (header) {
-                const agentId = (header as HTMLElement).dataset.agentId;
-                if (agentId) this._toggleToolHistory(agentId);
-            }
-        });
     }
 
     render() {
@@ -240,7 +233,7 @@ export class DashboardRenderer {
                         <span class="dash-card__model"></span>
                         <span class="dash-card__role"></span>
                     </div>
-                    <div class="dash-card__context-bar-wrap">
+                    <div class="dash-card__context-bar-wrap" data-context-pct="${contextPct}">
                         <div class="dash-card__context-bar" style="${contextBarStyle}"></div>
                     </div>
                 </div>
@@ -281,6 +274,12 @@ export class DashboardRenderer {
         // Click → agent selection
         card.addEventListener('click', () => {
             eventBus.emit('agent:selected', agent);
+        });
+
+        const toolsHeader = card.querySelector('.dash-card__tools-header');
+        toolsHeader?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this._toggleToolHistory(agent.id);
         });
 
         return card;
@@ -341,12 +340,15 @@ export class DashboardRenderer {
         }
 
         // Update tool count badge
-        const toolCountBadge = cardEl.querySelector('.dash-card__tool-count-badge');
-        if (toolCountBadge) toolCountBadge.textContent = String((history || []).length);
+        this._updateToolCountBadge(cardEl, (history || []).length);
 
         // Update context bar
         const contextPct = agent.usage?.contextPercent ?? 0;
+        const contextWrap = cardEl.querySelector('.dash-card__context-bar-wrap') as HTMLElement;
         const contextBar = cardEl.querySelector('.dash-card__context-bar') as HTMLElement;
+        if (contextWrap) {
+            contextWrap.dataset.contextPct = String(contextPct);
+        }
         if (contextBar) {
             if (contextPct > 0) {
                 contextBar.style.width = `${contextPct}%`;
@@ -360,6 +362,7 @@ export class DashboardRenderer {
 
     _renderToolHistory(cardEl, tools) {
         const listEl = cardEl.querySelector('.dash-card__tool-list');
+        this._updateToolCountBadge(cardEl, tools?.length || 0);
         if (!tools || tools.length === 0) {
             listEl.innerHTML = `<div class="dash-card__loading" style="color:#666">${i18n.t('noToolUsage')}</div>`;
             return;
@@ -378,6 +381,13 @@ export class DashboardRenderer {
                 <span class="dash-card__tool-item-detail">${this._escapeHtml(detail)}</span>
             </div>`;
         }).join('');
+    }
+
+    _updateToolCountBadge(cardEl, count) {
+        const toolCountBadge = cardEl.querySelector('.dash-card__tool-count-badge');
+        if (toolCountBadge) {
+            toolCountBadge.textContent = String(count);
+        }
     }
 
     _startDetailFetching() {

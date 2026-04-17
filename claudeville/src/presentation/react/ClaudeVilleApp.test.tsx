@@ -20,7 +20,9 @@ const snapshotState = vi.hoisted(() => ({
   current: {
     world: {
       startTime: Date.now(),
-      getStats: () => ({ working: 0, idle: 0, waiting: 0, total: 1 }),
+      agents: new Map(),
+      buildings: new Map(),
+      getStats: () => ({ working: 0, idle: 0, waiting: 0, total: 0 }),
     },
     agents: [
       {
@@ -51,6 +53,27 @@ const snapshotState = vi.hoisted(() => ({
     bootError: null,
   },
 }));
+
+function makeWorld(agents: any[] = [], buildings: any[] = []) {
+  return {
+    startTime: Date.now(),
+    agents: new Map(agents.map((agent) => [agent.id, agent])),
+    buildings: new Map(buildings.map((building) => [building.type, building])),
+    getStats: () => {
+      const stats = { working: 0, idle: 0, waiting: 0, total: agents.length };
+      for (const agent of agents) {
+        if (agent.status === 'working') {
+          stats.working += 1;
+        } else if (agent.status === 'waiting') {
+          stats.waiting += 1;
+        } else {
+          stats.idle += 1;
+        }
+      }
+      return stats;
+    },
+  };
+}
 
 vi.mock('./state/ClaudeVilleController.js', () => ({
   ClaudeVilleController: vi.fn(function ClaudeVilleController() {
@@ -94,6 +117,7 @@ const otherAgent = {
 function setBaseSnapshot() {
   snapshotState.current.world.startTime = Date.now() - 3661000;
   snapshotState.current.agents = [selectedAgent, otherAgent];
+  snapshotState.current.world = makeWorld([selectedAgent, otherAgent]);
   snapshotState.current.buildings = [];
   snapshotState.current.selectedAgentId = 'agent-1';
   snapshotState.current.selectedAgent = selectedAgent;
@@ -222,6 +246,8 @@ describe('ClaudeVilleApp', () => {
   it('renders the dashboard empty state when dashboard mode has no agents', () => {
     snapshotState.current.mode = 'dashboard';
     snapshotState.current.agents = [];
+    snapshotState.current.world = makeWorld();
+    snapshotState.current.buildings = [];
     snapshotState.current.selectedAgent = null;
     snapshotState.current.selectedAgentId = null;
 

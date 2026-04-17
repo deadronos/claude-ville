@@ -20,6 +20,7 @@
     font-size: calc(13px * var(--text-scale));
     color: #e8d44d;
     letter-spacing: 2px;
+    font-family: var(--font-retro);
 }
 
 .topbar__version {
@@ -28,6 +29,7 @@
     padding: 2px 6px;
     border: 1px solid rgba(139, 139, 158, 0.3);
     border-radius: 2px;
+    font-family: var(--font-mono);
 }
 
 .topbar__center {
@@ -126,11 +128,13 @@
     background: rgba(167, 139, 250, 0.15);
     color: #a78bfa;
     letter-spacing: 0.5px;
+    font-family: var(--font-mono);
 }
 
 .topbar__account-activity {
     font-size: calc(8px * var(--text-scale));
     color: #8b8b9e;
+    font-family: var(--font-mono);
 }
 
 /* ── Quota progress bar ── */
@@ -151,6 +155,7 @@
     color: #8b8b9e;
     letter-spacing: 0.5px;
     width: 16px;
+    font-family: var(--font-mono);
 }
 
 .topbar__quota-track {
@@ -182,6 +187,7 @@
     color: #8b8b9e;
     width: 22px;
     text-align: right;
+    font-family: var(--font-mono);
 }
 
 .topbar__right {
