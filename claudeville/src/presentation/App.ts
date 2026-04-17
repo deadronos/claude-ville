@@ -209,6 +209,7 @@ export class App {
             { key: 'large',  labelKey: 'bubbleLarge',       textScale: 1.25, statusFontSize: 20, maxWidth: 360, bubbleH: 38, paddingH: 32 },
             { key: 'xlarge', labelKey: 'bubbleExtraLarge',   textScale: 1.5, statusFontSize: 28, maxWidth: 480, bubbleH: 52, paddingH: 44 },
         ];
+        const PRESETS_BY_KEY = new Map(TEXT_SIZE_PRESETS.map(p => [p.key, p]));
 
         const sizeLabel = (preset: { key: string; labelKey: string }) =>
             i18n.t(preset.labelKey || `bubble${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
@@ -281,7 +282,7 @@ export class App {
                 const sizeBtn = sizeBtnNode as HTMLElement;
                 sizeBtn.addEventListener('click', () => {
                     const key = sizeBtn.dataset.size;
-                    const preset = TEXT_SIZE_PRESETS.find(p => p.key === key);
+                    const preset = key ? PRESETS_BY_KEY.get(key) : undefined;
                     if (!preset) return;
                     updateBubbleConfig({
                         textScale: preset.textScale,
@@ -295,7 +296,7 @@ export class App {
                     const cfg = getBubbleConfig();
                     document.querySelectorAll('.settings-lang-btn[data-size]').forEach(btnNode => {
                         const btn = btnNode as HTMLElement;
-                        const p = TEXT_SIZE_PRESETS.find(tp => tp.key === btn.dataset.size);
+                        const p = btn.dataset.size ? PRESETS_BY_KEY.get(btn.dataset.size) : undefined;
                         btn.classList.toggle('settings-lang-btn--active', p !== undefined && p.textScale === cfg.textScale);
                     });
                     if (this.toast) {
