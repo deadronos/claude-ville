@@ -8,7 +8,7 @@
  * The frame-building utilities (createWebSocketFrame, computeAcceptKey)
  * live in shared/ws-utils.js — this file only handles send/broadcast.
  */
-const { createWebSocketFrame } = require('./ws-utils');
+const { createWebSocketFrame } = require('./ws-utils.ts');
 
 const DISCONNECTED_CODES = new Set(['EPIPE', 'ECONNRESET', 'EBADF', 'ENOTCONN']);
 

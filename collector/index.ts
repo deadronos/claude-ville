@@ -3,8 +3,8 @@ require('../load-local-env.ts');
 const { createFileWatchers } = require('../shared/watch-utils');
 const crypto = require('crypto');
 const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters/index.ts');
-import { estimateCost } from '../shared/cost.js';
-import { normalizeTokens } from '../shared/session-utils.js';
+import { buildCollectorSnapshot, normalizeSession } from './snapshot.js';
+import { createCollectorPublisher } from './publisher.js';
 
 const DEFAULT_ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
 
@@ -58,6 +58,16 @@ type CollectorRuntimeDeps = {
   process: Pick<typeof process, 'on' | 'exit'>;
 };
 
+type SnapshotBuilderDeps = {
+  getAllSessions: (activeThresholdMs: number) => Promise<SessionSummary[]>;
+  getSessionDetailByProvider: (provider: string, sessionId: string, project?: string) => Promise<SessionDetail | null>;
+  getActiveProviders: () => unknown[];
+  claudeAdapter?: {
+    getTeams?: () => Promise<unknown[]> | unknown[];
+    getTasks?: () => Promise<unknown[]> | unknown[];
+  };
+};
+
 export function getCollectorConfig(): CollectorRuntimeConfig {
   const hostname = require('os').hostname();
 
@@ -87,129 +97,56 @@ const defaultCollectorDeps: CollectorRuntimeDeps = {
   process,
 };
 
-export function normalizeSession(session: SessionSummary, detail: SessionDetail | null) {
-  const tokens = normalizeTokens(detail?.tokenUsage, session.tokens || null);
-
-  return {
-    ...session,
-    tokens,
-    tokenUsage: detail?.tokenUsage || null,
-    estimatedCost: estimateCost(session.model, tokens),
-  };
-}
-
 export function createCollectorRuntime(
   deps: CollectorRuntimeDeps = defaultCollectorDeps,
   config: CollectorRuntimeConfig = getCollectorConfig(),
 ) {
   const claudeAdapter = deps.adapters.find((adapter) => adapter.provider === 'claude');
 
-  let flushTimer: ReturnType<typeof setTimeout> | null = null;
-  let dirty = true;
-  let sending = false;
-  let lastSentHash = '';
+  const snapshotDeps: SnapshotBuilderDeps = {
+    getAllSessions: deps.getAllSessions,
+    getSessionDetailByProvider: deps.getSessionDetailByProvider,
+    getActiveProviders: deps.getActiveProviders,
+    claudeAdapter,
+  };
 
-  async function buildSnapshot() {
-    const normalizedSessions = [];
-    const sessionDetails: Record<string, SessionDetail | null> = {};
+  const buildSnapshot = () => buildCollectorSnapshot(snapshotDeps, {
+    collectorId: config.collectorId,
+    collectorHost: config.collectorHost,
+    activeThresholdMs: config.activeThresholdMs,
+  });
 
-    const activeSessions = await deps.getAllSessions(config.activeThresholdMs);
-    for (const session of activeSessions) {
-      const detail = session.detail || await deps.getSessionDetailByProvider(session.provider, session.sessionId, session.project);
-      const normalized = normalizeSession(session, detail);
-      normalizedSessions.push(normalized);
-
-      const key = `${session.provider}:${session.sessionId}`;
-      sessionDetails[key] = detail;
-    }
-
-    const [teams, taskGroups] = await Promise.all([
-      claudeAdapter?.getTeams?.() || [],
-      claudeAdapter?.getTasks?.() || [],
-    ]);
-
-    return {
-      collectorId: config.collectorId,
-      hostName: config.collectorHost,
-      timestamp: Date.now(),
-      sessions: normalizedSessions,
-      teams,
-      taskGroups,
-      providers: deps.getActiveProviders(),
-      sessionDetails,
-    };
-  }
-
-  async function sendSnapshot(snapshot: unknown) {
-    const response = await deps.fetch(`${config.hubUrl}/api/collector/snapshot`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${config.hubAuthToken}`,
-      },
-      body: JSON.stringify(snapshot),
-    });
-
-    if (!response.ok) {
-      throw new Error(`hub rejected snapshot: ${response.status} ${response.statusText}`);
-    }
-  }
-
-  async function publishSnapshot() {
-    if (sending) {
-      dirty = true;
-      return;
-    }
-
-    sending = true;
-    try {
-      const snapshot = await buildSnapshot();
-      const fingerprint = deps.createHash('sha1').update(JSON.stringify(snapshot)).digest('hex');
-      if (fingerprint === lastSentHash && !dirty) {
-        return;
-      }
-
-      await sendSnapshot(snapshot);
-      lastSentHash = fingerprint;
-      dirty = false;
-      deps.console.log(`[collector] published snapshot (${snapshot.sessions.length} sessions)`);
-    } catch (error) {
-      dirty = true;
-      deps.console.error('[collector] publish failed:', error instanceof Error ? error.message : String(error));
-    } finally {
-      sending = false;
-    }
-  }
-
-  function scheduleFlush() {
-    dirty = true;
-    if (flushTimer) {
-      deps.clearTimeout(flushTimer);
-    }
-    flushTimer = deps.setTimeout(() => {
-      flushTimer = null;
-      void publishSnapshot();
-    }, 100);
-  }
+  const publisher = createCollectorPublisher(
+    {
+      createHash: deps.createHash,
+      fetch: deps.fetch,
+      setTimeout: deps.setTimeout,
+      clearTimeout: deps.clearTimeout,
+      console: deps.console,
+    },
+    {
+      hubUrl: config.hubUrl,
+      hubAuthToken: config.hubAuthToken,
+    },
+    buildSnapshot,
+  );
 
   function startWatchers() {
-    const { watchCount } = deps.createFileWatchers(deps.getAllWatchPaths(), scheduleFlush);
+    const { watchCount } = deps.createFileWatchers(deps.getAllWatchPaths(), publisher.scheduleFlush);
     deps.console.log(`[collector] watching ${watchCount} path(s)`);
   }
 
   async function main() {
     startWatchers();
-    await publishSnapshot();
+    await publisher.publishSnapshot();
 
     deps.setInterval(() => {
-      void publishSnapshot();
+      void publisher.publishSnapshot();
     }, config.flushIntervalMs);
   }
 
   function shutdown() {
-    if (flushTimer) {
-      deps.clearTimeout(flushTimer);
-    }
+    publisher.clearFlushTimer();
     deps.process.exit(0);
   }
 
@@ -220,15 +157,16 @@ export function createCollectorRuntime(
 
   return {
     buildSnapshot,
-    sendSnapshot,
-    publishSnapshot,
-    scheduleFlush,
+    publishSnapshot: publisher.publishSnapshot,
+    scheduleFlush: publisher.scheduleFlush,
     startWatchers,
     main,
     shutdown,
     attachSignalHandlers,
   };
 }
+
+export { normalizeSession } from './snapshot.js';
 
 if (process.env.COLLECTOR_DISABLE_AUTOSTART !== '1') {
   const runtime = createCollectorRuntime();
