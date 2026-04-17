@@ -1,187 +1,178 @@
-require('../load-local-env');
+require('../load-local-env.ts');
 
-const fs = require('fs');
+const { createFileWatchers } = require('../shared/watch-utils');
 const crypto = require('crypto');
-const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters');
+const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters/index.ts');
+import { buildCollectorSnapshot, normalizeSession } from './snapshot.js';
+import { createCollectorPublisher } from './publisher.js';
 
-const HUB_URL = process.env.HUB_URL || 'http://localhost:3030';
-const HUB_AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
-const COLLECTOR_ID = process.env.COLLECTOR_ID || `collector-${require('os').hostname()}`;
-const COLLECTOR_HOST = process.env.COLLECTOR_HOST || require('os').hostname();
-const FLUSH_INTERVAL_MS = Number(process.env.FLUSH_INTERVAL_MS || 2000);
-const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
-const claudeAdapter = adapters.find((adapter) => adapter.provider === 'claude');
+const DEFAULT_ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
 
-const CLAUDE_RATE_TABLE = {
-  'claude-opus-4-6': { input: 15, output: 75 },
-  'claude-sonnet-4-5': { input: 3, output: 15 },
-  'claude-haiku-4-5': { input: 0.8, output: 4 },
+type TokenLike = {
+  totalInput?: number;
+  totalOutput?: number;
+  input?: number;
+  output?: number;
 };
 
-let flushTimer = null;
-let dirty = true;
-let sending = false;
-let lastSentHash = '';
+type SessionDetail = {
+  tokenUsage?: TokenLike | null;
+};
 
-function estimateCost(model, tokens) {
-  const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-  const input = Number(tokens?.input || 0);
-  const output = Number(tokens?.output || 0);
-  return (input * rate.input + output * rate.output) / 1000000;
-}
+type SessionSummary = {
+  provider: string;
+  sessionId: string;
+  project?: string;
+  model?: string;
+  tokens?: { input?: number; output?: number } | null;
+  detail?: SessionDetail | null;
+  [key: string]: unknown;
+};
 
-function normalizeSession(session, detail) {
-  const tokenUsage = detail?.tokenUsage || session.tokenUsage || null;
-  const tokens = tokenUsage
-    ? {
-        input: Number(tokenUsage.totalInput || 0),
-        output: Number(tokenUsage.totalOutput || 0),
-      }
-    : { input: 0, output: 0 };
+type CollectorRuntimeConfig = {
+  hubUrl: string;
+  hubAuthToken: string;
+  collectorId: string;
+  collectorHost: string;
+  flushIntervalMs: number;
+  activeThresholdMs: number;
+};
+
+type CollectorRuntimeDeps = {
+  createFileWatchers: (paths: string[], onChange: () => void) => { watchCount: number };
+  createHash: (algorithm: string) => { update(value: string): { digest(encoding: string): string } };
+  adapters: Array<{
+    provider?: string;
+    getTeams?: () => Promise<unknown[]> | unknown[];
+    getTasks?: () => Promise<unknown[]> | unknown[];
+  }>;
+  getAllSessions: (activeThresholdMs: number) => Promise<SessionSummary[]>;
+  getAllWatchPaths: () => string[];
+  getActiveProviders: () => unknown[];
+  getSessionDetailByProvider: (provider: string, sessionId: string, project?: string) => Promise<SessionDetail | null>;
+  fetch: typeof fetch;
+  setTimeout: typeof globalThis.setTimeout;
+  clearTimeout: typeof globalThis.clearTimeout;
+  setInterval: typeof globalThis.setInterval;
+  console: Pick<typeof console, 'log' | 'error'>;
+  process: Pick<typeof process, 'on' | 'exit'>;
+};
+
+type SnapshotBuilderDeps = {
+  getAllSessions: (activeThresholdMs: number) => Promise<SessionSummary[]>;
+  getSessionDetailByProvider: (provider: string, sessionId: string, project?: string) => Promise<SessionDetail | null>;
+  getActiveProviders: () => unknown[];
+  claudeAdapter?: {
+    getTeams?: () => Promise<unknown[]> | unknown[];
+    getTasks?: () => Promise<unknown[]> | unknown[];
+  };
+};
+
+export function getCollectorConfig(): CollectorRuntimeConfig {
+  const hostname = require('os').hostname();
 
   return {
-    ...session,
-    tokens,
-    tokenUsage,
-    estimatedCost: estimateCost(session.model, tokens),
+    hubUrl: process.env.HUB_URL || 'http://localhost:3030',
+    hubAuthToken: process.env.HUB_AUTH_TOKEN || 'dev-secret',
+    collectorId: process.env.COLLECTOR_ID || `collector-${hostname}`,
+    collectorHost: process.env.COLLECTOR_HOST || hostname,
+    flushIntervalMs: Number(process.env.FLUSH_INTERVAL_MS || 2000),
+    activeThresholdMs: DEFAULT_ACTIVE_THRESHOLD_MS,
   };
 }
 
-async function buildSnapshot() {
-  const normalizedSessions = [];
-  const sessionDetails = {};
+const defaultCollectorDeps: CollectorRuntimeDeps = {
+  createFileWatchers,
+  createHash: crypto.createHash,
+  adapters,
+  getAllSessions,
+  getAllWatchPaths,
+  getActiveProviders,
+  getSessionDetailByProvider,
+  fetch: globalThis.fetch,
+  setTimeout: globalThis.setTimeout,
+  clearTimeout: globalThis.clearTimeout,
+  setInterval: globalThis.setInterval,
+  console,
+  process,
+};
 
-  const activeSessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
-  for (const session of activeSessions) {
-    const detail = session.detail || await getSessionDetailByProvider(session.provider, session.sessionId, session.project);
-    const normalized = normalizeSession(session, detail);
-    normalizedSessions.push(normalized);
+export function createCollectorRuntime(
+  deps: CollectorRuntimeDeps = defaultCollectorDeps,
+  config: CollectorRuntimeConfig = getCollectorConfig(),
+) {
+  const claudeAdapter = deps.adapters.find((adapter) => adapter.provider === 'claude');
 
-    const key = `${session.provider}:${session.sessionId}`;
-    sessionDetails[key] = detail;
-  }
-
-  const [teams, taskGroups] = await Promise.all([
-    claudeAdapter?.getTeams?.() || [],
-    claudeAdapter?.getTasks?.() || [],
-  ]);
-
-  return {
-    collectorId: COLLECTOR_ID,
-    hostName: COLLECTOR_HOST,
-    timestamp: Date.now(),
-    sessions: normalizedSessions,
-    teams,
-    taskGroups,
-    providers: getActiveProviders(),
-    sessionDetails,
+  const snapshotDeps: SnapshotBuilderDeps = {
+    getAllSessions: deps.getAllSessions,
+    getSessionDetailByProvider: deps.getSessionDetailByProvider,
+    getActiveProviders: deps.getActiveProviders,
+    claudeAdapter,
   };
-}
 
-async function sendSnapshot(snapshot) {
-  const response = await fetch(`${HUB_URL}/api/collector/snapshot`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${HUB_AUTH_TOKEN}`,
-    },
-    body: JSON.stringify(snapshot),
+  const buildSnapshot = () => buildCollectorSnapshot(snapshotDeps, {
+    collectorId: config.collectorId,
+    collectorHost: config.collectorHost,
+    activeThresholdMs: config.activeThresholdMs,
   });
 
-  if (!response.ok) {
-    throw new Error(`hub rejected snapshot: ${response.status} ${response.statusText}`);
-  }
-}
+  const publisher = createCollectorPublisher(
+    {
+      createHash: deps.createHash,
+      fetch: deps.fetch,
+      setTimeout: deps.setTimeout,
+      clearTimeout: deps.clearTimeout,
+      console: deps.console,
+    },
+    {
+      hubUrl: config.hubUrl,
+      hubAuthToken: config.hubAuthToken,
+    },
+    buildSnapshot,
+  );
 
-async function publishSnapshot() {
-  if (sending) {
-    dirty = true;
-    return;
-  }
-
-  sending = true;
-  try {
-    const snapshot = await buildSnapshot();
-    const fingerprint = crypto.createHash('sha1').update(JSON.stringify(snapshot)).digest('hex');
-    if (fingerprint === lastSentHash && !dirty) {
-      return;
-    }
-
-    await sendSnapshot(snapshot);
-    lastSentHash = fingerprint;
-    dirty = false;
-    // eslint-disable-next-line no-console
-    console.log(`[collector] published snapshot (${snapshot.sessions.length} sessions)`);
-  } catch (error) {
-    dirty = true;
-    // eslint-disable-next-line no-console
-    console.error('[collector] publish failed:', error instanceof Error ? error.message : String(error));
-  } finally {
-    sending = false;
-  }
-}
-
-function scheduleFlush() {
-  dirty = true;
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-  }
-  flushTimer = setTimeout(() => {
-    flushTimer = null;
-    void publishSnapshot();
-  }, 100);
-}
-
-function startWatchers() {
-  const watchPaths = getAllWatchPaths();
-  let watchCount = 0;
-
-  for (const wp of watchPaths) {
-    try {
-      if (wp.type === 'file') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, (eventType) => {
-          if (eventType === 'change') scheduleFlush();
-        });
-        watchCount++;
-      } else if (wp.type === 'directory') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, { recursive: wp.recursive || false }, (_eventType, filename) => {
-          if (wp.filter && filename && !filename.endsWith(wp.filter)) return;
-          scheduleFlush();
-        });
-        watchCount++;
-      }
-    } catch {
-      // ignore individual watch failures
-    }
+  function startWatchers() {
+    const { watchCount } = deps.createFileWatchers(deps.getAllWatchPaths(), publisher.scheduleFlush);
+    deps.console.log(`[collector] watching ${watchCount} path(s)`);
   }
 
-  // eslint-disable-next-line no-console
-  console.log(`[collector] watching ${watchCount} path(s)`);
+  async function main() {
+    startWatchers();
+    await publisher.publishSnapshot();
+
+    deps.setInterval(() => {
+      void publisher.publishSnapshot();
+    }, config.flushIntervalMs);
+  }
+
+  function shutdown() {
+    publisher.clearFlushTimer();
+    deps.process.exit(0);
+  }
+
+  function attachSignalHandlers() {
+    deps.process.on('SIGINT', shutdown);
+    deps.process.on('SIGTERM', shutdown);
+  }
+
+  return {
+    buildSnapshot,
+    publishSnapshot: publisher.publishSnapshot,
+    scheduleFlush: publisher.scheduleFlush,
+    startWatchers,
+    main,
+    shutdown,
+    attachSignalHandlers,
+  };
 }
 
-async function main() {
-  startWatchers();
-  await publishSnapshot();
+export { normalizeSession } from './snapshot.js';
 
-  setInterval(() => {
-    void publishSnapshot();
-  }, FLUSH_INTERVAL_MS);
+if (process.env.COLLECTOR_DISABLE_AUTOSTART !== '1') {
+  const runtime = createCollectorRuntime();
+  runtime.attachSignalHandlers();
+  void runtime.main().catch((error) => {
+    console.error('[collector] fatal error:', error);
+    process.exit(1);
+  });
 }
-
-process.on('SIGINT', () => {
-  if (flushTimer) clearTimeout(flushTimer);
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  if (flushTimer) clearTimeout(flushTimer);
-  process.exit(0);
-});
-
-void main().catch((error) => {
-  // eslint-disable-next-line no-console
-  console.error('[collector] fatal error:', error);
-  process.exit(1);
-});

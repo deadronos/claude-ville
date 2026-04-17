@@ -559,7 +559,7 @@ export class BuildingRenderer {
                     ctx.fillRect(3, -2, 2, 2);
                 }
                 break;
-            case 'taskboard':
+            case 'taskboard': {
                 // Post-it notes
                 const postItColors = ['#ff6b6b', '#4a9eff', '#51cf66', '#ffd43b', '#cc5de8'];
                 for (let i = 0; i < 5; i++) {
@@ -569,6 +569,7 @@ export class BuildingRenderer {
                     ctx.fillRect(px, py, 7, 7);
                 }
                 break;
+            }
             case 'chathall':
                 // Speech bubble decoration
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';

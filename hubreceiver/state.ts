@@ -1,3 +1,8 @@
+/**
+ * State management for hubreceiver.
+ * CollectorSnapshot shape is compatible with shared/types.ts CollectorSnapshot.
+ */
+
 function defaultUsage() {
   return {
     account: {

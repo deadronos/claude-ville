@@ -1,95 +1,114 @@
 ---
 name: verify-architecture
-description: Verify ClaudeVille follows its architectural rules - layer structure, adapter pattern, CLAUDE.md conventions, and file organization. Trigger after adding new files, refactoring, or modifying project structure.
+description: Verify ClaudeVille follows its architectural rules - TypeScript/React/R3F layer structure, adapter pattern, CLAUDE.md conventions, and file organization.
 ---
 
 # Architecture Verification
 
-Verify the ClaudeVille project adheres to its documented architecture and conventions defined in CLAUDE.md.
+Verify the ClaudeVille project adheres to the documented architecture in `claudeville/CLAUDE.md` and `docs/architecture/`.
 
 ## Check Items
 
 ### 1. Layer Structure
 
-Verify `claudeville/src/` follows the defined layers:
+Verify `claudeville/src/` follows the current split:
 
-```
+```text
 src/
-├── domain/          (entities, value-objects, events)
-├── application/     (managers, services)
-├── infrastructure/  (WebSocketClient, data sources)
-├── presentation/    (renderers, UI components)
-│   ├── character-mode/
-│   ├── dashboard-mode/
-│   └── shared/
-└── config/          (constants, theme, i18n, buildings)
+├── application/
+├── config/
+├── domain/
+├── infrastructure/
+└── presentation/
+    ├── App.ts
+    ├── character-mode/
+    ├── dashboard-mode/
+    ├── react/
+    │   ├── ClaudeVilleApp.tsx
+    │   ├── state/
+    │   └── world/
+    └── shared/
 ```
 
-- **PASS**: All directories exist with appropriate files
-- **WARN**: Empty directories or misplaced files
-- **FAIL**: Missing core directories (domain, application, presentation)
+- **PASS**: React world code stays in `presentation/react`, legacy canvas code stays in `presentation/character-mode`, and shared chrome stays in `presentation/shared`
+- **WARN**: UI files land in the wrong presentation subtree or a directory is unexpectedly empty
+- **FAIL**: Missing core directories (`domain`, `application`, `infrastructure`, `presentation`, `config`)
 
-### 2. No Framework Dependencies
+### 2. Toolchain and Dependency Alignment
 
-Verify the project uses pure HTML/CSS/JS with no npm dependencies:
+Verify `package.json` contains the current UI stack and no stray framework drift:
 
-- `package.json` should only have `scripts`, no `dependencies` or `devDependencies`
-- No `node_modules/` directory
-- All imports use relative paths or ES modules
+- `react` and `react-dom`
+- `@react-three/fiber`, `@react-three/drei`, and `three`
+- TypeScript, `tsx`, Vite, Vitest, Testing Library, Playwright
 
-- **PASS**: No external dependencies
-- **FAIL**: npm dependencies found
+- **PASS**: Expected TypeScript/React/R3F dependencies are present and no unrelated framework was added
+- **WARN**: A relevant build/test dependency is missing but the app still boots
+- **FAIL**: Core React/R3F/build dependencies are missing or the repo regresses to the old dependency-free assumption
 
 ### 3. Adapter Pattern Compliance
 
-Verify `claudeville/adapters/` follows the multi-provider pattern:
+Verify `claudeville/adapters/` follows the current multi-provider registry pattern:
 
-- `index.js` exists and acts as registry
-- Each adapter (`claude.js`, `codex.js`, `gemini.js`) exports consistent interface
-- Adapters detect installed CLIs, not hard-require them
+- `index.ts` exists and acts as the registry
+- Each adapter (`claude.ts`, `codex.ts`, `gemini.ts`, `openclaw.ts`, `copilot.ts`, `vscode.ts`) exports a consistent interface
+- Adapters detect installed CLIs or file sources instead of hard-requiring a provider
 
-- **PASS**: All adapters present with consistent exports
-- **WARN**: Adapter missing but referenced in index.js
-- **FAIL**: index.js missing or broken adapter interface
+- **PASS**: All adapters are present and the registry normalizes provider output before it reaches the UI
+- **WARN**: An adapter is missing but still referenced by the registry or tests
+- **FAIL**: `index.ts` is missing/broken or UI code starts reaching into provider files directly
 
-### 4. CSS Convention
+### 4. React/R3F World Invariants
 
-Verify no `position: fixed` in CSS files (except modal/toast as per CLAUDE.md rules):
+If a change touches `claudeville/src/presentation/react/world/`, compare it against `docs/architecture/005-react-components.md` and `docs/architecture/006-r3f-components.md`.
+
+- `ScreenSpaceCamera` must remain a manual orthographic camera
+- `WorldScene` should pan/zoom the root group, not rotate the camera or duplicate follow math
+- `WorldText` should keep its Y-flip so labels stay upright in the y-down world
+- sidebar/activity-panel changes should not resize the canvas during animation
+
+- **PASS**: camera centering, follow logic, and transform helpers stay centralized
+- **WARN**: a world change is technically correct but starts duplicating transform math
+- **FAIL**: the camera frustum is auto-resized, the world is rotated, or panel animations churn the viewport again
+
+### 5. CSS Convention
+
+Verify no `position: fixed` in `claudeville/css/` except modal/toast code, and avoid width-based panel animation on the activity panel:
 
 ```bash
 grep -rn "position.*fixed" claudeville/css/ --include="*.css"
 ```
 
-Allowed exceptions: `modal.css`, toast-related code
+- **PASS**: app chrome remains flex-based and canvas-adjacent panels animate with transform/opacity rather than width
+- **WARN**: a style is borderline but does not affect the viewport
+- **FAIL**: fixed-position chrome or width-driven panel animation is introduced
 
-- **PASS**: No violations or only in allowed files
-- **FAIL**: `position: fixed` in layout/sidebar/topbar CSS files
+### 6. Module Boundary Consistency
 
-### 5. ES Module Consistency
+Verify the current module split stays intact:
 
-Verify all JS files in `src/` use ES module syntax:
+- `claudeville/src/**` uses ES module syntax (`import` / `export`) in the TypeScript/TSX source tree
+- `claudeville/server.ts`, `claudeville/adapters/*.ts`, and `shared/*.js` remain Node/CommonJS-style modules because they are consumed directly by Node/tsx entrypoints
 
-- Files should use `import`/`export`, not `require()`/`module.exports`
-- Exception: `server.js` and `adapters/` (Node.js CommonJS)
+- **PASS**: module boundaries stay aligned with the current runtime
+- **FAIL**: CommonJS leaks into the React source tree or Node entrypoints are converted without updating the runtime scripts
 
-- **PASS**: All src/ files use ES modules
-- **FAIL**: Mixed module systems in src/
+### 7. Runtime and Port Configuration
 
-### 6. Port Configuration
+Verify the documented ports still match the scripts and server constants:
 
-Verify server port is 4000 as documented in CLAUDE.md:
+- `npm run dev:server` launches `tsx claudeville/server.ts`
+- legacy server remains on port `4000`
+- split-stack defaults remain `3030` for hubreceiver and `3001` for the frontend
 
-- `claudeville/CLAUDE.md` mentions port 4000
-- `claudeville/server.js` uses `const PORT = 4000`
+- **PASS**: scripts, docs, and server constants agree
+- **FAIL**: a port mismatch or stale startup command appears
 
-- **PASS**: Port 4000 documented and configured
-- **FAIL**: Port mismatch or not documented
+### 8. Widget Integration
 
-### 7. Widget Integration
+Verify the widget directory still matches the documented bundle structure:
 
-Verify widget directory follows the documented structure:
-
-```
+```text
 widget/
 ├── Sources/main.swift
 ├── Resources/
@@ -99,6 +118,6 @@ widget/
 └── build.sh          (must be executable)
 ```
 
-- **PASS**: All files present, build.sh executable
-- **WARN**: widget.html/css exist but are stale (widget uses Swift-generated HTML now)
-- **FAIL**: Missing main.swift or build.sh
+- **PASS**: all files are present and `build.sh` is executable
+- **WARN**: widget resources exist but need a refresh
+- **FAIL**: missing `main.swift`, `Info.plist`, or `build.sh`

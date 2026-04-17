@@ -19,3 +19,4 @@ load-local-env.js
 demo-server.js
 runtime-config.shared.js
 
+.worktrees/

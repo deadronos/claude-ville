@@ -11,9 +11,12 @@ This folder documents the current architecture of ClaudeVille and the main decis
 | `002-provider-adapters.md` | ADR for the normalized multi-provider adapter contract. |
 | `003-identity-and-grouping.md` | ADR for stable display names, provider-aware naming, and project grouping. |
 | `004-api-and-cost-model.md` | ADR for API surface ownership, history parity, and cost/token presentation semantics. |
+| `005-react-components.md` | React shell report covering component boundaries, state ownership, and layout rules. |
+| `006-r3f-components.md` | R3F scene report covering camera behavior, scene transforms, and overlay rules. |
 
 ## Reading order
 
 1. Start with the overall spec.
 2. Read the ADRs in numeric order.
-3. Use the ADRs as the source of truth when changing architecture-sensitive code.
+3. Read the React shell report before the R3F scene report.
+4. Use the docs as the source of truth when changing architecture-sensitive code.

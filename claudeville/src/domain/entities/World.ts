@@ -37,15 +37,11 @@ export class World {
     }
 
     getStats() {
-        let totalTokens = 0;
-        let totalCost = 0;
         let working = 0;
         let idle = 0;
         let waiting = 0;
 
         for (const agent of this.agents.values()) {
-            totalTokens += (agent.tokens.input || 0) + (agent.tokens.output || 0);
-            totalCost += agent.cost;
             if (agent.status === 'working') working++;
             else if (agent.status === 'idle') idle++;
             else if (agent.status === 'waiting') waiting++;

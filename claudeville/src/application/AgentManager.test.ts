@@ -142,6 +142,29 @@ describe('AgentManager', () => {
     expect(call.messages).toEqual([]);
   });
 
+  it('falls back to session detail activity when summary fields are missing', async () => {
+    const detailMessages = [{ role: 'assistant', text: 'recent detail message' }];
+    mockDataSource.getSessions.mockResolvedValue([makeSession({
+      lastTool: null,
+      lastToolInput: null,
+      lastMessage: null,
+      messages: [],
+      detail: {
+        toolHistory: [{ tool: 'run_in_terminal', detail: '{"command":"npm test"}' }],
+        messages: detailMessages,
+      },
+    })]);
+    mockDataSource.getTeams.mockResolvedValue([]);
+
+    await manager.loadInitialData();
+
+    const call = mockWorld.addAgent.mock.calls[0][0];
+    expect(call.currentTool).toBe('run_in_terminal');
+    expect(call.currentToolInput).toBe('{"command":"npm test"}');
+    expect(call._lastMessage).toBe('recent detail message');
+    expect(call.messages).toEqual(detailMessages);
+  });
+
   it('updates existing agent when already in world', async () => {
     mockWorld.agents.set('s-x', { id: 's-x', name: 'OldName' });
     mockDataSource.getSessions.mockResolvedValue([makeSession()]);
@@ -151,6 +174,29 @@ describe('AgentManager', () => {
 
     expect(mockWorld.updateAgent).toHaveBeenCalledWith('s-x', expect.any(Object));
     expect(mockWorld.addAgent).not.toHaveBeenCalled();
+  });
+
+  it('updates existing agent with detail fallbacks when summary fields are missing', async () => {
+    mockWorld.agents.set('s-x', { id: 's-x', name: 'OldName' });
+    mockDataSource.getSessions.mockResolvedValue([makeSession({
+      lastTool: null,
+      lastToolInput: null,
+      lastMessage: null,
+      detail: {
+        toolHistory: [{ tool: 'read_file', detail: '/tmp/example.ts' }],
+        messages: [{ role: 'assistant', text: 'detail fallback message' }],
+      },
+    })]);
+    mockDataSource.getTeams.mockResolvedValue([]);
+
+    await manager.loadInitialData();
+
+    expect(mockWorld.updateAgent).toHaveBeenCalledWith('s-x', expect.objectContaining({
+      currentTool: 'read_file',
+      currentToolInput: '/tmp/example.ts',
+      _lastMessage: 'detail fallback message',
+      messages: [{ role: 'assistant', text: 'detail fallback message' }],
+    }));
   });
 
   it('builds agent data with tokens from tokenUsage when tokens missing', async () => {

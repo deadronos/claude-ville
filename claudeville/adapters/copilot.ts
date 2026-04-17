@@ -13,32 +13,12 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { readLines, parseJsonLines } = require('./jsonl-utils');
 
 const COPILOT_DIR = path.join(os.homedir(), '.copilot');
 const SESSION_STATE_DIR = path.join(COPILOT_DIR, 'session-state');
 
 // ─── Utility ─────────────────────────────────────────────
-
-async function readLines(filePath, { from = 'end', count = 50 } = {}) {
-  try {
-    if (!fs.existsSync(filePath)) return [];
-    const content = await fs.promises.readFile(filePath, 'utf-8');
-    const lines = content.trim().split('\n');
-    if (from === 'start') return lines.slice(0, count);
-    return lines.slice(-count);
-  } catch {
-    return [];
-  }
-}
-
-function parseJsonLines(lines) {
-  const results = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
-  }
-  return results;
-}
 
 // ─── Session parsing ──────────────────────────────────────
 

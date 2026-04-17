@@ -2,24 +2,15 @@
  * Adapter registry
  * Registers and manages all AI coding CLI adapters
  */
-const { ClaudeAdapter } = require('./claude');
-const { CodexAdapter } = require('./codex');
-const { GeminiAdapter } = require('./gemini');
-const { OpenClawAdapter } = require('./openclaw');
-const { CopilotAdapter } = require('./copilot');
-const { VSCodeAdapter } = require('./vscode');
-const { sanitizeSessionDetail, sanitizeSessionSummary } = require('./sanitize');
-
-const CLAUDE_RATE_TABLE = {
-  'claude-opus-4-6': { input: 15, output: 75 },
-  'claude-sonnet-4-5': { input: 3, output: 15 },
-  'claude-haiku-4-5': { input: 0.8, output: 4 },
-};
-
-function estimateCost(model, tokens = { input: 0, output: 0 }) {
-  const rate = CLAUDE_RATE_TABLE[model] || CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
-  return ((tokens.input || 0) * rate.input + (tokens.output || 0) * rate.output) / 1000000;
-}
+const { estimateCost } = require('../../shared/cost.ts');
+const { normalizeTokens } = require('../../shared/session-utils.js');
+const { sanitizeSessionDetail, sanitizeSessionSummary } = require('./sanitize.ts');
+const { ClaudeAdapter } = require('./claude.ts');
+const { CodexAdapter } = require('./codex.ts');
+const { GeminiAdapter } = require('./gemini.ts');
+const { OpenClawAdapter } = require('./openclaw.ts');
+const { CopilotAdapter } = require('./copilot.ts');
+const { VSCodeAdapter } = require('./vscode.ts');
 
 const adapters = [
   new ClaudeAdapter(),
@@ -41,20 +32,14 @@ async function getAllSessions(activeThresholdMs) {
       return await Promise.all(sessions.map(async (session) => {
         const detailRaw = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
         const detail = sanitizeSessionDetail(detailRaw || {});
-        const tokenUsage = detailRaw?.tokenUsage || detail?.tokenUsage || null;
-        const tokens = tokenUsage
-          ? {
-              input: tokenUsage.totalInput || 0,
-              output: tokenUsage.totalOutput || 0,
-            }
-          : session.tokens || { input: 0, output: 0 };
+        const tokens = normalizeTokens(detailRaw?.tokenUsage, session.tokens || null);
 
         const sanitizedSession = sanitizeSessionSummary(session);
 
         return {
           ...sanitizedSession,
           detail,
-          tokenUsage,
+          tokenUsage: detailRaw?.tokenUsage || null,
           tokens,
           estimatedCost: estimateCost(sanitizedSession.model, tokens),
         };

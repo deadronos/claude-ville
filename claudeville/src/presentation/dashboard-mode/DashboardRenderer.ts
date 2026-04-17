@@ -2,34 +2,26 @@ import { eventBus } from '../../domain/events/DomainEvent.js';
 import { AvatarCanvas } from './AvatarCanvas.js';
 import { i18n } from '../../config/i18n.js';
 import { getHubApiUrl } from '../../config/runtime.js';
-
-const TOOL_ICONS = {
-    Read: '📖', Edit: '✏️', Write: '📝', Grep: '🔍', Glob: '📁',
-    Bash: '⚡', Task: '📋', TaskCreate: '📋', TaskUpdate: '📋', TaskList: '📋',
-    WebSearch: '🌐', WebFetch: '🌐', SendMessage: '💬', TeamCreate: '👥',
-    NotebookEdit: '📓',
-};
-
-const TOOL_CATEGORIES = {
-    Read: 'read', Grep: 'search', Glob: 'search', WebSearch: 'search', WebFetch: 'search',
-    Edit: 'write', Write: 'write', NotebookEdit: 'write',
-    Bash: 'exec',
-    Task: 'task', TaskCreate: 'task', TaskUpdate: 'task', TaskList: 'task',
-    SendMessage: 'task', TeamCreate: 'task',
-};
+import {
+    PROJECT_COLORS,
+    getProviderLabel,
+    getToolCategory,
+    getToolIcon,
+    groupByProject,
+    shortModel,
+    shortProjectName,
+    shortToolName,
+    truncateProjectPath,
+    truncateText,
+} from '../shared/dashboardViewModel.js';
 
 const PROVIDER_BADGES = {
-    claude:    { label: 'Claude',    color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
-    codex:     { label: 'Codex',     color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
-    gemini:    { label: 'Gemini',    color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
-    openclaw:  { label: 'OpenClaw',  color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
-    copilot:   { label: 'Copilot',   color: '#22d3ee', bg: 'rgba(34,211,238,0.15)' },
+    claude:    { label: getProviderLabel('claude'),    color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
+    codex:     { label: getProviderLabel('codex'),     color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
+    gemini:    { label: getProviderLabel('gemini'),    color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
+    openclaw:  { label: getProviderLabel('openclaw'),  color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
+    copilot:   { label: getProviderLabel('copilot'),   color: '#22d3ee', bg: 'rgba(34,211,238,0.15)' },
 };
-
-const PROJECT_COLORS = [
-    '#e8d44d', '#4ade80', '#60a5fa', '#f97316', '#a78bfa',
-    '#f472b6', '#34d399', '#fb923c', '#818cf8', '#22d3ee',
-];
 
 export class DashboardRenderer {
     world: any;
@@ -68,6 +60,7 @@ export class DashboardRenderer {
                 this._stopDetailFetching();
             }
         });
+
     }
 
     render() {
@@ -144,13 +137,7 @@ export class DashboardRenderer {
     }
 
     _groupByProject(agents) {
-        const groups = new Map();
-        for (const agent of agents) {
-            const key = agent.projectPath || '_unknown';
-            if (!groups.has(key)) groups.set(key, []);
-            groups.get(key).push(agent);
-        }
-        return groups;
+        return groupByProject(agents);
     }
 
     _assignProjectColors(groups) {
@@ -164,12 +151,7 @@ export class DashboardRenderer {
     }
 
     _shortProjectName(path) {
-        if (!path || path === '_unknown') return i18n.t('unknownProject');
-        const parts = path.replace(/\/+$/, '').split('/').filter(Boolean);
-        const last = parts[parts.length - 1] || path;
-        // For home directory itself (e.g. /Users/username) → show as ~
-        if (parts.length <= 2 && parts[0] === 'Users') return '~';
-        return last;
+        return shortProjectName(path, i18n.t('unknownProject'));
     }
 
     _createSection(projectPath) {
@@ -201,23 +183,16 @@ export class DashboardRenderer {
     }
 
     _truncatePath(path) {
-        if (!path) return '';
-        // Truncate to show as ~/
-        const home = '/Users/';
-        if (path.startsWith(home)) {
-            const afterHome = path.substring(home.length);
-            const slashIdx = afterHome.indexOf('/');
-            if (slashIdx >= 0) {
-                return '~/' + afterHome.substring(slashIdx);
-            }
-        }
-        return path;
+        return truncateProjectPath(path);
     }
 
     _createCard(agent) {
         const card = document.createElement('div');
         card.className = `dash-card dash-card--${agent.status}`;
         card.dataset.agentId = agent.id;
+
+        const contextPct = agent.usage?.contextPercent ?? 0;
+        const contextBarStyle = contextPct > 0 ? `width: ${contextPct}%` : `width: 0; opacity: 0`;
 
         card.innerHTML = `
             <div class="dash-card__header">
@@ -228,6 +203,9 @@ export class DashboardRenderer {
                         <span class="dash-card__provider-badge"></span>
                         <span class="dash-card__model"></span>
                         <span class="dash-card__role"></span>
+                    </div>
+                    <div class="dash-card__context-bar-wrap" data-context-pct="${contextPct}">
+                        <div class="dash-card__context-bar" style="${contextBarStyle}"></div>
                     </div>
                 </div>
                 <div class="dash-card__status">
@@ -245,8 +223,12 @@ export class DashboardRenderer {
                 </div>
                 <div class="dash-card__message"></div>
             </div>
-            <div class="dash-card__tools">
-                <div class="dash-card__tools-title">${i18n.t('toolHistory')}</div>
+            <div class="dash-card__tools-header" data-agent-id="${agent.id}">
+                <span class="dash-card__tools-title">${i18n.t('toolHistory')}</span>
+                <span class="dash-card__tool-count-badge">0</span>
+                <span class="dash-card__tools-chevron" data-agent-id="${agent.id}">&#9654;</span>
+            </div>
+            <div class="dash-card__tools" id="card-tools-${agent.id}">
                 <div class="dash-card__tool-list">
                     <div class="dash-card__loading">
                         <span class="dash-card__loading-spinner"></span>Loading...
@@ -263,6 +245,12 @@ export class DashboardRenderer {
         // Click → agent selection
         card.addEventListener('click', () => {
             eventBus.emit('agent:selected', agent);
+        });
+
+        const toolsHeader = card.querySelector('.dash-card__tools-header');
+        toolsHeader?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this._toggleToolHistory(agent.id);
         });
 
         return card;
@@ -321,10 +309,31 @@ export class DashboardRenderer {
         if (history) {
             this._renderToolHistory(cardEl, history);
         }
+
+        // Update tool count badge
+        this._updateToolCountBadge(cardEl, (history || []).length);
+
+        // Update context bar
+        const contextPct = agent.usage?.contextPercent ?? 0;
+        const contextWrap = cardEl.querySelector('.dash-card__context-bar-wrap') as HTMLElement;
+        const contextBar = cardEl.querySelector('.dash-card__context-bar') as HTMLElement;
+        if (contextWrap) {
+            contextWrap.dataset.contextPct = String(contextPct);
+        }
+        if (contextBar) {
+            if (contextPct > 0) {
+                contextBar.style.width = `${contextPct}%`;
+                contextBar.style.opacity = '1';
+            } else {
+                contextBar.style.width = '0';
+                contextBar.style.opacity = '0';
+            }
+        }
     }
 
     _renderToolHistory(cardEl, tools) {
         const listEl = cardEl.querySelector('.dash-card__tool-list');
+        this._updateToolCountBadge(cardEl, tools?.length || 0);
         if (!tools || tools.length === 0) {
             listEl.innerHTML = `<div class="dash-card__loading" style="color:#666">${i18n.t('noToolUsage')}</div>`;
             return;
@@ -335,14 +344,21 @@ export class DashboardRenderer {
         listEl.innerHTML = reversed.map(t => {
             const cat = this._getToolCategory(t.tool);
             const icon = this._getToolIcon(t.tool);
-            const shortName = t.tool.replace('mcp__playwright__', 'pw:').replace('mcp__', '');
-            const detail = t.detail ? this._truncate(t.detail, 60) : '';
+            const shortName = shortToolName(t.tool);
+            const detail = truncateText(t.detail, 60);
             return `<div class="dash-card__tool-item">
                 <span class="dash-card__tool-item-icon tool-cat--${cat}">${icon}</span>
                 <span class="dash-card__tool-item-name tool-cat--${cat}">${this._escapeHtml(shortName)}</span>
                 <span class="dash-card__tool-item-detail">${this._escapeHtml(detail)}</span>
             </div>`;
         }).join('');
+    }
+
+    _updateToolCountBadge(cardEl, count) {
+        const toolCountBadge = cardEl.querySelector('.dash-card__tool-count-badge');
+        if (toolCountBadge) {
+            toolCountBadge.textContent = String(count);
+        }
     }
 
     _startDetailFetching() {
@@ -386,26 +402,19 @@ export class DashboardRenderer {
     }
 
     _getToolIcon(tool) {
-        if (!tool) return '❓';
-        // MCP tools
-        if (tool.startsWith('mcp__playwright__')) return '🎭';
-        if (tool.startsWith('mcp__')) return '🔌';
-        return TOOL_ICONS[tool] || '🔧';
+        return getToolIcon(tool);
     }
 
     _getToolCategory(tool) {
-        if (!tool) return 'other';
-        if (tool.startsWith('mcp__')) return 'exec';
-        return TOOL_CATEGORIES[tool] || 'other';
+        return getToolCategory(tool);
     }
 
     _shortModel(model) {
-        if (!model) return '';
-        return model.replace('claude-', '').replace(/-\d{8}$/, '');
+        return shortModel(model);
     }
 
     _truncate(str, max) {
-        return str.length > max ? str.substring(0, max - 1) + '...' : str;
+        return truncateText(str, max);
     }
 
     _escapeHtml(str) {
@@ -413,6 +422,14 @@ export class DashboardRenderer {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    _toggleToolHistory(agentId: string) {
+        const toolsEl = document.getElementById(`card-tools-${agentId}`);
+        const chevronEl = document.querySelector(`.dash-card__tools-chevron[data-agent-id="${agentId}"]`);
+        if (!toolsEl || !chevronEl) return;
+        const isOpen = toolsEl.classList.toggle('dash-card__tools--open');
+        chevronEl.classList.toggle('dash-card__tools-chevron--open', isOpen);
     }
 
     destroy() {

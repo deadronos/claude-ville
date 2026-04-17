@@ -1,37 +1,15 @@
+import { DEFAULT_AGENT_NAME_POOL, DEFAULT_SESSION_NAME_POOL, toList } from '../../../shared/name-pools.js';
 import { Appearance } from '../domain/value-objects/Appearance.js';
 import { getRuntimeConfig } from './runtime.js';
 
 const DEFAULT_AGENT_NAME_POOLS = {
-    agent: [
-        'Atlas', 'Nova', 'Cipher', 'Pixel', 'Spark',
-        'Bolt', 'Echo', 'Flux', 'Helix', 'Onyx',
-        'Prism', 'Qubit', 'Rune', 'Sage', 'Vex',
-    ],
-    session: [
-        'Orbit', 'Beacon', 'Relay', 'Pulse', 'Signal',
-        'Vector', 'Comet', 'Drift', 'Trace', 'Kernel',
-        'Node', 'Echo', 'Wisp', 'Shard', 'Tide',
-    ],
+  agent: DEFAULT_AGENT_NAME_POOL,
+  session: DEFAULT_SESSION_NAME_POOL,
 };
 
-function toList(value) {
-    if (Array.isArray(value)) {
-        return value.map((item) => String(item).trim()).filter(Boolean);
-    }
-
-    if (typeof value !== 'string') {
-        return [];
-    }
-
-    return value
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean);
-}
-
 function normalizeNamePools(rawPools: Record<string, unknown> = {}) {
-    const agent = toList(rawPools.agent || rawPools.en || rawPools.agentNames || rawPools.agentNamePool);
-    const session = toList(rawPools.session || rawPools.sessions || rawPools.sessionNamePool);
+    const agent = toList((rawPools.agent || rawPools.en || rawPools.agentNames || rawPools.agentNamePool) as string | string[]);
+    const session = toList((rawPools.session || rawPools.sessions || rawPools.sessionNamePool) as string | string[]);
     return {
         agent: agent.length > 0 ? agent : DEFAULT_AGENT_NAME_POOLS.agent,
         session: session.length > 0 ? session : DEFAULT_AGENT_NAME_POOLS.session,

@@ -1,9 +1,8 @@
-require('../load-local-env');
+require('../load-local-env.ts');
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const { buildRuntimeConfig } = require('../runtime-config.shared');
 
 // ─── Adapter load ─────────────────────────────────────
@@ -18,52 +17,24 @@ const {
 // ─── Usage Quota service ──────────────────────────────
 const usageQuota = require('./services/usageQuota');
 
+const { setCorsHeaders, sendJson, sendError, safeLimit } = require('../shared/http-utils');
+const { createWebSocketFrame, computeAcceptKey } = require('../shared/ws-utils');
+const { createFileWatchers } = require('../shared/watch-utils');
+const { DISCONNECTED_CODES } = require('../shared/ws-helpers');
+
 // Claude adapter (teams/tasks are Claude-only)
 const claudeAdapter = adapters.find(a => a.provider === 'claude');
 
 // ─── Config ────────────────────────────────────────────────
-const PORT = 4000;
-const STATIC_DIR = __dirname;
+const PORT = Number(process.env.PORT || 4000);
+const BUILT_FRONTEND_DIR = path.join(__dirname, '..', 'dist', 'frontend');
+const STATIC_DIR = fs.existsSync(path.join(BUILT_FRONTEND_DIR, 'index.html')) ? BUILT_FRONTEND_DIR : __dirname;
 const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
-// ─── MIME type mapping ─────────────────────────────────────
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.mjs': 'application/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf',
-};
+const { MIME_TYPES } = require('../shared/mime-types');
 
 // ─── WebSocket client management ──────────────────────────
 const wsClients = new Set();
-
-// ─── Utility functions ──────────────────────────────────────
-
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-function sendJson(res, statusCode, data) {
-  setCorsHeaders(res);
-  res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify(data));
-}
-
-function sendError(res, statusCode, message) {
-  sendJson(res, statusCode, { error: message });
-}
 
 // ─── API handlers ─────────────────────────────────────────
 
@@ -165,8 +136,7 @@ function handleGetUsage(req, res) {
 async function handleGetHistory(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const limit = Number(url.searchParams.get('lines') || 100);
-    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100;
+    const limit = safeLimit(url.searchParams.get('lines'));
     const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
     const entries = [];
 
@@ -186,7 +156,7 @@ async function handleGetHistory(req, res) {
     }
 
     entries.sort((a, b) => a.ts - b.ts);
-    sendJson(res, 200, { entries: entries.slice(-safeLimit) });
+    sendJson(res, 200, { entries: entries.slice(-limit) });
   } catch (err) {
     console.error('history query failed:', err.message);
     sendError(res, 500, 'failed to load history');
@@ -256,8 +226,6 @@ function handleRuntimeConfig(req, res) {
 
 // ─── WebSocket implementation (RFC 6455) ──────────────────────────
 
-const WS_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-
 function handleWebSocketUpgrade(req, socket) {
   const key = req.headers['sec-websocket-key'];
   if (!key) {
@@ -265,10 +233,7 @@ function handleWebSocketUpgrade(req, socket) {
     return;
   }
 
-  const acceptKey = crypto
-    .createHash('sha1')
-    .update(key + WS_MAGIC_STRING)
-    .digest('base64');
+  const acceptKey = computeAcceptKey(key);
 
   const responseStr =
     'HTTP/1.1 101 Switching Protocols\r\n' +
@@ -384,45 +349,11 @@ function handleTextMessage(socket, message) {
   }
 }
 
-function createWebSocketFrame(data, opcode = 0x1) {
-  const isBuffer = Buffer.isBuffer(data);
-  const payload = isBuffer ? data : Buffer.from(String(data), 'utf-8');
-  const length = payload.length;
-
-  // Guard: reject frames larger than 100MB to prevent memory exhaustion
-  if (length > 100 * 1024 * 1024) {
-    throw new Error(`Frame payload too large: ${length} bytes`);
-  }
-
-  let header;
-  if (length < 126) {
-    header = Buffer.alloc(2);
-    header[0] = 0x80 | opcode;
-    header[1] = length;
-  } else if (length < 65536) {
-    header = Buffer.alloc(4);
-    header[0] = 0x80 | opcode;
-    header[1] = 126;
-    header.writeUInt16BE(length, 2);
-  } else {
-    header = Buffer.alloc(10);
-    header[0] = 0x80 | opcode;
-    header[1] = 127;
-    // Guard: check BigInt doesn't exceed JS safe integer range
-    if (length > Number.MAX_SAFE_INTEGER) {
-      throw new Error(`Frame payload exceeds safe size: ${length} bytes`);
-    }
-    header.writeBigUInt64BE(BigInt(length), 2);
-  }
-
-  return Buffer.concat([header, payload]);
-}
-
 function wsSend(socket: any, data: any) {
   try {
     if (!socket.destroyed && socket.writable) {
       socket.write(createWebSocketFrame(JSON.stringify(data)), (err) => {
-        if (err && err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
+        if (err && !DISCONNECTED_CODES.has(err.code)) {
           console.error(`[WebSocket] send failed (${err.code}): ${err.message}`);
         }
       });
@@ -451,7 +382,7 @@ function wsBroadcast(data: any) {
     try {
       if (!socket.destroyed && socket.writable) {
         socket.write(frame, (err) => {
-          if (err && err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
+          if (err && !DISCONNECTED_CODES.has(err.code)) {
             console.error(`[WebSocket] broadcast send failed (${err.code}): ${err.message}`);
           }
         });
@@ -558,30 +489,7 @@ function debouncedBroadcast() {
 // ─── File watching (multi-provider) ────────────────────────
 
 function startFileWatcher() {
-  const watchPaths = getAllWatchPaths();
-  let watchCount = 0;
-
-  for (const wp of watchPaths) {
-    try {
-      if (wp.type === 'file') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, (eventType) => {
-          if (eventType === 'change') debouncedBroadcast();
-        });
-        watchCount++;
-      } else if (wp.type === 'directory') {
-        if (!fs.existsSync(wp.path)) continue;
-        fs.watch(wp.path, { recursive: wp.recursive || false }, (eventType, filename) => {
-          if (wp.filter && filename && !filename.endsWith(wp.filter)) return;
-          debouncedBroadcast();
-        });
-        watchCount++;
-      }
-    } catch {
-      // ignore watch path failures
-    }
-  }
-
+  const { watchCount } = createFileWatchers(getAllWatchPaths(), debouncedBroadcast);
   console.log(`[Watch] started watching ${watchCount} paths`);
 
   // Periodic polling (2s) - prevent missed updates

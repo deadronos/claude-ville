@@ -17,17 +17,19 @@
 }
 
 .topbar__logo {
-    font-size: 13px;
+    font-size: calc(13px * var(--text-scale));
     color: #e8d44d;
     letter-spacing: 2px;
+    font-family: var(--font-retro);
 }
 
 .topbar__version {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     color: #8b8b9e;
     padding: 2px 6px;
     border: 1px solid rgba(139, 139, 158, 0.3);
     border-radius: 2px;
+    font-family: var(--font-mono);
 }
 
 .topbar__center {
@@ -44,14 +46,15 @@
 }
 
 .topbar__stat-label {
-    font-size: 7px;
+    font-size: calc(7px * var(--text-scale));
     color: #8b8b9e;
     letter-spacing: 1px;
 }
 
 .topbar__stat-value {
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     color: #e8d44d;
+    font-family: var(--font-mono);
 }
 
 .topbar__badges {
@@ -63,10 +66,11 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     padding: 3px 8px;
     border-radius: 3px;
     background: rgba(255, 255, 255, 0.05);
+    font-family: var(--font-mono);
 }
 
 .topbar__badge-dot {
@@ -118,17 +122,19 @@
 }
 
 .topbar__account-tier {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     padding: 3px 8px;
     border-radius: 3px;
     background: rgba(167, 139, 250, 0.15);
     color: #a78bfa;
     letter-spacing: 0.5px;
+    font-family: var(--font-mono);
 }
 
 .topbar__account-activity {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     color: #8b8b9e;
+    font-family: var(--font-mono);
 }
 
 /* ── Quota progress bar ── */
@@ -145,10 +151,11 @@
 }
 
 .topbar__quota-label {
-    font-size: 7px;
+    font-size: calc(7px * var(--text-scale));
     color: #8b8b9e;
     letter-spacing: 0.5px;
     width: 16px;
+    font-family: var(--font-mono);
 }
 
 .topbar__quota-track {
@@ -176,10 +183,11 @@
 }
 
 .topbar__quota-pct {
-    font-size: 7px;
+    font-size: calc(7px * var(--text-scale));
     color: #8b8b9e;
     width: 22px;
     text-align: right;
+    font-family: var(--font-mono);
 }
 
 .topbar__right {
@@ -188,13 +196,14 @@
 }
 
 .topbar__mode-btn {
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     padding: 6px 14px;
     border: 1px solid rgba(232, 212, 77, 0.3);
     border-radius: 3px;
     color: #8b8b9e;
     background: transparent;
     transition: all 0.15s;
+    font-family: var(--font-retro);
 }
 
 .topbar__mode-btn:hover {
@@ -213,7 +222,7 @@
 }
 
 .topbar__settings-btn {
-    font-size: 16px;
+    font-size: calc(16px * var(--text-scale));
     width: 34px;
     height: 34px;
     display: flex;

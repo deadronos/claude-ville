@@ -13,6 +13,7 @@ import { SessionWatcher } from '../application/SessionWatcher.js';
 import { NotificationService } from '../application/NotificationService.js';
 import { getNameMode, setNameMode } from '../config/agentNames.js';
 import { getBubbleConfig, updateBubbleConfig } from '../config/bubbleConfig.js';
+import { TEXT_SIZE_PRESETS, getTextSizePresetKey } from './shared/textSizePresets.js';
 
 import { TopBar } from './shared/TopBar.js';
 import { Sidebar } from './shared/Sidebar.js';
@@ -20,7 +21,7 @@ import { Toast } from './shared/Toast.js';
 import { Modal } from './shared/Modal.js';
 import { ActivityPanel } from './shared/ActivityPanel.js';
 
-class App {
+export class App {
     world: World | null;
     dataSource: ClaudeDataSource | null;
     wsClient: WebSocketClient | null;
@@ -198,41 +199,17 @@ class App {
         const btn = document.getElementById('btnSettings');
         if (!btn) return;
 
-        const BUBBLE_PRESETS = [
-            { key: 'small',  labelKey: 'bubbleSmall',       fontSize: 10, maxWidth: 160, bubbleH: 22, paddingH: 18 },
-            { key: 'medium', labelKey: 'bubbleMedium',      fontSize: 14, maxWidth: 260, bubbleH: 28, paddingH: 24 },
-            { key: 'large',  labelKey: 'bubbleLarge',       fontSize: 20, maxWidth: 360, bubbleH: 38, paddingH: 32 },
-            { key: 'xlarge', labelKey: 'bubbleExtraLarge',  fontSize: 28, maxWidth: 480, bubbleH: 52, paddingH: 44 },
-        ];
-
-        const CHAT_PRESETS = [
-            { key: 'small',  fontSize: 10 },
-            { key: 'medium', fontSize: 14 },
-            { key: 'large',  fontSize: 20 },
-            { key: 'xlarge', fontSize: 28 },
-        ];
-
-        const bubbleLabel = (preset: any) => i18n.t(preset.labelKey || `bubble${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
-
-        const bubbleBtns = (presets: any[], currentKey: string) => {
-            return presets.map(p => {
-                const active = currentKey === p.key ? ' settings-lang-btn--active' : '';
-                return `<button class="settings-lang-btn${active}" data-size="${p.key}">${bubbleLabel(p)}</button>`;
-            }).join('');
-        };
+        const sizeLabel = (preset: { key: string; labelKey: string }) =>
+            i18n.t(preset.labelKey || `bubble${preset.key.charAt(0).toUpperCase() + preset.key.slice(1)}`);
 
         const buildForm = (currentMode: string) => {
             const cfg = getBubbleConfig();
-            const sizeToKey = (v: number, fallback: string) => {
-                const found = BUBBLE_PRESETS.find(p => p.fontSize === v);
-                return found ? found.key : fallback;
-            };
-            const chatSizeToKey = (v: number) => {
-                const found = CHAT_PRESETS.find(p => p.fontSize === v);
-                return found ? found.key : 'medium';
-            };
-            const currentBubble = sizeToKey(cfg.statusFontSize, 'medium');
-            const currentChat = chatSizeToKey(cfg.chatFontSize);
+            const currentScaleKey = getTextSizePresetKey(cfg.textScale);
+
+            const sizeBtns = TEXT_SIZE_PRESETS.map(p => {
+                const active = currentScaleKey === p.key ? ' settings-lang-btn--active' : '';
+                return `<button class="settings-lang-btn${active}" data-size="${p.key}">${sizeLabel(p)}</button>`;
+            }).join('');
 
             return `
                 <div class="settings-form">
@@ -246,15 +223,9 @@ class App {
                     <div class="settings-note">${i18n.t('providerNameModeNote')}</div>
                     <div class="settings-divider"></div>
                     <div class="settings-row">
-                        <span class="settings-label">${i18n.t('bubbleSize')}</span>
+                        <span class="settings-label">${i18n.t('textSize')}</span>
                         <div class="settings-lang-btns">
-                            ${bubbleBtns(BUBBLE_PRESETS, currentBubble)}
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <span class="settings-label">${i18n.t('chatSize')}</span>
-                        <div class="settings-lang-btns">
-                            ${bubbleBtns(CHAT_PRESETS, currentChat)}
+                            ${sizeBtns}
                         </div>
                     </div>
                 </div>
@@ -293,27 +264,27 @@ class App {
                 });
             });
 
-            // Status bubble size buttons
+            // Text size buttons — update --text-scale (all UI) + bubble font sizes (world mode)
             document.querySelectorAll('.settings-lang-btn[data-size]').forEach(sizeBtnNode => {
                 const sizeBtn = sizeBtnNode as HTMLElement;
                 sizeBtn.addEventListener('click', () => {
                     const key = sizeBtn.dataset.size;
-                    const preset = BUBBLE_PRESETS.find(p => p.key === key);
-                    const chatPreset = CHAT_PRESETS.find(p => p.key === key);
+                    const preset = TEXT_SIZE_PRESETS.find(p => p.key === key);
                     if (!preset) return;
                     updateBubbleConfig({
-                        statusFontSize: preset.fontSize,
+                        textScale: preset.textScale,
+                        statusFontSize: preset.statusFontSize,
                         statusMaxWidth: preset.maxWidth,
                         statusBubbleH: preset.bubbleH,
                         statusPaddingH: preset.paddingH,
-                        chatFontSize: chatPreset ? chatPreset.fontSize : getBubbleConfig().chatFontSize,
+                        chatFontSize: preset.statusFontSize,
                     });
-                    // Update active states on the currently shown buttons
+                    // Update active button states
                     const cfg = getBubbleConfig();
                     document.querySelectorAll('.settings-lang-btn[data-size]').forEach(btnNode => {
                         const btn = btnNode as HTMLElement;
-                        const p = BUBBLE_PRESETS.find(bp => bp.key === btn.dataset.size);
-                        btn.classList.toggle('settings-lang-btn--active', p !== undefined && p.fontSize === cfg.statusFontSize);
+                        const p = TEXT_SIZE_PRESETS.find(tp => tp.key === btn.dataset.size);
+                        btn.classList.toggle('settings-lang-btn--active', p !== undefined && p.textScale === cfg.textScale);
                     });
                     if (this.toast) {
                         this.toast.show(i18n.t('settingsSaved'), 'success');
