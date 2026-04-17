@@ -2,34 +2,26 @@ import { eventBus } from '../../domain/events/DomainEvent.js';
 import { AvatarCanvas } from './AvatarCanvas.js';
 import { i18n } from '../../config/i18n.js';
 import { getHubApiUrl } from '../../config/runtime.js';
-
-const TOOL_ICONS = {
-    Read: '📖', Edit: '✏️', Write: '📝', Grep: '🔍', Glob: '📁',
-    Bash: '⚡', Task: '📋', TaskCreate: '📋', TaskUpdate: '📋', TaskList: '📋',
-    WebSearch: '🌐', WebFetch: '🌐', SendMessage: '💬', TeamCreate: '👥',
-    NotebookEdit: '📓',
-};
-
-const TOOL_CATEGORIES = {
-    Read: 'read', Grep: 'search', Glob: 'search', WebSearch: 'search', WebFetch: 'search',
-    Edit: 'write', Write: 'write', NotebookEdit: 'write',
-    Bash: 'exec',
-    Task: 'task', TaskCreate: 'task', TaskUpdate: 'task', TaskList: 'task',
-    SendMessage: 'task', TeamCreate: 'task',
-};
+import {
+    PROJECT_COLORS,
+    getProviderLabel,
+    getToolCategory,
+    getToolIcon,
+    groupByProject,
+    shortModel,
+    shortProjectName,
+    shortToolName,
+    truncateProjectPath,
+    truncateText,
+} from '../shared/dashboardViewModel.js';
 
 const PROVIDER_BADGES = {
-    claude:    { label: 'Claude',    color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
-    codex:     { label: 'Codex',     color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
-    gemini:    { label: 'Gemini',    color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
-    openclaw:  { label: 'OpenClaw',  color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
-    copilot:   { label: 'Copilot',   color: '#22d3ee', bg: 'rgba(34,211,238,0.15)' },
+    claude:    { label: getProviderLabel('claude'),    color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
+    codex:     { label: getProviderLabel('codex'),     color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
+    gemini:    { label: getProviderLabel('gemini'),    color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
+    openclaw:  { label: getProviderLabel('openclaw'),  color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
+    copilot:   { label: getProviderLabel('copilot'),   color: '#22d3ee', bg: 'rgba(34,211,238,0.15)' },
 };
-
-const PROJECT_COLORS = [
-    '#e8d44d', '#4ade80', '#60a5fa', '#f97316', '#a78bfa',
-    '#f472b6', '#34d399', '#fb923c', '#818cf8', '#22d3ee',
-];
 
 export class DashboardRenderer {
     world: any;
@@ -145,13 +137,7 @@ export class DashboardRenderer {
     }
 
     _groupByProject(agents) {
-        const groups = new Map();
-        for (const agent of agents) {
-            const key = agent.projectPath || '_unknown';
-            if (!groups.has(key)) groups.set(key, []);
-            groups.get(key).push(agent);
-        }
-        return groups;
+        return groupByProject(agents);
     }
 
     _assignProjectColors(groups) {
@@ -165,12 +151,7 @@ export class DashboardRenderer {
     }
 
     _shortProjectName(path) {
-        if (!path || path === '_unknown') return i18n.t('unknownProject');
-        const parts = path.replace(/\/+$/, '').split('/').filter(Boolean);
-        const last = parts[parts.length - 1] || path;
-        // For home directory itself (e.g. /Users/username) → show as ~
-        if (parts.length <= 2 && parts[0] === 'Users') return '~';
-        return last;
+        return shortProjectName(path, i18n.t('unknownProject'));
     }
 
     _createSection(projectPath) {
@@ -202,17 +183,7 @@ export class DashboardRenderer {
     }
 
     _truncatePath(path) {
-        if (!path) return '';
-        // Truncate to show as ~/
-        const home = '/Users/';
-        if (path.startsWith(home)) {
-            const afterHome = path.substring(home.length);
-            const slashIdx = afterHome.indexOf('/');
-            if (slashIdx >= 0) {
-                return '~/' + afterHome.substring(slashIdx);
-            }
-        }
-        return path;
+        return truncateProjectPath(path);
     }
 
     _createCard(agent) {
@@ -373,8 +344,8 @@ export class DashboardRenderer {
         listEl.innerHTML = reversed.map(t => {
             const cat = this._getToolCategory(t.tool);
             const icon = this._getToolIcon(t.tool);
-            const shortName = t.tool.replace('mcp__playwright__', 'pw:').replace('mcp__', '');
-            const detail = t.detail ? this._truncate(t.detail, 60) : '';
+            const shortName = shortToolName(t.tool);
+            const detail = truncateText(t.detail, 60);
             return `<div class="dash-card__tool-item">
                 <span class="dash-card__tool-item-icon tool-cat--${cat}">${icon}</span>
                 <span class="dash-card__tool-item-name tool-cat--${cat}">${this._escapeHtml(shortName)}</span>
@@ -431,26 +402,19 @@ export class DashboardRenderer {
     }
 
     _getToolIcon(tool) {
-        if (!tool) return '❓';
-        // MCP tools
-        if (tool.startsWith('mcp__playwright__')) return '🎭';
-        if (tool.startsWith('mcp__')) return '🔌';
-        return TOOL_ICONS[tool] || '🔧';
+        return getToolIcon(tool);
     }
 
     _getToolCategory(tool) {
-        if (!tool) return 'other';
-        if (tool.startsWith('mcp__')) return 'exec';
-        return TOOL_CATEGORIES[tool] || 'other';
+        return getToolCategory(tool);
     }
 
     _shortModel(model) {
-        if (!model) return '';
-        return model.replace('claude-', '').replace(/-\d{8}$/, '');
+        return shortModel(model);
     }
 
     _truncate(str, max) {
-        return str.length > max ? str.substring(0, max - 1) + '...' : str;
+        return truncateText(str, max);
     }
 
     _escapeHtml(str) {
