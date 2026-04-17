@@ -4,7 +4,10 @@ const http = require('http');
 const { applySnapshot, getCurrentState, getSessionDetail, getHistory, defaultUsage } = require('./state');
 
 const PORT = Number(process.env.HUB_PORT || 3030);
-const AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
+const AUTH_TOKEN = process.env.HUB_AUTH_TOKEN;
+if (!AUTH_TOKEN) {
+  throw new Error('HUB_AUTH_TOKEN environment variable is required');
+}
 const MAX_SNAPSHOT_BYTES = Number(process.env.MAX_SNAPSHOT_BYTES || 10 * 1024 * 1024); // 10 MB default
 
 const wsClients = new Set();
