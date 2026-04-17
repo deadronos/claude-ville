@@ -5,10 +5,48 @@ import { ClaudeDataSource } from './ClaudeDataSource.js';
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const mockGetHubApiUrl = vi.fn((path) => `http://localhost:4000${path}`);
+const mockGetHubApiUrl = vi.fn((path, searchParams) => {
+  const url = new URL(path, 'http://localhost:4000');
+
+  if (searchParams instanceof URLSearchParams) {
+    searchParams.forEach((value, key) => {
+      url.searchParams.set(key, value);
+    });
+  } else if (typeof searchParams === 'string' && searchParams.length > 0) {
+    url.search = searchParams.startsWith('?') ? searchParams : `?${searchParams}`;
+  } else if (searchParams && typeof searchParams === 'object') {
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    }
+  }
+
+  return url.toString();
+});
+
+function buildHubApiUrl(path: string, searchParams?: URLSearchParams | string | Record<string, string | number | boolean | null | undefined>) {
+  const url = new URL(path, 'http://localhost:4000');
+
+  if (searchParams instanceof URLSearchParams) {
+    searchParams.forEach((value, key) => {
+      url.searchParams.set(key, value);
+    });
+  } else if (typeof searchParams === 'string' && searchParams.length > 0) {
+    url.search = searchParams.startsWith('?') ? searchParams : `?${searchParams}`;
+  } else if (searchParams && typeof searchParams === 'object') {
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    }
+  }
+
+  return url.toString();
+}
 
 vi.mock('../config/runtime.js', () => ({
-  getHubApiUrl: (path: string) => mockGetHubApiUrl(path),
+  getHubApiUrl: (path: string, searchParams?: URLSearchParams | string | Record<string, string | number | boolean | null | undefined>) => mockGetHubApiUrl(path, searchParams),
 }));
 
 describe('ClaudeDataSource', () => {
@@ -17,7 +55,7 @@ describe('ClaudeDataSource', () => {
   beforeEach(() => {
     ds = new ClaudeDataSource();
     mockFetch.mockReset();
-    mockGetHubApiUrl.mockImplementation((path: string) => `http://localhost:4000${path}`);
+    mockGetHubApiUrl.mockImplementation(buildHubApiUrl);
   });
 
   describe('getSessions', () => {
@@ -30,7 +68,7 @@ describe('ClaudeDataSource', () => {
 
       const result = await ds.getSessions();
       expect(result).toEqual(sessions);
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/sessions');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/sessions', { cache: 'no-store' });
     });
 
     it('returns empty array on non-ok response', async () => {
@@ -65,7 +103,7 @@ describe('ClaudeDataSource', () => {
 
       const result = await ds.getTeams();
       expect(result).toEqual(teams);
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/teams');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/teams', { cache: 'no-store' });
     });
 
     it('returns empty array on non-ok response', async () => {
@@ -97,7 +135,7 @@ describe('ClaudeDataSource', () => {
 
       const result = await ds.getTasks();
       expect(result).toEqual(taskGroups);
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/tasks');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/tasks', { cache: 'no-store' });
     });
 
     it('returns empty array on non-ok response', async () => {
@@ -123,7 +161,7 @@ describe('ClaudeDataSource', () => {
 
       const result = await ds.getUsage();
       expect(result).toEqual(usage);
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/usage');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/usage', { cache: 'no-store' });
     });
 
     it('returns null on non-ok response', async () => {
@@ -149,13 +187,13 @@ describe('ClaudeDataSource', () => {
 
       const result = await ds.getHistory(50);
       expect(result).toEqual(entries);
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/history');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/history?lines=50', { cache: 'no-store' });
     });
 
     it('defaults lines to 100', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [] }) });
       await ds.getHistory();
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/history');
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4000/api/history?lines=100', { cache: 'no-store' });
     });
 
     it('returns empty array on non-ok response', async () => {
