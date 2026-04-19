@@ -34,12 +34,14 @@ class MainActivity : ComponentActivity() {
         webView.settings.setSupportZoom(true)
         webView.settings.builtInZoomControls = true
         webView.settings.displayZoomControls = false
+        webView.settings.useWideViewPort = true
+        webView.settings.loadWithOverviewMode = true
 
         // Enable mixed content to allow http API calls from https assets
         webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         
         val assetLoader = WebViewAssetLoader.Builder()
-            .setHttpAllowed(true)
+            .setDomain("appassets.androidplatform.net")
             .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
@@ -50,18 +52,7 @@ class MainActivity : ComponentActivity() {
             ): WebResourceResponse? {
                 val url = request.url
                 // Only intercept internal app assets.
-                // Explicitly skip API calls that might be accidentally relative.
                 if (url.host == "appassets.androidplatform.net") {
-                    val path = url.path ?: ""
-                    // If the path contains /api/, it's likely a misrouted API call from the frontend
-                    // that hasn't received its config yet. Don't try to load it from assets.
-                    if (path.contains("/api/")) {
-                        return null
-                    }
-                    
-                    // The asset loader expects the path to be relative to assets,
-                    // but the URL might include /www/ if it's following the loadUrl structure.
-                    // AssetsPathHandler usually needs the path after the domain.
                     return assetLoader.shouldInterceptRequest(url)
                 }
                 return null
@@ -81,8 +72,7 @@ class MainActivity : ComponentActivity() {
         webView.addJavascriptInterface(AndroidBridge(), "Android")
         
         // Load the bundled frontend from the www directory
-        // Using http to avoid mixed content issues with local hub API
-        webView.loadUrl("http://appassets.androidplatform.net/www/index.html")
+        webView.loadUrl("https://appassets.androidplatform.net/www/index.html")
         
         rootLayout.addView(webView, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         
