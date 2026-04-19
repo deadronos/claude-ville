@@ -53,12 +53,23 @@ class MainActivity : ComponentActivity() {
                 // Explicitly skip API calls that might be accidentally relative.
                 if (url.host == "appassets.androidplatform.net") {
                     val path = url.path ?: ""
+                    // If the path contains /api/, it's likely a misrouted API call from the frontend
+                    // that hasn't received its config yet. Don't try to load it from assets.
                     if (path.contains("/api/")) {
                         return null
                     }
+                    
+                    // The asset loader expects the path to be relative to assets,
+                    // but the URL might include /www/ if it's following the loadUrl structure.
+                    // AssetsPathHandler usually needs the path after the domain.
                     return assetLoader.shouldInterceptRequest(url)
                 }
                 return null
+            }
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                injectConfig()
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {

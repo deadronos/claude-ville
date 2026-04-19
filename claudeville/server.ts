@@ -579,9 +579,9 @@ const ASCII_LOGO = `
 ╚══════════════════════════════════════════════════════╝
 `;
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(ASCII_LOGO);
-  console.log(`  server running: http://localhost:${PORT}`);
+  console.log(`  server running: http://localhost:${PORT} (bound to 0.0.0.0)`);
   console.log('');
 
   // Show active providers
