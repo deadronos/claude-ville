@@ -244,6 +244,26 @@ claude-ville/
 | `GET /api/history?lines=100` | Last N lines of Claude history |
 | `ws://localhost:4000` | Real-time updates (WebSocket) |
 
+### Android App (Optional)
+
+A lightweight Android wrapper embeds the built frontend into a WebView and ships it as an APK. Requirements: Android Studio (recommended) or the Android SDK + command-line tools, JDK 11+, Android SDK platform 34 (compileSdk 34), minSdk 26.
+
+Quick build (from the repository root):
+
+```bash
+# build the frontend and copy into Android assets
+bash android/sync-assets.sh
+
+# build debug APK and install on a connected device/emulator
+cd android
+./gradlew assembleDebug
+./gradlew installDebug
+```
+
+Notes:
+- Run `bash android/sync-assets.sh` from the repo root — it runs `npm run build:frontend` and copies `dist/frontend/` into `android/app/src/main/assets/www`.
+- Open the `android/` project in Android Studio to run on emulators, inspect logs, or create a signed release (Build → Generate Signed Bundle / APK). Configure `signingConfigs` for release builds.
+
 ## Contributing
 
 Contributions are welcome! Feel free to open issues or submit pull requests.
