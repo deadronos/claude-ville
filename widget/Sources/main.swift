@@ -38,8 +38,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func fetchAndRender() {
-        guard let sessionsURL = URL(string: "http://localhost:4000/api/sessions"),
-              let usageURL = URL(string: "http://localhost:4000/api/usage") else {
+        guard let sessionsURL = URL(string: "http://localhost:3030/api/sessions"),
+              let usageURL = URL(string: "http://localhost:3030/api/usage") else {
             renderOffline(); return
         }
 
@@ -405,7 +405,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         let wv = WKWebView(frame: window.contentView!.bounds)
         wv.autoresizingMask = [.width, .height]
-        wv.load(URLRequest(url: URL(string: "http://localhost:4000")!))
+        wv.load(URLRequest(url: URL(string: "http://localhost:3030")!))
         window.contentView?.addSubview(wv)
         dashboardWebView = wv; dashboardWindow = window
         window.makeKeyAndOrderFront(nil)
