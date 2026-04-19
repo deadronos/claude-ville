@@ -10,8 +10,12 @@ function fallbackWsUrl(): string {
     return `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 }
 
+function getActiveConfig(): RuntimeConfig {
+    return ((window as unknown as Record<string, unknown>).__CLAUDEVILLE_CONFIG__ || config) as RuntimeConfig;
+}
+
 export function getHubHttpUrl(): string {
-    return config.hubHttpUrl || window.location.origin;
+    return getActiveConfig().hubHttpUrl || window.location.origin;
 }
 
 export function getHubApiUrl(pathname: string, searchParams?: URLSearchParams | string | Record<string, string | number | boolean | null | undefined>): string {
@@ -35,9 +39,9 @@ export function getHubApiUrl(pathname: string, searchParams?: URLSearchParams | 
 }
 
 export function getHubWsUrl(): string {
-    return config.hubWsUrl || fallbackWsUrl();
+    return getActiveConfig().hubWsUrl || fallbackWsUrl();
 }
 
 export function getRuntimeConfig(): RuntimeConfig {
-    return (window as unknown as Record<string, unknown>).__CLAUDEVILLE_CONFIG__ as RuntimeConfig || config;
+    return getActiveConfig();
 }

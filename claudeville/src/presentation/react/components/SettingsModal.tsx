@@ -69,6 +69,15 @@ export function SettingsModal({ open, controller, bubbleConfig }: { open: boolea
             <div className="settings-row">
               <div className="settings-lang-btns">
                 <button type="button" className="settings-lang-btn" onClick={() => controller.closeSettings()}>Cancel</button>
+                {(window as any).Android && (
+                  <button
+                    type="button"
+                    className="settings-lang-btn"
+                    onClick={() => (window as any).Android.openSettings()}
+                  >
+                    App Settings
+                  </button>
+                )}
                 <button
                   type="button"
                   className="settings-lang-btn settings-lang-btn--active"
