@@ -8,6 +8,11 @@ import androidx.activity.ComponentActivity
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
 
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.view.Gravity
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
@@ -19,13 +24,22 @@ class MainActivity : ComponentActivity() {
         
         configManager = ConfigManager(this)
         
+        val rootLayout = FrameLayout(this)
+        
         webView = WebView(this)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.allowFileAccess = true
+        // Enable pinch zoom
+        webView.settings.setSupportZoom(true)
+        webView.settings.builtInZoomControls = true
+        webView.settings.displayZoomControls = false
+
+        // Enable mixed content to allow http API calls from https assets
+        webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         
         val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
         webView.webViewClient = object : WebViewClientCompat() {
@@ -33,7 +47,11 @@ class MainActivity : ComponentActivity() {
                 view: WebView,
                 request: WebResourceRequest
             ): WebResourceResponse? {
-                return assetLoader.shouldInterceptRequest(request.url)
+                // Only intercept internal app assets
+                if (request.url.host == "appassets.androidplatform.net") {
+                    return assetLoader.shouldInterceptRequest(request.url)
+                }
+                return null
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -44,11 +62,27 @@ class MainActivity : ComponentActivity() {
 
         webView.addJavascriptInterface(AndroidBridge(), "Android")
         
-        // Load the bundled frontend
-        // Using a custom domain for asset loader to work correctly
-        webView.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
+        // Load the bundled frontend from the www directory
+        webView.loadUrl("https://appassets.androidplatform.net/www/index.html")
         
-        setContentView(webView)
+        rootLayout.addView(webView, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        
+        // Add a floating settings button
+        val settingsButton = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_preferences)
+            setBackgroundColor(0x88000000.toInt())
+            setOnClickListener {
+                val intent = Intent(this@MainActivity, SettingsActivity::class.java)
+                startActivity(intent)
+            }
+        }
+        val buttonParams = FrameLayout.LayoutParams(120, 120).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            setMargins(0, 0, 40, 40)
+        }
+        rootLayout.addView(settingsButton, buttonParams)
+        
+        setContentView(rootLayout)
     }
 
     private fun injectConfig() {
