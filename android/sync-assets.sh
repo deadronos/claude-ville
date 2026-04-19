@@ -5,13 +5,18 @@
 
 set -e
 
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Project root is one level up from the android directory
+PROJECT_ROOT="$SCRIPT_DIR/.."
+
 # 1. Build the frontend
 echo "Building frontend..."
+cd "$PROJECT_ROOT"
 npm run build:frontend
 
-# 2. Define pathes
-PROJECT_ROOT=$(pwd)
-ANDROID_ASSETS_DIR="$PROJECT_ROOT/android/app/src/main/assets/www"
+# 2. Define paths
+ANDROID_ASSETS_DIR="$SCRIPT_DIR/app/src/main/assets/www"
 DIST_DIR="$PROJECT_ROOT/dist/frontend"
 
 # 3. Create assets directory if it doesn't exist

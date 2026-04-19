@@ -30,9 +30,9 @@ class MainActivity : ComponentActivity() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.allowFileAccess = true
-        // Enable pinch zoom
-        webView.settings.setSupportZoom(true)
-        webView.settings.builtInZoomControls = true
+        // Disable built-in zoom controls to handle pinch zoom in the frontend
+        webView.settings.setSupportZoom(false)
+        webView.settings.builtInZoomControls = false
         webView.settings.displayZoomControls = false
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = true
@@ -52,8 +52,23 @@ class MainActivity : ComponentActivity() {
                 request: WebResourceRequest
             ): WebResourceResponse? {
                 val url = request.url
-                // Only intercept internal app assets.
+                
+                // 1. Prevent error for missing favicon immediately
+                if (url.path?.endsWith("favicon.ico") == true) {
+                    return WebResourceResponse("image/x-icon", null, null)
+                }
+
+                // 2. Map root-level assets to the 'www' directory
+                // React/Vite builds often use root-relative paths like /assets/...
+                // Our AssetsPathHandler is mapped to "/", but the files are in "assets/www/"
                 if (url.host == "appassets.androidplatform.net") {
+                    val path = url.path ?: ""
+                    if (!path.startsWith("/www/")) {
+                        // Redirect root-level requests to /www/ path
+                        val newPath = "/www" + path
+                        val newUrl = url.buildUpon().path(newPath).build()
+                        return assetLoader.shouldInterceptRequest(newUrl)
+                    }
                     return assetLoader.shouldInterceptRequest(url)
                 }
                 return null

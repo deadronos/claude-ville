@@ -34,6 +34,12 @@ export function WorldView({
     camStartY: 0,
   });
   const viewportRef = useRef<ViewportSize>({ width: 1, height: 1 });
+  const touchStateRef = useRef({
+    initialDistance: 0,
+    initialZoom: 0,
+    centerWorldX: 0,
+    centerWorldY: 0,
+  });
   const [viewport, setViewport] = useState<ViewportSize>({ width: 1, height: 1 });
   const [dragging, setDragging] = useState(false);
   const [hoveredBuildingId, setHoveredBuildingId] = useState<string | null>(null);
@@ -215,6 +221,52 @@ export function WorldView({
         cameraRef.current.zoom = Math.max(cameraRef.current.minZoom, Math.min(cameraRef.current.maxZoom, cameraRef.current.zoom * factor));
         cameraRef.current.x = mouseX / cameraRef.current.zoom - worldBefore.x;
         cameraRef.current.y = mouseY / cameraRef.current.zoom - worldBefore.y;
+      }}
+      onTouchStart={(event) => {
+        if (event.touches.length === 2) {
+          const t1 = event.touches[0];
+          const t2 = event.touches[1];
+          const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (!rect) return;
+
+          const centerX = (t1.clientX + t2.clientX) / 2 - rect.left;
+          const centerY = (t1.clientY + t2.clientY) / 2 - rect.top;
+          const worldBefore = screenToWorld(centerX, centerY, cameraRef.current);
+
+          touchStateRef.current = {
+            initialDistance: dist,
+            initialZoom: cameraRef.current.zoom,
+            centerWorldX: worldBefore.x,
+            centerWorldY: worldBefore.y,
+          };
+        }
+      }}
+      onTouchMove={(event) => {
+        if (active && event.touches.length === 2) {
+          event.preventDefault(); // Prevent browser zoom/scroll
+          const t1 = event.touches[0];
+          const t2 = event.touches[1];
+          const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (!rect) return;
+
+          const centerX = (t1.clientX + t2.clientX) / 2 - rect.left;
+          const centerY = (t1.clientY + t2.clientY) / 2 - rect.top;
+          const ratio = dist / touchStateRef.current.initialDistance;
+
+          cameraRef.current.zoom = Math.max(
+            cameraRef.current.minZoom,
+            Math.min(cameraRef.current.maxZoom, touchStateRef.current.initialZoom * ratio)
+          );
+
+          cameraRef.current.x = centerX / cameraRef.current.zoom - touchStateRef.current.centerWorldX;
+          cameraRef.current.y = centerY / cameraRef.current.zoom - touchStateRef.current.centerWorldY;
+        }
+      }}
+      onTouchEnd={() => {
+        touchStateRef.current.initialDistance = 0;
       }}
     >
       <Canvas
