@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
         webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         
         val assetLoader = WebViewAssetLoader.Builder()
+            .setHttpAllowed(true)
             .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
@@ -47,9 +48,15 @@ class MainActivity : ComponentActivity() {
                 view: WebView,
                 request: WebResourceRequest
             ): WebResourceResponse? {
-                // Only intercept internal app assets
-                if (request.url.host == "appassets.androidplatform.net") {
-                    return assetLoader.shouldInterceptRequest(request.url)
+                val url = request.url
+                // Only intercept internal app assets.
+                // Explicitly skip API calls that might be accidentally relative.
+                if (url.host == "appassets.androidplatform.net") {
+                    val path = url.path ?: ""
+                    if (path.contains("/api/")) {
+                        return null
+                    }
+                    return assetLoader.shouldInterceptRequest(url)
                 }
                 return null
             }
@@ -63,7 +70,8 @@ class MainActivity : ComponentActivity() {
         webView.addJavascriptInterface(AndroidBridge(), "Android")
         
         // Load the bundled frontend from the www directory
-        webView.loadUrl("https://appassets.androidplatform.net/www/index.html")
+        // Using http to avoid mixed content issues with local hub API
+        webView.loadUrl("http://appassets.androidplatform.net/www/index.html")
         
         rootLayout.addView(webView, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         
