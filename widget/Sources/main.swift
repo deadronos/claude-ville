@@ -12,10 +12,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var dashboardWebView: WKWebView?
     var pollTimer: Timer?
     var lastHTML: String = ""
+    var hubBaseURL: String = "http://localhost:3030"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         setupPopover()
+        if let projectPath = readProjectPath() {
+            hubBaseURL = readHubBaseURL(from: projectPath)
+        }
         DispatchQueue.global(qos: .utility).async {
             self.startServerIfNeeded()
             Thread.sleep(forTimeInterval: 2.0)
@@ -38,8 +42,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func fetchAndRender() {
-        guard let sessionsURL = URL(string: "http://localhost:3030/api/sessions"),
-              let usageURL = URL(string: "http://localhost:3030/api/usage") else {
+        let sessionsURLStr = hubBaseURL + "/api/sessions"
+        let usageURLStr = hubBaseURL + "/api/usage"
+        guard let sessionsURL = URL(string: sessionsURLStr),
+              let usageURL = URL(string: usageURLStr) else {
             renderOffline(); return
         }
 
@@ -351,6 +357,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return try? String(contentsOf: f, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Hub URL Resolution
+
+    func readHubBaseURL(from projectPath: String) -> String {
+        let envFile = (projectPath as NSString).appendingPathComponent(".env.local")
+        guard let content = try? String(contentsOfFile: envFile, encoding: .utf8) else {
+            return "http://localhost:3030"
+        }
+
+        var hubHttpUrl: String?
+        var hubPort: Int?
+
+        for line in content.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
+            guard let sepRange = trimmed.range(of: "=") else { continue }
+            let key = String(trimmed[..<sepRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+            let val = String(trimmed[sepRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if key == "HUB_HTTP_URL", !val.isEmpty {
+                hubHttpUrl = val
+            } else if key == "HUB_PORT", !val.isEmpty, let port = Int(val) {
+                hubPort = port
+            }
+        }
+
+        if let url = hubHttpUrl, !url.isEmpty {
+            return url
+        }
+        if let port = hubPort {
+            return "http://localhost:\(port)"
+        }
+        return "http://localhost:3030"
+    }
+
     // MARK: - Status Item
 
     func setupStatusItem() {
@@ -405,7 +445,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         let wv = WKWebView(frame: window.contentView!.bounds)
         wv.autoresizingMask = [.width, .height]
-        wv.load(URLRequest(url: URL(string: "http://localhost:3030")!))
+        wv.load(URLRequest(url: URL(string: hubBaseURL)!))
         window.contentView?.addSubview(wv)
         dashboardWebView = wv; dashboardWindow = window
         window.makeKeyAndOrderFront(nil)
