@@ -29,6 +29,6 @@ server.on('upgrade', (req, socket) => {
   socket.destroy();
 });
 
-server.listen(PORT, () => {
-  console.log(`hubreceiver listening on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`hubreceiver listening on http://0.0.0.0:${PORT}`);
 });
