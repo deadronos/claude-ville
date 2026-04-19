@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
 *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
@@ -52,7 +54,7 @@ a {
 
 /* ─── Typography scale ─── */
 :root {
-    --font-retro: 'Press Start 2P', monospace;
+    --font-retro: 'VT323', monospace;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
     --text-scale: 1.0; /* set by bubbleConfig.applyTextScale() on boot + settings change */
 }
