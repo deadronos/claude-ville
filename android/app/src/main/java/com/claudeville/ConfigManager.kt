@@ -12,7 +12,7 @@ class ConfigManager(context: Context) {
         const val KEY_USE_SSL = "use_ssl"
         const val KEY_AUTH_TOKEN = "auth_token"
         
-        const val DEFAULT_HUB_HOST = "10.0.2.2"
+        const val DEFAULT_HUB_HOST = "192.168.178.76"
         const val DEFAULT_HUB_PORT = "3030"
     }
 

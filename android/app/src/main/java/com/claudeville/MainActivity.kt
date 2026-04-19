@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
         
         val assetLoader = WebViewAssetLoader.Builder()
             .setDomain("appassets.androidplatform.net")
+            .setHttpAllowed(true)
             .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
@@ -72,7 +73,7 @@ class MainActivity : ComponentActivity() {
         webView.addJavascriptInterface(AndroidBridge(), "Android")
         
         // Load the bundled frontend from the www directory
-        webView.loadUrl("https://appassets.androidplatform.net/www/index.html")
+        webView.loadUrl("http://appassets.androidplatform.net/www/index.html")
         
         rootLayout.addView(webView, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         
