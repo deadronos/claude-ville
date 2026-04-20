@@ -517,35 +517,35 @@ class ClaudeAdapter {
   async getTasks() {
     try {
       const taskDirs = await fs.promises.readdir(TASKS_DIR, { withFileTypes: true });
-      const taskGroups = [];
+      const groupPromises = taskDirs
+        .filter(dir => dir.isDirectory())
+        .map(async (dir) => {
+          const groupDir = path.join(TASKS_DIR, dir.name);
+          try {
+            const files = await fs.promises.readdir(groupDir);
+            const jsonFiles = files.filter(f => f.endsWith('.json'));
 
-      for (const dir of taskDirs) {
-        if (!dir.isDirectory()) continue;
-        const groupDir = path.join(TASKS_DIR, dir.name);
-        try {
-          const files = await fs.promises.readdir(groupDir);
-          const jsonFiles = files.filter(f => f.endsWith('.json'));
+            const taskPromises = jsonFiles.map(async (file) => {
+              try {
+                const content = await fs.promises.readFile(path.join(groupDir, file), 'utf-8');
+                return JSON.parse(content);
+              } catch {
+                return null;
+              }
+            });
 
-          const taskPromises = jsonFiles.map(async (file) => {
-            try {
-              const content = await fs.promises.readFile(path.join(groupDir, file), 'utf-8');
-              return JSON.parse(content);
-            } catch {
-              return null;
-            }
-          });
+            const tasks = (await Promise.all(taskPromises)).filter(Boolean);
+            return {
+              groupName: dir.name,
+              tasks: tasks.sort((a, b) => Number(a.id || 0) - Number(b.id || 0)),
+              count: tasks.length,
+            };
+          } catch {
+            return null;
+          }
+        });
 
-          const tasks = (await Promise.all(taskPromises)).filter(Boolean);
-          taskGroups.push({
-            groupName: dir.name,
-            tasks: tasks.sort((a, b) => Number(a.id || 0) - Number(b.id || 0)),
-            count: tasks.length,
-          });
-        } catch {
-          continue;
-        }
-      }
-
+      const taskGroups = (await Promise.all(groupPromises)).filter(Boolean);
       return taskGroups;
     } catch {
       return [];
