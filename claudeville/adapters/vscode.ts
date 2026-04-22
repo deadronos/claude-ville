@@ -449,18 +449,23 @@ async function scanAllSessions(activeThresholdMs) {
                 return null;
               }
 
-              let newest = null;
-              for (const td of toolDirs) {
-                if (!td.isDirectory()) continue;
+              const statPromises = toolDirs.map(async (td) => {
+                if (!td.isDirectory()) return null;
                 const contentFile = path.join(sessionRoot, td.name, 'content.txt');
-                if (!fs.existsSync(contentFile)) continue;
+                if (!fs.existsSync(contentFile)) return null;
                 try {
                   const stat = await fs.promises.stat(contentFile);
-                  if (!newest || stat.mtimeMs > newest.mtime) {
-                    newest = { filePath: contentFile, mtime: stat.mtimeMs };
-                  }
+                  return { filePath: contentFile, mtime: stat.mtimeMs };
                 } catch {
-                  // ignore
+                  return null;
+                }
+              });
+
+              const stats = await Promise.all(statPromises);
+              let newest = null;
+              for (const stat of stats) {
+                if (stat && (!newest || stat.mtime > newest.mtime)) {
+                  newest = stat;
                 }
               }
 
