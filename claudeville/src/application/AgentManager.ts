@@ -43,7 +43,6 @@ export class AgentManager {
                 this._upsertAgent(session, this._teamMembers);
             }
 
-            console.log(`[AgentManager] Loaded ${this.world.agents.size} agents`);
         } catch (err) {
             console.error('[AgentManager] Failed to load initial data:', err.message);
         }
