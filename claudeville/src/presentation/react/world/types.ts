@@ -1,6 +1,9 @@
 import type { MutableRefObject } from 'react';
 
 import type { AgentSprite } from '../../character-mode/AgentSprite.js';
+import type { BuildingStyle } from '../../../config/buildingStyles.js';
+
+export type { BuildingStyle };
 
 export type BubbleConfig = {
   textScale: number;
@@ -32,14 +35,6 @@ export type TerrainTileModel = {
   y: number;
   color: string;
   water: boolean;
-};
-
-export type BuildingStyle = {
-  wallColor: string;
-  roofColor: string;
-  accentColor: string;
-  wallHeight: number;
-  roundRoof?: boolean;
 };
 
 export type InteractionModel = {

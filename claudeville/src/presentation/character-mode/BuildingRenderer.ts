@@ -1,49 +1,6 @@
 import { TILE_WIDTH, TILE_HEIGHT } from '../../config/constants.js';
 import { THEME } from '../../config/theme.js';
-
-const BUILDING_STYLES = {
-    command: {
-        wallColor: '#5a3e2b',
-        roofColor: '#8b0000',
-        accentColor: '#ffd700',
-        wallHeight: 50,
-        hasAntenna: true,
-        hasFlag: true,
-        windowGlow: true,
-    },
-    forge: {
-        wallColor: '#4a3520',
-        roofColor: '#555555',
-        accentColor: '#ff6b00',
-        wallHeight: 40,
-        hasChimney: true,
-        hasAnvil: true,
-    },
-    mine: {
-        wallColor: '#3e3530',
-        roofColor: '#5a4a3a',
-        accentColor: '#ffd700',
-        wallHeight: 35,
-        hasMineEntrance: true,
-        hasPickaxe: true,
-        hasGems: true,
-    },
-    taskboard: {
-        wallColor: '#4a4035',
-        roofColor: '#6b5b4a',
-        accentColor: '#4a9eff',
-        wallHeight: 30,
-        hasPostits: true,
-    },
-    chathall: {
-        wallColor: '#3a4a5a',
-        roofColor: '#5a7a9a',
-        accentColor: '#51cf66',
-        wallHeight: 38,
-        hasRoundRoof: true,
-        hasBubble: true,
-    },
-};
+import { BUILDING_STYLES } from '../../config/buildingStyles.js';
 
 export class BuildingRenderer {
     particleSystem: any;
@@ -237,7 +194,7 @@ export class BuildingRenderer {
         if (alpha > 0.05) {
             ctx.save();
             ctx.globalAlpha = alpha;
-            if (style.hasRoundRoof) {
+            if (style.roundRoof) {
                 this._drawRoundRoof(ctx, halfW, halfH, style);
             } else {
                 this._drawTriangleRoof(ctx, halfW, halfH, style);
