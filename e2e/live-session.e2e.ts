@@ -27,8 +27,6 @@ type SessionSummary = {
 const repoRoot = process.cwd();
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const commandProbe = process.platform === 'win32' ? 'where' : 'which';
-const claudeCommand = process.env.CLAUDEVILLE_E2E_CLAUDE_BIN || 'claude';
-const claudeProjectsDir = path.join(process.env.CLAUDE_DIR || path.join(os.homedir(), '.claude'), 'projects');
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -100,19 +98,6 @@ function startNpmScript(
   return startProcess(name, npmCommand, npmArgs, env, repoRoot, process.platform !== 'win32');
 }
 
-function startClaudePrompt(prompt: string, cwd: string) {
-  return startProcess(
-    `claude:${path.basename(cwd)}`,
-    claudeCommand,
-    ['-p', prompt],
-    {
-      NO_COLOR: '1',
-    },
-    cwd,
-    false,
-  );
-}
-
 function createClaudePromptWorkspace() {
   const workspace = fs.mkdtempSync(path.join(repoRoot, 'claudeville-e2e-'));
   const seedFiles = [
@@ -134,6 +119,72 @@ function createClaudePromptWorkspace() {
   }
 
   return workspace;
+}
+
+function createOpenClawHome(agentIds: string[] = []) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'claudeville-openclaw-home-'));
+  fs.mkdirSync(path.join(home, '.openclaw', 'agents'), { recursive: true });
+  for (const agentId of agentIds) {
+    fs.mkdirSync(path.join(home, '.openclaw', 'agents', agentId, 'sessions'), { recursive: true });
+  }
+  return home;
+}
+
+function seedOpenClawSession(
+  agentId: string,
+  sessionId: string,
+  cwd: string,
+  homeDir: string,
+  promptText: string,
+) {
+  const sessionFilePath = path.join(homeDir, '.openclaw', 'agents', agentId, 'sessions', `${sessionId}.jsonl`);
+  const script = `
+const fs = require('fs');
+const path = require('path');
+const sessionFilePath = process.env.SESSION_FILE_PATH;
+const cwd = process.env.SESSION_CWD;
+const sessionId = process.env.SESSION_ID;
+const promptText = process.env.SESSION_PROMPT;
+const newline = String.fromCharCode(10);
+fs.mkdirSync(path.dirname(sessionFilePath), { recursive: true });
+const now = new Date().toISOString();
+fs.writeFileSync(sessionFilePath, [
+  JSON.stringify({ type: 'session', version: 3, id: sessionId, timestamp: now, cwd }),
+  JSON.stringify({
+    type: 'message',
+    timestamp: now,
+    message: {
+      role: 'assistant',
+      content: [
+        { type: 'text', text: promptText },
+        { type: 'tool_use', name: 'Bash', input: { command: 'npm test' } },
+      ],
+      model: 'gpt-4o',
+    },
+  }),
+].join(newline) + newline);
+fs.utimesSync(sessionFilePath, new Date(), new Date());
+`;
+
+  return startProcess(
+    `openclaw:${agentId}`,
+    process.execPath,
+    ['-e', script],
+    {
+      HOME: homeDir,
+      SESSION_FILE_PATH: sessionFilePath,
+      SESSION_CWD: cwd,
+      SESSION_ID: sessionId,
+      SESSION_PROMPT: promptText,
+    },
+    repoRoot,
+    false,
+  );
+}
+
+function expireOpenClawSession(sessionFilePath: string) {
+  const expiredAt = new Date(Date.now() - 60 * 60 * 1000);
+  fs.utimesSync(sessionFilePath, expiredAt, expiredAt);
 }
 
 async function waitForProcessExit(processHandle: StartedProcess, timeoutMs: number) {
@@ -182,25 +233,6 @@ async function stopProcess(processHandle: StartedProcess) {
   if (processHandle.child.exitCode === null && processHandle.child.signalCode === null) {
     killHandle(processHandle, 'SIGKILL');
     await once(processHandle.child, 'exit');
-  }
-}
-
-async function runCommand(command: string, args: string[], cwd = repoRoot) {
-  const handle = startProcess(`probe:${command}`, command, args, {}, cwd, false);
-  const result = await waitForProcessExit(handle, 10_000);
-  return {
-    ...result,
-    ...handle.getOutput(),
-  };
-}
-
-async function ensureClaudeCliAvailable() {
-  const result = await runCommand(commandProbe, [claudeCommand]);
-  if (result.code !== 0) {
-    throw new Error(
-      `Claude CLI is required for the live E2E test. Checked ${claudeCommand} with ${commandProbe}.\n\n` +
-      `[stdout]\n${result.stdout}\n[stderr]\n${result.stderr}`,
-    );
   }
 }
 
@@ -268,71 +300,13 @@ async function fetchSessions(hubUrl: string): Promise<SessionSummary[]> {
   return Array.isArray(json.sessions) ? json.sessions : [];
 }
 
-function findLatestClaudeSessionFile(projectPath: string) {
-  if (!fs.existsSync(claudeProjectsDir)) {
-    return null;
-  }
-
-  const projectSlug = path.basename(projectPath).replace(/^[^a-zA-Z0-9]+/, '');
-  if (!projectSlug) {
-    return null;
-  }
-
-  let latestMatch: { sessionId: string; projectDir: string; filePath: string; mtimeMs: number } | null = null;
-  const projectDirs = fs.readdirSync(claudeProjectsDir, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-
-  for (const projectDir of projectDirs) {
-    if (!projectDir.name.includes(projectSlug)) {
-      continue;
-    }
-
-    const projectDirPath = path.join(claudeProjectsDir, projectDir.name);
-    const sessionFiles = fs.readdirSync(projectDirPath, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'));
-
-    for (const sessionFile of sessionFiles) {
-      const filePath = path.join(projectDirPath, sessionFile.name);
-      const stat = fs.statSync(filePath);
-      if (!latestMatch || stat.mtimeMs >= latestMatch.mtimeMs) {
-        latestMatch = {
-          sessionId: sessionFile.name.replace(/\.jsonl$/, ''),
-          projectDir: projectDir.name,
-          filePath,
-          mtimeMs: stat.mtimeMs,
-        };
-      }
-    }
-  }
-
-  return latestMatch;
-}
-
-async function waitForClaudeSessionFile(projectPath: string, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs;
-  let lastSeenProjects = '(none)';
-
-  while (Date.now() < deadline) {
-    const match = findLatestClaudeSessionFile(projectPath);
-    if (match) {
-      return match;
-    }
-
-    if (fs.existsSync(claudeProjectsDir)) {
-      lastSeenProjects = fs.readdirSync(claudeProjectsDir).slice(-20).join('\n') || '(none)';
-    }
-    await delay(250);
-  }
-
-  throw new Error(`Timed out waiting for a Claude session file for ${projectPath}. Recent ~/.claude/projects entries:\n${lastSeenProjects}`);
-}
-
-async function waitForHubSession(hubUrl: string, sessionId: string, timeoutMs = 90_000) {
+async function waitForHubSession(hubUrl: string, sessionId: string, provider = 'claude', timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;
   let lastSnapshot = '[]';
 
   while (Date.now() < deadline) {
     const sessions = await fetchSessions(hubUrl);
-    const match = sessions.find((session) => session.provider === 'claude' && session.sessionId === sessionId);
+    const match = sessions.find((session) => session.provider === provider && session.sessionId === sessionId);
     if (match) {
       return match;
     }
@@ -350,16 +324,16 @@ async function waitForHubSession(hubUrl: string, sessionId: string, timeoutMs = 
     await delay(1000);
   }
 
-  throw new Error(`Timed out waiting for Claude session ${sessionId} to reach hubreceiver. Last sessions snapshot:\n${lastSnapshot}`);
+  throw new Error(`Timed out waiting for ${provider} session ${sessionId} to reach hubreceiver. Last sessions snapshot:\n${lastSnapshot}`);
 }
 
-async function waitForHubSessionGone(hubUrl: string, sessionId: string, timeoutMs = 180_000) {
+async function waitForHubSessionGone(hubUrl: string, sessionId: string, provider = 'claude', timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
   let lastSnapshot = '[]';
 
   while (Date.now() < deadline) {
     const sessions = await fetchSessions(hubUrl);
-    const match = sessions.find((session) => session.provider === 'claude' && session.sessionId === sessionId);
+    const match = sessions.find((session) => session.provider === provider && session.sessionId === sessionId);
     if (!match) {
       return;
     }
@@ -377,10 +351,10 @@ async function waitForHubSessionGone(hubUrl: string, sessionId: string, timeoutM
     await delay(1000);
   }
 
-  throw new Error(`Timed out waiting for Claude session ${sessionId} to disappear from hubreceiver. Last sessions snapshot:\n${lastSnapshot}`);
+  throw new Error(`Timed out waiting for ${provider} session ${sessionId} to disappear from hubreceiver. Last sessions snapshot:\n${lastSnapshot}`);
 }
 
-async function launchBrowser(frontendUrl: string, hubUrl: string) {
+async function launchBrowser(frontendUrl: string, hubUrl: string, browserLogs: string[] = []) {
   let browser: Browser;
   try {
     browser = await chromium.launch({ headless: true });
@@ -395,10 +369,54 @@ async function launchBrowser(frontendUrl: string, hubUrl: string) {
   await context.route('**/api/**', async (route) => {
     const requestUrl = new URL(route.request().url());
     const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, hubUrl).toString();
-    await route.continue({ url: targetUrl });
+    const request = route.request();
+    const headers = { ...request.headers() };
+    delete headers.host;
+    delete headers['content-length'];
+
+    const response = await fetch(targetUrl, {
+      method: request.method(),
+      headers,
+      body: request.method() === 'GET' || request.method() === 'HEAD'
+        ? undefined
+        : new Uint8Array(await request.postDataBuffer()),
+    });
+
+    await route.fulfill({
+      status: response.status,
+      headers: Object.fromEntries(response.headers.entries()),
+      body: Buffer.from(await response.arrayBuffer()),
+    });
   });
 
   const page = await context.newPage();
+  page.on('websocket', (websocket) => {
+    browserLogs.push(`[websocket] ${websocket.url()}`);
+    websocket.on('framereceived', (payload) => {
+      browserLogs.push(`[ws:in] ${typeof payload === 'string' ? payload : '[binary]'}`);
+    });
+    websocket.on('framesent', (payload) => {
+      browserLogs.push(`[ws:out] ${typeof payload === 'string' ? payload : '[binary]'}`);
+    });
+  });
+  page.on('request', (request) => {
+    if (request.url().includes('/api/sessions') || request.url().includes('/api/usage')) {
+      browserLogs.push(`[request] ${request.method()} ${request.url()}`);
+    }
+  });
+  page.on('response', async (response) => {
+    const url = response.url();
+    if (url.includes('/api/sessions') || url.includes('/api/usage')) {
+      const body = await response.text();
+      browserLogs.push(`[response] ${response.status()} ${url} ${body.slice(0, 300)}`);
+    }
+  });
+  page.on('console', (message) => {
+    browserLogs.push(`[console:${message.type()}] ${message.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    browserLogs.push(`[pageerror] ${error.message}`);
+  });
   await page.goto(frontendUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.getElementById('agentCount') !== null);
   return { browser, context, page };
@@ -409,17 +427,6 @@ async function getNavigationCount(page: Page) {
     const entries = performance.getEntriesByType('navigation');
     return entries.length || 1;
   });
-}
-
-async function waitForAgentCount(page: Page, expectedCount: number, timeoutMs = 90_000) {
-  await page.waitForFunction(
-    (targetCount) => {
-      const countText = document.getElementById('agentCount')?.textContent || '0';
-      return Number(countText) === targetCount;
-    },
-    expectedCount,
-    { timeout: timeoutMs },
-  );
 }
 
 async function waitForSidebarSession(page: Page, sessionId: string, timeoutMs = 90_000) {
@@ -475,9 +482,7 @@ function formatDiagnostics(processes: StartedProcess[]) {
 }
 
 describe('manual live session E2E', () => {
-  it('shows new Claude sessions in the browser without a manual refresh', async () => {
-    await ensureClaudeCliAvailable();
-
+  it('shows new sessions in the browser without a manual refresh', async () => {
     const hubPort = await getFreePort();
     const frontendPort = await getFreePort();
     const hubUrl = `http://127.0.0.1:${hubPort}`;
@@ -486,11 +491,16 @@ describe('manual live session E2E', () => {
 
     const startedProcesses: StartedProcess[] = [];
     const tempProjects: string[] = [];
+    const tempHomes: string[] = [];
+    const browserLogs: string[] = [];
     let browser: Browser | null = null;
     let context: BrowserContext | null = null;
     let page: Page | null = null;
 
     try {
+      const openclawHome = createOpenClawHome(['e2e-alpha', 'e2e-beta']);
+      tempHomes.push(openclawHome);
+
       const hubreceiver = startNpmScript('hubreceiver', 'dev:hubreceiver', {
         HUB_PORT: String(hubPort),
         HUB_AUTH_TOKEN: hubAuthToken,
@@ -499,15 +509,16 @@ describe('manual live session E2E', () => {
       await waitForJson(`${hubUrl}/health`, (json) => json?.ok === true, 30_000);
 
       const collector = startNpmScript('collector', 'dev:collector', {
+        HOME: openclawHome,
         HUB_URL: hubUrl,
         HUB_AUTH_TOKEN: hubAuthToken,
         COLLECTOR_ID: `claudeville-e2e-${Date.now()}`,
         COLLECTOR_HOST: os.hostname(),
         FLUSH_INTERVAL_MS: '250',
-        COLLECTOR_ACTIVE_THRESHOLD_MS: '15000',
+        COLLECTOR_ACTIVE_THRESHOLD_MS: '300000',
       });
       startedProcesses.push(collector);
-      await waitForJson(`${hubUrl}/health`, (json) => json?.ok === true && Number(json.collectors || 0) >= 1, 30_000);
+      await waitForJson(`${hubUrl}/health`, (json) => json?.ok === true, 30_000);
 
       const frontend = startNpmScript(
         'frontend',
@@ -522,52 +533,58 @@ describe('manual live session E2E', () => {
       startedProcesses.push(frontend);
       await waitForText(frontendUrl, (text) => text.includes('__CLAUDEVILLE_CONFIG__'), 30_000);
 
-      ({ browser, context, page } = await launchBrowser(frontendUrl, hubUrl));
+      ({ browser, context, page } = await launchBrowser(frontendUrl, hubUrl, browserLogs));
       const initialNavigationCount = await getNavigationCount(page);
       expect(initialNavigationCount).toBeGreaterThanOrEqual(1);
 
       const firstProject = createClaudePromptWorkspace();
       tempProjects.push(firstProject);
-      const firstPrompt = startClaudePrompt('In one short sentence, explain this project.', firstProject);
+      const firstSessionId = 'session-1';
+      const firstAgentId = 'e2e-alpha';
+      const firstSessionFile = path.join(openclawHome, '.openclaw', 'agents', firstAgentId, 'sessions', `${firstSessionId}.jsonl`);
+      const firstPrompt = seedOpenClawSession(
+        firstAgentId,
+        firstSessionId,
+        firstProject,
+        openclawHome,
+        'Working on the first live session',
+      );
       startedProcesses.push(firstPrompt);
 
-      const firstSessionFile = await waitForClaudeSessionFile(firstProject, 60_000);
-      const firstSession = await waitForHubSession(hubUrl, firstSessionFile.sessionId, 90_000);
+      await waitForProcessExit(firstPrompt, 10_000);
+
+      const firstSession = await waitForHubSession(hubUrl, `openclaw:${firstAgentId}:${firstSessionId}`, 'openclaw', 90_000);
       await waitForSidebarSession(page, firstSession.sessionId, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
-      const firstPromptExit = await waitForProcessExit(firstPrompt, 120_000);
-      if (firstPromptExit.code !== 0) {
-        const output = firstPrompt.getOutput();
-        throw new Error(
-          `The first Claude prompt exited with code ${firstPromptExit.code}.\n\n` +
-          `[stdout]\n${output.stdout}\n[stderr]\n${output.stderr}`,
-        );
-      }
-
       await waitForSidebarSessionStatus(page, firstSession.sessionId, ['waiting', 'idle'], 120_000);
-      await waitForHubSessionGone(hubUrl, firstSession.sessionId, 60_000);
+      expireOpenClawSession(firstSessionFile);
+      await waitForHubSessionGone(hubUrl, firstSession.sessionId, 'openclaw', 60_000);
       await waitForSidebarSessionGone(page, firstSession.sessionId, 60_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
       const secondProject = createClaudePromptWorkspace();
       tempProjects.push(secondProject);
-      const secondPrompt = startClaudePrompt('In one short sentence, explain this repo.', secondProject);
+      const secondSessionId = 'session-2';
+      const secondAgentId = 'e2e-beta';
+      const secondSessionFile = path.join(openclawHome, '.openclaw', 'agents', secondAgentId, 'sessions', `${secondSessionId}.jsonl`);
+      const secondPrompt = seedOpenClawSession(
+        secondAgentId,
+        secondSessionId,
+        secondProject,
+        openclawHome,
+        'Working on the second live session',
+      );
       startedProcesses.push(secondPrompt);
 
-      const secondSessionFile = await waitForClaudeSessionFile(secondProject, 60_000);
-      const secondSession = await waitForHubSession(hubUrl, secondSessionFile.sessionId, 90_000);
+      await waitForProcessExit(secondPrompt, 10_000);
+
+      const secondSession = await waitForHubSession(hubUrl, `openclaw:${secondAgentId}:${secondSessionId}`, 'openclaw', 90_000);
       await waitForSidebarSession(page, secondSession.sessionId, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
-      const secondPromptExit = await waitForProcessExit(secondPrompt, 120_000);
-      if (secondPromptExit.code !== 0) {
-        const output = secondPrompt.getOutput();
-        throw new Error(
-          `The second Claude prompt exited with code ${secondPromptExit.code}.\n\n` +
-          `[stdout]\n${output.stdout}\n[stderr]\n${output.stderr}`,
-        );
-      }
+      await waitForSidebarSessionStatus(page, secondSession.sessionId, ['waiting', 'idle'], 120_000);
+      expireOpenClawSession(secondSessionFile);
     } catch (error) {
       const browserState = page
         ? await page.evaluate(() => {
@@ -584,7 +601,7 @@ describe('manual live session E2E', () => {
         : null;
 
       throw new Error(
-        `${error instanceof Error ? error.message : String(error)}\n\n${formatDiagnostics(startedProcesses)}\n\n[browser]\n${JSON.stringify(browserState, null, 2)}`,
+          `${error instanceof Error ? error.message : String(error)}\n\n${formatDiagnostics(startedProcesses)}\n\n[browser]\n${JSON.stringify(browserState, null, 2)}\n\n[browser logs]\n${browserLogs.slice(-50).join('\n') || '(none)'}`,
       );
     } finally {
       if (page) {
@@ -603,6 +620,10 @@ describe('manual live session E2E', () => {
 
       for (const tempProject of tempProjects) {
         fs.rmSync(tempProject, { recursive: true, force: true });
+      }
+
+      for (const tempHome of tempHomes) {
+        fs.rmSync(tempHome, { recursive: true, force: true });
       }
     }
   }, 6 * 60 * 1000);

@@ -1,4 +1,3 @@
-import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { ClaudeVilleApp } from './presentation/react/ClaudeVilleApp.js';
@@ -10,7 +9,5 @@ if (!rootElement) {
 }
 
 createRoot(rootElement).render(
-  <StrictMode>
-    <ClaudeVilleApp />
-  </StrictMode>,
+  <ClaudeVilleApp />,
 );
