@@ -26,7 +26,6 @@ type SessionSummary = {
 
 const repoRoot = process.cwd();
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const commandProbe = process.platform === 'win32' ? 'where' : 'which';
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
