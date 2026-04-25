@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { readLines, parseJsonLines } = require('./jsonl-utils');
+const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
 
 const COPILOT_DIR = path.join(os.homedir(), '.copilot');
 const SESSION_STATE_DIR = path.join(COPILOT_DIR, 'session-state');
@@ -35,8 +35,8 @@ async function parseSession(filePath: string) {
   };
 
   // Extract metadata from session.start
-  const firstLines = await readLines(filePath, { from: 'start', count: 5 });
-  const firstEntries = parseJsonLines(firstLines);
+  const firstLines = await readLines(filePath, { from: 'start', count: 5, scope: 'copilot' });
+  const firstEntries = parseJsonLines(firstLines, 'copilot');
   for (const entry of firstEntries) {
     if (entry.type === 'session.start' && entry.data) {
       if (!detail.model && entry.data.selectedModel) {
@@ -50,8 +50,8 @@ async function parseSession(filePath: string) {
   }
 
   // Extract tools/messages from the rest
-  const lastLines = await readLines(filePath, { from: 'end', count: 80 });
-  const entries = parseJsonLines(lastLines);
+  const lastLines = await readLines(filePath, { from: 'end', count: 80, scope: 'copilot' });
+  const entries = parseJsonLines(lastLines, 'copilot');
 
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
@@ -120,8 +120,8 @@ function extractText(content: unknown) {
 async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 100 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 100, scope: 'copilot' });
+    const entries = parseJsonLines(lines, 'copilot');
 
     for (const entry of entries) {
       let toolName = null;
@@ -154,7 +154,9 @@ async function getToolHistory(filePath: string, maxItems = 15) {
         tools.push({ tool: toolName, detail: toolInput || '', ts });
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('copilot', 'getToolHistory', err, filePath);
+  }
   return tools.slice(-maxItems);
 }
 
@@ -163,8 +165,8 @@ async function getToolHistory(filePath: string, maxItems = 15) {
 async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 60 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 60, scope: 'copilot' });
+    const entries = parseJsonLines(lines, 'copilot');
 
     for (const entry of entries) {
       if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue;
@@ -179,7 +181,9 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
         ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
       });
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('copilot', 'getRecentMessages', err, filePath);
+  }
   return messages.slice(-maxItems);
 }
 
@@ -207,13 +211,16 @@ async function scanAllSessions(activeThresholdMs: number) {
           mtime: stat.mtimeMs,
           sessionId: sessionDir.name,
         };
-      } catch {
+      } catch (err) {
+        debugAdapterError('copilot', 'scanAllSessions stat', err, eventsFile);
         return null;
       }
     }));
 
     results.push(...dirResults.filter(Boolean));
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('copilot', 'scanAllSessions', err, SESSION_STATE_DIR);
+  }
 
   return results;
 }

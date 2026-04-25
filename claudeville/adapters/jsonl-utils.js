@@ -5,20 +5,29 @@
  */
 const fs = require('fs');
 
+function debugAdapterError(scope, operation, err, context = '') {
+  if (!process.env.DEBUG) return;
+
+  const message = err instanceof Error ? err.message : String(err);
+  const suffix = context ? ` ${context}` : '';
+  console.debug(`[${scope}] ${operation}${suffix}: ${message}`);
+}
+
 /**
  * Read the last N (or first N) lines of a file as strings.
  * @param {string} filePath
  * @param {{ from: 'start'|'end', count: number }} options
  * @returns {Promise<string[]>}
  */
-async function readLines(filePath, { from = 'end', count = 50 } = {}) {
+async function readLines(filePath, { from = 'end', count = 50, scope = 'jsonl-utils' } = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
     const content = await fs.promises.readFile(filePath, 'utf-8');
     const lines = content.trim().split('\n');
     if (from === 'start') return lines.slice(0, count);
     return lines.slice(-count);
-  } catch {
+  } catch (err) {
+    debugAdapterError(scope, `readLines(${from})`, err, filePath);
     return [];
   }
 }
@@ -28,13 +37,15 @@ async function readLines(filePath, { from = 'end', count = 50 } = {}) {
  * @param {string[]} lines
  * @returns {object[]}
  */
-function parseJsonLines(lines) {
+function parseJsonLines(lines, scope = 'jsonl-utils') {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
+    try { results.push(JSON.parse(line)); } catch (err) {
+      debugAdapterError(scope, 'parseJsonLines', err, line.substring(0, 120));
+    }
   }
   return results;
 }
 
-module.exports = { readLines, parseJsonLines };
+module.exports = { debugAdapterError, readLines, parseJsonLines };

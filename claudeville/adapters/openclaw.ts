@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { readLines, parseJsonLines } = require('./jsonl-utils');
+const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
 
 const OPENCLAW_DIR = path.join(os.homedir(), '.openclaw');
 const AGENTS_DIR = path.join(OPENCLAW_DIR, 'agents');
@@ -32,8 +32,8 @@ async function parseSession(filePath: string) {
     lastMessage: null,
   };
 
-  const lines = await readLines(filePath, { from: 'end', count: 80 });
-  const entries = parseJsonLines(lines);
+  const lines = await readLines(filePath, { from: 'end', count: 80, scope: 'openclaw' });
+  const entries = parseJsonLines(lines, 'openclaw');
 
   // Iterate in reverse from the end
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -107,8 +107,8 @@ function extractText(content: unknown) {
 async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 100 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 100, scope: 'openclaw' });
+    const entries = parseJsonLines(lines, 'openclaw');
 
     for (const entry of entries) {
       if (entry.type !== 'message' || !entry.message) continue;
@@ -130,7 +130,9 @@ async function getToolHistory(filePath: string, maxItems = 15) {
         });
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('openclaw', 'getToolHistory', err, filePath);
+  }
   return tools.slice(-maxItems);
 }
 
@@ -139,8 +141,8 @@ async function getToolHistory(filePath: string, maxItems = 15) {
 async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 60 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 60, scope: 'openclaw' });
+    const entries = parseJsonLines(lines, 'openclaw');
 
     for (const entry of entries) {
       if (entry.type !== 'message' || !entry.message) continue;
@@ -156,7 +158,9 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
         ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
       });
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('openclaw', 'getRecentMessages', err, filePath);
+  }
   return messages.slice(-maxItems);
 }
 
@@ -228,13 +232,15 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<OpenClawS
                   fileName: file,
                   agentId: agentDir.name,
                 };
-              } catch {
+              } catch (err) {
+                debugAdapterError('openclaw', 'scanAllSessionFiles stat', err, filePath);
                 return null;
               }
             })
           );
           return fileResults.filter((r: OpenClawScanResult | null): r is OpenClawScanResult => r !== null);
-        } catch {
+        } catch (err) {
+          debugAdapterError('openclaw', 'scanAllSessionFiles readdir sessions', err, sessionsDir);
           return [];
         }
       })
@@ -242,7 +248,9 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<OpenClawS
     for (const group of agentResults) {
       results.push(...group);
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('openclaw', 'scanAllSessionFiles', err, AGENTS_DIR);
+  }
 
   return results;
 }
@@ -327,7 +335,9 @@ class OpenClawAdapter {
           paths.push({ type: 'directory', path: sessionsDir, filter: '.jsonl' });
         }
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      debugAdapterError('openclaw', 'getWatchPaths', err, AGENTS_DIR);
+    }
 
     return paths;
   }
