@@ -113,6 +113,29 @@ function startClaudePrompt(prompt: string, cwd: string) {
   );
 }
 
+function createClaudePromptWorkspace() {
+  const workspace = fs.mkdtempSync(path.join(repoRoot, 'claudeville-e2e-'));
+  const seedFiles = [
+    'README.md',
+    'package.json',
+    'docs/architecture/README.md',
+    'claudeville/CLAUDE.md',
+  ];
+
+  for (const relativePath of seedFiles) {
+    const sourcePath = path.join(repoRoot, relativePath);
+    const destinationPath = path.join(workspace, relativePath);
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.copyFileSync(sourcePath, destinationPath);
+  }
+
+  return workspace;
+}
+
 async function waitForProcessExit(processHandle: StartedProcess, timeoutMs: number) {
   if (processHandle.child.exitCode !== null || processHandle.child.signalCode !== null) {
     return {
@@ -503,7 +526,7 @@ describe('manual live session E2E', () => {
       const initialAgentCount = initialHubSessions.length;
       await waitForAgentCount(page, initialAgentCount, 90_000);
 
-      const firstProject = fs.mkdtempSync(path.join(repoRoot, 'claudeville-e2e-'));
+      const firstProject = createClaudePromptWorkspace();
       tempProjects.push(firstProject);
       const firstProjectName = path.basename(firstProject);
       const firstPrompt = startClaudePrompt('In one short sentence, explain this project.', firstProject);
@@ -530,7 +553,7 @@ describe('manual live session E2E', () => {
       await waitForAgentCount(page, initialAgentCount, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
-      const secondProject = fs.mkdtempSync(path.join(repoRoot, 'claudeville-e2e-'));
+      const secondProject = createClaudePromptWorkspace();
       tempProjects.push(secondProject);
       const secondProjectName = path.basename(secondProject);
       const secondPrompt = startClaudePrompt('In one short sentence, explain this repo.', secondProject);
@@ -551,8 +574,22 @@ describe('manual live session E2E', () => {
         );
       }
     } catch (error) {
+      const browserState = page
+        ? await page.evaluate(() => {
+          const agentCount = document.getElementById('agentCount')?.textContent || '(missing)';
+          const projectNames = Array.from(document.querySelectorAll('#sidebar .sidebar__project-name')).map((node) => node.textContent?.trim() || '');
+          const agentRows = Array.from(document.querySelectorAll('#sidebar .sidebar__agent')).map((node) => ({
+            sessionId: node.getAttribute('data-session-id'),
+            status: node.getAttribute('data-status'),
+            name: node.querySelector('.sidebar__agent-name')?.textContent?.trim() || '',
+            project: node.closest('.sidebar__project-group')?.querySelector('.sidebar__project-name')?.textContent?.trim() || '',
+          }));
+          return { agentCount, projectNames, agentRows };
+        })
+        : null;
+
       throw new Error(
-        `${error instanceof Error ? error.message : String(error)}\n\n${formatDiagnostics(startedProcesses)}`,
+        `${error instanceof Error ? error.message : String(error)}\n\n${formatDiagnostics(startedProcesses)}\n\n[browser]\n${JSON.stringify(browserState, null, 2)}`,
       );
     } finally {
       if (page) {
