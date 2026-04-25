@@ -382,40 +382,57 @@ async function getNavigationCount(page: Page) {
   });
 }
 
-async function waitForSidebarSession(page: Page, sessionId: string, timeoutMs = 90_000) {
+async function waitForAgentCount(page: Page, expectedCount: number, timeoutMs = 90_000) {
   await page.waitForFunction(
-    (targetSessionId) => {
-      const rows = Array.from(document.querySelectorAll('#sidebar .sidebar__agent'));
-      return rows.some((row) => row.getAttribute('data-session-id') === targetSessionId);
+    (targetCount) => {
+      const countText = document.getElementById('agentCount')?.textContent || '0';
+      return Number(countText) === targetCount;
     },
-    sessionId,
+    expectedCount,
     { timeout: timeoutMs },
   );
 }
 
-async function waitForSidebarSessionStatus(page: Page, sessionId: string, statuses: string[], timeoutMs = 120_000) {
+async function waitForSidebarProject(page: Page, projectName: string, timeoutMs = 90_000) {
   await page.waitForFunction(
-    ({ targetSessionId, expectedStatuses }) => {
-      const rows = Array.from(document.querySelectorAll('#sidebar .sidebar__agent'));
-      const row = rows.find((candidate) => candidate.getAttribute('data-session-id') === targetSessionId);
+    (targetProjectName) => {
+      const projectHeaders = Array.from(document.querySelectorAll('#sidebar .sidebar__project-name'));
+      return projectHeaders.some((header) => header.textContent?.trim() === targetProjectName);
+    },
+    projectName,
+    { timeout: timeoutMs },
+  );
+}
+
+async function waitForSidebarProjectStatus(page: Page, projectName: string, statuses: string[], timeoutMs = 120_000) {
+  await page.waitForFunction(
+    ({ targetProjectName, expectedStatuses }) => {
+      const groups = Array.from(document.querySelectorAll('#sidebar .sidebar__project-group'));
+      const group = groups.find((candidate) => candidate.querySelector('.sidebar__project-name')?.textContent?.trim() === targetProjectName);
+      if (!group) {
+        return false;
+      }
+
+      const row = group.querySelector('.sidebar__agent');
       if (!row) {
         return false;
       }
+
       const status = (row.getAttribute('data-status') || '').toLowerCase();
       return expectedStatuses.includes(status);
     },
-    { targetSessionId: sessionId, expectedStatuses: statuses },
+    { targetProjectName: projectName, expectedStatuses: statuses },
     { timeout: timeoutMs },
   );
 }
 
-async function waitForSidebarSessionGone(page: Page, sessionId: string, timeoutMs = 45_000) {
+async function waitForSidebarProjectGone(page: Page, projectName: string, timeoutMs = 45_000) {
   await page.waitForFunction(
-    (targetSessionId) => {
-      const rows = Array.from(document.querySelectorAll('#sidebar .sidebar__agent'));
-      return rows.every((row) => row.getAttribute('data-session-id') !== targetSessionId);
+    (targetProjectName) => {
+      const groups = Array.from(document.querySelectorAll('#sidebar .sidebar__project-group'));
+      return groups.every((group) => group.querySelector('.sidebar__project-name')?.textContent?.trim() !== targetProjectName);
     },
-    sessionId,
+    projectName,
     { timeout: timeoutMs },
   );
 }
@@ -482,15 +499,20 @@ describe('manual live session E2E', () => {
       ({ browser, context, page } = await launchBrowser(frontendUrl));
       const initialNavigationCount = await getNavigationCount(page);
       expect(initialNavigationCount).toBeGreaterThanOrEqual(1);
+      const initialHubSessions = await fetchSessions(hubUrl);
+      const initialAgentCount = initialHubSessions.length;
+      await waitForAgentCount(page, initialAgentCount, 90_000);
 
       const firstProject = fs.mkdtempSync(path.join(repoRoot, 'claudeville-e2e-'));
       tempProjects.push(firstProject);
+      const firstProjectName = path.basename(firstProject);
       const firstPrompt = startClaudePrompt('In one short sentence, explain this project.', firstProject);
       startedProcesses.push(firstPrompt);
 
       const firstSessionFile = await waitForClaudeSessionFile(firstProject, 60_000);
       const firstSession = await waitForHubSession(hubUrl, firstSessionFile.sessionId, 90_000);
-      await waitForSidebarSession(page, firstSession.sessionId, 90_000);
+      await waitForAgentCount(page, initialAgentCount + 1, 90_000);
+      await waitForSidebarProject(page, firstProjectName, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
       const firstPromptExit = await waitForProcessExit(firstPrompt, 120_000);
@@ -502,19 +524,22 @@ describe('manual live session E2E', () => {
         );
       }
 
-      await waitForSidebarSessionStatus(page, firstSession.sessionId, ['waiting', 'idle'], 120_000);
-  await waitForHubSessionGone(hubUrl, firstSession.sessionId, 180_000);
-      await waitForSidebarSessionGone(page, firstSession.sessionId, 45_000);
+      await waitForSidebarProjectStatus(page, firstProjectName, ['waiting', 'idle'], 120_000);
+      await waitForHubSessionGone(hubUrl, firstSession.sessionId, 180_000);
+      await waitForSidebarProjectGone(page, firstProjectName, 45_000);
+      await waitForAgentCount(page, initialAgentCount, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
-  const secondProject = fs.mkdtempSync(path.join(repoRoot, 'claudeville-e2e-'));
+      const secondProject = fs.mkdtempSync(path.join(repoRoot, 'claudeville-e2e-'));
       tempProjects.push(secondProject);
+      const secondProjectName = path.basename(secondProject);
       const secondPrompt = startClaudePrompt('In one short sentence, explain this repo.', secondProject);
       startedProcesses.push(secondPrompt);
 
-  const secondSessionFile = await waitForClaudeSessionFile(secondProject, 60_000);
-  const secondSession = await waitForHubSession(hubUrl, secondSessionFile.sessionId, 90_000);
-      await waitForSidebarSession(page, secondSession.sessionId, 90_000);
+      const secondSessionFile = await waitForClaudeSessionFile(secondProject, 60_000);
+      const secondSession = await waitForHubSession(hubUrl, secondSessionFile.sessionId, 90_000);
+      await waitForAgentCount(page, initialAgentCount + 1, 90_000);
+      await waitForSidebarProject(page, secondProjectName, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
       const secondPromptExit = await waitForProcessExit(secondPrompt, 120_000);
