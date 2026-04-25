@@ -11,6 +11,7 @@ const { GeminiAdapter } = require('./gemini.ts');
 const { OpenClawAdapter } = require('./openclaw.ts');
 const { CopilotAdapter } = require('./copilot.ts');
 const { VSCodeAdapter } = require('./vscode.ts');
+const { PiAdapter } = require('./pi.ts');
 
 const adapters = [
   new ClaudeAdapter(),
@@ -19,6 +20,7 @@ const adapters = [
   new OpenClawAdapter(),
   new CopilotAdapter(),
   new VSCodeAdapter(),
+  new PiAdapter(),
 ];
 
 /**
