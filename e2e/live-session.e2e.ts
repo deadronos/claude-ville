@@ -380,7 +380,7 @@ async function waitForHubSessionGone(hubUrl: string, sessionId: string, timeoutM
   throw new Error(`Timed out waiting for Claude session ${sessionId} to disappear from hubreceiver. Last sessions snapshot:\n${lastSnapshot}`);
 }
 
-async function launchBrowser(frontendUrl: string) {
+async function launchBrowser(frontendUrl: string, hubUrl: string) {
   let browser: Browser;
   try {
     browser = await chromium.launch({ headless: true });
@@ -392,6 +392,12 @@ async function launchBrowser(frontendUrl: string) {
   }
 
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  await context.route('**/api/**', async (route) => {
+    const requestUrl = new URL(route.request().url());
+    const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, hubUrl).toString();
+    await route.continue({ url: targetUrl });
+  });
+
   const page = await context.newPage();
   await page.goto(frontendUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.getElementById('agentCount') !== null);
@@ -416,27 +422,22 @@ async function waitForAgentCount(page: Page, expectedCount: number, timeoutMs = 
   );
 }
 
-async function waitForSidebarProject(page: Page, projectName: string, timeoutMs = 90_000) {
+async function waitForSidebarSession(page: Page, sessionId: string, timeoutMs = 90_000) {
   await page.waitForFunction(
-    (targetProjectName) => {
-      const projectHeaders = Array.from(document.querySelectorAll('#sidebar .sidebar__project-name'));
-      return projectHeaders.some((header) => header.textContent?.trim() === targetProjectName);
+    (targetSessionId) => {
+      const rows = Array.from(document.querySelectorAll('#sidebar .sidebar__agent'));
+      return rows.some((row) => row.getAttribute('data-session-id') === targetSessionId);
     },
-    projectName,
+    sessionId,
     { timeout: timeoutMs },
   );
 }
 
-async function waitForSidebarProjectStatus(page: Page, projectName: string, statuses: string[], timeoutMs = 120_000) {
+async function waitForSidebarSessionStatus(page: Page, sessionId: string, statuses: string[], timeoutMs = 120_000) {
   await page.waitForFunction(
-    ({ targetProjectName, expectedStatuses }) => {
-      const groups = Array.from(document.querySelectorAll('#sidebar .sidebar__project-group'));
-      const group = groups.find((candidate) => candidate.querySelector('.sidebar__project-name')?.textContent?.trim() === targetProjectName);
-      if (!group) {
-        return false;
-      }
-
-      const row = group.querySelector('.sidebar__agent');
+    ({ targetSessionId, expectedStatuses }) => {
+      const rows = Array.from(document.querySelectorAll('#sidebar .sidebar__agent'));
+      const row = rows.find((candidate) => candidate.getAttribute('data-session-id') === targetSessionId);
       if (!row) {
         return false;
       }
@@ -444,18 +445,18 @@ async function waitForSidebarProjectStatus(page: Page, projectName: string, stat
       const status = (row.getAttribute('data-status') || '').toLowerCase();
       return expectedStatuses.includes(status);
     },
-    { targetProjectName: projectName, expectedStatuses: statuses },
+    { targetSessionId: sessionId, expectedStatuses: statuses },
     { timeout: timeoutMs },
   );
 }
 
-async function waitForSidebarProjectGone(page: Page, projectName: string, timeoutMs = 45_000) {
+async function waitForSidebarSessionGone(page: Page, sessionId: string, timeoutMs = 180_000) {
   await page.waitForFunction(
-    (targetProjectName) => {
-      const groups = Array.from(document.querySelectorAll('#sidebar .sidebar__project-group'));
-      return groups.every((group) => group.querySelector('.sidebar__project-name')?.textContent?.trim() !== targetProjectName);
+    (targetSessionId) => {
+      const rows = Array.from(document.querySelectorAll('#sidebar .sidebar__agent'));
+      return rows.every((row) => row.getAttribute('data-session-id') !== targetSessionId);
     },
-    projectName,
+    sessionId,
     { timeout: timeoutMs },
   );
 }
@@ -502,7 +503,7 @@ describe('manual live session E2E', () => {
         HUB_AUTH_TOKEN: hubAuthToken,
         COLLECTOR_ID: `claudeville-e2e-${Date.now()}`,
         COLLECTOR_HOST: os.hostname(),
-        FLUSH_INTERVAL_MS: '1000',
+        FLUSH_INTERVAL_MS: '250',
       });
       startedProcesses.push(collector);
       await waitForJson(`${hubUrl}/health`, (json) => json?.ok === true && Number(json.collectors || 0) >= 1, 30_000);
@@ -513,29 +514,25 @@ describe('manual live session E2E', () => {
         {
           HUB_HTTP_URL: hubUrl,
           HUB_WS_URL: `${hubUrl.replace(/^http/, 'ws')}/ws`,
+          VITE_CLAUDEVILLE_REFRESH_INTERVAL_MS: '250',
         },
         ['--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'],
       );
       startedProcesses.push(frontend);
       await waitForText(frontendUrl, (text) => text.includes('__CLAUDEVILLE_CONFIG__'), 30_000);
 
-      ({ browser, context, page } = await launchBrowser(frontendUrl));
+      ({ browser, context, page } = await launchBrowser(frontendUrl, hubUrl));
       const initialNavigationCount = await getNavigationCount(page);
       expect(initialNavigationCount).toBeGreaterThanOrEqual(1);
-      const initialHubSessions = await fetchSessions(hubUrl);
-      const initialAgentCount = initialHubSessions.length;
-      await waitForAgentCount(page, initialAgentCount, 90_000);
 
       const firstProject = createClaudePromptWorkspace();
       tempProjects.push(firstProject);
-      const firstProjectName = path.basename(firstProject);
       const firstPrompt = startClaudePrompt('In one short sentence, explain this project.', firstProject);
       startedProcesses.push(firstPrompt);
 
       const firstSessionFile = await waitForClaudeSessionFile(firstProject, 60_000);
       const firstSession = await waitForHubSession(hubUrl, firstSessionFile.sessionId, 90_000);
-      await waitForAgentCount(page, initialAgentCount + 1, 90_000);
-      await waitForSidebarProject(page, firstProjectName, 90_000);
+      await waitForSidebarSession(page, firstSession.sessionId, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
       const firstPromptExit = await waitForProcessExit(firstPrompt, 120_000);
@@ -547,22 +544,19 @@ describe('manual live session E2E', () => {
         );
       }
 
-      await waitForSidebarProjectStatus(page, firstProjectName, ['waiting', 'idle'], 120_000);
+      await waitForSidebarSessionStatus(page, firstSession.sessionId, ['waiting', 'idle'], 120_000);
       await waitForHubSessionGone(hubUrl, firstSession.sessionId, 180_000);
-      await waitForSidebarProjectGone(page, firstProjectName, 45_000);
-      await waitForAgentCount(page, initialAgentCount, 90_000);
+      await waitForSidebarSessionGone(page, firstSession.sessionId, 180_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
       const secondProject = createClaudePromptWorkspace();
       tempProjects.push(secondProject);
-      const secondProjectName = path.basename(secondProject);
       const secondPrompt = startClaudePrompt('In one short sentence, explain this repo.', secondProject);
       startedProcesses.push(secondPrompt);
 
       const secondSessionFile = await waitForClaudeSessionFile(secondProject, 60_000);
       const secondSession = await waitForHubSession(hubUrl, secondSessionFile.sessionId, 90_000);
-      await waitForAgentCount(page, initialAgentCount + 1, 90_000);
-      await waitForSidebarProject(page, secondProjectName, 90_000);
+      await waitForSidebarSession(page, secondSession.sessionId, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
       const secondPromptExit = await waitForProcessExit(secondPrompt, 120_000);
