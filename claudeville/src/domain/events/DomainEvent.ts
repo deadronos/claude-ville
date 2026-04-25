@@ -6,15 +6,15 @@ class DomainEvent {
         this.listeners = new Map();
     }
 
-    on(event, callback) {
+    on(event: string, callback: (data?: unknown) => void) {
         if (!this.listeners.has(event)) {
             this.listeners.set(event, new Set());
         }
-        this.listeners.get(event).add(callback);
+        this.listeners.get(event)!.add(callback);
         return () => this.off(event, callback);
     }
 
-    off(event, callback) {
+    off(event: string, callback: (data?: unknown) => void) {
         const callbacks = this.listeners.get(event);
         if (callbacks) {
             callbacks.delete(callback);
@@ -24,7 +24,7 @@ class DomainEvent {
         }
     }
 
-    emit(event: string, data?: any) {
+    emit(event: string, data?: unknown) {
         const callbacks = this.listeners.get(event);
         if (callbacks) {
             for (const callback of callbacks) {

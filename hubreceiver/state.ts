@@ -28,7 +28,19 @@ function defaultUsage() {
 
 const collectors = new Map();
 
-function normalizeSnapshot(snapshot) {
+interface SnapshotInput {
+  collectorId?: string;
+  hostName?: string;
+  timestamp?: number | string;
+  sessions?: unknown[];
+  teams?: unknown[];
+  taskGroups?: unknown[];
+  providers?: unknown[];
+  usage?: unknown;
+  sessionDetails?: Record<string, unknown>;
+}
+
+function normalizeSnapshot(snapshot: SnapshotInput) {
   return {
     collectorId: snapshot.collectorId || 'default',
     hostName: snapshot.hostName || 'unknown',
@@ -44,7 +56,7 @@ function normalizeSnapshot(snapshot) {
   };
 }
 
-function applySnapshot(snapshot) {
+function applySnapshot(snapshot: SnapshotInput) {
   const normalized = normalizeSnapshot(snapshot);
   collectors.set(normalized.collectorId, normalized);
   return getCurrentState();
@@ -115,7 +127,7 @@ function getCurrentState() {
   };
 }
 
-function getSessionDetail(sessionId, provider) {
+function getSessionDetail(sessionId: string, provider: string) {
   const key = `${provider}:${sessionId}`;
   return getCurrentState().sessionDetails.get(key) || { toolHistory: [], messages: [], tokenUsage: null, sessionId };
 }

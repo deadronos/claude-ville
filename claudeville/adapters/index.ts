@@ -26,12 +26,12 @@ const adapters = [
 /**
  * Collect sessions from all active adapters
  */
-async function getAllSessions(activeThresholdMs) {
+async function getAllSessions(activeThresholdMs: number) {
   const adapterResults = await Promise.all(adapters.map(async (adapter) => {
     if (!adapter.isAvailable()) return [];
     try {
       const sessions = await adapter.getActiveSessions(activeThresholdMs);
-      return await Promise.all(sessions.map(async (session) => {
+      return await Promise.all(sessions.map(async (session: any) => {
         const detailRaw = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
         const detail = sanitizeSessionDetail(detailRaw || {});
         const tokens = normalizeTokens(detailRaw?.tokenUsage, session.tokens || null);
@@ -47,7 +47,7 @@ async function getAllSessions(activeThresholdMs) {
         };
       }));
     } catch (err) {
-      console.error(`[${adapter.name}] session query failed:`, err.message);
+      console.error(`[${adapter.name}] session query failed:`, err instanceof Error ? err.message : err);
       return [];
     }
   }));
@@ -58,14 +58,14 @@ async function getAllSessions(activeThresholdMs) {
 /**
  * Get session detail for a specific provider
  */
-async function getSessionDetailByProvider(provider, sessionId, project) {
+async function getSessionDetailByProvider(provider: string, sessionId: string, project: string | null) {
   const adapter = adapters.find(a => a.provider === provider);
   if (!adapter) return { toolHistory: [], messages: [] };
   try {
     const detail = await adapter.getSessionDetail(sessionId, project);
     return sanitizeSessionDetail(detail || {});
   } catch (err) {
-    console.error(`[${adapter.name}] session detail query failed:`, err.message);
+    console.error(`[${adapter.name}] session detail query failed:`, err instanceof Error ? err.message : err);
     return { toolHistory: [], messages: [] };
   }
 }

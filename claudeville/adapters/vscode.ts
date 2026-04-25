@@ -19,6 +19,8 @@ const STORAGE_ROOTS = [
   { channel: 'vscode-insiders', workspaceStorageDir: path.join(VSCODE_INSIDERS_USER_DIR, 'workspaceStorage') },
 ];
 
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+
 const DEFAULT_MIN_ACTIVE_WINDOW_MS = 30 * 60 * 1000;
 const MIN_ACTIVE_WINDOW_MS = Math.max(
   60 * 1000,
@@ -31,10 +33,10 @@ const SOURCE_PRIORITY = {
   resource: 1,
 };
 
-function shouldReplaceCandidate(existing, incoming) {
+function shouldReplaceCandidate(existing: { sourceType: string; mtime: number } | null, incoming: { sourceType: string; mtime: number }): boolean {
   if (!existing) return true;
-  const existingPriority = SOURCE_PRIORITY[existing.sourceType] || 0;
-  const incomingPriority = SOURCE_PRIORITY[incoming.sourceType] || 0;
+  const existingPriority = SOURCE_PRIORITY[existing.sourceType as keyof typeof SOURCE_PRIORITY] || 0;
+  const incomingPriority = SOURCE_PRIORITY[incoming.sourceType as keyof typeof SOURCE_PRIORITY] || 0;
 
   if (incomingPriority > existingPriority) return true;
   if (incomingPriority < existingPriority) return false;
@@ -42,19 +44,19 @@ function shouldReplaceCandidate(existing, incoming) {
   return incoming.mtime > existing.mtime;
 }
 
-function summarizeJson(value, maxLength = 80) {
+function summarizeJson(value: unknown, maxLength = 80) {
   if (value === null || value === undefined) return '';
   const raw = typeof value === 'string' ? value : JSON.stringify(value);
   return raw.substring(0, maxLength);
 }
 
-function getResourceSessionRoot(filePath) {
+function getResourceSessionRoot(filePath: string): string | null {
   if (!filePath.endsWith('content.txt')) return null;
   const callDir = path.dirname(filePath);
   return path.dirname(callDir);
 }
 
-async function scanResourceSessionContents(filePath) {
+async function scanResourceSessionContents(filePath: string): Promise<Array<{ callId: string; filePath: string; text: string; ts: number }>> {
   const sessionRoot = getResourceSessionRoot(filePath);
   if (!sessionRoot || !fs.existsSync(sessionRoot)) return [];
 
@@ -62,8 +64,8 @@ async function scanResourceSessionContents(filePath) {
   try {
     const children = await fs.promises.readdir(sessionRoot, { withFileTypes: true });
     const contentRows = await Promise.all(children
-      .filter(d => d.isDirectory())
-      .map(async (dirent) => {
+      .filter((d: Dirent) => d.isDirectory())
+      .map(async (dirent: Dirent) => {
         const contentPath = path.join(sessionRoot, dirent.name, 'content.txt');
         if (!fs.existsSync(contentPath)) return null;
         try {
@@ -90,7 +92,7 @@ async function scanResourceSessionContents(filePath) {
   return entries;
 }
 
-function extractAssistantText(responseRaw) {
+function extractAssistantText(responseRaw: string) {
   if (typeof responseRaw !== 'string' || responseRaw.trim().length === 0) return '';
 
   try {
@@ -115,8 +117,14 @@ function extractAssistantText(responseRaw) {
   return '';
 }
 
-async function parseSession(filePath) {
-  const detail = {
+async function parseSession(filePath: string) {
+  const detail: {
+    model: string | null;
+    lastTool: string | null;
+    lastToolInput: string | null;
+    lastMessage: string | null;
+    tokens: { input: number; output: number } | null;
+  } = {
     model: null,
     lastTool: null,
     lastToolInput: null,
@@ -192,7 +200,7 @@ async function parseSession(filePath) {
   return detail;
 }
 
-async function getToolHistory(filePath, maxItems = 15) {
+async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
 
   if (filePath.endsWith('content.txt')) {
@@ -234,7 +242,7 @@ async function getToolHistory(filePath, maxItems = 15) {
   return tools.slice(-maxItems);
 }
 
-async function getRecentMessages(filePath, maxItems = 5) {
+async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
 
   if (filePath.endsWith('content.txt')) {
@@ -297,7 +305,7 @@ async function getRecentMessages(filePath, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
-async function readWorkspacePath(workspaceDir) {
+async function readWorkspacePath(workspaceDir: string): Promise<string | null> {
   const workspaceFile = path.join(workspaceDir, 'workspace.json');
   if (!fs.existsSync(workspaceFile)) return null;
 
@@ -316,11 +324,11 @@ async function readWorkspacePath(workspaceDir) {
   return null;
 }
 
-function buildSessionId(channel, workspaceId, debugLogId) {
+function buildSessionId(channel: string, workspaceId: string, debugLogId: string) {
   return `vscode:${channel}:${workspaceId}:${debugLogId}`;
 }
 
-function parseSessionId(sessionId) {
+function parseSessionId(sessionId: string): { channel: string; workspaceId: string; debugLogId: string } | null {
   if (!sessionId.startsWith('vscode:')) return null;
   const parts = sessionId.split(':');
   if (parts.length < 4) return null;
@@ -331,7 +339,7 @@ function parseSessionId(sessionId) {
   };
 }
 
-async function scanAllSessions(activeThresholdMs) {
+async function scanAllSessions(activeThresholdMs: number) {
   const now = Date.now();
   const effectiveThresholdMs = Math.max(Number(activeThresholdMs || 0), MIN_ACTIVE_WINDOW_MS);
   const results = [];
@@ -347,8 +355,8 @@ async function scanAllSessions(activeThresholdMs) {
     }
 
     const entries = await Promise.all(workspaceDirs
-      .filter(d => d.isDirectory())
-      .map(async (workspaceDir) => {
+      .filter((d: Dirent) => d.isDirectory())
+      .map(async (workspaceDir: Dirent) => {
         const workspaceId = workspaceDir.name;
         const workspacePath = path.join(root.workspaceStorageDir, workspaceId);
         const copilotChatDir = path.join(workspacePath, 'GitHub.copilot-chat');
@@ -368,8 +376,8 @@ async function scanAllSessions(activeThresholdMs) {
           }
 
           const debugEntries = await Promise.all(debugLogDirs
-            .filter(d => d.isDirectory())
-            .map(async (logDir) => {
+            .filter((d: Dirent) => d.isDirectory())
+            .map(async (logDir: Dirent) => {
               const mainLogFile = path.join(debugLogsDir, logDir.name, 'main.jsonl');
               if (!fs.existsSync(mainLogFile)) return null;
 
@@ -404,8 +412,8 @@ async function scanAllSessions(activeThresholdMs) {
           }
 
           const transcriptEntries = await Promise.all(transcriptFiles
-            .filter(f => f.endsWith('.jsonl'))
-            .map(async (file) => {
+            .filter((f: string) => f.endsWith('.jsonl'))
+            .map(async (file: string) => {
               const transcriptPath = path.join(transcriptsDir, file);
               try {
                 const stat = await fs.promises.stat(transcriptPath);
@@ -439,8 +447,8 @@ async function scanAllSessions(activeThresholdMs) {
           }
 
           const resourceEntries = await Promise.all(sessionDirs
-            .filter(d => d.isDirectory())
-            .map(async (sessionDir) => {
+            .filter((d: Dirent) => d.isDirectory())
+            .map(async (sessionDir: Dirent) => {
               const sessionRoot = path.join(resourcesDir, sessionDir.name);
               let toolDirs = [];
               try {
@@ -449,7 +457,7 @@ async function scanAllSessions(activeThresholdMs) {
                 return null;
               }
 
-              const statPromises = toolDirs.map(async (td) => {
+              const statPromises = toolDirs.map(async (td: Dirent) => {
                 if (!td.isDirectory()) return null;
                 const contentFile = path.join(sessionRoot, td.name, 'content.txt');
                 if (!fs.existsSync(contentFile)) return null;
@@ -515,7 +523,7 @@ class VSCodeAdapter {
     return STORAGE_ROOTS.some(root => fs.existsSync(root.workspaceStorageDir));
   }
 
-  async getActiveSessions(activeThresholdMs) {
+  async getActiveSessions(activeThresholdMs: number) {
     const logs = await scanAllSessions(activeThresholdMs);
     const sessions = await Promise.all(logs.map(async ({ channel, workspaceId, rawSessionId, filePath, project, mtime }) => {
       const detail = await parseSession(filePath);
@@ -540,7 +548,7 @@ class VSCodeAdapter {
     return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  async getSessionDetail(sessionId, project, filePath = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
       return {
         toolHistory: await getToolHistory(filePath),

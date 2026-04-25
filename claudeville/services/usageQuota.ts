@@ -11,7 +11,8 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const https = require('https');
+import * as http from 'http';
+import * as https from 'https';
 
 const CLAUDE_HOME = path.join(require('os').homedir(), '.claude');
 const CREDENTIALS_PATH = path.join(CLAUDE_HOME, '.credentials.json');
@@ -24,7 +25,16 @@ const STATS_TTL = 30_000;         // 30s
 const QUOTA_API_TTL = 5 * 60_000; // 5min
 
 // Cache store
-const cache = {
+interface CredentialsData { subscriptionType: string | null; rateLimitTier: string | null; }
+interface StatsData { today: { messages: number; sessions: number }; thisWeek: { messages: number; sessions: number }; totalSessions: number; totalMessages: number; }
+interface QuotaData { fiveHour: number | null; sevenDay: number | null; }
+
+const cache: {
+  credentials: { data: CredentialsData | null; ts: number };
+  stats: { data: StatsData | null; ts: number };
+  email: string | null;
+  quota: { data: QuotaData | null; ts: number; available: boolean };
+} = {
   credentials: { data: null, ts: 0 },
   stats: { data: null, ts: 0 },
   email: null,
@@ -56,11 +66,12 @@ function readCredentials() {
 // ─── Email (once at server startup) ───────────────────────────────
 
 function fetchEmail() {
-  return new Promise((resolve) => {
-    execFile('claude', ['auth', 'status'], { timeout: 10_000 }, (err, stdout) => {
+  return new Promise<string | null>((resolve) => {
+    execFile('claude', ['auth', 'status'], { timeout: 10_000 }, (err: Error | null, stdout: string | Buffer) => {
       if (err) { resolve(null); return; }
       // Extract "Logged in as user@example.com" pattern
-      const match = stdout.match(/(?:as|email[:\s]+)\s*([^\s]+@[^\s]+)/i);
+      const stdoutStr = typeof stdout === 'string' ? stdout : stdout.toString();
+      const match = stdoutStr.match(/(?:as|email[:\s]+)\s*([^\s]+@[^\s]+)/i);
       cache.email = match ? match[1] : null;
       resolve(cache.email);
     });
@@ -190,9 +201,9 @@ function tryFetchQuota() {
     timeout: 5000,
   };
 
-  const req = https.request(options, (res) => {
+  const req = https.request(options, (res: http.IncomingMessage) => {
     let body = '';
-    res.on('data', chunk => { body += chunk; });
+    res.on('data', (chunk: Buffer | string) => { body += chunk; });
     res.on('end', () => {
       if (res.statusCode === 200) {
         try {

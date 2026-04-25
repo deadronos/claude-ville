@@ -1,25 +1,26 @@
+import { World } from '../../domain/entities/World.js';
 import { eventBus } from '../../domain/events/DomainEvent.js';
 
 export class TopBar {
-    world: any;
-    els: { [key: string]: HTMLElement | null };
-    timeInterval: any;
+    world: World;
+    els: { [key: string]: HTMLElement };
+    timeInterval: ReturnType<typeof setInterval> | null;
     _onUpdate: () => void;
 
-    constructor(world) {
+    constructor(world: World) {
         this.world = world;
         this.els = {
-            time: document.getElementById('statTime'),
-            working: document.getElementById('badgeWorking'),
-            idle: document.getElementById('badgeIdle'),
-            waiting: document.getElementById('badgeWaiting'),
+            time: document.getElementById('statTime') as HTMLElement,
+            working: document.getElementById('badgeWorking') as HTMLElement,
+            idle: document.getElementById('badgeIdle') as HTMLElement,
+            waiting: document.getElementById('badgeWaiting') as HTMLElement,
         };
         this.timeInterval = null;
 
         this._onUpdate = () => this.render();
-        eventBus.on('agent:added', this._onUpdate);
-        eventBus.on('agent:updated', this._onUpdate);
-        eventBus.on('agent:removed', this._onUpdate);
+        eventBus.on('agent:added', this._onUpdate as (data?: unknown) => void);
+        eventBus.on('agent:updated', this._onUpdate as (data?: unknown) => void);
+        eventBus.on('agent:removed', this._onUpdate as (data?: unknown) => void);
 
         this._startTimer();
         this.render();
@@ -27,9 +28,9 @@ export class TopBar {
 
     render() {
         const stats = this.world.getStats();
-        this.els.working.textContent = stats.working;
-        this.els.idle.textContent = stats.idle;
-        this.els.waiting.textContent = stats.waiting;
+        this.els.working.textContent = String(stats.working);
+        this.els.idle.textContent = String(stats.idle);
+        this.els.waiting.textContent = String(stats.waiting);
     }
 
     _startTimer() {

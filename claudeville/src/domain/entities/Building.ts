@@ -9,7 +9,7 @@ export class Building {
     icon: string;
     description: string;
 
-    constructor({ type, x, y, width, height, label, icon, description }) {
+    constructor({ type, x, y, width, height, label, icon, description }: { type: string; x: number; y: number; width: number; height: number; label: string; icon: string; description: string }) {
         this.type = type;
         this.position = new Position(x, y);
         this.width = width || 4;
@@ -19,7 +19,7 @@ export class Building {
         this.description = description;
     }
 
-    containsPoint(tileX, tileY) {
+    containsPoint(tileX: number, tileY: number) {
         return tileX >= this.position.tileX &&
                tileX < this.position.tileX + this.width &&
                tileY >= this.position.tileY &&

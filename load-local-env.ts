@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-function unquote(value, quote) {
+function unquote(value: string, quote: string): string {
   if (quote === '"') {
     return value
       .replace(/\\n/g, '\n')
@@ -20,7 +20,7 @@ function unquote(value, quote) {
   return value;
 }
 
-function parseLine(line) {
+function parseLine(line: string): { key: string; value: string } | null {
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith('#')) return null;
 

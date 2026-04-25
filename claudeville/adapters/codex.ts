@@ -16,6 +16,9 @@ const { readLines, parseJsonLines } = require('./jsonl-utils');
 const CODEX_DIR = path.join(os.homedir(), '.codex');
 const SESSIONS_DIR = path.join(CODEX_DIR, 'sessions');
 
+// Type for directory entries from readdirSync with withFileTypes: true
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+
 // ─── Utility ─────────────────────────────────────────────
 
 // ─── Rollout parsing ──────────────────────────────────────
@@ -24,8 +27,14 @@ const SESSIONS_DIR = path.join(CODEX_DIR, 'sessions');
  * Extract session meta/tools/messages from Codex rollout JSONL
  * Actual format: all data is inside entry.payload
  */
-async function parseRollout(filePath) {
-  const detail = {
+async function parseRollout(filePath: string) {
+  const detail: {
+    model: string | null;
+    project: string | null;
+    lastTool: string | null;
+    lastToolInput: string | null;
+    lastMessage: string | null;
+  } = {
     model: null,
     project: null,
     lastTool: null,
@@ -101,7 +110,7 @@ async function parseRollout(filePath) {
 /**
  * Extract tool history from Codex rollout
  */
-async function getToolHistory(filePath, maxItems = 15) {
+async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 100 });
@@ -134,7 +143,7 @@ async function getToolHistory(filePath, maxItems = 15) {
 /**
  * Extract recent messages from Codex rollout
  */
-async function getRecentMessages(filePath, maxItems = 5) {
+async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 60 });
@@ -176,8 +185,9 @@ async function getRecentMessages(filePath, maxItems = 5) {
 /**
  * Scan rollout files from recent date directories
  */
-async function scanRecentRollouts(activeThresholdMs) {
-  const results = [];
+async function scanRecentRollouts(activeThresholdMs: number) {
+  type ScanResult = { filePath: string; mtime: number; fileName: string };
+  const results: ScanResult[] = [];
   if (!fs.existsSync(SESSIONS_DIR)) return results;
 
   const now = Date.now();
@@ -185,38 +195,38 @@ async function scanRecentRollouts(activeThresholdMs) {
   try {
     // Iterate YYYY directories
     const years = (await fs.promises.readdir(SESSIONS_DIR, { withFileTypes: true }))
-      .filter(d => d.isDirectory())
-      .map(d => d.name)
+      .filter((d: Dirent) => d.isDirectory())
+      .map((d: Dirent) => d.name)
       .sort()
       .reverse()
       .slice(0, 2); // Last 2 years only
 
-    const yearResults = await Promise.all(years.map(async (year) => {
+    const yearResults = await Promise.all(years.map(async (year: string) => {
       const yearDir = path.join(SESSIONS_DIR, year);
       try {
         const months = (await fs.promises.readdir(yearDir, { withFileTypes: true }))
-          .filter(d => d.isDirectory())
-          .map(d => d.name)
+          .filter((d: Dirent) => d.isDirectory())
+          .map((d: Dirent) => d.name)
           .sort()
           .reverse()
           .slice(0, 2); // Last 2 months only
 
-        const monthResults = await Promise.all(months.map(async (month) => {
+        const monthResults = await Promise.all(months.map(async (month: string) => {
           const monthDir = path.join(yearDir, month);
           try {
             const days = (await fs.promises.readdir(monthDir, { withFileTypes: true }))
-              .filter(d => d.isDirectory())
-              .map(d => d.name)
+              .filter((d: Dirent) => d.isDirectory())
+              .map((d: Dirent) => d.name)
               .sort()
               .reverse()
               .slice(0, 3); // Last 3 days only
 
-            const dayResults = await Promise.all(days.map(async (day) => {
+            const dayResults = await Promise.all(days.map(async (day: string) => {
               const dayDir = path.join(monthDir, day);
               try {
                 const rolloutFiles = (await fs.promises.readdir(dayDir))
-                  .filter(f => f.startsWith('rollout-') && f.endsWith('.jsonl'));
-                const fileResults = await Promise.all(rolloutFiles.map(async (file) => {
+                  .filter((f: string) => f.startsWith('rollout-') && f.endsWith('.jsonl'));
+                const fileResults = await Promise.all(rolloutFiles.map(async (file: string) => {
                   const filePath = path.join(dayDir, file);
                   try {
                     const stat = await fs.promises.stat(filePath);
@@ -263,7 +273,7 @@ class CodexAdapter {
     return fs.existsSync(CODEX_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs) {
+  async getActiveSessions(activeThresholdMs: number) {
     const rollouts = await scanRecentRollouts(activeThresholdMs);
     const sessions = await Promise.all(rollouts.map(async ({ filePath, mtime, fileName }) => {
       const detail = await parseRollout(filePath);
@@ -290,7 +300,7 @@ class CodexAdapter {
     return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  async getSessionDetail(sessionId, project, filePath = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
       return {
         toolHistory: await getToolHistory(filePath),

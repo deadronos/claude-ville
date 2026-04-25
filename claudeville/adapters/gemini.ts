@@ -24,6 +24,9 @@ const crypto = require('crypto');
 const GEMINI_DIR = path.join(os.homedir(), '.gemini');
 const TMP_DIR = path.join(GEMINI_DIR, 'tmp');
 
+// Type for directory entries from readdirSync with withFileTypes: true
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+
 // ─── Project path restoration ──────────────────────────────
 
 /**
@@ -32,11 +35,11 @@ const TMP_DIR = path.join(GEMINI_DIR, 'tmp');
  */
 const _hashToPathCache = new Map();
 
-function sha256(str) {
+function sha256(str: string) {
   return crypto.createHash('sha256').update(str).digest('hex');
 }
 
-function resolveProjectPath(projectHash) {
+function resolveProjectPath(projectHash: string) {
   // Check cache
   if (_hashToPathCache.has(projectHash)) {
     return _hashToPathCache.get(projectHash);
@@ -62,7 +65,7 @@ function resolveProjectPath(projectHash) {
     try {
       if (fs.existsSync(fullPath)) {
         const subdirs = fs.readdirSync(fullPath, { withFileTypes: true })
-          .filter(d => d.isDirectory() && !d.name.startsWith('.'))
+          .filter((d: Dirent) => d.isDirectory() && !d.name.startsWith('.'))
           .slice(0, 50); // Limit if too many
         for (const sub of subdirs) {
           const subPath = path.join(fullPath, sub.name);
@@ -98,7 +101,7 @@ function resolveProjectPath(projectHash) {
 
 // ─── Session parsing ────────────────────────────────────────
 
-async function readJsonFile(filePath) {
+async function readJsonFile(filePath: string) {
   try {
     const content = await fs.promises.readFile(filePath, 'utf-8');
     return JSON.parse(content);
@@ -111,8 +114,13 @@ async function readJsonFile(filePath) {
  * Extract model/tools/messages from Gemini session JSON
  * Actual format: {sessionId, projectHash, messages: [{type, content, model, ...}]}
  */
-async function parseSession(filePath) {
-  const detail = {
+async function parseSession(filePath: string) {
+  const detail: {
+    model: string | null;
+    lastTool: string | null;
+    lastToolInput: string | null;
+    lastMessage: string | null;
+  } = {
     model: null,
     lastTool: null,
     lastToolInput: null,
@@ -180,8 +188,9 @@ async function parseSession(filePath) {
 /**
  * Extract tool history from Gemini session
  */
-async function getToolHistory(filePath, maxItems = 15) {
-  const tools = [];
+async function getToolHistory(filePath: string, maxItems = 15) {
+  type ToolEntry = { tool: string; detail: string; ts: number };
+  const tools: ToolEntry[] = [];
   try {
     const session = await readJsonFile(filePath);
     if (!session) return tools;
@@ -228,8 +237,9 @@ async function getToolHistory(filePath, maxItems = 15) {
 /**
  * Extract recent messages from Gemini session
  */
-async function getRecentMessages(filePath, maxItems = 5) {
-  const msgList = [];
+async function getRecentMessages(filePath: string, maxItems = 5) {
+  type MsgEntry = { role: string; text: string; ts: number };
+  const msgList: MsgEntry[] = [];
   try {
     const session = await readJsonFile(filePath);
     if (!session) return msgList;
@@ -256,23 +266,24 @@ async function getRecentMessages(filePath, maxItems = 5) {
  * Scan active session files
  * ~/.gemini/tmp/<project_hash>/chats/session-*.json
  */
-async function scanActiveSessions(activeThresholdMs) {
-  const results = [];
+async function scanActiveSessions(activeThresholdMs: number) {
+  type ScanResult = { filePath: string; mtime: number; fileName: string; projectHash: string };
+  const results: ScanResult[] = [];
   if (!fs.existsSync(TMP_DIR)) return results;
 
   const now = Date.now();
 
   try {
     const projectDirs = (await fs.promises.readdir(TMP_DIR, { withFileTypes: true }))
-      .filter(d => d.isDirectory());
-    const projectResults = await Promise.all(projectDirs.map(async (projDir) => {
+      .filter((d: Dirent) => d.isDirectory());
+    const projectResults = await Promise.all(projectDirs.map(async (projDir: Dirent) => {
       const chatsDir = path.join(TMP_DIR, projDir.name, 'chats');
       if (!fs.existsSync(chatsDir)) return [];
 
       try {
         const sessionFiles = await fs.promises.readdir(chatsDir);
-        const jsonFiles = sessionFiles.filter(f => f.startsWith('session-') && f.endsWith('.json'));
-        const fileResults = await Promise.all(jsonFiles.map(async (file) => {
+        const jsonFiles = sessionFiles.filter((f: string) => f.startsWith('session-') && f.endsWith('.json'));
+        const fileResults = await Promise.all(jsonFiles.map(async (file: string) => {
           const filePath = path.join(chatsDir, file);
           try {
             const stat = await fs.promises.stat(filePath);
@@ -312,7 +323,7 @@ class GeminiAdapter {
     return fs.existsSync(GEMINI_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs) {
+  async getActiveSessions(activeThresholdMs: number) {
     const sessionFiles = await scanActiveSessions(activeThresholdMs);
     const sessions = await Promise.all(sessionFiles.map(async ({ filePath, mtime, fileName, projectHash }) => {
       const detail = await parseSession(filePath);
@@ -339,7 +350,7 @@ class GeminiAdapter {
     return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  async getSessionDetail(sessionId, project, filePath = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
       return {
         toolHistory: await getToolHistory(filePath),
@@ -370,7 +381,7 @@ class GeminiAdapter {
     if (fs.existsSync(TMP_DIR)) {
       try {
         const projDirs = fs.readdirSync(TMP_DIR, { withFileTypes: true })
-          .filter(d => d.isDirectory());
+          .filter((d: Dirent) => d.isDirectory());
         for (const dir of projDirs) {
           const chatsDir = path.join(TMP_DIR, dir.name, 'chats');
           if (fs.existsSync(chatsDir)) {

@@ -2,9 +2,9 @@ import { DEFAULT_AGENT_NAME_POOL, DEFAULT_SESSION_NAME_POOL, toList } from '../.
 import { Appearance } from '../domain/value-objects/Appearance.js';
 import { getRuntimeConfig } from './runtime.js';
 
-const DEFAULT_AGENT_NAME_POOLS = {
-  agent: DEFAULT_AGENT_NAME_POOL,
-  session: DEFAULT_SESSION_NAME_POOL,
+const DEFAULT_AGENT_NAME_POOLS: { agent: string[]; session: string[] } = {
+    agent: DEFAULT_AGENT_NAME_POOL,
+    session: DEFAULT_SESSION_NAME_POOL,
 };
 
 function normalizeNamePools(rawPools: Record<string, unknown> = {}) {
@@ -25,7 +25,7 @@ function getNamePools() {
     });
 }
 
-function isRawIdentifier(value) {
+function isRawIdentifier(value: unknown): boolean {
     if (!value) return false;
     const text = String(value).trim();
     if (text.length < 16) return false;
@@ -36,48 +36,53 @@ function isRawIdentifier(value) {
     return text.length >= 24;
 }
 
-export function generateAgentDisplayName(seed, kind = 'agent') {
+export function generateAgentDisplayName(seed: string | undefined, kind: string = 'agent') {
     const pools = getNamePools();
     const hash = Appearance.hashCode(String(seed || 'agent'));
-    const pool = pools[kind] || pools.agent;
+    const pool = (pools as any)[kind] || pools.agent;
     return pool[Math.abs(hash) % pool.length];
 }
 
-function getStoredNameMode() {
+function getStoredNameMode(): string | null {
     if (typeof window === 'undefined' || !window.localStorage) return null;
     return window.localStorage.getItem('claudeville-name-mode');
 }
 
-export function getNameMode(provider = null) {
+export function getNameMode(provider: string | null = null): string {
     const runtime = getRuntimeConfig();
-    const providerMode = provider && runtime.providerNameModes ? runtime.providerNameModes[provider] : null;
+    const providerModes = runtime.providerNameModes as Record<string, string> | undefined;
+    const providerMode = provider && providerModes ? providerModes[provider] : null;
     if (providerMode) return providerMode;
-    return getStoredNameMode() || runtime.nameMode || 'autodetected';
+    return getStoredNameMode() || (runtime.nameMode as string) || 'autodetected';
 }
 
-export function setNameMode(mode) {
+export function setNameMode(mode: string) {
     if (typeof window === 'undefined' || !window.localStorage) return;
     const nextMode = mode === 'pooled' ? 'pooled' : 'autodetected';
     window.localStorage.setItem('claudeville-name-mode', nextMode);
 }
 
-function abbreviateIdentifier(value) {
+function abbreviateIdentifier(value: string) {
     const text = String(value || '').trim();
     if (!text) return '';
     if (text.length <= 12) return text;
     return `${text.slice(0, 8)}…${text.slice(-3)}`;
 }
 
-function getNameKind(session, teamInfo) {
+interface TeamInfo {
+    name?: string;
+}
+
+function getNameKind(session: { agentId?: string; agentType?: string }, teamInfo: TeamInfo | null) {
     if (teamInfo?.name) return 'agent';
     if (session.agentId) return 'agent';
     if (session.agentType && session.agentType !== 'main') return 'agent';
     return 'session';
 }
 
-export function resolveAgentDisplayName(session, teamInfo = null) {
+export function resolveAgentDisplayName(session: { provider?: string; agentId?: string; sessionId?: string; displayName?: string; agentName?: string }, teamInfo: TeamInfo | null = null) {
     const provider = session.provider || 'unknown';
-    const candidate = teamInfo?.name || session.displayName || session.agentName || null;
+    const candidate: string | null = teamInfo?.name || session.displayName || session.agentName || null;
     const nameKind = getNameKind(session, teamInfo);
     const nameSeed = session.agentId || session.sessionId || candidate || 'agent';
     const mode = getNameMode(provider);

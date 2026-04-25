@@ -213,6 +213,26 @@ function formatToolLabel(toolName: string) {
     return toolName;
 }
 
+interface AgentParams {
+    id: string;
+    name?: string | null;
+    nameSeed?: string | null;
+    nameKind?: string;
+    nameMode?: string;
+    nameHint?: string | null;
+    model?: string;
+    status?: AgentStatusType;
+    role?: string;
+    tokens?: { input: number; output: number };
+    messages?: unknown[];
+    teamName?: string | null;
+    projectPath?: string | null;
+    lastTool?: string | null;
+    lastToolInput?: string | null;
+    lastMessage?: string | null;
+    provider?: string;
+}
+
 export class Agent {
     id: string;
     nameSeed: string;
@@ -224,7 +244,7 @@ export class Agent {
     status: AgentStatusType;
     role: string;
     tokens: { input: number; output: number };
-    messages: any[];
+    messages: unknown[];
     teamName: string | null;
     projectPath: string | null;
     provider: string;
@@ -237,7 +257,7 @@ export class Agent {
     walkFrame: number;
     lastActive: number;
 
-    constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }) {
+    constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }: AgentParams) {
         this.id = id;
         this.nameSeed = nameSeed || id;
         this.nameKind = nameKind;
@@ -249,8 +269,8 @@ export class Agent {
         this.role = role || 'general';
         this.tokens = tokens || { input: 0, output: 0 };
         this.messages = messages || [];
-        this.teamName = teamName;
-        this.projectPath = projectPath;
+        this.teamName = teamName ?? null;
+        this.projectPath = projectPath ?? null;
         this.provider = provider || 'claude';
         this.currentTool = lastTool || null;
         this.currentToolInput = lastToolInput || null;
@@ -284,8 +304,8 @@ export class Agent {
             return last;
         }
 
-        if (last && typeof last === 'object' && typeof last.text === 'string') {
-            return last.text;
+        if (last && typeof last === 'object' && typeof (last as { text?: string }).text === 'string') {
+            return (last as { text: string }).text;
         }
 
         return null;
@@ -295,8 +315,8 @@ export class Agent {
         return {
             sessionId: this.id,
             agentId: this.nameKind === 'agent' ? this.nameSeed : null,
-            displayName: this.nameHint,
-            agentName: this.nameHint,
+            displayName: this.nameHint ?? null,
+            agentName: this.nameHint ?? null,
             provider: this.provider,
             agentType: this.nameKind === 'agent' ? 'sub-agent' : 'main',
         };
@@ -307,7 +327,7 @@ export class Agent {
      */
     get targetBuildingType() {
         if (!this.currentTool) return null;
-        const toolMap = {
+        const toolMap: Record<string, string> = {
             'Read': 'chathall', 'Grep': 'chathall', 'Glob': 'chathall', 'WebSearch': 'chathall', 'WebFetch': 'chathall',
             'Edit': 'forge', 'Write': 'forge', 'NotebookEdit': 'forge',
             'Bash': 'mine', 'mcp__playwright__browser_navigate': 'mine', 'mcp__playwright__browser_take_screenshot': 'mine',
@@ -332,15 +352,15 @@ export class Agent {
     }
 
     generateName() {
-        return resolveAgentDisplayName(this._buildDisplaySession(), this.teamName ? { name: this.teamName } : null).name;
+        return (resolveAgentDisplayName(this._buildDisplaySession(), this.teamName ? { name: this.teamName } : null) as { name: string; nameSeed: string; nameKind: string; nameMode: string; nameHint: string | null }).name;
     }
 
-    static generateNameForSeed(seed) {
+    static generateNameForSeed(seed: string) {
         return generateAgentDisplayName(seed);
     }
 
     regenerateName() {
-        const resolved = resolveAgentDisplayName(this._buildDisplaySession(), this.teamName ? { name: this.teamName } : null);
+        const resolved = resolveAgentDisplayName(this._buildDisplaySession(), this.teamName ? { name: this.teamName } : null) as { name: string; nameSeed: string; nameKind: string; nameMode: string; nameHint: string | null };
         this.name = resolved.name;
         this.nameSeed = resolved.nameSeed;
         this.nameKind = resolved.nameKind;
@@ -349,7 +369,7 @@ export class Agent {
         return this.name;
     }
 
-    update(data) {
+    update(data: Partial<Agent>) {
         Object.assign(this, data);
         this.lastActive = Date.now();
     }
