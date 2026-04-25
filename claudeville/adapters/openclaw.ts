@@ -7,16 +7,18 @@
  *   {"type":"model_change","provider":"github-copilot","modelId":"gpt-5-mini",...}
  *   {"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"..."}],"model":"...","usage":{...}},...}
  */
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 
 const OPENCLAW_DIR = path.join(os.homedir(), '.openclaw');
 const AGENTS_DIR = path.join(OPENCLAW_DIR, 'agents');
 
 // Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Utility ─────────────────────────────────────────────
 
@@ -257,7 +259,7 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<OpenClawS
 
 // ─── Adapter class ─────────────────────────────────────
 
-class OpenClawAdapter {
+export class OpenClawAdapter implements AgentAdapter {
   get name() { return 'OpenClaw'; }
   get provider() { return 'openclaw'; }
   get homeDir() { return OPENCLAW_DIR; }
@@ -321,8 +323,8 @@ class OpenClawAdapter {
     return { toolHistory: [], messages: [] };
   }
 
-  getWatchPaths(): Array<{ type: string; path: string; recursive?: boolean; filter?: string }> {
-    const paths: Array<{ type: string; path: string; recursive?: boolean; filter?: string }> = [];
+  getWatchPaths(): WatchPath[] {
+    const paths: WatchPath[] = [];
     if (!fs.existsSync(AGENTS_DIR)) return paths;
 
     try {
@@ -342,5 +344,3 @@ class OpenClawAdapter {
     return paths;
   }
 }
-
-module.exports = { OpenClawAdapter };

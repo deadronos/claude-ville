@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 function unquote(value: string, quote: string): string {
   if (quote === '"') {
@@ -42,7 +42,7 @@ function parseLine(line: string): { key: string; value: string } | null {
   return { key, value: rawValue };
 }
 
-function loadLocalEnv(filePath = path.join(__dirname, '.env.local')) {
+export function loadLocalEnv(filePath = path.join(process.cwd(), '.env.local')) {
   if (!fs.existsSync(filePath)) return false;
 
   const contents = fs.readFileSync(filePath, 'utf8');
@@ -59,4 +59,4 @@ function loadLocalEnv(filePath = path.join(__dirname, '.env.local')) {
 
 loadLocalEnv();
 
-module.exports = loadLocalEnv;
+export default loadLocalEnv;

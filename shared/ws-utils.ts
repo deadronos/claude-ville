@@ -5,9 +5,9 @@
  * ping/pong + frame-issue tracking is preserved.
  */
 
-const crypto = require('crypto');
+import crypto from 'crypto';
 
-const WS_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+export const WS_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 /**
  * Build a WebSocket frame for the given data.
@@ -15,7 +15,7 @@ const WS_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
  * @param {number} opcode - 0x1 = text, 0x8 = close, 0x9 = ping, 0xA = pong
  * @returns {Buffer}
  */
-function createWebSocketFrame(data: string | Buffer, opcode: number = 0x1) {
+export function createWebSocketFrame(data: string | Buffer, opcode: number = 0x1) {
   const payload = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf-8');
   const length = payload.length;
 
@@ -40,10 +40,8 @@ function createWebSocketFrame(data: string | Buffer, opcode: number = 0x1) {
 }
 
 /** Compute the Sec-WebSocket-Accept key for an upgrade response. */
-function computeAcceptKey(websocketKey: string) {
+export function computeAcceptKey(websocketKey: string) {
   return crypto.createHash('sha1')
     .update(websocketKey + WS_MAGIC_STRING)
     .digest('base64');
 }
-
-module.exports = { createWebSocketFrame, computeAcceptKey, WS_MAGIC_STRING };

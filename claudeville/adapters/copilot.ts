@@ -10,16 +10,18 @@
  *   {"type":"user.message","data":{"content":"..."}}
  *   {"type":"assistant.message","data":{"content":[{"type":"text","text":"..."}],...}}
  */
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 
 const COPILOT_DIR = path.join(os.homedir(), '.copilot');
 const SESSION_STATE_DIR = path.join(COPILOT_DIR, 'session-state');
 
 // Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Utility ─────────────────────────────────────────────
 
@@ -199,7 +201,7 @@ async function scanAllSessions(activeThresholdMs: number) {
   try {
     const sessionDirs = (await fs.promises.readdir(SESSION_STATE_DIR, { withFileTypes: true }))
       .filter((d: Dirent) => d.isDirectory());
-    const dirResults = await Promise.all(sessionDirs.map(async (sessionDir: Dirent) => {
+    const dirResults = await Promise.all(sessionDirs.map(async (sessionDir: Dirent): Promise<ScanResult | null> => {
       const eventsFile = path.join(SESSION_STATE_DIR, sessionDir.name, 'events.jsonl');
       if (!fs.existsSync(eventsFile)) return null;
 
@@ -217,7 +219,7 @@ async function scanAllSessions(activeThresholdMs: number) {
       }
     }));
 
-    results.push(...dirResults.filter(Boolean));
+    results.push(...dirResults.filter((result): result is ScanResult => result !== null));
   } catch (err) {
     debugAdapterError('copilot', 'scanAllSessions', err, SESSION_STATE_DIR);
   }
@@ -227,7 +229,7 @@ async function scanAllSessions(activeThresholdMs: number) {
 
 // ─── Adapter class ─────────────────────────────────────
 
-class CopilotAdapter {
+export class CopilotAdapter implements AgentAdapter {
   get name() { return 'GitHub Copilot'; }
   get provider() { return 'copilot'; }
   get homeDir() { return COPILOT_DIR; }
@@ -284,12 +286,10 @@ class CopilotAdapter {
     return { toolHistory: [], messages: [] };
   }
 
-  getWatchPaths() {
+  getWatchPaths(): WatchPath[] {
     if (fs.existsSync(SESSION_STATE_DIR)) {
       return [{ type: 'directory', path: SESSION_STATE_DIR, recursive: true, filter: 'events.jsonl' }];
     }
     return [];
   }
 }
-
-module.exports = { CopilotAdapter };

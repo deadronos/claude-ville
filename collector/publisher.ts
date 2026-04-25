@@ -1,10 +1,12 @@
+import crypto from 'crypto';
+
 const FLUSH_DELAY_MS = 100;
 
 interface SnapshotWithSessions {
   sessions: Array<unknown>;
 }
 
-export function computeSnapshotFingerprint(snapshot: object, createHash: (algorithm: string) => { update: (data: string) => { digest: (format: string) => string }; digest: (format: string) => string }): string {
+export function computeSnapshotFingerprint(snapshot: object, createHash: typeof crypto.createHash): string {
   return createHash('sha1').update(JSON.stringify(snapshot)).digest('hex');
 }
 
@@ -23,7 +25,7 @@ export async function sendCollectorSnapshot(snapshot: object, config: { hubUrl: 
   }
 }
 
-export function createCollectorPublisher(deps: { createHash: (algorithm: string) => { update: (data: string) => { digest: (format: string) => string }; digest: (format: string) => string }; fetch: (url: string, options: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; statusText: string }>; console: { log: (...args: unknown[]) => void; error: (...args: unknown[]) => void }; setTimeout: typeof setTimeout; clearTimeout: typeof clearTimeout }, config: { hubUrl: string; hubAuthToken: string }, buildSnapshot: () => Promise<SnapshotWithSessions>): {
+export function createCollectorPublisher(deps: { createHash: typeof crypto.createHash; fetch: (url: string, options: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; statusText: string }>; console: { log: (...args: unknown[]) => void; error: (...args: unknown[]) => void }; setTimeout: typeof setTimeout; clearTimeout: typeof clearTimeout }, config: { hubUrl: string; hubAuthToken: string }, buildSnapshot: () => Promise<SnapshotWithSessions>): {
   publishSnapshot: () => Promise<void>;
   scheduleFlush: () => void;
   clearFlushTimer: () => void;

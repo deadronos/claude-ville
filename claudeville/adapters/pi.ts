@@ -8,21 +8,23 @@
  *   {"type":"message","message":{"role":"user","content":[{"type":"text","text":"..."}]}}
  *   {"type":"message","message":{"role":"assistant","content":[{"type":"toolCall","name":"bash","arguments":{...}}],"usage":{...}}}
  */
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 
 const PI_DIR = path.join(os.homedir(), '.pi');
 const SESSIONS_DIR = path.join(PI_DIR, 'agent', 'sessions');
 
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Utility ─────────────────────────────────────────────
 
 // ─── Session parsing ──────────────────────────────────────
 
-async function parseSession(filePath: string) {
+export async function parseSession(filePath: string) {
   const detail: {
     model: string | null;
     provider: string | null;
@@ -202,7 +204,7 @@ function parseSessionId(sessionId: string) {
   };
 }
 
-function projectDirToPath(projectDir: string) {
+export function projectDirToPath(projectDir: string) {
   // Convert --Users-openclaw-Github-claude-ville-- back to /Users/openclaw/Github/claude-ville
   return projectDir
     .replace(/^--/, '/')
@@ -210,7 +212,7 @@ function projectDirToPath(projectDir: string) {
     .replace(/-/g, '/');
 }
 
-function resolveProjectPath(detail: { project: string | null }, projectDir: string) {
+export function resolveProjectPath(detail: { project: string | null }, projectDir: string) {
   return detail.project || projectDirToPath(projectDir);
 }
 
@@ -273,7 +275,7 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResul
 
 // ─── Adapter class ─────────────────────────────────────
 
-class PiAdapter {
+export class PiAdapter implements AgentAdapter {
   get name() { return 'Pi Coding Agent'; }
   get provider() { return 'pi'; }
   get homeDir() { return PI_DIR; }
@@ -338,8 +340,8 @@ class PiAdapter {
     return { toolHistory: [], messages: [] };
   }
 
-  getWatchPaths(): Array<{ type: string; path: string; recursive?: boolean; filter?: string }> {
-    const paths: Array<{ type: string; path: string; recursive?: boolean; filter?: string }> = [];
+  getWatchPaths(): WatchPath[] {
+    const paths: WatchPath[] = [];
     if (!fs.existsSync(SESSIONS_DIR)) return paths;
 
     try {
@@ -351,5 +353,3 @@ class PiAdapter {
     return paths;
   }
 }
-
-module.exports = { PiAdapter, parseSession, projectDirToPath, resolveProjectPath };

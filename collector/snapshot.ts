@@ -30,7 +30,7 @@ export type CollectorSnapshotConfig = {
 
 export type CollectorSnapshotDeps = {
   getAllSessions: (activeThresholdMs: number) => Promise<SessionSummary[]>;
-  getSessionDetailByProvider: (provider: string, sessionId: string, project?: string) => Promise<SessionDetail | null>;
+  getSessionDetailByProvider: (provider: string, sessionId: string, project: string | null) => Promise<SessionDetail | null>;
   getActiveProviders: () => unknown[];
   claudeAdapter?: {
     getTeams?: () => Promise<unknown[]> | unknown[];
@@ -55,7 +55,7 @@ export async function buildCollectorSnapshot(deps: CollectorSnapshotDeps, config
 
   const activeSessions = await deps.getAllSessions(config.activeThresholdMs);
   for (const session of activeSessions) {
-    const detail = session.detail || await deps.getSessionDetailByProvider(session.provider, session.sessionId, session.project);
+    const detail = session.detail || await deps.getSessionDetailByProvider(session.provider, session.sessionId, session.project ?? null);
     const normalized = normalizeSession(session, detail);
     normalizedSessions.push(normalized);
 

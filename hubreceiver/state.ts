@@ -3,7 +3,7 @@
  * CollectorSnapshot shape is compatible with shared/types.ts CollectorSnapshot.
  */
 
-function defaultUsage() {
+export function defaultUsage() {
   return {
     account: {
       subscriptionType: null,
@@ -56,13 +56,13 @@ function normalizeSnapshot(snapshot: SnapshotInput) {
   };
 }
 
-function applySnapshot(snapshot: SnapshotInput) {
+export function applySnapshot(snapshot: SnapshotInput) {
   const normalized = normalizeSnapshot(snapshot);
   collectors.set(normalized.collectorId, normalized);
   return getCurrentState();
 }
 
-function getCurrentState() {
+export function getCurrentState() {
   const sessionMap = new Map();
   const teamMap = new Map();
   const taskMap = new Map();
@@ -127,12 +127,12 @@ function getCurrentState() {
   };
 }
 
-function getSessionDetail(sessionId: string, provider: string) {
+export function getSessionDetail(sessionId: string, provider: string) {
   const key = `${provider}:${sessionId}`;
   return getCurrentState().sessionDetails.get(key) || { toolHistory: [], messages: [], tokenUsage: null, sessionId };
 }
 
-function getHistory(limit = 100) {
+export function getHistory(limit = 100) {
   const entries = [];
   for (const [key, detail] of getCurrentState().sessionDetails.entries()) {
     const [provider, sessionId] = key.split(':');
@@ -149,11 +149,3 @@ function getHistory(limit = 100) {
   entries.sort((a, b) => a.ts - b.ts);
   return entries.slice(-limit);
 }
-
-module.exports = {
-  applySnapshot,
-  getCurrentState,
-  getSessionDetail,
-  getHistory,
-  defaultUsage,
-};

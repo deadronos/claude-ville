@@ -11,7 +11,7 @@
  * @param {{ input?: number, output?: number }|null} fallbackTokens
  * @returns {{ input: number, output: number }}
  */
-function normalizeTokens(tokenUsage, fallbackTokens = null) {
+export function normalizeTokens(tokenUsage, fallbackTokens = null) {
   if (tokenUsage) {
     return {
       input: Number(tokenUsage.totalInput || tokenUsage.input || 0),
@@ -27,10 +27,8 @@ function normalizeTokens(tokenUsage, fallbackTokens = null) {
  * @param {object} detailRaw
  * @returns {{ tokenUsage: object|null, tokens: { input: number, output: number } }}
  */
-function normalizeSessionTokens(session, detailRaw) {
+export function normalizeSessionTokens(session, detailRaw) {
   const tokenUsage = detailRaw?.tokenUsage || null;
   const tokens = normalizeTokens(tokenUsage, session.tokens || null);
   return { tokenUsage, tokens };
 }
-
-module.exports = { normalizeTokens, normalizeSessionTokens };

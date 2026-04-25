@@ -8,13 +8,14 @@
  *   D) api.anthropic.com/api/oauth/usage → 5h/7d quota (currently unavailable, periodic retries)
  */
 
-const fs = require('fs');
-const path = require('path');
-const { execFile } = require('child_process');
+import fs from 'fs';
+import path from 'path';
+import { execFile } from 'child_process';
+import os from 'os';
 import * as http from 'http';
 import * as https from 'https';
 
-const CLAUDE_HOME = path.join(require('os').homedir(), '.claude');
+const CLAUDE_HOME = path.join(os.homedir(), '.claude');
 const CREDENTIALS_PATH = path.join(CLAUDE_HOME, '.credentials.json');
 const STATS_CACHE_PATH = path.join(CLAUDE_HOME, 'stats-cache.json');
 const HISTORY_PATH = path.join(CLAUDE_HOME, 'history.jsonl');
@@ -226,7 +227,7 @@ function tryFetchQuota() {
 
 // ─── Public API ────────────────────────────────────────────────
 
-function fetchUsage() {
+export function fetchUsage() {
   const credentials = readCredentials();
   const stats = readStats();
 
@@ -254,7 +255,7 @@ function fetchUsage() {
   };
 }
 
-function init() {
+export function init() {
   // Fetch email at server start (async)
   fetchEmail().then(email => {
     if (email) console.log(`[Usage] account: ${email}`);
@@ -264,5 +265,3 @@ function init() {
   // Initial quota API attempt
   tryFetchQuota();
 }
-
-module.exports = { fetchUsage, init };

@@ -1,16 +1,16 @@
-const { DEFAULT_AGENT_NAME_POOL, DEFAULT_SESSION_NAME_POOL, toList } = require('./shared/name-pools');
+import { DEFAULT_AGENT_NAME_POOL, DEFAULT_SESSION_NAME_POOL, toList } from './shared/name-pools.js';
 
-function normalizeAgentNamePool(rawPool = '') {
+export function normalizeAgentNamePool(rawPool = '') {
   const pool = toList(rawPool);
   return pool.length > 0 ? pool : DEFAULT_AGENT_NAME_POOL;
 }
 
-function normalizeNameMode(rawMode: unknown, fallback: string = 'autodetected'): string {
+export function normalizeNameMode(rawMode: unknown, fallback: string = 'autodetected'): string {
   const mode = String(rawMode || '').trim().toLowerCase();
   return mode === 'pooled' || mode === 'autodetected' ? mode : fallback;
 }
 
-function readProviderNameModes(env = process.env) {
+export function readProviderNameModes(env = process.env) {
   const providers = {
     claude: env.CLAUDEVILLE_NAME_MODE_CLAUDE,
     codex: env.CLAUDEVILLE_NAME_MODE_CODEX,
@@ -29,7 +29,7 @@ function readProviderNameModes(env = process.env) {
   return modes;
 }
 
-function buildRuntimeConfig(env = process.env) {
+export function buildRuntimeConfig(env = process.env) {
   const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:4000';
   const hubWsUrl = env.HUB_WS_URL || `${hubHttpUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws`;
 
@@ -42,12 +42,3 @@ function buildRuntimeConfig(env = process.env) {
     sessionNamePool: normalizeAgentNamePool(env.CLAUDEVILLE_SESSION_NAME_POOL),
   };
 }
-
-module.exports = {
-  DEFAULT_AGENT_NAME_POOL,
-  DEFAULT_SESSION_NAME_POOL,
-  normalizeAgentNamePool,
-  normalizeNameMode,
-  readProviderNameModes,
-  buildRuntimeConfig,
-};

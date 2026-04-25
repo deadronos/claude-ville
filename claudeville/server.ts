@@ -1,41 +1,39 @@
-require('../load-local-env.ts');
+import '../load-local-env.js';
 
 import * as http from 'http';
 import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
-const { buildRuntimeConfig } = require('../runtime-config.shared');
+import { fileURLToPath } from 'url';
 
-type HttpRequest = http.IncomingMessage;
-type HttpResponse = http.ServerResponse;
-
-// ─── Adapter load ─────────────────────────────────────
-const {
+import { buildRuntimeConfig } from '../runtime-config.shared.js';
+import { MIME_TYPES } from '../shared/mime-types.js';
+import { setCorsHeaders, sendJson, sendError, safeLimit } from '../shared/http-utils.js';
+import { createWebSocketFrame, computeAcceptKey } from '../shared/ws-utils.js';
+import { createFileWatchers } from '../shared/watch-utils.js';
+import { DISCONNECTED_CODES } from '../shared/ws-helpers.js';
+import {
+  adapters,
   getAllSessions,
   getSessionDetailByProvider,
   getAllWatchPaths,
   getActiveProviders,
-  adapters,
-} = require('./adapters');
+} from './adapters/index.js';
+import * as usageQuota from './services/usageQuota.js';
 
-// ─── Usage Quota service ──────────────────────────────
-const usageQuota = require('./services/usageQuota');
-
-const { setCorsHeaders, sendJson, sendError, safeLimit } = require('../shared/http-utils');
-const { createWebSocketFrame, computeAcceptKey } = require('../shared/ws-utils');
-const { createFileWatchers } = require('../shared/watch-utils');
-const { DISCONNECTED_CODES } = require('../shared/ws-helpers');
+type HttpRequest = http.IncomingMessage;
+type HttpResponse = http.ServerResponse;
 
 // Claude adapter (teams/tasks are Claude-only)
 const claudeAdapter = adapters.find((a: { provider: string }) => a.provider === 'claude');
 
 // ─── Config ────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4000);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const BUILT_FRONTEND_DIR = path.join(__dirname, '..', 'dist', 'frontend');
 const STATIC_DIR = fs.existsSync(path.join(BUILT_FRONTEND_DIR, 'index.html')) ? BUILT_FRONTEND_DIR : __dirname;
 const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
-
-const { MIME_TYPES } = require('../shared/mime-types');
 
 // ─── WebSocket client management ──────────────────────────
 const wsClients = new Set<net.Socket>();
@@ -62,7 +60,7 @@ async function handleGetSessions(req: HttpRequest, res: HttpResponse) {
  */
 async function handleGetTeams(req: HttpRequest, res: HttpResponse) {
   try {
-    const teams = claudeAdapter ? await claudeAdapter.getTeams() : [];
+    const teams = claudeAdapter?.getTeams ? await claudeAdapter.getTeams() : [];
     sendJson(res, 200, { teams, count: teams.length });
   } catch (err: unknown) {
     console.error('team query failed:', err instanceof Error ? err.message : String(err));
@@ -76,7 +74,7 @@ async function handleGetTeams(req: HttpRequest, res: HttpResponse) {
  */
 async function handleGetTasks(req: HttpRequest, res: HttpResponse) {
   try {
-    const taskGroups = claudeAdapter ? await claudeAdapter.getTasks() : [];
+    const taskGroups = claudeAdapter?.getTasks ? await claudeAdapter.getTasks() : [];
     sendJson(res, 200, { taskGroups, totalGroups: taskGroups.length });
   } catch (err: unknown) {
     console.error('task query failed:', err instanceof Error ? err.message : String(err));
@@ -194,7 +192,7 @@ function handleStaticFile(req: HttpRequest, res: HttpResponse) {
     }
 
     const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const contentType = MIME_TYPES[ext as keyof typeof MIME_TYPES] || 'application/octet-stream';
     const isText = contentType.includes('text') ||
                    contentType.includes('javascript') ||
                    contentType.includes('json') ||
@@ -435,7 +433,7 @@ async function sendInitialData(socket: net.Socket) {
   try {
     const [sessions, teams] = await Promise.all([
       getAllSessions(ACTIVE_THRESHOLD_MS),
-      claudeAdapter ? claudeAdapter.getTeams() : [],
+      claudeAdapter?.getTeams ? claudeAdapter.getTeams() : [],
     ]);
     wsSend(socket, {
       type: 'init',
@@ -463,7 +461,7 @@ async function broadcastUpdate() {
   try {
     const [sessions, teams] = await Promise.all([
       getAllSessions(ACTIVE_THRESHOLD_MS),
-      claudeAdapter ? claudeAdapter.getTeams() : [],
+      claudeAdapter?.getTeams ? claudeAdapter.getTeams() : [],
     ]);
     wsBroadcast({
       type: 'update',
@@ -541,7 +539,7 @@ const server = http.createServer((req: HttpRequest, res: HttpResponse) => {
     if (fs.existsSync(widgetFile)) {
       const ext = path.extname(widgetFile).toLowerCase();
       setCorsHeaders(res);
-      res.writeHead(200, { 'Content-Type': MIME_TYPES[ext], 'Cache-Control': 'no-cache' });
+      res.writeHead(200, { 'Content-Type': MIME_TYPES[ext as keyof typeof MIME_TYPES], 'Cache-Control': 'no-cache' });
       fs.createReadStream(widgetFile, { encoding: 'utf-8' }).pipe(res);
       return;
     }
