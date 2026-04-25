@@ -1,20 +1,36 @@
 import { Agent } from '../domain/entities/Agent.js';
+import { World } from '../domain/entities/World.js';
 import { AgentStatus } from '../domain/value-objects/AgentStatus.js';
 import { resolveAgentDisplayName } from '../config/agentNames.js';
+import { ClaudeDataSource } from '../infrastructure/ClaudeDataSource.js';
+
+interface TeamMember {
+    agentId?: string;
+    name?: string;
+    teamName?: string;
+    agentType?: string;
+    model?: string;
+}
+
+interface Team {
+    members?: TeamMember[];
+    teamName?: string;
+    name?: string;
+}
 
 export class AgentManager {
-    world: any;
-    dataSource: any;
-    _teamMembers: Map<string, any>;
+    world: World;
+    dataSource: ClaudeDataSource;
+    _teamMembers: Map<string, TeamMember>;
 
-    constructor(world, dataSource) {
+    constructor(world: World, dataSource: ClaudeDataSource) {
         this.world = world;
         this.dataSource = dataSource;
         this._teamMembers = new Map();
     }
 
-    _buildTeamMembers(teams) {
-        const teamMembers = new Map();
+    _buildTeamMembers(teams: Team[]) {
+        const teamMembers = new Map<string, TeamMember>();
         for (const team of teams) {
             if (team.members) {
                 for (const member of team.members) {
@@ -43,35 +59,31 @@ export class AgentManager {
                 this._upsertAgent(session, this._teamMembers);
             }
 
-        } catch (err) {
-            console.error('[AgentManager] Failed to load initial data:', err.message);
+        } catch (err: unknown) {
+            console.error('[AgentManager] Failed to load initial data:', (err as Error).message);
         }
     }
 
-    handleWebSocketMessage(data) {
+    handleWebSocketMessage(data: { sessions?: any[]; teams?: Team[] }) {
         if (!data.sessions) return;
 
-        // Update team data if included
         if (data.teams) {
             this._teamMembers = this._buildTeamMembers(data.teams);
         }
 
-        const currentIds = new Set();
+        const currentIds = new Set<string>();
 
         for (const session of data.sessions) {
             currentIds.add(session.sessionId);
             this._upsertAgent(session, this._teamMembers);
         }
 
-        // Handle agents not in server list
-        const toRemove = [];
+        const toRemove: string[] = [];
         for (const [id, agent] of this.world.agents) {
             if (!currentIds.has(id)) {
                 if (agent.status === AgentStatus.IDLE) {
-                    // Already IDLE, remove
                     toRemove.push(id);
                 } else {
-                    // Still active, set to IDLE first
                     this.world.updateAgent(id, { status: AgentStatus.IDLE, currentTool: null, currentToolInput: null });
                 }
             }
@@ -81,7 +93,7 @@ export class AgentManager {
         }
     }
 
-    _upsertAgent(session, teamMembers) {
+    _upsertAgent(session: any, teamMembers: Map<string, TeamMember>) {
         const id = session.sessionId;
         const teamInfo = teamMembers ? teamMembers.get(session.agentId) : null;
         const resolvedName = resolveAgentDisplayName(session, teamInfo);
@@ -96,12 +108,11 @@ export class AgentManager {
             output: tokenUsage.totalOutput || 0,
         } : { input: 0, output: 0 });
 
-        // Team name: from teamInfo, or extracted from project path
-        const teamName = teamInfo?.teamName
-            || (session.project ? session.project.split('/').filter(Boolean).pop() : null);
+        const teamName: string | null = teamInfo?.teamName
+            || (session.project ? session.project.split('/').filter(Boolean).pop() || null : null);
 
-        const agentData: any = {
-            model: teamInfo?.model || session.model || 'unknown',
+        const agentData: Record<string, any> = {
+            model: String(teamInfo?.model || session.model || 'unknown'),
             status: this._resolveStatus(session),
             role: teamInfo?.agentType || session.agentType || 'general',
             teamName,
@@ -143,7 +154,7 @@ export class AgentManager {
         }
     }
 
-    _resolveStatus(session) {
+    _resolveStatus(session: { status?: string; lastActivity?: number }) {
         if (session.status === 'active') {
             const age = Date.now() - (session.lastActivity || 0);
             if (age < 30000) return AgentStatus.WORKING;

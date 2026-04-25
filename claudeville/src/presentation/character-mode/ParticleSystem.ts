@@ -8,7 +8,7 @@ class Particle {
     color: string;
     size: number;
 
-    constructor(x, y, vx, vy, life, color, size) {
+    constructor(x: number, y: number, vx: number, vy: number, life: number, color: string, size: number) {
         this.x = x;
         this.y = y;
         this.vx = vx;
@@ -30,7 +30,7 @@ class Particle {
         return this.life > 0;
     }
 
-    draw(ctx) {
+    draw(ctx: CanvasRenderingContext2D) {
         const alpha = this.life / this.maxLife;
         ctx.globalAlpha = alpha;
         ctx.fillStyle = this.color;
@@ -39,7 +39,16 @@ class Particle {
     }
 }
 
-const PARTICLE_PRESETS = {
+interface ParticlePreset {
+    colors: string[];
+    size: [number, number];
+    life: [number, number];
+    speed: [number, number];
+    gravity: boolean;
+    direction: string;
+}
+
+const PARTICLE_PRESETS: Record<string, ParticlePreset> = {
     footstep: {
         colors: ['#6b5b3a', '#7a6a49', '#5a4a2a'],
         size: [1, 2],
@@ -82,11 +91,11 @@ const PARTICLE_PRESETS = {
     },
 };
 
-function rand(min, max) {
+function rand(min: number, max: number): number {
     return min + Math.random() * (max - min);
 }
 
-function pick(arr) {
+function pick<T>(arr: T[]): T {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
@@ -97,7 +106,7 @@ export class ParticleSystem {
         this.particles = [];
     }
 
-    spawn(type, x, y, count = 3) {
+    spawn(type: string, x: number, y: number, count = 3) {
         const preset = PARTICLE_PRESETS[type];
         if (!preset) return;
 
@@ -148,7 +157,7 @@ export class ParticleSystem {
         }
     }
 
-    draw(ctx) {
+    draw(ctx: CanvasRenderingContext2D) {
         for (const p of this.particles) {
             p.draw(ctx);
         }

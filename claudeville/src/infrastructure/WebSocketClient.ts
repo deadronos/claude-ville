@@ -2,10 +2,16 @@ import { eventBus } from '../domain/events/DomainEvent.js';
 import { WS_RECONNECT_INTERVAL } from '../config/constants.js';
 import { getHubWsUrl } from '../config/runtime.js';
 
+interface WsMessage {
+    type: string;
+    usage?: unknown;
+    [key: string]: unknown;
+}
+
 export class WebSocketClient {
     ws: WebSocket | null;
     connected: boolean;
-    reconnectTimer: any;
+    reconnectTimer: ReturnType<typeof setTimeout> | null;
     reconnectAttempts: number;
     url: string;
 
@@ -39,8 +45,8 @@ export class WebSocketClient {
                 try {
                     const data = JSON.parse(event.data);
                     this._handleMessage(data);
-                } catch (err) {
-                    console.error('[WS] Message parse failed:', err.message);
+                } catch (err: unknown) {
+                    console.error('[WS] Message parse failed:', err instanceof Error ? err.message : String(err));
                 }
             };
 
@@ -58,8 +64,8 @@ export class WebSocketClient {
                 // fallback polling alive by treating this as a disconnect.
                 eventBus.emit('ws:disconnected');
             };
-        } catch (err) {
-            console.error('[WS] Connection failed:', err.message);
+        } catch (err: unknown) {
+            console.error('[WS] Connection failed:', err instanceof Error ? err.message : String(err));
             this._scheduleReconnect();
         }
     }
@@ -74,13 +80,13 @@ export class WebSocketClient {
         this.connected = false;
     }
 
-    send(data) {
+    send(data: unknown) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(data));
         }
     }
 
-    _handleMessage(data) {
+    _handleMessage(data: WsMessage) {
         switch (data.type) {
             case 'init':
                 eventBus.emit('ws:init', data);

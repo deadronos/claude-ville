@@ -1,8 +1,10 @@
 import { eventBus } from '../events/DomainEvent.js';
+import { Agent } from './Agent.js';
+import { Building } from './Building.js';
 
 export class World {
-    agents: Map<string, any>;
-    buildings: Map<string, any>;
+    agents: Map<string, Agent>;
+    buildings: Map<string, Building>;
     startTime: number;
 
     constructor() {
@@ -11,12 +13,12 @@ export class World {
         this.startTime = Date.now();
     }
 
-    addAgent(agent) {
+    addAgent(agent: Agent) {
         this.agents.set(agent.id, agent);
         eventBus.emit('agent:added', agent);
     }
 
-    removeAgent(id) {
+    removeAgent(id: string) {
         const agent = this.agents.get(id);
         if (agent) {
             this.agents.delete(id);
@@ -24,7 +26,7 @@ export class World {
         }
     }
 
-    updateAgent(id, data) {
+    updateAgent(id: string, data: Partial<Agent>) {
         const agent = this.agents.get(id);
         if (agent) {
             agent.update(data);
@@ -32,7 +34,7 @@ export class World {
         }
     }
 
-    addBuilding(building) {
+    addBuilding(building: Building) {
         this.buildings.set(building.type, building);
     }
 

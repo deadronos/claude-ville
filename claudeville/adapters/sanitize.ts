@@ -4,18 +4,18 @@
  * - Provider parsers keep raw data; this layer cleans it for display
  */
 
-function normalizeWhitespace(value) {
+function normalizeWhitespace(value: unknown) {
   return String(value || '')
     .replace(/\r\n/g, '\n')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function summarizeText(value, maxLen = 200) {
+function summarizeText(value: unknown, maxLen = 200) {
   return normalizeWhitespace(value).substring(0, maxLen);
 }
 
-function looksLikeNoise(text) {
+function looksLikeNoise(text: unknown) {
   if (!text) return true;
 
   // Match only complete status-line patterns that never appear in real user messages.
@@ -31,16 +31,16 @@ function looksLikeNoise(text) {
     /^ageSec=\s*\d+\s+mtime=/,
   ];
 
-  return patterns.some((re) => re.test(text));
+  return patterns.some((re) => re.test(String(text)));
 }
 
-function cleanText(value, maxLen = 200) {
+function cleanText(value: unknown, maxLen = 200) {
   const text = summarizeText(value, maxLen);
   if (!text || looksLikeNoise(text)) return '';
   return text;
 }
 
-function sanitizeToolHistory(toolHistory = []) {
+function sanitizeToolHistory(toolHistory: Array<{ tool?: unknown; detail?: unknown }> = []) {
   if (!Array.isArray(toolHistory)) return [];
 
   return toolHistory
@@ -52,7 +52,7 @@ function sanitizeToolHistory(toolHistory = []) {
     .filter((item) => item.tool || item.detail);
 }
 
-function sanitizeMessages(messages = []) {
+function sanitizeMessages(messages: Array<{ text?: unknown }> = []) {
   if (!Array.isArray(messages)) return [];
 
   return messages

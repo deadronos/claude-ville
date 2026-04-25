@@ -1,16 +1,23 @@
 const MAX_TOASTS = 5;
 const AUTO_DISMISS_MS = 3000;
 
+interface ToastEntry {
+    el: HTMLElement;
+    timer: ReturnType<typeof setTimeout> | null;
+}
+
 export class Toast {
     container: HTMLElement | null;
-    toasts: { el: HTMLElement; timer: any }[];
+    toasts: ToastEntry[];
 
     constructor() {
         this.container = document.getElementById('toastContainer');
         this.toasts = [];
     }
 
-    show(message, type = 'info') {
+    show(message: string, type = 'info') {
+        if (!this.container) return;
+
         // Remove oldest when exceeding max count
         while (this.toasts.length >= MAX_TOASTS) {
             this._remove(this.toasts[0]);
@@ -21,7 +28,7 @@ export class Toast {
         el.textContent = message;
         this.container.appendChild(el);
 
-        const entry = { el, timer: null };
+        const entry: ToastEntry = { el, timer: null };
         this.toasts.push(entry);
 
         entry.timer = setTimeout(() => {
@@ -29,12 +36,12 @@ export class Toast {
         }, AUTO_DISMISS_MS);
     }
 
-    _fadeOut(entry) {
+    _fadeOut(entry: ToastEntry) {
         entry.el.classList.add('toast--fadeout');
         setTimeout(() => this._remove(entry), 300);
     }
 
-    _remove(entry) {
+    _remove(entry: ToastEntry) {
         if (entry.timer) clearTimeout(entry.timer);
         if (entry.el.parentNode) {
             entry.el.parentNode.removeChild(entry.el);

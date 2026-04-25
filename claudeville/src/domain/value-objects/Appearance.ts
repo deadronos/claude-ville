@@ -15,7 +15,7 @@ export class Appearance {
     accessory: string;
     eyeStyle: string;
 
-    constructor({ skin, shirt, hair, hairStyle, pants, accessory, eyeStyle }) {
+    constructor({ skin, shirt, hair, hairStyle, pants, accessory, eyeStyle }: { skin: string; shirt: string; hair: string; hairStyle: string; pants: string; accessory: string; eyeStyle: string }) {
         this.skin = skin;
         this.shirt = shirt;
         this.hair = hair;
@@ -25,7 +25,7 @@ export class Appearance {
         this.eyeStyle = eyeStyle;
     }
 
-    static fromHash(id) {
+    static fromHash(id: string) {
         const hash = Appearance.hashCode(id);
         return new Appearance({
             skin: SKIN_COLORS[Math.abs(hash) % SKIN_COLORS.length],
@@ -38,7 +38,7 @@ export class Appearance {
         });
     }
 
-    static hashCode(str) {
+    static hashCode(str: string) {
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
             hash = ((hash << 5) - hash) + str.charCodeAt(i);

@@ -1,10 +1,21 @@
+import http from 'http';
+import net from 'net';
 const { computeAcceptKey } = require('../shared/ws-utils.ts');
 const { wsSend, wsBroadcast } = require('../shared/ws-helpers.js');
 
-function createHubWebSocketManager(getCurrentState) {
-  const wsClients = new Set<any>();
+interface HubState {
+  sessions: unknown[];
+  teams: unknown[];
+  taskGroups: unknown[];
+  providers: unknown[];
+  usage: unknown;
+  timestamp: number;
+}
 
-  function buildWsPayload(type) {
+function createHubWebSocketManager(getCurrentState: () => HubState) {
+  const wsClients = new Set<net.Socket>();
+
+  function buildWsPayload(type: string) {
     const state = getCurrentState();
     return {
       type,
@@ -21,7 +32,7 @@ function createHubWebSocketManager(getCurrentState) {
     wsBroadcast(buildWsPayload(type), wsClients);
   }
 
-  function handleUpgrade(req, socket) {
+  function handleUpgrade(req: http.IncomingMessage, socket: net.Socket) {
     const key = req.headers['sec-websocket-key'];
     if (!key) {
       socket.destroy();

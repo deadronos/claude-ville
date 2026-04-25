@@ -39,13 +39,13 @@ export type CollectorSnapshotDeps = {
 };
 
 export function normalizeSession(session: SessionSummary, detail: SessionDetail | null) {
-  const tokens = normalizeTokens(detail?.tokenUsage, session.tokens || null);
+  const tokens = normalizeTokens(detail?.tokenUsage ?? null, session.tokens || null);
 
   return {
     ...session,
     tokens,
     tokenUsage: detail?.tokenUsage || null,
-    estimatedCost: estimateCost(session.model, tokens),
+    estimatedCost: estimateCost(session.model ?? 'claude-sonnet-4-5', tokens),
   };
 }
 

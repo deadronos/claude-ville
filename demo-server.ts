@@ -1,12 +1,12 @@
 // Moltcraft Demo Server - 가짜 API로 UI 구경용
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const MOLTCRAFT_DIR = '/Users/honorstudio/.npm/_npx/50b3f5da95228046/node_modules/@ask-mojo/moltcraft';
 const PORT = 8080;
 
-const MIME = {
+const MIME: Record<string, string> = {
   '.html': 'text/html',
   '.css': 'text/css',
   '.js': 'application/javascript',
@@ -69,7 +69,8 @@ const DEMO_SESSIONS = [
   }
 ];
 
-const server = http.createServer((req, res) => {
+const server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
+  const reqUrl = req.url ?? '';
   // CORS
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -82,16 +83,16 @@ const server = http.createServer((req, res) => {
   }
 
   // 가짜 API 응답
-  if (req.url.startsWith('/api/')) {
+  if (reqUrl.startsWith('/api/')) {
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
     });
 
     // tools/invoke 엔드포인트
-    if (req.url.includes('/api/tools/invoke')) {
+    if (reqUrl.includes('/api/tools/invoke')) {
       let body = '';
-      req.on('data', chunk => body += chunk);
+      req.on('data', (chunk: Buffer) => { body += chunk; });
       req.on('end', () => {
         let parsed: any = {};
         try { parsed = JSON.parse(body); } catch { parsed = {}; }
@@ -120,7 +121,7 @@ const server = http.createServer((req, res) => {
     }
 
     // cron/list
-    if (req.url.includes('/api/cron/list')) {
+    if (reqUrl.includes('/api/cron/list')) {
       res.end(JSON.stringify({
         jobs: [
           { name: 'health-check', schedule: '*/5 * * * *', lastRun: Date.now() - 60000 },
@@ -131,7 +132,7 @@ const server = http.createServer((req, res) => {
     }
 
     // channels
-    if (req.url.includes('/api/channels') || req.url.includes('/api/config')) {
+    if (reqUrl.includes('/api/channels') || reqUrl.includes('/api/config')) {
       res.end(JSON.stringify({
         channels: { slack: { connected: true }, telegram: { connected: false } },
         config: { version: 'demo-1.0' }
@@ -145,14 +146,14 @@ const server = http.createServer((req, res) => {
   }
 
   // 정적 파일 서빙 (Moltcraft 소스에서)
-  const cleanUrl = req.url.split('?')[0];
+  const cleanUrl = reqUrl.split('?')[0];
   let filePath = cleanUrl === '/' ? '/index.html' : cleanUrl;
   filePath = path.join(MOLTCRAFT_DIR, filePath);
 
   const ext = path.extname(filePath);
   const contentType = MIME[ext] || 'application/octet-stream';
 
-  fs.readFile(filePath, (err, data) => {
+  fs.readFile(filePath, (err: Error | null, data: Buffer) => {
     if (err) {
       res.writeHead(404);
       res.end('Not found');

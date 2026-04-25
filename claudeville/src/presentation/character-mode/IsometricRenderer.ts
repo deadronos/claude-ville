@@ -6,12 +6,13 @@ import { ParticleSystem } from './ParticleSystem.js';
 import { AgentSprite } from './AgentSprite.js';
 import { BuildingRenderer } from './BuildingRenderer.js';
 import { Minimap } from './Minimap.js';
+import { World } from '../../domain/entities/World.js';
 
 export class IsometricRenderer {
-    world: any;
+    world: World;
     canvas: HTMLCanvasElement | null;
     ctx: CanvasRenderingContext2D | null;
-    camera: any;
+    camera: Camera | null;
     particleSystem: ParticleSystem;
     buildingRenderer: BuildingRenderer;
     minimap: Minimap;
@@ -25,11 +26,11 @@ export class IsometricRenderer {
     onAgentSelect: ((agent: any) => void) | null;
     pathTiles: Set<string>;
     waterTiles: Set<string>;
-    _unsubscribers: Function[];
-    _onClick: (e: MouseEvent) => void;
-    _onMouseMoveMain: (e: MouseEvent) => void;
+    _unsubscribers: (() => void)[];
+    _onClick!: (e: MouseEvent) => void;
+    _onMouseMoveMain!: (e: MouseEvent) => void;
 
-    constructor(world) {
+    constructor(world: World) {
         this.world = world;
         this.canvas = null;
         this.ctx = null;
@@ -46,27 +47,22 @@ export class IsometricRenderer {
         this.selectedAgent = null;
         this.onAgentSelect = null;
 
-        // Generate terrain seed for consistent random patterns
         for (let i = 0; i < MAP_SIZE * MAP_SIZE; i++) {
             this.terrainSeed.push(Math.random());
         }
 
-        // Path tiles (near buildings)
         this.pathTiles = new Set();
         this._generatePaths();
 
-        // Water tiles
         this.waterTiles = new Set();
         this._generateWater();
 
-        // Event subscriptions
         this._unsubscribers = [];
     }
 
     _generatePaths() {
         const buildingDefs = Array.from(this.world.buildings.values()) as any[];
         for (const b of buildingDefs) {
-            // Paths around buildings
             for (let x = b.position.tileX - 1; x <= b.position.tileX + b.width; x++) {
                 for (let y = b.position.tileY - 1; y <= b.position.tileY + b.height; y++) {
                     if (x >= 0 && x < MAP_SIZE && y >= 0 && y < MAP_SIZE) {
@@ -75,7 +71,6 @@ export class IsometricRenderer {
                 }
             }
         }
-        // Connecting roads between buildings (simple horizontal/vertical)
         if (buildingDefs.length >= 2) {
             for (let i = 0; i < buildingDefs.length - 1; i++) {
                 const a = buildingDefs[i];
@@ -84,7 +79,6 @@ export class IsometricRenderer {
                 const ay = Math.floor(a.position.tileY + a.height / 2);
                 const bx = Math.floor(bDef.position.tileX + bDef.width / 2);
                 const by = Math.floor(bDef.position.tileY + bDef.height / 2);
-                // Horizontal then vertical
                 const startX = Math.min(ax, bx);
                 const endX = Math.max(ax, bx);
                 for (let x = startX; x <= endX; x++) {
@@ -102,7 +96,6 @@ export class IsometricRenderer {
     }
 
     _generateWater() {
-        // Small pond near bottom-left
         for (let x = 3; x <= 8; x++) {
             for (let y = 30; y <= 35; y++) {
                 const dist = Math.sqrt(Math.pow(x - 5.5, 2) + Math.pow(y - 32.5, 2));
@@ -113,7 +106,7 @@ export class IsometricRenderer {
         }
     }
 
-    show(canvas) {
+    show(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.camera = new Camera(canvas);
@@ -121,12 +114,10 @@ export class IsometricRenderer {
 
         this.buildingRenderer.setBuildings(this.world.buildings);
 
-        // Create sprites for existing agents
         for (const agent of this.world.agents.values()) {
             this._addAgentSprite(agent);
         }
 
-        // 3. Selection UI (labels/health etc if needed, but here just name sync)
         eventBus.on('agent:selected', (agent: any) => {
             this.selectAgentById(agent?.id);
         });
@@ -135,43 +126,39 @@ export class IsometricRenderer {
             this.selectAgentById(null);
         });
 
-        // Subscribe to domain events
         this._unsubscribers.push(
-            eventBus.on('agent:added', (agent) => this._addAgentSprite(agent)),
-            eventBus.on('agent:removed', (agent) => this.agentSprites.delete(agent.id)),
-            eventBus.on('agent:updated', (agent) => {
+            eventBus.on('agent:added', (agent: any) => this._addAgentSprite(agent)),
+            eventBus.on('agent:removed', (agent: any) => this.agentSprites.delete(agent.id)),
+            eventBus.on('agent:updated', (agent: any) => {
                 const sprite = this.agentSprites.get(agent.id);
                 if (sprite) sprite.agent = agent;
             }),
         );
 
-        // Minimap
-        this.minimap.attach(canvas.parentNode);
+        this.minimap.attach(canvas.parentNode as HTMLElement);
         this.minimap.onNavigate = (tileX, tileY) => {
             const screenPos = {
                 x: (tileX - tileY) * TILE_WIDTH / 2,
                 y: (tileX + tileY) * TILE_HEIGHT / 2,
             };
-            this.camera.x = -screenPos.x + canvas.width / (2 * this.camera.zoom);
-            this.camera.y = -screenPos.y + canvas.height / (2 * this.camera.zoom);
+            this.camera!.x = -screenPos.x + canvas.width / (2 * this.camera!.zoom);
+            this.camera!.y = -screenPos.y + canvas.height / (2 * this.camera!.zoom);
         };
 
-        // Click handler for agent selection
         this._onClick = (e) => {
             const rect = canvas.getBoundingClientRect();
             const screenX = e.clientX - rect.left;
             const screenY = e.clientY - rect.top;
-            const worldPos = this.camera.screenToWorld(screenX, screenY);
+            const worldPos = this.camera!.screenToWorld(screenX, screenY);
             this._handleClick(worldPos.x, worldPos.y);
         };
         canvas.addEventListener('click', this._onClick);
 
-        // Hover handler for buildings
         this._onMouseMoveMain = (e) => {
             const rect = canvas.getBoundingClientRect();
             const screenX = e.clientX - rect.left;
             const screenY = e.clientY - rect.top;
-            const worldPos = this.camera.screenToWorld(screenX, screenY);
+            const worldPos = this.camera!.screenToWorld(screenX, screenY);
             this.buildingRenderer.hoveredBuilding = this.buildingRenderer.hitTest(worldPos.x, worldPos.y);
         };
         canvas.addEventListener('mousemove', this._onMouseMoveMain);
@@ -202,14 +189,13 @@ export class IsometricRenderer {
         this.particleSystem.clear();
     }
 
-    _addAgentSprite(agent) {
+    _addAgentSprite(agent: any) {
         if (!this.agentSprites.has(agent.id)) {
             this.agentSprites.set(agent.id, new AgentSprite(agent));
         }
     }
 
-    _handleClick(worldX, worldY) {
-        // Check agents first
+    _handleClick(worldX: number, worldY: number) {
         let clicked = null;
         for (const sprite of this.agentSprites.values()) {
             if (sprite.hitTest(worldX, worldY)) {
@@ -218,7 +204,6 @@ export class IsometricRenderer {
             }
         }
 
-        // Deselect all
         for (const sprite of this.agentSprites.values()) {
             sprite.selected = false;
         }
@@ -226,11 +211,11 @@ export class IsometricRenderer {
         if (clicked) {
             clicked.selected = true;
             this.selectedAgent = clicked.agent;
-            this.camera.followAgent(clicked);
+            this.camera!.followAgent(clicked);
             if (this.onAgentSelect) this.onAgentSelect(clicked.agent);
         } else {
             this.selectedAgent = null;
-            this.camera.stopFollow();
+            this.camera!.stopFollow();
             if (this.onAgentSelect) this.onAgentSelect(null);
         }
     }
@@ -243,23 +228,20 @@ export class IsometricRenderer {
     }
 
     _updateChatMatching() {
-        // Find agents currently using SendMessage
-        const senders = new Set();
+        const senders = new Set<AgentSprite>();
 
         for (const sprite of this.agentSprites.values()) {
             const agent = sprite.agent;
-            if (agent.currentTool === 'SendMessage' && agent.currentToolInput) {
+            if ((agent as any).currentTool === 'SendMessage' && (agent as any).currentToolInput) {
                 senders.add(sprite);
 
-                // Skip if already chatting
                 if (sprite.chatPartner) continue;
 
-                // Find target sprite by recipient name
-                const recipientName = agent.currentToolInput;
+                const recipientName = (agent as any).currentToolInput;
                 let target = null;
                 for (const other of this.agentSprites.values()) {
                     if (other === sprite) continue;
-                    if (other.agent.name === recipientName) {
+                    if ((other.agent as any).name === recipientName) {
                         target = other;
                         break;
                     }
@@ -271,17 +253,15 @@ export class IsometricRenderer {
             }
         }
 
-        // Release chat state for agents not using SendMessage
         for (const sprite of this.agentSprites.values()) {
             if (sprite.chatPartner && !senders.has(sprite)) {
-                // Keep if partner is still using SendMessage
-                if (sprite.chatPartner.agent.currentTool === 'SendMessage') continue;
+                if ((sprite.chatPartner.agent as any).currentTool === 'SendMessage') continue;
                 sprite.endChat();
             }
         }
     }
 
-    selectAgentById(agentId) {
+    selectAgentById(agentId: string | null) {
         for (const sprite of this.agentSprites.values()) {
             sprite.selected = false;
         }
@@ -290,86 +270,70 @@ export class IsometricRenderer {
             if (sprite) {
                 sprite.selected = true;
                 this.selectedAgent = sprite.agent;
-                this.camera.followAgent(sprite);
+                this.camera!.followAgent(sprite);
                 return;
             }
         }
         this.selectedAgent = null;
-        this.camera.stopFollow();
+        this.camera!.stopFollow();
     }
 
     _update() {
         this.waterFrame += 0.03;
 
-        // Update camera follow
         if (this.camera) this.camera.updateFollow();
 
-        // Chat matching: SendMessage users → move to recipient sprite
         this._updateChatMatching();
 
-        // Update agent sprites
         for (const sprite of this.agentSprites.values()) {
             sprite.update(this.particleSystem);
         }
 
-        // Update building renderer (pass agent sprite positions)
         this.buildingRenderer.setAgentSprites(Array.from(this.agentSprites.values()));
         this.buildingRenderer.update();
 
-        // Update particles
         this.particleSystem.update();
     }
 
     _render() {
-        const ctx = this.ctx;
-        const canvas = this.canvas;
+        const ctx = this.ctx!;
+        const canvas = this.canvas!;
 
-        // Clear
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = THEME.bg;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Apply camera
-        this.camera.applyTransform(ctx);
+        this.camera!.applyTransform(ctx);
 
-        // 1. Terrain
         this._drawTerrain(ctx);
 
-        // 2. Building shadows
         this.buildingRenderer.drawShadows(ctx);
 
-        // 3. Buildings
         this.buildingRenderer.draw(ctx);
 
-        // 4. Agents (sorted by Y for depth)
         const sortedSprites = Array.from(this.agentSprites.values())
             .sort((a, b) => a.y - b.y);
-        const zoom = this.camera.zoom;
+        const zoom = this.camera!.zoom;
         for (const sprite of sortedSprites) {
             sprite.draw(ctx, zoom);
         }
 
-        // 5. Particles
         this.particleSystem.draw(ctx);
 
-        // 6. Building bubbles (on top)
         this.buildingRenderer.drawBubbles(ctx, this.world);
 
-        // Reset transform for UI
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        // Minimap
         this.minimap.draw(this.world, this.camera, canvas);
     }
 
-    _drawTerrain(ctx) {
-        // Isometric is diamond-shaped, so must check all four screen corners
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-        const c1 = this.camera.screenToTile(0, 0);
-        const c2 = this.camera.screenToTile(w, 0);
-        const c3 = this.camera.screenToTile(0, h);
-        const c4 = this.camera.screenToTile(w, h);
+    _drawTerrain(ctx: CanvasRenderingContext2D) {
+        const w = this.canvas!.width;
+        const h = this.canvas!.height;
+        const c1 = this.camera!.screenToTile(0, 0);
+        const c2 = this.camera!.screenToTile(w, 0);
+        const c3 = this.camera!.screenToTile(0, h);
+        const c4 = this.camera!.screenToTile(w, h);
 
         const margin = 5;
         const startX = Math.max(0, Math.min(c1.tileX, c2.tileX, c3.tileX, c4.tileX) - margin);
@@ -384,13 +348,13 @@ export class IsometricRenderer {
         }
     }
 
-    _drawTile(ctx, tileX, tileY) {
+    _drawTile(ctx: CanvasRenderingContext2D, tileX: number, tileY: number) {
         const screenX = (tileX - tileY) * TILE_WIDTH / 2;
         const screenY = (tileX + tileY) * TILE_HEIGHT / 2;
         const key = `${tileX},${tileY}`;
         const seed = this.terrainSeed[tileY * MAP_SIZE + tileX] || 0;
 
-        let fillColor;
+        let fillColor: string;
         if (this.waterTiles.has(key)) {
             const waterIdx = Math.floor(seed * THEME.water.length);
             fillColor = THEME.water[waterIdx];
@@ -411,12 +375,10 @@ export class IsometricRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // Tile border
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
         ctx.lineWidth = 0.5;
         ctx.stroke();
 
-        // Water shimmer effect
         if (this.waterTiles.has(key)) {
             const shimmer = Math.sin(this.waterFrame * 2 + tileX * 0.5 + tileY * 0.3) * 0.15 + 0.1;
             ctx.fillStyle = `rgba(255, 255, 255, ${shimmer})`;

@@ -40,7 +40,7 @@ type CollectorRuntimeConfig = {
 
 type CollectorRuntimeDeps = {
   createFileWatchers: (paths: string[], onChange: () => void) => { watchCount: number };
-  createHash: (algorithm: string) => { update(value: string): { digest(encoding: string): string } };
+  createHash: (algorithm: string) => { update: (data: string) => { digest: (format: string) => string }; digest: (format: string) => string };
   adapters: Array<{
     provider?: string;
     getTeams?: () => Promise<unknown[]> | unknown[];
@@ -54,7 +54,7 @@ type CollectorRuntimeDeps = {
   setTimeout: typeof globalThis.setTimeout;
   clearTimeout: typeof globalThis.clearTimeout;
   setInterval: typeof globalThis.setInterval;
-  console: Pick<typeof console, 'log' | 'error'>;
+  console: { log: (...args: unknown[]) => void; error: (...args: unknown[]) => void };
   process: Pick<typeof process, 'on' | 'exit'>;
 };
 

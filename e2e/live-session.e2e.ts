@@ -378,7 +378,7 @@ async function launchBrowser(frontendUrl: string, hubUrl: string, browserLogs: s
       headers,
       body: request.method() === 'GET' || request.method() === 'HEAD'
         ? undefined
-        : new Uint8Array(await request.postDataBuffer()),
+        : new Uint8Array(await request.postDataBuffer() ?? new ArrayBuffer(0)),
     });
 
     await route.fulfill({

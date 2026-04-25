@@ -1,9 +1,10 @@
+import { World } from '../../domain/entities/World.js';
+import { Agent } from '../../domain/entities/Agent.js';
 import { eventBus } from '../../domain/events/DomainEvent.js';
-import { AvatarCanvas } from './AvatarCanvas.js';
-import { i18n } from '../../config/i18n.js';
 import { getHubApiUrl } from '../../config/runtime.js';
+import { i18n } from '../../config/i18n.js';
 import {
-    PROJECT_COLORS,
+    PROJECT_COLORS as PROJECT_COLORS_BASE,
     getProviderLabel,
     getToolCategory,
     getToolIcon,
@@ -15,7 +16,9 @@ import {
     truncateText,
 } from '../shared/dashboardViewModel.js';
 
-const PROVIDER_BADGES = {
+const PROJECT_COLORS = PROJECT_COLORS_BASE;
+
+const PROVIDER_BADGES: Record<string, { label: string; color: string; bg: string }> = {
     claude:    { label: getProviderLabel('claude'),    color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
     codex:     { label: getProviderLabel('codex'),     color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
     gemini:    { label: getProviderLabel('gemini'),    color: '#60a5fa', bg: 'rgba(96,165,250,0.15)' },
@@ -23,20 +26,26 @@ const PROVIDER_BADGES = {
     copilot:   { label: getProviderLabel('copilot'),   color: '#22d3ee', bg: 'rgba(34,211,238,0.15)' },
 };
 
+interface ToolHistoryItem {
+    tool: string;
+    detail?: string;
+    ts: number;
+}
+
 export class DashboardRenderer {
-    world: any;
+    world: World;
     gridEl: HTMLElement | null;
     emptyEl: HTMLElement | null;
     cards: Map<string, HTMLElement>;
-    toolHistories: Map<string, any[]>;
+    toolHistories: Map<string, ToolHistoryItem[]>;
     active: boolean;
-    _fetchTimers: Map<string, any>;
+    _fetchTimers: Map<string, ReturnType<typeof setTimeout>>;
     _projectColorMap: Map<string, string>;
     _sectionEls: Map<string, HTMLElement>;
     _onAgentChanged: () => void;
-    _globalFetchTimer: any;
+    _globalFetchTimer!: ReturnType<typeof setInterval> | null;
 
-    constructor(world) {
+    constructor(world: World) {
         this.world = world;
         this.gridEl = document.getElementById('dashboardGrid');
         this.emptyEl = document.getElementById('dashboardEmpty');
@@ -45,13 +54,13 @@ export class DashboardRenderer {
         this.active = false;
         this._fetchTimers = new Map();
         this._projectColorMap = new Map();
-        this._sectionEls = new Map(); // projectPath → section element
+        this._sectionEls = new Map();
 
         this._onAgentChanged = () => { if (this.active) this.render(); };
-        eventBus.on('agent:added', this._onAgentChanged);
-        eventBus.on('agent:updated', this._onAgentChanged);
-        eventBus.on('agent:removed', this._onAgentChanged);
-        eventBus.on('mode:changed', (mode) => {
+        eventBus.on('agent:added', this._onAgentChanged as (data?: unknown) => void);
+        eventBus.on('agent:updated', this._onAgentChanged as (data?: unknown) => void);
+        eventBus.on('agent:removed', this._onAgentChanged as (data?: unknown) => void);
+        eventBus.on('mode:changed', ((mode: string) => {
             this.active = mode === 'dashboard';
             if (this.active) {
                 this.render();
@@ -59,46 +68,42 @@ export class DashboardRenderer {
             } else {
                 this._stopDetailFetching();
             }
-        });
-
+        }) as (data?: unknown) => void);
     }
 
     render() {
-        const agents = Array.from(this.world.agents.values());
+        const agents = Array.from(this.world.agents.values()) as Agent[];
 
         if (agents.length === 0) {
-            this.gridEl.style.display = 'none';
-            this.emptyEl.classList.add('dashboard__empty--visible');
+            this.gridEl!.style.display = 'none';
+            this.emptyEl!.classList.add('dashboard__empty--visible');
             return;
         }
 
-        this.gridEl.style.display = '';
-        this.emptyEl.classList.remove('dashboard__empty--visible');
+        this.gridEl!.style.display = '';
+        this.emptyEl!.classList.remove('dashboard__empty--visible');
 
-        // Group by project
         const groups = this._groupByProject(agents);
         this._assignProjectColors(groups);
 
-        // Status order: working > waiting > idle
-        const order = { working: 0, waiting: 1, idle: 2 };
+        const order: Record<string, number> = { working: 0, waiting: 1, idle: 2 };
 
-        const existingIds = new Set();
-        const existingSections = new Set();
+        const existingIds = new Set<string>();
+        const existingSections = new Set<string>();
 
         for (const [projectPath, groupAgents] of groups) {
             existingSections.add(projectPath);
-            groupAgents.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
+            groupAgents.sort((a, b) => (order[(a as any).status] ?? 3) - (order[(b as any).status] ?? 3));
 
-            // Create or get section element
             let sectionEl = this._sectionEls.get(projectPath);
             if (!sectionEl) {
                 sectionEl = this._createSection(projectPath);
                 this._sectionEls.set(projectPath, sectionEl);
-                this.gridEl.appendChild(sectionEl);
+                this.gridEl!.appendChild(sectionEl);
             }
             this._updateSectionHeader(sectionEl, projectPath, groupAgents);
 
-            const gridInner = sectionEl.querySelector('.dashboard__section-grid');
+            const gridInner = sectionEl.querySelector('.dashboard__section-grid') as HTMLElement;
 
             for (const agent of groupAgents) {
                 existingIds.add(agent.id);
@@ -109,7 +114,6 @@ export class DashboardRenderer {
                     this.cards.set(agent.id, cardEl);
                 }
 
-                // Move card to this section if not already there
                 if (cardEl.parentElement !== gridInner) {
                     gridInner.appendChild(cardEl);
                 }
@@ -118,7 +122,6 @@ export class DashboardRenderer {
             }
         }
 
-        // Remove cards for agents that no longer exist
         for (const [id, cardEl] of this.cards) {
             if (!existingIds.has(id)) {
                 cardEl.remove();
@@ -127,7 +130,6 @@ export class DashboardRenderer {
             }
         }
 
-        // Remove sections for projects that no longer exist
         for (const [path, sectionEl] of this._sectionEls) {
             if (!existingSections.has(path)) {
                 sectionEl.remove();
@@ -136,11 +138,11 @@ export class DashboardRenderer {
         }
     }
 
-    _groupByProject(agents) {
+    _groupByProject(agents: Agent[]) {
         return groupByProject(agents);
     }
 
-    _assignProjectColors(groups) {
+    _assignProjectColors(groups: Map<string, Agent[]>) {
         let idx = 0;
         for (const key of groups.keys()) {
             if (!this._projectColorMap.has(key)) {
@@ -150,11 +152,11 @@ export class DashboardRenderer {
         }
     }
 
-    _shortProjectName(path) {
+    _shortProjectName(path: string) {
         return shortProjectName(path, i18n.t('unknownProject'));
     }
 
-    _createSection(projectPath) {
+    _createSection(projectPath: string) {
         const section = document.createElement('div');
         section.className = 'dashboard__section';
         section.dataset.project = projectPath;
@@ -172,26 +174,25 @@ export class DashboardRenderer {
         return section;
     }
 
-    _updateSectionHeader(sectionEl, projectPath, agents) {
+    _updateSectionHeader(sectionEl: HTMLElement, projectPath: string, agents: Agent[]) {
         const name = this._shortProjectName(projectPath);
-        sectionEl.querySelector('.dashboard__section-name').textContent = name;
-        sectionEl.querySelector('.dashboard__section-count').textContent = i18n.t('nAgents', agents.length);
+        sectionEl.querySelector('.dashboard__section-name')!.textContent = name;
+        sectionEl.querySelector('.dashboard__section-count')!.textContent = i18n.t('nAgents', agents.length);
 
-        // Show shortened path
         const shortPath = projectPath === '_unknown' ? '' : this._truncatePath(projectPath);
-        sectionEl.querySelector('.dashboard__section-path').textContent = shortPath;
+        sectionEl.querySelector('.dashboard__section-path')!.textContent = shortPath;
     }
 
-    _truncatePath(path) {
+    _truncatePath(path: string) {
         return truncateProjectPath(path);
     }
 
-    _createCard(agent) {
+    _createCard(agent: Agent) {
         const card = document.createElement('div');
-        card.className = `dash-card dash-card--${agent.status}`;
+        card.className = `dash-card dash-card--${(agent as any).status}`;
         card.dataset.agentId = agent.id;
 
-        const contextPct = agent.usage?.contextPercent ?? 0;
+        const contextPct = (agent as any).usage?.contextPercent ?? 0;
         const contextBarStyle = contextPct > 0 ? `width: ${contextPct}%` : `width: 0; opacity: 0`;
 
         card.innerHTML = `
@@ -237,12 +238,10 @@ export class DashboardRenderer {
             </div>
         `;
 
-        // Avatar canvas
-        const avatarContainer = card.querySelector('.dash-card__avatar');
+        const avatarContainer = card.querySelector('.dash-card__avatar') as HTMLElement;
         const avatarCanvas = new AvatarCanvas(agent);
         avatarContainer.appendChild(avatarCanvas.canvas);
 
-        // Click → agent selection
         card.addEventListener('click', () => {
             eventBus.emit('agent:selected', agent);
         });
@@ -256,65 +255,57 @@ export class DashboardRenderer {
         return card;
     }
 
-    _updateCard(cardEl, agent) {
-        // Status class
-        cardEl.className = `dash-card dash-card--${agent.status}`;
+    _updateCard(cardEl: HTMLElement, agent: Agent) {
+        cardEl.className = `dash-card dash-card--${(agent as any).status}`;
 
-        // Header
-        cardEl.querySelector('.dash-card__name').textContent = agent.name;
-        cardEl.querySelector('.dash-card__model').textContent = this._shortModel(agent.model);
-        cardEl.querySelector('.dash-card__role').textContent = agent.role || '';
+        cardEl.querySelector('.dash-card__name')!.textContent = agent.name;
+        cardEl.querySelector('.dash-card__model')!.textContent = this._shortModel(agent.model);
+        cardEl.querySelector('.dash-card__role')!.textContent = (agent as any).role || '';
 
-        // Provider badge
-        const badgeEl = cardEl.querySelector('.dash-card__provider-badge');
-        const badge = PROVIDER_BADGES[agent.provider] || PROVIDER_BADGES.claude;
+        const badgeEl = cardEl.querySelector('.dash-card__provider-badge') as HTMLElement;
+        const badge = PROVIDER_BADGES[(agent as any).provider] || PROVIDER_BADGES.claude;
         badgeEl.textContent = badge.label;
         badgeEl.style.color = badge.color;
         badgeEl.style.background = badge.bg;
 
-        const statusEl = cardEl.querySelector('.dash-card__status');
-        statusEl.className = `dash-card__status dash-card__status--${agent.status}`;
-        const statusKey = { working: 'statusWorking', idle: 'statusIdle', waiting: 'statusWaiting' };
-        cardEl.querySelector('.dash-card__status-label').textContent = i18n.t(statusKey[agent.status] || agent.status);
+        const statusEl = cardEl.querySelector('.dash-card__status') as HTMLElement;
+        statusEl.className = `dash-card__status dash-card__status--${(agent as any).status}`;
+        const statusKey: Record<string, string> = { working: 'statusWorking', idle: 'statusIdle', waiting: 'statusWaiting' };
+        cardEl.querySelector('.dash-card__status-label')!.textContent = i18n.t(statusKey[(agent as any).status] || (agent as any).status);
 
-        // Current tool
-        const toolBox = cardEl.querySelector('.dash-card__current-tool');
-        const toolIcon = cardEl.querySelector('.dash-card__tool-icon');
-        const toolName = cardEl.querySelector('.dash-card__tool-name');
-        const toolDetail = cardEl.querySelector('.dash-card__tool-detail');
+        const toolBox = cardEl.querySelector('.dash-card__current-tool') as HTMLElement;
+        const toolIcon = cardEl.querySelector('.dash-card__tool-icon') as HTMLElement;
+        const toolName = cardEl.querySelector('.dash-card__tool-name') as HTMLElement;
+        const toolDetail = cardEl.querySelector('.dash-card__tool-detail') as HTMLElement;
 
-        if (agent.currentTool) {
+        if ((agent as any).currentTool) {
             toolBox.classList.remove('dash-card__current-tool--idle');
-            toolIcon.textContent = this._getToolIcon(agent.currentTool);
-            toolName.textContent = agent.currentTool;
-            toolDetail.textContent = agent.currentToolInput || '';
+            toolIcon.textContent = this._getToolIcon((agent as any).currentTool);
+            toolName.textContent = (agent as any).currentTool;
+            toolDetail.textContent = (agent as any).currentToolInput || '';
         } else {
             toolBox.classList.add('dash-card__current-tool--idle');
-            toolIcon.textContent = agent.status === 'idle' ? '💤' : '⏳';
-            toolName.textContent = agent.status === 'idle' ? i18n.t('statusIdle') : i18n.t('statusWaiting') + '...';
+            toolIcon.textContent = (agent as any).status === 'idle' ? '💤' : '⏳';
+            toolName.textContent = (agent as any).status === 'idle' ? i18n.t('statusIdle') : i18n.t('statusWaiting') + '...';
             toolDetail.textContent = '';
         }
 
-        // Message
-        const msgEl = cardEl.querySelector('.dash-card__message');
-        if (agent.lastMessage) {
-            msgEl.textContent = `"${agent.lastMessage}"`;
+        const msgEl = cardEl.querySelector('.dash-card__message') as HTMLElement;
+        if ((agent as any).lastMessage) {
+            msgEl.textContent = `"${(agent as any).lastMessage}"`;
             msgEl.style.display = '';
         } else {
             msgEl.style.display = 'none';
         }
 
-        // Render tool history
         const history = this.toolHistories.get(agent.id);
         if (history) {
             this._renderToolHistory(cardEl, history);
         }
 
-        // Update tool count badge
         this._updateToolCountBadge(cardEl, (history || []).length);
 
-        // Update context bar
-        const contextPct = agent.usage?.contextPercent ?? 0;
+        const contextPct = (agent as any).usage?.contextPercent ?? 0;
         const contextWrap = cardEl.querySelector('.dash-card__context-bar-wrap') as HTMLElement;
         const contextBar = cardEl.querySelector('.dash-card__context-bar') as HTMLElement;
         if (contextWrap) {
@@ -331,21 +322,20 @@ export class DashboardRenderer {
         }
     }
 
-    _renderToolHistory(cardEl, tools) {
-        const listEl = cardEl.querySelector('.dash-card__tool-list');
+    _renderToolHistory(cardEl: HTMLElement, tools: ToolHistoryItem[]) {
+        const listEl = cardEl.querySelector('.dash-card__tool-list') as HTMLElement;
         this._updateToolCountBadge(cardEl, tools?.length || 0);
         if (!tools || tools.length === 0) {
             listEl.innerHTML = `<div class="dash-card__loading" style="color:#666">${i18n.t('noToolUsage')}</div>`;
             return;
         }
 
-        // Most recent first
         const reversed = [...tools].reverse();
         listEl.innerHTML = reversed.map(t => {
             const cat = this._getToolCategory(t.tool);
             const icon = this._getToolIcon(t.tool);
             const shortName = shortToolName(t.tool);
-            const detail = truncateText(t.detail, 60);
+            const detail = truncateText(t.detail || '', 60);
             return `<div class="dash-card__tool-item">
                 <span class="dash-card__tool-item-icon tool-cat--${cat}">${icon}</span>
                 <span class="dash-card__tool-item-name tool-cat--${cat}">${this._escapeHtml(shortName)}</span>
@@ -354,7 +344,7 @@ export class DashboardRenderer {
         }).join('');
     }
 
-    _updateToolCountBadge(cardEl, count) {
+    _updateToolCountBadge(cardEl: HTMLElement, count: number) {
         const toolCountBadge = cardEl.querySelector('.dash-card__tool-count-badge');
         if (toolCountBadge) {
             toolCountBadge.textContent = String(count);
@@ -363,7 +353,6 @@ export class DashboardRenderer {
 
     _startDetailFetching() {
         this._stopDetailFetching();
-        // Immediate once + every 3 seconds
         this._fetchAllDetails();
         this._globalFetchTimer = setInterval(() => this._fetchAllDetails(), 3000);
     }
@@ -376,16 +365,16 @@ export class DashboardRenderer {
     }
 
     async _fetchAllDetails() {
-        const agents = Array.from(this.world.agents.values());
+        const agents = Array.from(this.world.agents.values()) as Agent[];
         const promises = agents.map(agent => this._fetchDetail(agent));
         await Promise.allSettled(promises);
     }
 
-    async _fetchDetail(agent) {
+    async _fetchDetail(agent: Agent) {
         try {
             const params = new URLSearchParams({
                 sessionId: agent.id,
-                project: agent.projectPath || '',
+                project: (agent as any).projectPath || '',
                 provider: agent.provider || 'claude',
             });
             const resp = await fetch(getHubApiUrl('/api/session-detail', params));
@@ -401,23 +390,23 @@ export class DashboardRenderer {
         }
     }
 
-    _getToolIcon(tool) {
+    _getToolIcon(tool: string) {
         return getToolIcon(tool);
     }
 
-    _getToolCategory(tool) {
+    _getToolCategory(tool: string) {
         return getToolCategory(tool);
     }
 
-    _shortModel(model) {
+    _shortModel(model: string | undefined) {
         return shortModel(model);
     }
 
-    _truncate(str, max) {
+    _truncate(str: string, max: number) {
         return truncateText(str, max);
     }
 
-    _escapeHtml(str) {
+    _escapeHtml(str: string) {
         if (!str) return '';
         const div = document.createElement('div');
         div.textContent = str;
@@ -439,3 +428,6 @@ export class DashboardRenderer {
         eventBus.off('agent:removed', this._onAgentChanged);
     }
 }
+
+// AvatarCanvas is imported at bottom to avoid circular dependency
+import { AvatarCanvas } from './AvatarCanvas.js';

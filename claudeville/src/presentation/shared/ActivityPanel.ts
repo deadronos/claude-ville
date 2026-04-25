@@ -1,21 +1,26 @@
 import { eventBus } from '../../domain/events/DomainEvent.js';
 import { getHubApiUrl } from '../../config/runtime.js';
+import { Agent } from '../../domain/entities/Agent.js';
 
-const TOOL_ICONS = {
-    Read: '\u{1F4D6}', Edit: '\u270F\uFE0F', Write: '\u{1F4DD}',
-    Grep: '\u{1F50D}', Glob: '\u{1F4C1}', Bash: '\u26A1',
+const TOOL_ICONS: Record<string, string> = {
+    Read: '\u{1F4D6}', Edit: '✏️', Write: '\u{1F4DD}',
+    Grep: '\u{1F50D}', Glob: '\u{1F4C1}', Bash: '⚡',
     Task: '\u{1F4CB}', TaskCreate: '\u{1F4CB}', TaskUpdate: '\u{1F4CB}', TaskList: '\u{1F4CB}',
     WebSearch: '\u{1F310}', WebFetch: '\u{1F310}',
     SendMessage: '\u{1F4AC}', TeamCreate: '\u{1F465}',
     EnterPlanMode: '\u{1F4D0}', ExitPlanMode: '\u{1F4D0}',
-    AskUserQuestion: '\u2753',
+    AskUserQuestion: '❓',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+    working: '#4ade80', idle: '#60a5fa', waiting: '#f97316',
 };
 
 export class ActivityPanel {
     panelEl: HTMLElement | null;
     closeBtn: HTMLElement | null;
-    currentAgent: any;
-    _pollTimer: any;
+    currentAgent: Agent | null;
+    _pollTimer: ReturnType<typeof setInterval> | null;
 
     constructor() {
         this.panelEl = document.getElementById('activityPanel');
@@ -27,78 +32,82 @@ export class ActivityPanel {
     }
 
     _bind() {
-        this.closeBtn.addEventListener('click', () => this.hide());
+        this.closeBtn!.addEventListener('click', () => this.hide());
 
-        eventBus.on('agent:selected', (agent) => {
+        eventBus.on('agent:selected', ((agent: Agent | null) => {
             if (agent) this.show(agent);
-        });
+        }) as (data?: unknown) => void);
 
-        eventBus.on('agent:updated', (agent) => {
+        eventBus.on('agent:updated', ((agent: Agent) => {
             if (this.currentAgent && agent.id === this.currentAgent.id) {
                 this.currentAgent = agent;
                 this._updateInfo(agent);
                 this._updateCurrentTool(agent);
             }
-        });
+        }) as (data?: unknown) => void);
 
-        eventBus.on('agent:deselected', () => {
+        eventBus.on('agent:deselected', (() => {
             if (this.currentAgent) {
                 this.hide();
             }
-        });
+        }) as (data?: unknown) => void);
 
-        eventBus.on('agent:removed', (agent) => {
+        eventBus.on('agent:removed', ((agent: Agent) => {
             if (this.currentAgent && agent.id === this.currentAgent.id) {
                 this.hide();
             }
-        });
+        }) as (data?: unknown) => void);
     }
 
-    show(agent) {
+    show(agent: Agent) {
         this.currentAgent = agent;
-        this.panelEl.style.display = '';
+        this.panelEl!.style.display = '';
         this._updateInfo(agent);
         this._updateCurrentTool(agent);
         this._startPolling();
     }
 
     hide() {
-        this.panelEl.style.display = 'none';
+        this.panelEl!.style.display = 'none';
         this.currentAgent = null;
         this._stopPolling();
         eventBus.emit('agent:deselected');
     }
 
-    _updateInfo(agent) {
-        document.getElementById('panelAgentName').textContent = agent.name;
+    _updateInfo(agent: Agent) {
+        const agentNameEl = document.getElementById('panelAgentName');
         const statusEl = document.getElementById('panelAgentStatus');
-        statusEl.textContent = agent.status.toUpperCase();
-        statusEl.style.color = {
-            working: '#4ade80', idle: '#60a5fa', waiting: '#f97316',
-        }[agent.status] || '#8b8b9e';
+        const modelEl = document.getElementById('panelModel');
+        const providerEl = document.getElementById('panelProvider');
+        const roleEl = document.getElementById('panelRole');
+        const teamEl = document.getElementById('panelTeam');
 
-        document.getElementById('panelModel').textContent =
+        agentNameEl!.textContent = agent.name;
+        statusEl!.textContent = (agent as any).status.toUpperCase();
+        statusEl!.style.color = STATUS_COLORS[(agent as any).status] || '#8b8b9e';
+
+        modelEl!.textContent =
             (agent.model || '').replace('claude-', '').replace(/-2025\d+/, '');
-        document.getElementById('panelProvider').textContent = agent.provider || 'claude';
-        document.getElementById('panelRole').textContent = agent.role || 'general';
-        document.getElementById('panelTeam').textContent = agent.teamName || '-';
+        providerEl!.textContent = agent.provider || 'claude';
+        roleEl!.textContent = agent.role || 'general';
+        teamEl!.textContent = (agent as any).teamName || '-';
     }
 
-    _updateCurrentTool(agent) {
-        const container = document.getElementById('panelCurrentTool');
-        const iconEl = container.querySelector('.activity-panel__tool-icon');
-        const nameEl = container.querySelector('.activity-panel__tool-name');
-        const inputEl = container.querySelector('.activity-panel__tool-input');
+    _updateCurrentTool(agent: Agent) {
+        const container = document.getElementById('panelCurrentTool')!;
+        const iconEl = container.querySelector('.activity-panel__tool-icon') as HTMLElement;
+        const nameEl = container.querySelector('.activity-panel__tool-name') as HTMLElement;
+        const inputEl = container.querySelector('.activity-panel__tool-input') as HTMLElement;
 
-        if (agent.currentTool) {
+        if ((agent as any).currentTool) {
             container.classList.remove('activity-panel__current-tool--idle');
-            iconEl.textContent = this._icon(agent.currentTool);
-            nameEl.textContent = agent.currentTool;
-            inputEl.textContent = agent.currentToolInput || '';
+            iconEl.textContent = this._icon((agent as any).currentTool);
+            nameEl.textContent = (agent as any).currentTool;
+            inputEl.textContent = (agent as any).currentToolInput || '';
         } else {
             container.classList.add('activity-panel__current-tool--idle');
-            iconEl.textContent = agent.status === 'idle' ? '\u{1F4A4}' : '\u23F3';
-            nameEl.textContent = agent.status === 'idle' ? 'Idle' : 'Waiting...';
+            iconEl.textContent = (agent as any).status === 'idle' ? '\u{1F4A4}' : '⏳';
+            nameEl.textContent = (agent as any).status === 'idle' ? 'Idle' : 'Waiting...';
             inputEl.textContent = '';
         }
     }
@@ -124,7 +133,7 @@ export class ActivityPanel {
         try {
             const params = new URLSearchParams({
                 sessionId: agent.id,
-                project: agent.projectPath || '',
+                project: (agent as any).projectPath || '',
                 provider: agent.provider || 'claude',
             });
             const resp = await fetch(getHubApiUrl('/api/session-detail', params));
@@ -141,8 +150,8 @@ export class ActivityPanel {
 
     // ─── Rendering ─────────────────────────────────────
 
-    _renderToolHistory(tools) {
-        const el = document.getElementById('panelToolHistory');
+    _renderToolHistory(tools: { tool: string; detail?: string }[]) {
+        const el = document.getElementById('panelToolHistory')!;
         if (!tools.length) {
             el.innerHTML = '<div class="activity-panel__empty">No tool usage</div>';
             return;
@@ -160,8 +169,8 @@ export class ActivityPanel {
         }).join('');
     }
 
-    _renderMessages(messages) {
-        const el = document.getElementById('panelMessages');
+    _renderMessages(messages: { role: string; text: string }[]) {
+        const el = document.getElementById('panelMessages')!;
         if (!messages.length) {
             el.innerHTML = '<div class="activity-panel__empty">No messages</div>';
             return;
@@ -178,23 +187,23 @@ export class ActivityPanel {
 
     // ─── Utilities ───────────────────────────────────────
 
-    _icon(tool) {
-        if (!tool) return '\u2753';
+    _icon(tool: string) {
+        if (!tool) return '❓';
         if (tool.startsWith('mcp__playwright__')) return '\u{1F3AD}';
         if (tool.startsWith('mcp__')) return '\u{1F50C}';
         return TOOL_ICONS[tool] || '\u{1F527}';
     }
 
-    _shortTool(name) {
+    _shortTool(name: string) {
         if (!name) return '';
         return name.replace('mcp__playwright__', 'pw:').replace('mcp__', '');
     }
 
-    _trunc(s, max) {
+    _trunc(s: string, max: number) {
         return s.length > max ? s.substring(0, max - 1) + '...' : s;
     }
 
-    _esc(s) {
+    _esc(s: string) {
         if (!s) return '';
         const d = document.createElement('div');
         d.textContent = s;

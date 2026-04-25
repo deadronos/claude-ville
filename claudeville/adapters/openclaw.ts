@@ -15,11 +15,14 @@ const { readLines, parseJsonLines } = require('./jsonl-utils');
 const OPENCLAW_DIR = path.join(os.homedir(), '.openclaw');
 const AGENTS_DIR = path.join(OPENCLAW_DIR, 'agents');
 
+// Type for directory entries from readdirSync with withFileTypes: true
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+
 // ─── Utility ─────────────────────────────────────────────
 
 // ─── Session parsing ──────────────────────────────────────
 
-async function parseSession(filePath) {
+async function parseSession(filePath: string) {
   const detail = {
     model: null,
     provider: null,
@@ -89,7 +92,7 @@ async function parseSession(filePath) {
   return detail;
 }
 
-function extractText(content) {
+function extractText(content: unknown) {
   if (typeof content === 'string') return content.trim();
   if (!Array.isArray(content)) return '';
   for (const block of content) {
@@ -101,7 +104,7 @@ function extractText(content) {
 
 // ─── Tool history ────────────────────────────────────
 
-async function getToolHistory(filePath, maxItems = 15) {
+async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 100 });
@@ -133,7 +136,7 @@ async function getToolHistory(filePath, maxItems = 15) {
 
 // ─── Recent messages ──────────────────────────────────────
 
-async function getRecentMessages(filePath, maxItems = 5) {
+async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 60 });
@@ -157,27 +160,27 @@ async function getRecentMessages(filePath, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
-function encodeSessionKey(value) {
+function encodeSessionKey(value: string) {
   return encodeURIComponent(value || '');
 }
 
-function decodeSessionKey(value) {
+function decodeSessionKey(value: string) {
   return decodeURIComponent(value || '');
 }
 
-function buildSessionId(agentId, fileName) {
+function buildSessionId(agentId: string, fileName: string) {
   const sessionId = fileName.replace('.jsonl', '');
   return `openclaw:${encodeSessionKey(agentId)}:${encodeSessionKey(sessionId)}`;
 }
 
-function buildProjectKey(agentId, projectPath) {
+function buildProjectKey(agentId: string | null, projectPath: string | null) {
   if (agentId) {
     return `openclaw:${agentId}`;
   }
   return projectPath || null;
 }
 
-function parseSessionId(sessionId) {
+function parseSessionId(sessionId: string) {
   if (!sessionId.startsWith('openclaw:')) {
     return {
       agentId: null,
@@ -194,25 +197,27 @@ function parseSessionId(sessionId) {
 
 // ─── Session scan ────────────────────────────────────────
 
-async function scanAllSessionFiles(activeThresholdMs) {
-  const results = [];
+type OpenClawScanResult = { filePath: string; mtime: number; fileName: string; agentId: string };
+
+async function scanAllSessionFiles(activeThresholdMs: number): Promise<OpenClawScanResult[]> {
+  const results: OpenClawScanResult[] = [];
   if (!fs.existsSync(AGENTS_DIR)) return results;
 
   const now = Date.now();
 
   try {
     const agentDirs = (await fs.promises.readdir(AGENTS_DIR, { withFileTypes: true }))
-      .filter(d => d.isDirectory());
+      .filter((d: Dirent) => d.isDirectory());
     const agentResults = await Promise.all(
-      agentDirs.map(async (agentDir) => {
+      agentDirs.map(async (agentDir: Dirent) => {
         const sessionsDir = path.join(AGENTS_DIR, agentDir.name, 'sessions');
         if (!fs.existsSync(sessionsDir)) return [];
 
         try {
           const sessionFiles = await fs.promises.readdir(sessionsDir);
-          const jsonlFiles = sessionFiles.filter(f => f.endsWith('.jsonl'));
+          const jsonlFiles = sessionFiles.filter((f: string) => f.endsWith('.jsonl'));
           const fileResults = await Promise.all(
-            jsonlFiles.map(async (file) => {
+            jsonlFiles.map(async (file: string) => {
               const filePath = path.join(sessionsDir, file);
               try {
                 const stat = await fs.promises.stat(filePath);
@@ -228,7 +233,7 @@ async function scanAllSessionFiles(activeThresholdMs) {
               }
             })
           );
-          return fileResults.filter(Boolean);
+          return fileResults.filter((r: OpenClawScanResult | null): r is OpenClawScanResult => r !== null);
         } catch {
           return [];
         }
@@ -253,7 +258,7 @@ class OpenClawAdapter {
     return fs.existsSync(AGENTS_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs) {
+  async getActiveSessions(activeThresholdMs: number) {
     const sessionFiles = await scanAllSessionFiles(activeThresholdMs);
     const sessions = await Promise.all(sessionFiles.map(async ({ filePath, mtime, fileName, agentId }) => {
       const detail = await parseSession(filePath);
@@ -279,7 +284,7 @@ class OpenClawAdapter {
     return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  async getSessionDetail(sessionId, project, filePath = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
       return {
         toolHistory: await getToolHistory(filePath),
@@ -308,13 +313,13 @@ class OpenClawAdapter {
     return { toolHistory: [], messages: [] };
   }
 
-  getWatchPaths() {
-    const paths = [];
+  getWatchPaths(): Array<{ type: string; path: string; recursive?: boolean; filter?: string }> {
+    const paths: Array<{ type: string; path: string; recursive?: boolean; filter?: string }> = [];
     if (!fs.existsSync(AGENTS_DIR)) return paths;
 
     try {
       const agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-        .filter(d => d.isDirectory());
+        .filter((d: Dirent) => d.isDirectory());
 
       for (const dir of agentDirs) {
         const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
