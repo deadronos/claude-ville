@@ -36,3 +36,5 @@ android/*.iml
 android/app/*.iml
 android/.DS_Store
 .idea/
+
+claudeville-e2e-*/
