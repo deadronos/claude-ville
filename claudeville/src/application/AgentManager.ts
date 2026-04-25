@@ -34,6 +34,7 @@ export class AgentManager {
         for (const team of teams) {
             if (team.members) {
                 for (const member of team.members) {
+                    if (!member.agentId) continue;
                     teamMembers.set(member.agentId, {
                         name: member.name,
                         teamName: team.teamName || team.name,
