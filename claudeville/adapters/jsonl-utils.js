@@ -3,9 +3,13 @@
  * readLines + parseJsonLines are duplicated verbatim in openclaw, copilot, codex, vscode.
  * Extract once; adapters import from here.
  */
-const fs = require('fs');
+import fs from 'fs';
 
-function debugAdapterError(scope, operation, err, context = '') {
+/**
+ * @typedef {{ from?: 'start' | 'end'; count?: number; scope?: string }} ReadLinesOptions
+ */
+
+export function debugAdapterError(scope, operation, err, context = '') {
   if (!process.env.DEBUG) return;
 
   const message = err instanceof Error ? err.message : String(err);
@@ -16,10 +20,10 @@ function debugAdapterError(scope, operation, err, context = '') {
 /**
  * Read the last N (or first N) lines of a file as strings.
  * @param {string} filePath
- * @param {{ from: 'start'|'end', count: number }} options
+ * @param {ReadLinesOptions} options
  * @returns {Promise<string[]>}
  */
-async function readLines(filePath, { from = 'end', count = 50, scope = 'jsonl-utils' } = {}) {
+export async function readLines(filePath, { from = 'end', count = 50, scope = 'jsonl-utils' } = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
     const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -35,9 +39,9 @@ async function readLines(filePath, { from = 'end', count = 50, scope = 'jsonl-ut
 /**
  * Parse an array of JSONL strings into objects, skipping bad lines.
  * @param {string[]} lines
- * @returns {object[]}
+ * @returns {any[]}
  */
-function parseJsonLines(lines, scope = 'jsonl-utils') {
+export function parseJsonLines(lines, scope = 'jsonl-utils') {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -47,5 +51,3 @@ function parseJsonLines(lines, scope = 'jsonl-utils') {
   }
   return results;
 }
-
-module.exports = { debugAdapterError, readLines, parseJsonLines };

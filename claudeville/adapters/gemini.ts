@@ -16,16 +16,18 @@
  * Project path restoration: projectHash is SHA-256 of cwd, so
  * map by computing hashes of known project paths
  */
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import crypto from 'crypto';
+
+import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 
 const GEMINI_DIR = path.join(os.homedir(), '.gemini');
 const TMP_DIR = path.join(GEMINI_DIR, 'tmp');
 
 // Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Project path restoration ──────────────────────────────
 
@@ -283,7 +285,7 @@ async function scanActiveSessions(activeThresholdMs: number) {
       try {
         const sessionFiles = await fs.promises.readdir(chatsDir);
         const jsonFiles = sessionFiles.filter((f: string) => f.startsWith('session-') && f.endsWith('.json'));
-        const fileResults = await Promise.all(jsonFiles.map(async (file: string) => {
+        const fileResults = await Promise.all(jsonFiles.map(async (file: string): Promise<ScanResult | null> => {
           const filePath = path.join(chatsDir, file);
           try {
             const stat = await fs.promises.stat(filePath);
@@ -298,14 +300,14 @@ async function scanActiveSessions(activeThresholdMs: number) {
             return null;
           }
         }));
-        return fileResults.filter(Boolean);
+        return fileResults.filter((result): result is ScanResult => result !== null);
       } catch {
         return [];
       }
     }));
 
     for (const group of projectResults) {
-      results.push(...group);
+      results.push(...(group as ScanResult[]));
     }
   } catch { /* ignore */ }
 
@@ -314,7 +316,7 @@ async function scanActiveSessions(activeThresholdMs: number) {
 
 // ─── Adapter class ────────────────────────────────────
 
-class GeminiAdapter {
+export class GeminiAdapter implements AgentAdapter {
   get name() { return 'Gemini CLI'; }
   get provider() { return 'gemini'; }
   get homeDir() { return GEMINI_DIR; }
@@ -376,8 +378,8 @@ class GeminiAdapter {
     return { toolHistory: [], messages: [] };
   }
 
-  getWatchPaths() {
-    const paths = [];
+  getWatchPaths(): WatchPath[] {
+    const paths: WatchPath[] = [];
     if (fs.existsSync(TMP_DIR)) {
       try {
         const projDirs = fs.readdirSync(TMP_DIR, { withFileTypes: true })
@@ -393,5 +395,3 @@ class GeminiAdapter {
     return paths;
   }
 }
-
-module.exports = { GeminiAdapter };

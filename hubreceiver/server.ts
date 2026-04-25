@@ -1,10 +1,11 @@
-require('../load-local-env.ts');
+import '../load-local-env.js';
 
 import http from 'http';
 import net from 'net';
-const { applySnapshot, getCurrentState, getSessionDetail, getHistory, defaultUsage } = require('./state');
-const { createHubreceiverRequestHandler } = require('./routes');
-const { createHubWebSocketManager } = require('./ws');
+
+import { applySnapshot, getCurrentState, getSessionDetail, getHistory } from './state.js';
+import { createHubreceiverRequestHandler } from './routes.js';
+import { createHubWebSocketManager } from './ws.js';
 
 const PORT = Number(process.env.HUB_PORT || 3030);
 const AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
@@ -16,7 +17,6 @@ const server = http.createServer(createHubreceiverRequestHandler({
   getCurrentState,
   getSessionDetail,
   getHistory,
-  defaultUsage,
   wsManager,
   authToken: AUTH_TOKEN,
   maxSnapshotBytes: MAX_SNAPSHOT_BYTES,

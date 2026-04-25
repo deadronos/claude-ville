@@ -8,9 +8,9 @@
  * The frame-building utilities (createWebSocketFrame, computeAcceptKey)
  * live in shared/ws-utils.js — this file only handles send/broadcast.
  */
-const { createWebSocketFrame } = require('./ws-utils.ts');
+import { createWebSocketFrame } from './ws-utils.js';
 
-const DISCONNECTED_CODES = new Set(['EPIPE', 'ECONNRESET', 'EBADF', 'ENOTCONN']);
+export const DISCONNECTED_CODES = new Set(['EPIPE', 'ECONNRESET', 'EBADF', 'ENOTCONN']);
 
 /**
  * Send a JSON payload over a WebSocket socket.
@@ -20,7 +20,7 @@ const DISCONNECTED_CODES = new Set(['EPIPE', 'ECONNRESET', 'EBADF', 'ENOTCONN'])
  * @param {object} data
  * @param {Set} clientSet - the Set tracking all active clients (for cleanup)
  */
-function wsSend(socket, data, clientSet = null) {
+export function wsSend(socket, data, clientSet = null) {
   try {
     if (socket.destroyed || !socket.writable) {
       if (clientSet) clientSet.delete(socket);
@@ -50,7 +50,7 @@ function wsSend(socket, data, clientSet = null) {
  * @param {object} data
  * @param {Set<import('net').Socket>} wsClients
  */
-function wsBroadcast(data, wsClients) {
+export function wsBroadcast(data, wsClients) {
   let frame;
   try {
     frame = createWebSocketFrame(JSON.stringify(data));
@@ -80,5 +80,3 @@ function wsBroadcast(data, wsClients) {
     wsClients.delete(socket);
   }
 }
-
-module.exports = { wsSend, wsBroadcast, DISCONNECTED_CODES };

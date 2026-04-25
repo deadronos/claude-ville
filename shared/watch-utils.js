@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 
 /**
  * Watch an array of watch-path objects and call onChange whenever any of them change.
@@ -10,7 +10,7 @@ const fs = require('fs');
  * @param {number} [debounceMs=200]  - Debounce delay
  * @returns {{ watchCount: number }}
  */
-function createFileWatchers(watchPaths, onChange, debounceMs = 200) {
+export function createFileWatchers(watchPaths, onChange, debounceMs = 200) {
   let watchCount = 0;
   let timer = null;
 
@@ -41,5 +41,3 @@ function createFileWatchers(watchPaths, onChange, debounceMs = 200) {
 
   return { watchCount };
 }
-
-module.exports = { createFileWatchers };

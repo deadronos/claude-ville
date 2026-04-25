@@ -1,6 +1,6 @@
 // Shared MIME type map — superset of both servers' needs.
 
-const MIME_TYPES = {
+export const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -17,5 +17,3 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
 };
-
-module.exports = { MIME_TYPES };

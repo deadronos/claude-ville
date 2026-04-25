@@ -1,33 +1,16 @@
-require('../load-local-env.ts');
+import '../load-local-env.js';
 
-const { createFileWatchers } = require('../shared/watch-utils');
-const crypto = require('crypto');
-const { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } = require('../claudeville/adapters/index.ts');
+import crypto from 'crypto';
+import os from 'os';
+
+import { createFileWatchers } from '../shared/watch-utils.js';
+import type { WatchPath } from '../shared/types.js';
+import { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } from '../claudeville/adapters/index.js';
 import { buildCollectorSnapshot, normalizeSession } from './snapshot.js';
+import type { CollectorSnapshotDeps } from './snapshot.js';
 import { createCollectorPublisher } from './publisher.js';
 
 const DEFAULT_ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
-
-type TokenLike = {
-  totalInput?: number;
-  totalOutput?: number;
-  input?: number;
-  output?: number;
-};
-
-type SessionDetail = {
-  tokenUsage?: TokenLike | null;
-};
-
-type SessionSummary = {
-  provider: string;
-  sessionId: string;
-  project?: string;
-  model?: string;
-  tokens?: { input?: number; output?: number } | null;
-  detail?: SessionDetail | null;
-  [key: string]: unknown;
-};
 
 type CollectorRuntimeConfig = {
   hubUrl: string;
@@ -39,17 +22,17 @@ type CollectorRuntimeConfig = {
 };
 
 type CollectorRuntimeDeps = {
-  createFileWatchers: (paths: string[], onChange: () => void) => { watchCount: number };
-  createHash: (algorithm: string) => { update: (data: string) => { digest: (format: string) => string }; digest: (format: string) => string };
+  createFileWatchers: (paths: WatchPath[], onChange: () => void) => { watchCount: number };
+  createHash: typeof crypto.createHash;
   adapters: Array<{
     provider?: string;
     getTeams?: () => Promise<unknown[]> | unknown[];
     getTasks?: () => Promise<unknown[]> | unknown[];
   }>;
-  getAllSessions: (activeThresholdMs: number) => Promise<SessionSummary[]>;
-  getAllWatchPaths: () => string[];
+  getAllSessions: CollectorSnapshotDeps['getAllSessions'];
+  getAllWatchPaths: () => WatchPath[];
   getActiveProviders: () => unknown[];
-  getSessionDetailByProvider: (provider: string, sessionId: string, project?: string) => Promise<SessionDetail | null>;
+  getSessionDetailByProvider: CollectorSnapshotDeps['getSessionDetailByProvider'];
   fetch: typeof fetch;
   setTimeout: typeof globalThis.setTimeout;
   clearTimeout: typeof globalThis.clearTimeout;
@@ -59,17 +42,14 @@ type CollectorRuntimeDeps = {
 };
 
 type SnapshotBuilderDeps = {
-  getAllSessions: (activeThresholdMs: number) => Promise<SessionSummary[]>;
-  getSessionDetailByProvider: (provider: string, sessionId: string, project?: string) => Promise<SessionDetail | null>;
-  getActiveProviders: () => unknown[];
-  claudeAdapter?: {
-    getTeams?: () => Promise<unknown[]> | unknown[];
-    getTasks?: () => Promise<unknown[]> | unknown[];
-  };
+  getAllSessions: CollectorSnapshotDeps['getAllSessions'];
+  getSessionDetailByProvider: CollectorSnapshotDeps['getSessionDetailByProvider'];
+  getActiveProviders: CollectorSnapshotDeps['getActiveProviders'];
+  claudeAdapter?: CollectorSnapshotDeps['claudeAdapter'];
 };
 
 export function getCollectorConfig(): CollectorRuntimeConfig {
-  const hostname = require('os').hostname();
+  const hostname = os.hostname();
   const activeThresholdMs = Number(process.env.COLLECTOR_ACTIVE_THRESHOLD_MS || DEFAULT_ACTIVE_THRESHOLD_MS);
 
   return {
@@ -82,7 +62,7 @@ export function getCollectorConfig(): CollectorRuntimeConfig {
   };
 }
 
-const defaultCollectorDeps: CollectorRuntimeDeps = {
+  const defaultCollectorDeps: CollectorRuntimeDeps = {
   createFileWatchers,
   createHash: crypto.createHash,
   adapters,

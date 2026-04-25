@@ -314,9 +314,9 @@ export class Agent {
     _buildDisplaySession() {
         return {
             sessionId: this.id,
-            agentId: this.nameKind === 'agent' ? this.nameSeed : undefined,
-            displayName: this.nameHint ?? undefined,
-            agentName: this.nameHint ?? undefined,
+            agentId: this.nameKind === 'agent' ? this.nameSeed : null,
+            displayName: this.nameHint ?? null,
+            agentName: this.nameHint ?? null,
             provider: this.provider,
             agentType: this.nameKind === 'agent' ? 'sub-agent' : 'main',
         };

@@ -4,10 +4,12 @@
  *   ~/Library/Application Support/Code/User/workspaceStorage/<workspaceId>/GitHub.copilot-chat/debug-logs/<sessionId>/main.jsonl
  *   ~/Library/Application Support/Code - Insiders/User/workspaceStorage/<workspaceId>/GitHub.copilot-chat/debug-logs/<sessionId>/main.jsonl
  */
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 
 const VSCODE_USER_DIR = process.env.VSCODE_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User');
@@ -19,7 +21,7 @@ const STORAGE_ROOTS = [
   { channel: 'vscode-insiders', workspaceStorageDir: path.join(VSCODE_INSIDERS_USER_DIR, 'workspaceStorage') },
 ];
 
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 const DEFAULT_MIN_ACTIVE_WINDOW_MS = 30 * 60 * 1000;
 const MIN_ACTIVE_WINDOW_MS = Math.max(
@@ -33,8 +35,19 @@ const SOURCE_PRIORITY = {
   resource: 1,
 };
 
-function shouldReplaceCandidate(existing: { sourceType: string; mtime: number } | null, incoming: { sourceType: string; mtime: number }): boolean {
+type ResourceSessionCandidate = {
+  channel: string;
+  workspaceId: string;
+  rawSessionId: string;
+  sourceType: 'debug' | 'transcript' | 'resource';
+  filePath: string;
+  project: string;
+  mtime: number;
+};
+
+function shouldReplaceCandidate(existing: { sourceType: string; mtime: number } | null | undefined, incoming: { sourceType: string; mtime: number } | null | undefined): boolean {
   if (!existing) return true;
+  if (!incoming) return false;
   const existingPriority = SOURCE_PRIORITY[existing.sourceType as keyof typeof SOURCE_PRIORITY] || 0;
   const incomingPriority = SOURCE_PRIORITY[incoming.sourceType as keyof typeof SOURCE_PRIORITY] || 0;
 
@@ -60,7 +73,7 @@ async function scanResourceSessionContents(filePath: string): Promise<Array<{ ca
   const sessionRoot = getResourceSessionRoot(filePath);
   if (!sessionRoot || !fs.existsSync(sessionRoot)) return [];
 
-  let entries = [];
+  let entries: Array<{ callId: string; filePath: string; text: string; ts: number }> = [];
   try {
     const children = await fs.promises.readdir(sessionRoot, { withFileTypes: true });
     const contentRows = await Promise.all(children
@@ -85,7 +98,7 @@ async function scanResourceSessionContents(filePath: string): Promise<Array<{ ca
         }
       }));
 
-    entries = contentRows.filter(Boolean).sort((a, b) => a.ts - b.ts);
+    entries = contentRows.filter((item): item is { callId: string; filePath: string; text: string; ts: number } => item !== null).sort((a, b) => a.ts - b.ts);
   } catch (err) {
     debugAdapterError('vscode', 'scanResourceSessionContents', err, sessionRoot);
     entries = [];
@@ -349,12 +362,12 @@ function parseSessionId(sessionId: string): { channel: string; workspaceId: stri
 async function scanAllSessions(activeThresholdMs: number) {
   const now = Date.now();
   const effectiveThresholdMs = Math.max(Number(activeThresholdMs || 0), MIN_ACTIVE_WINDOW_MS);
-  const results = [];
+  const results: ResourceSessionCandidate[] = [];
 
   for (const root of STORAGE_ROOTS) {
     if (!fs.existsSync(root.workspaceStorageDir)) continue;
 
-    let workspaceDirs = [];
+    let workspaceDirs: Dirent[] = [];
     try {
       workspaceDirs = await fs.promises.readdir(root.workspaceStorageDir, { withFileTypes: true });
     } catch (err) {
@@ -364,19 +377,19 @@ async function scanAllSessions(activeThresholdMs: number) {
 
     const entries = await Promise.all(workspaceDirs
       .filter((d: Dirent) => d.isDirectory())
-      .map(async (workspaceDir: Dirent) => {
+      .map(async (workspaceDir: Dirent): Promise<ResourceSessionCandidate[]> => {
         const workspaceId = workspaceDir.name;
         const workspacePath = path.join(root.workspaceStorageDir, workspaceId);
         const copilotChatDir = path.join(workspacePath, 'GitHub.copilot-chat');
         if (!fs.existsSync(copilotChatDir)) return [];
 
         const projectPath = await readWorkspacePath(workspacePath);
-        const candidates = [];
+        const candidates: ResourceSessionCandidate[] = [];
 
         // legacy/new debug logs
         const debugLogsDir = path.join(copilotChatDir, 'debug-logs');
         if (fs.existsSync(debugLogsDir)) {
-          let debugLogDirs = [];
+          let debugLogDirs: Dirent[] = [];
           try {
             debugLogDirs = await fs.promises.readdir(debugLogsDir, { withFileTypes: true });
           } catch (err) {
@@ -386,7 +399,7 @@ async function scanAllSessions(activeThresholdMs: number) {
 
           const debugEntries = await Promise.all(debugLogDirs
             .filter((d: Dirent) => d.isDirectory())
-            .map(async (logDir: Dirent) => {
+            .map(async (logDir: Dirent): Promise<ResourceSessionCandidate | null> => {
               const mainLogFile = path.join(debugLogsDir, logDir.name, 'main.jsonl');
               if (!fs.existsSync(mainLogFile)) return null;
 
@@ -408,13 +421,13 @@ async function scanAllSessions(activeThresholdMs: number) {
               }
             }));
 
-          candidates.push(...debugEntries.filter(Boolean));
+          candidates.push(...debugEntries.filter((item): item is ResourceSessionCandidate => item !== null));
         }
 
         // transcript jsonl
         const transcriptsDir = path.join(copilotChatDir, 'transcripts');
         if (fs.existsSync(transcriptsDir)) {
-          let transcriptFiles = [];
+          let transcriptFiles: string[] = [];
           try {
             transcriptFiles = await fs.promises.readdir(transcriptsDir);
           } catch (err) {
@@ -424,7 +437,7 @@ async function scanAllSessions(activeThresholdMs: number) {
 
           const transcriptEntries = await Promise.all(transcriptFiles
             .filter((f: string) => f.endsWith('.jsonl'))
-            .map(async (file: string) => {
+            .map(async (file: string): Promise<ResourceSessionCandidate | null> => {
               const transcriptPath = path.join(transcriptsDir, file);
               try {
                 const stat = await fs.promises.stat(transcriptPath);
@@ -445,13 +458,13 @@ async function scanAllSessions(activeThresholdMs: number) {
               }
             }));
 
-          candidates.push(...transcriptEntries.filter(Boolean));
+          candidates.push(...transcriptEntries.filter((item): item is ResourceSessionCandidate => item !== null));
         }
 
         // live chat resources (often newest while a turn is running)
         const resourcesDir = path.join(copilotChatDir, 'chat-session-resources');
         if (fs.existsSync(resourcesDir)) {
-          let sessionDirs = [];
+          let sessionDirs: Dirent[] = [];
           try {
             sessionDirs = await fs.promises.readdir(resourcesDir, { withFileTypes: true });
           } catch (err) {
@@ -461,9 +474,9 @@ async function scanAllSessions(activeThresholdMs: number) {
 
           const resourceEntries = await Promise.all(sessionDirs
             .filter((d: Dirent) => d.isDirectory())
-            .map(async (sessionDir: Dirent) => {
+            .map(async (sessionDir: Dirent): Promise<ResourceSessionCandidate | null> => {
               const sessionRoot = path.join(resourcesDir, sessionDir.name);
-              let toolDirs = [];
+              let toolDirs: Dirent[] = [];
               try {
                 toolDirs = await fs.promises.readdir(sessionRoot, { withFileTypes: true });
               } catch (err) {
@@ -485,7 +498,7 @@ async function scanAllSessions(activeThresholdMs: number) {
               });
 
               const stats = await Promise.all(statPromises);
-              let newest = null;
+              let newest: { filePath: string; mtime: number } | null = null;
               for (const stat of stats) {
                 if (stat && (!newest || stat.mtime > newest.mtime)) {
                   newest = stat;
@@ -506,15 +519,17 @@ async function scanAllSessions(activeThresholdMs: number) {
               };
             }));
 
-          candidates.push(...resourceEntries.filter(Boolean));
+          candidates.push(...resourceEntries.filter((item): item is ResourceSessionCandidate => item !== null));
         }
         // dedupe by raw session key, keep newest source
-        const bySession = new Map();
+        const bySession = new Map<string, ResourceSessionCandidate>();
         for (const item of candidates) {
-          const key = `${item.channel}:${item.workspaceId}:${item.rawSessionId}`;
+          const candidate = item;
+          if (!candidate) continue;
+          const key = `${candidate.channel}:${candidate.workspaceId}:${candidate.rawSessionId}`;
           const existing = bySession.get(key);
-          if (shouldReplaceCandidate(existing, item)) {
-            bySession.set(key, item);
+          if (shouldReplaceCandidate(existing, candidate ?? null)) {
+            bySession.set(key, candidate);
           }
         }
 
@@ -529,7 +544,7 @@ async function scanAllSessions(activeThresholdMs: number) {
   return results;
 }
 
-class VSCodeAdapter {
+export class VSCodeAdapter implements AgentAdapter {
   get name() { return 'VS Code Copilot Chat'; }
   get provider() { return 'vscode'; }
   get homeDir() { return `${VSCODE_USER_DIR} | ${VSCODE_INSIDERS_USER_DIR}`; }
@@ -591,8 +606,8 @@ class VSCodeAdapter {
     };
   }
 
-  getWatchPaths() {
-    const paths = [];
+  getWatchPaths(): WatchPath[] {
+    const paths: WatchPath[] = [];
     for (const root of STORAGE_ROOTS) {
       if (!fs.existsSync(root.workspaceStorageDir)) continue;
       paths.push({
@@ -611,5 +626,3 @@ class VSCodeAdapter {
     return paths;
   }
 }
-
-module.exports = { VSCodeAdapter };

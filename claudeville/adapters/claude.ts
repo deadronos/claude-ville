@@ -2,13 +2,15 @@
  * Claude Code CLI adapter
  * Data source: ~/.claude/
  */
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { debugAdapterError } = require('./jsonl-utils');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import { debugAdapterError } from './jsonl-utils.js';
 
 // Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 const CLAUDE_DIR = process.env.CLAUDE_DIR || path.join(os.homedir(), '.claude');
 const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
@@ -269,7 +271,7 @@ function getSessionFileActivity(sessionId: string, project: string | null) {
 
 // ─── Adapter class ──────────────────────────────────────
 
-class ClaudeAdapter {
+export class ClaudeAdapter implements AgentAdapter {
   get name() { return 'Claude Code'; }
   get provider() { return 'claude'; }
   get homeDir() { return CLAUDE_DIR; }
@@ -278,7 +280,7 @@ class ClaudeAdapter {
     return fs.existsSync(CLAUDE_DIR);
   }
 
-  getActiveSessions(activeThresholdMs: number) {
+  async getActiveSessions(activeThresholdMs: number) {
     const lines = readLastLines(HISTORY_FILE, 1000);
     const entries = parseJsonLines(lines);
     const now = Date.now();
@@ -479,19 +481,19 @@ class ClaudeAdapter {
     return results;
   }
 
-  getSessionDetail(sessionId: string, project: string | null) {
-    const filePath = resolveSessionFilePath(sessionId, project);
-    if (!filePath) return { toolHistory: [], messages: [], tokenUsage: null };
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
+    const sessionFilePath = filePath || resolveSessionFilePath(sessionId, project);
+    if (!sessionFilePath) return { toolHistory: [], messages: [], tokenUsage: null };
     return {
-      toolHistory: getToolHistory(filePath),
-      messages: getRecentMessages(filePath),
-      tokenUsage: getTokenUsage(filePath),
+      toolHistory: getToolHistory(sessionFilePath),
+      messages: getRecentMessages(sessionFilePath),
+      tokenUsage: getTokenUsage(sessionFilePath),
       sessionId,
     };
   }
 
-  getWatchPaths() {
-    const paths = [];
+  getWatchPaths(): WatchPath[] {
+    const paths: WatchPath[] = [];
 
     // history.jsonl
     if (fs.existsSync(HISTORY_FILE)) {
@@ -599,5 +601,3 @@ class ClaudeAdapter {
     }
   }
 }
-
-module.exports = { ClaudeAdapter };

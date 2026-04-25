@@ -1,8 +1,9 @@
 import http from 'http';
-const { setCorsHeaders, sendJson, sendError, safeLimit, readBoundedBody } = require('../shared/http-utils.ts');
-const { defaultUsage } = require('./state.ts');
 
-function maybeGetAuthToken(req: http.IncomingMessage) {
+import { setCorsHeaders, sendJson, sendError, safeLimit, readBoundedBody } from '../shared/http-utils.js';
+import { defaultUsage } from './state.js';
+
+export function maybeGetAuthToken(req: http.IncomingMessage) {
   const header = req.headers.authorization || '';
   return header.replace(/^Bearer /i, '');
 }
@@ -17,7 +18,7 @@ interface HubreceiverDeps {
   maxSnapshotBytes: number;
 }
 
-function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
+export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
   return (req: http.IncomingMessage, res: http.ServerResponse) => {
     if (req.method === 'OPTIONS') {
       setCorsHeaders(res);
@@ -116,8 +117,3 @@ function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
     sendError(res, 404, 'Not Found');
   };
 }
-
-module.exports = {
-  maybeGetAuthToken,
-  createHubreceiverRequestHandler,
-};

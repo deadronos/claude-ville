@@ -1179,7 +1179,7 @@ describe('claude adapter', () => {
     it('getSessionDetail returns expected structure', async () => {
       const adapter = new ClaudeAdapter();
       // Test with non-existent session to get empty result structure
-      const detail = adapter.getSessionDetail('nonexistent-session', '/nonexistent/project');
+      const detail = await adapter.getSessionDetail('nonexistent-session', '/nonexistent/project');
 
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
@@ -1189,7 +1189,7 @@ describe('claude adapter', () => {
 
     it('getSessionDetail returns empty arrays for unknown session', async () => {
       const adapter = new ClaudeAdapter();
-      const detail = adapter.getSessionDetail('unknown-session-12345', '/unknown/project/path');
+      const detail = await adapter.getSessionDetail('unknown-session-12345', '/unknown/project/path');
 
       expect(detail.toolHistory).toEqual([]);
       expect(detail.messages).toEqual([]);

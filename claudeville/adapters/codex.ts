@@ -8,16 +8,18 @@
  *   {"type":"response_item","payload":{"type":"message","role":"assistant","content":[...]}}
  *   {"type":"event_msg","payload":{"type":"turn_complete","usage":{...}}}
  */
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 
 const CODEX_DIR = path.join(os.homedir(), '.codex');
 const SESSIONS_DIR = path.join(CODEX_DIR, 'sessions');
 
 // Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Utility ─────────────────────────────────────────────
 
@@ -230,7 +232,7 @@ async function scanRecentRollouts(activeThresholdMs: number) {
               try {
                 const rolloutFiles = (await fs.promises.readdir(dayDir))
                   .filter((f: string) => f.startsWith('rollout-') && f.endsWith('.jsonl'));
-                const fileResults = await Promise.all(rolloutFiles.map(async (file: string) => {
+                const fileResults = await Promise.all(rolloutFiles.map(async (file: string): Promise<ScanResult | null> => {
                   const filePath = path.join(dayDir, file);
                   try {
                     const stat = await fs.promises.stat(filePath);
@@ -241,21 +243,21 @@ async function scanRecentRollouts(activeThresholdMs: number) {
                     return null;
                   }
                 }));
-                return fileResults.filter(Boolean);
+                return fileResults.filter((result): result is ScanResult => result !== null);
               } catch (err) {
                 debugAdapterError('codex', 'scanRecentRollouts readdir day', err, dayDir);
                 return [];
               }
             }));
 
-            return dayResults.flat();
+            return dayResults.flat() as ScanResult[];
           } catch (err) {
             debugAdapterError('codex', 'scanRecentRollouts readdir month', err, monthDir);
             return [];
           }
         }));
 
-        return monthResults.flat();
+        return monthResults.flat() as ScanResult[];
       } catch (err) {
         debugAdapterError('codex', 'scanRecentRollouts readdir year', err, yearDir);
         return [];
@@ -274,7 +276,7 @@ async function scanRecentRollouts(activeThresholdMs: number) {
 
 // ─── Adapter class ────────────────────────────────────
 
-class CodexAdapter {
+export class CodexAdapter implements AgentAdapter {
   get name() { return 'Codex CLI'; }
   get provider() { return 'codex'; }
   get homeDir() { return CODEX_DIR; }
@@ -337,13 +339,11 @@ class CodexAdapter {
     return { toolHistory: [], messages: [] };
   }
 
-  getWatchPaths() {
-    const paths = [];
+  getWatchPaths(): WatchPath[] {
+    const paths: WatchPath[] = [];
     if (fs.existsSync(SESSIONS_DIR)) {
       paths.push({ type: 'directory', path: SESSIONS_DIR, recursive: true, filter: '.jsonl' });
     }
     return paths;
   }
 }
-
-module.exports = { CodexAdapter };

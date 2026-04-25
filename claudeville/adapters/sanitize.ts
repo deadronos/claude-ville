@@ -4,18 +4,18 @@
  * - Provider parsers keep raw data; this layer cleans it for display
  */
 
-function normalizeWhitespace(value: unknown) {
+export function normalizeWhitespace(value: unknown) {
   return String(value || '')
     .replace(/\r\n/g, '\n')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function summarizeText(value: unknown, maxLen = 200) {
+export function summarizeText(value: unknown, maxLen = 200) {
   return normalizeWhitespace(value).substring(0, maxLen);
 }
 
-function looksLikeNoise(text: unknown) {
+export function looksLikeNoise(text: unknown) {
   if (!text) return true;
 
   // Match only complete status-line patterns that never appear in real user messages.
@@ -34,13 +34,13 @@ function looksLikeNoise(text: unknown) {
   return patterns.some((re) => re.test(String(text)));
 }
 
-function cleanText(value: unknown, maxLen = 200) {
+export function cleanText(value: unknown, maxLen = 200) {
   const text = summarizeText(value, maxLen);
   if (!text || looksLikeNoise(text)) return '';
   return text;
 }
 
-function sanitizeToolHistory(toolHistory: Array<{ tool?: unknown; detail?: unknown }> = []) {
+export function sanitizeToolHistory(toolHistory: Array<{ tool?: unknown; detail?: unknown }> = []) {
   if (!Array.isArray(toolHistory)) return [];
 
   return toolHistory
@@ -52,7 +52,7 @@ function sanitizeToolHistory(toolHistory: Array<{ tool?: unknown; detail?: unkno
     .filter((item) => item.tool || item.detail);
 }
 
-function sanitizeMessages(messages: Array<{ text?: unknown }> = []) {
+export function sanitizeMessages(messages: Array<{ text?: unknown }> = []) {
   if (!Array.isArray(messages)) return [];
 
   return messages
@@ -63,7 +63,7 @@ function sanitizeMessages(messages: Array<{ text?: unknown }> = []) {
     .filter((msg) => msg.text);
 }
 
-function sanitizeSessionDetail(detail: any = {}) {
+export function sanitizeSessionDetail(detail: any = {}) {
   return {
     ...detail,
     toolHistory: sanitizeToolHistory(detail?.toolHistory || []),
@@ -71,7 +71,7 @@ function sanitizeSessionDetail(detail: any = {}) {
   };
 }
 
-function sanitizeSessionSummary(session: any = {}) {
+export function sanitizeSessionSummary(session: any = {}) {
   return {
     ...session,
     rawLastMessage: session?.lastMessage ?? null,
@@ -80,10 +80,3 @@ function sanitizeSessionSummary(session: any = {}) {
     lastToolInput: summarizeText(session?.lastToolInput || '', 80) || null,
   };
 }
-
-module.exports = {
-  cleanText,
-  sanitizeSessionDetail,
-  sanitizeSessionSummary,
-  summarizeText,
-};

@@ -1,7 +1,8 @@
 import http from 'http';
 import net from 'net';
-const { computeAcceptKey } = require('../shared/ws-utils.ts');
-const { wsSend, wsBroadcast } = require('../shared/ws-helpers.js');
+
+import { computeAcceptKey } from '../shared/ws-utils.js';
+import { wsSend, wsBroadcast } from '../shared/ws-helpers.js';
 
 interface HubState {
   sessions: unknown[];
@@ -12,7 +13,7 @@ interface HubState {
   timestamp: number;
 }
 
-function createHubWebSocketManager(getCurrentState: () => HubState) {
+export function createHubWebSocketManager(getCurrentState: () => HubState) {
   const wsClients = new Set<net.Socket>();
 
   function buildWsPayload(type: string) {
@@ -68,7 +69,3 @@ function createHubWebSocketManager(getCurrentState: () => HubState) {
     handleUpgrade,
   };
 }
-
-module.exports = {
-  createHubWebSocketManager,
-};
