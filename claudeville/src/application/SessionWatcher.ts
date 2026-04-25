@@ -40,10 +40,10 @@ export class SessionWatcher {
         // Connect WebSocket
         this.wsClient.connect();
 
-        // Also start fallback polling (until WebSocket connects)
-        if (!this.wsClient.isConnected) {
-            this._startPolling();
-        }
+        // Always start fallback polling and keep it running as a safety net.
+        // WebSocket updates stay the fast path, but polling ensures the UI recovers
+        // if a push is delayed, dropped, or the socket stays open without updates.
+        this._startPolling();
     }
 
     stop() {
@@ -69,7 +69,7 @@ export class SessionWatcher {
         if (this.pollTimer) {
             clearInterval(this.pollTimer);
             this.pollTimer = null;
-            console.log('[SessionWatcher] Polling stopped (WebSocket active)');
+            console.log('[SessionWatcher] Polling stopped');
         }
     }
 

@@ -68,10 +68,11 @@ describe('SessionWatcher', () => {
       expect(mockDataSource.getSessions).toHaveBeenCalled();
     });
 
-    it('does not start polling when ws is already connected', () => {
+    it('still starts polling even when ws is already connected', () => {
       mockWsClient.isConnected = true;
       watcher.start();
-      expect(mockDataSource.getSessions).not.toHaveBeenCalled();
+      // Polling should run regardless of WS connection state
+      expect(mockDataSource.getSessions).toHaveBeenCalled();
     });
 
     it('is a no-op if already running', () => {
@@ -123,7 +124,7 @@ describe('SessionWatcher', () => {
       // Simulate disconnect then connect
       eventBus.emit('ws:disconnected');
       eventBus.emit('ws:connected');
-      // After connect, a catch-up poll should run once and the fallback timer should stop.
+      // After connect, a catch-up poll should run once while the fallback timer stays alive.
       expect(mockDataSource.getSessions.mock.calls.length).toBe(callsAfterStart + 1);
     });
   });
