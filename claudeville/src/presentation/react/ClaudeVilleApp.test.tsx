@@ -195,7 +195,11 @@ describe('ClaudeVilleApp', () => {
 
     expect(screen.getByTestId('world-view')).toBeInTheDocument();
 
-    await screen.findByRole('button', { name: /agent one/i });
+    const agentButton = await screen.findByRole('button', { name: /agent one/i });
+    expect(agentButton).toHaveAttribute('data-session-id', 'agent-1');
+    expect(agentButton).toHaveAttribute('data-status', 'working');
+    expect(agentButton).toHaveAttribute('data-provider', 'claude');
+
     fireEvent.click(screen.getByRole('button', { name: /dashboard/i }));
     fireEvent.click(screen.getByTitle('Settings'));
     fireEvent.click(screen.getByRole('button', { name: /agent one/i }));

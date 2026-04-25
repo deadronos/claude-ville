@@ -93,7 +93,7 @@ beforeEach(() => {
   testState.fetch.mockReset();
   testState.getHubApiUrl.mockClear();
   testState.getContext.mockClear();
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => mockCtx as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => mockCtx as any);
   vi.stubGlobal('fetch', testState.fetch);
 });
 

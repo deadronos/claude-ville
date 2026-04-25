@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react-swc';
 import { buildRuntimeConfig } from './runtime-config.shared.js';
 
 const runtimeConfig = buildRuntimeConfig(process.env);
+const hubHttpProxyTarget = runtimeConfig.hubHttpUrl || 'http://localhost:4000';
+const hubWsProxyTarget = hubHttpProxyTarget.replace(/^http/, 'ws');
 
 /**
  * Vite plugin that injects runtime config from .env.local into the page.
@@ -27,9 +29,9 @@ export default defineConfig({
   server: {
     port: 3001,
     proxy: {
-      '/api': 'http://localhost:4000',
+      '/api': hubHttpProxyTarget,
       '/ws': {
-        target: 'ws://localhost:4000',
+        target: hubWsProxyTarget,
         ws: true,
       },
     },
