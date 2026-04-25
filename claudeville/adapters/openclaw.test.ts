@@ -18,7 +18,7 @@ describe('openclaw adapter', () => {
       fs.writeFileSync(file, 'a\nb\nc\nd\ne\n');
       const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
       const result = await readLines(file, { from: 'end', count: 3 });
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['c', 'd', 'e']);
     });
 
@@ -28,7 +28,7 @@ describe('openclaw adapter', () => {
       fs.writeFileSync(file, 'a\nb\nc\nd\ne\n');
       const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
       const result = await readLines(file, { from: 'start', count: 2 });
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['a', 'b']);
     });
   });
@@ -164,7 +164,7 @@ describe('openclaw adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.model).toBe('gpt-4o');
     });
 
@@ -195,7 +195,7 @@ describe('openclaw adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Bash');
       expect(result.lastToolInput).toBe('ls');
     });
@@ -227,7 +227,7 @@ describe('openclaw adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.project).toBe('/project/myapp');
     });
   });
@@ -264,7 +264,7 @@ describe('openclaw adapter', () => {
         return results;
       };
       const result = await scanAllSessionFiles(path.join(tmp, 'agents'), 120000);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual([]);
     });
 
@@ -301,7 +301,7 @@ describe('openclaw adapter', () => {
         return results;
       };
       const result = await scanAllSessionFiles(path.join(tmp, 'agents'), 120000);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].agentId).toBe('my-agent');
       expect(result[0].fileName).toBe('session-abc.jsonl');

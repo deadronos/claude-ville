@@ -9,12 +9,7 @@ coverage
 .env.local
 
 
-# tsgo emitted files
-claudeville/**/*.js
-!claudeville/widget/**/*.js
-frontend/**/*.js
-hubreceiver/**/*.js
-collector/**/*.js
+# Project-local generated JavaScript
 load-local-env.js
 demo-server.js
 runtime-config.shared.js

@@ -33,7 +33,7 @@ describe('codex adapter', () => {
         } catch { return []; }
       };
       const result = await readLines(file, { from: 'end', count: 3 });
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['line3', 'line4', 'line5']);
     });
 
@@ -51,7 +51,7 @@ describe('codex adapter', () => {
         } catch { return []; }
       };
       const result = await readLines(file, { from: 'start', count: 2 });
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['line1', 'line2']);
     });
   });
@@ -124,7 +124,7 @@ describe('codex adapter', () => {
         return detail;
       };
       const result = await parseRollout(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.model).toBe('gpt-4');
       expect(result.project).toBe('/project/codex');
     });
@@ -162,7 +162,7 @@ describe('codex adapter', () => {
         return detail;
       };
       const result = await parseRollout(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('shell');
       expect(result.lastToolInput).toBe('ls -la');
     });
@@ -200,7 +200,7 @@ describe('codex adapter', () => {
         return detail;
       };
       const result = await parseRollout(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Bash');
       expect(result.lastToolInput).toBe('npm test');
     });
@@ -238,7 +238,7 @@ describe('codex adapter', () => {
         return detail;
       };
       const result = await parseRollout(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastMessage).toBe('Here is the result');
     });
 
@@ -276,7 +276,7 @@ describe('codex adapter', () => {
         return detail;
       };
       const result = await parseRollout(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastToolInput!.length).toBe(60);
     });
   });
@@ -291,7 +291,7 @@ describe('codex adapter', () => {
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       const getToolHistory = async (fp, maxItems = 15) => { const tools = []; try { const lines = await readLines(fp, { from: 'end', count: 100 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'response_item' || !entry.payload) continue; const p = entry.payload; if (p.type === 'function_call' || p.type === 'command_execution') { let d = ''; if (p.arguments) d = (typeof p.arguments === 'string' ? p.arguments : JSON.stringify(p.arguments)).substring(0, 80); else if (p.command) d = p.command.substring(0, 80); tools.push({ tool: p.name || p.type, detail: d, ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } } catch { /* ignore */ } return tools.slice(-maxItems); };
       const result = await getToolHistory(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].tool).toBe('Bash');
       expect(result[0].ts).toBeGreaterThan(0);
@@ -307,7 +307,7 @@ describe('codex adapter', () => {
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       const getToolHistory = async (fp, maxItems = 15) => { const tools = []; try { const lines = await readLines(fp, { from: 'end', count: 100 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'response_item' || !entry.payload) continue; const p = entry.payload; if (p.type === 'function_call' || p.type === 'command_execution') { let d = ''; if (p.arguments) d = (typeof p.arguments === 'string' ? p.arguments : JSON.stringify(p.arguments)).substring(0, 80); else if (p.command) d = p.command.substring(0, 80); tools.push({ tool: p.name || p.type, detail: d, ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } } catch { /* ignore */ } return tools.slice(-maxItems); };
       const result = await getToolHistory(file, 5);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(5);
     });
   });
@@ -322,7 +322,7 @@ describe('codex adapter', () => {
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'response_item' || !entry.payload) continue; const p = entry.payload; if (p.type !== 'message') continue; const role = p.role || 'assistant'; let text = ''; if (typeof p.content === 'string') text = p.content; else if (Array.isArray(p.content)) { for (const block of p.content) { if ((block.type === 'output_text' || block.type === 'text') && block.text) { text = block.text; break; } if (block.type === 'input_text' && block.text && !block.text.startsWith('<environment_context>')) { text = block.text; break; } } } if (text.trim().length > 0) messages.push({ role, text: text.trim().substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].text).toBe('Command output');
       expect(result[0].role).toBe('assistant');
@@ -336,7 +336,7 @@ describe('codex adapter', () => {
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'response_item' || !entry.payload) continue; const p = entry.payload; if (p.type !== 'message') continue; const role = p.role || 'assistant'; let text = ''; if (typeof p.content === 'string') text = p.content; else if (Array.isArray(p.content)) { for (const block of p.content) { if ((block.type === 'output_text' || block.type === 'text') && block.text) { text = block.text; break; } if (block.type === 'input_text' && block.text && !block.text.startsWith('<environment_context>')) { text = block.text; break; } } } if (text.trim().length > 0) messages.push({ role, text: text.trim().substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].text).toBe('visible');
     });
@@ -351,7 +351,7 @@ describe('codex adapter', () => {
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'response_item' || !entry.payload) continue; const p = entry.payload; if (p.type !== 'message') continue; const role = p.role || 'assistant'; let text = ''; if (typeof p.content === 'string') text = p.content; else if (Array.isArray(p.content)) { for (const block of p.content) { if ((block.type === 'output_text' || block.type === 'text') && block.text) { text = block.text; break; } if (block.type === 'input_text' && block.text && !block.text.startsWith('<environment_context>')) { text = block.text; break; } } } if (text.trim().length > 0) messages.push({ role, text: text.trim().substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file, 3);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(3);
     });
   });
@@ -400,7 +400,7 @@ describe('codex adapter', () => {
         return results;
       };
       const result = await scanRecentRollouts(path.join(tmp, 'sessions'), 120000);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual([]);
     });
 
@@ -449,7 +449,7 @@ describe('codex adapter', () => {
         return results;
       };
       const result = await scanRecentRollouts(path.join(tmp, 'sessions'), 120000);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].fileName).toBe('rollout-2025-01-22T10-30-00-abc123.jsonl');
       expect(result[0].mtime).toBeGreaterThan(0);

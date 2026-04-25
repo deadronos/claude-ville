@@ -37,7 +37,7 @@ describe('copilot adapter', () => {
         } catch { return []; }
       };
       const result = await readLines(file, { from: 'end', count: 3 });
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['line3', 'line4', 'line5']);
     });
 
@@ -58,7 +58,7 @@ describe('copilot adapter', () => {
         } catch { return []; }
       };
       const result = await readLines(file, { from: 'start', count: 2 });
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['line1', 'line2']);
     });
 
@@ -79,7 +79,7 @@ describe('copilot adapter', () => {
         } catch { return []; }
       };
       const result = await readLines(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['']);
     });
   });
@@ -267,7 +267,7 @@ describe('copilot adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.model).toBe('gpt-4o');
       expect(result.project).toBe('/project/my-app');
     });
@@ -311,7 +311,7 @@ describe('copilot adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Bash');
       expect(result.lastToolInput).toBe('ls -la');
     });
@@ -355,7 +355,7 @@ describe('copilot adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Read');
       expect(result.lastToolInput).toBe('/tmp/file.txt');
     });
@@ -399,7 +399,7 @@ describe('copilot adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Bash');
       expect(result.lastToolInput).toBe('{"command":"echo hi"}');
     });
@@ -421,7 +421,7 @@ describe('copilot adapter', () => {
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       const getToolHistory = async (fp, maxItems = 15) => { const tools = []; try { const lines = await readLines(fp, { from: 'end', count: 100 }); const entries = parseJsonLines(lines); for (const entry of entries) { let tn = null, ti = null, ts = 0; if (entry.type === 'assistant.message' && entry.data) { const msg = entry.data; if (msg.toolCalls && Array.isArray(msg.toolCalls)) { for (const tc of msg.toolCalls) { tn = tc.name || 'tool_call'; ti = tc.input ? (typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; break; } } } if (!tn && entry.type === 'tool_call' && entry.data) { tn = entry.data.name || 'tool_call'; ti = entry.data.input ? (typeof entry.data.input === 'string' ? entry.data.input : JSON.stringify(entry.data.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; } if (tn) tools.push({ tool: tn, detail: ti || '', ts }); } } catch { /* ignore */ } return tools.slice(-maxItems); };
       const result = await getToolHistory(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].tool).toBe('Bash');
       expect(result[0].detail).toBe('ls');
@@ -441,7 +441,7 @@ describe('copilot adapter', () => {
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       const getToolHistory = async (fp, maxItems = 15) => { const tools = []; try { const lines = await readLines(fp, { from: 'end', count: 100 }); const entries = parseJsonLines(lines); for (const entry of entries) { let tn = null, ti = null, ts = 0; if (entry.type === 'assistant.message' && entry.data) { const msg = entry.data; if (msg.toolCalls && Array.isArray(msg.toolCalls)) { for (const tc of msg.toolCalls) { tn = tc.name || 'tool_call'; ti = tc.input ? (typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; break; } } } if (!tn && entry.type === 'tool_call' && entry.data) { tn = entry.data.name || 'tool_call'; ti = entry.data.input ? (typeof entry.data.input === 'string' ? entry.data.input : JSON.stringify(entry.data.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; } if (tn) tools.push({ tool: tn, detail: ti || '', ts }); } } catch { /* ignore */ } return tools.slice(-maxItems); };
       const result = await getToolHistory(file, 5);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(5);
     });
   });
@@ -463,7 +463,7 @@ describe('copilot adapter', () => {
       const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
       const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(2);
       expect(result[0].role).toBe('user');
       expect(result[0].text).toBe('Hello');
@@ -487,7 +487,7 @@ describe('copilot adapter', () => {
       const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
       const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].text).toBe('visible');
     });
@@ -506,7 +506,7 @@ describe('copilot adapter', () => {
       const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
       const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file, 3);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(3);
     });
   });
@@ -539,7 +539,7 @@ describe('copilot adapter', () => {
         return results;
       };
       const result = await scanAllSessions(path.join(tmp, 'session-state'), 120000);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual([]);
     });
 
@@ -571,7 +571,7 @@ describe('copilot adapter', () => {
         return results;
       };
       const result = await scanAllSessions(path.join(tmp, 'session-state'), 120000);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].sessionId).toBe('abc-123-def');
       expect(result[0].filePath).toContain('events.jsonl');
@@ -683,7 +683,7 @@ describe('copilot adapter', () => {
       );
       const adapter = new CopilotAdapter();
       const detail = await adapter.getSessionDetail('copilot-test-session', '/test', path.join(sessionDir, 'events.jsonl'));
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
       expect(detail).toHaveProperty('sessionId');

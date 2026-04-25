@@ -116,7 +116,7 @@ describe('claude adapter', () => {
         } catch { return []; }
       };
       const result = readLastLines(emptyFile);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       // Empty file: ''.trim() → '', ''.split('\n') → ['']
       expect(result).toEqual(['']);
     });
@@ -136,7 +136,7 @@ describe('claude adapter', () => {
         } catch { return []; }
       };
       const result = readLastLines(file, 3);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['line3', 'line4', 'line5']);
     });
 
@@ -155,7 +155,7 @@ describe('claude adapter', () => {
         } catch { return []; }
       };
       const result = readLastLines(file, 100);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['a', 'b']);
     });
 
@@ -174,7 +174,7 @@ describe('claude adapter', () => {
         } catch { return []; }
       };
       const result = readLastLines(file, 5);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['only one line']);
     });
   });
@@ -271,7 +271,7 @@ describe('claude adapter', () => {
         return tools.slice(-maxItems);
       };
       const result = getToolHistory(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].tool).toBe('Read');
       expect(result[0].detail).toBe('/tmp/test.js');
@@ -315,7 +315,7 @@ describe('claude adapter', () => {
         return tools.slice(-maxItems);
       };
       const result = getToolHistory(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(0);
     });
 
@@ -364,7 +364,7 @@ describe('claude adapter', () => {
         return tools.slice(-maxItems);
       };
       const result = getToolHistory(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(6);
       expect(result[0].detail).toBe('npm run build');
       expect(result[1].detail).toBe('TODO');
@@ -412,7 +412,7 @@ describe('claude adapter', () => {
         return tools.slice(-maxItems);
       };
       const result = getToolHistory(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result[0].detail.length).toBe(80);
     });
 
@@ -453,7 +453,7 @@ describe('claude adapter', () => {
         return tools.slice(-maxItems);
       };
       const result = getToolHistory(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result[0].tool).toBe('unknown');
     });
 
@@ -496,7 +496,7 @@ describe('claude adapter', () => {
         return tools.slice(-maxItems);
       };
       const result = getToolHistory(file, 5);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(5);
     });
   });
@@ -531,7 +531,7 @@ describe('claude adapter', () => {
         return messages.slice(-maxItems);
       };
       const result = getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].text).toBe('Hello world');
       expect(result[0].role).toBe('assistant');
@@ -566,7 +566,7 @@ describe('claude adapter', () => {
         return messages.slice(-maxItems);
       };
       const result = getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].text).toBe('visible');
     });
@@ -600,7 +600,7 @@ describe('claude adapter', () => {
         return messages.slice(-maxItems);
       };
       const result = getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(0);
     });
 
@@ -633,7 +633,7 @@ describe('claude adapter', () => {
         return messages.slice(-maxItems);
       };
       const result = getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result[0].text.length).toBe(200);
     });
 
@@ -668,7 +668,7 @@ describe('claude adapter', () => {
         return messages.slice(-maxItems);
       };
       const result = getRecentMessages(file, 3);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(3);
     });
   });
@@ -710,7 +710,7 @@ describe('claude adapter', () => {
         return usage;
       };
       const result = getTokenUsage(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.totalInput).toBe(250);
       expect(result.totalOutput).toBe(450);
       expect(result.cacheRead).toBe(110);
@@ -752,7 +752,7 @@ describe('claude adapter', () => {
         return usage;
       };
       const result = getTokenUsage(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.totalInput).toBe(0);
       expect(result.totalOutput).toBe(0);
       expect(result.turnCount).toBe(1);
@@ -792,7 +792,7 @@ describe('claude adapter', () => {
         return usage;
       };
       const result = getTokenUsage(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.turnCount).toBe(0);
       expect(result.contextWindow).toBe(0);
     });
@@ -862,7 +862,7 @@ describe('claude adapter', () => {
         return detail;
       };
       const result = getSessionDetail('session-abc', projPath);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.model).toBe('claude-sonnet-4-5');
       expect(result.lastTool).toBe('Read');
       expect(result.lastToolInput).toBe('readme.txt');
@@ -920,7 +920,7 @@ describe('claude adapter', () => {
         return detail;
       };
       const result = getSessionDetail('s', projPath);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastMessage).not.toBeNull();
       expect(result.lastMessage!.length).toBe(80);
     });
@@ -976,7 +976,7 @@ describe('claude adapter', () => {
         return detail;
       };
       const result = getSessionDetail('s', projPath);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Bash');
       expect(result.lastToolInput).not.toBeNull();
       expect(result.lastToolInput!.length).toBe(60); // truncated at 60
@@ -1021,7 +1021,7 @@ describe('claude adapter', () => {
         return fs.existsSync(sessionFile) ? sessionFile : null;
       };
       const result = resolveSessionFilePath('nonexistent', projPath);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toBeNull();
     });
 
@@ -1054,7 +1054,7 @@ describe('claude adapter', () => {
         return fs.existsSync(sessionFile) ? sessionFile : null;
       };
       const result = resolveSessionFilePath('my-session', projPath);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).not.toBeNull();
       expect(result!).toContain('my-session.jsonl');
     });
@@ -1088,7 +1088,7 @@ describe('claude adapter', () => {
         return fs.existsSync(sessionFile) ? sessionFile : null;
       };
       const result = resolveSessionFilePath('subagent-abc123', projPath);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).not.toBeNull();
       expect(result!).toContain('agent-abc123.jsonl');
     });
@@ -1124,7 +1124,7 @@ describe('claude adapter', () => {
         return 0;
       };
       const result = getSessionFileActivity('active-session', projPath);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toBeGreaterThan(0);
     });
 
@@ -1155,7 +1155,7 @@ describe('claude adapter', () => {
         return 0;
       };
       const result = getSessionFileActivity('missing', projPath);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toBe(0);
     });
   });
