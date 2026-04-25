@@ -8,6 +8,7 @@ export default tseslint.config(
   {
     ignores: [
       '.worktrees/**',
+      'android/**',
       'coverage/**',
       'dist/**',
       'node_modules/**',
