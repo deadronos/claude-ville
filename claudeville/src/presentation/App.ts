@@ -2,7 +2,7 @@ import { World } from '../domain/entities/World.js';
 import { Agent } from '../domain/entities/Agent.js';
 import { Building } from '../domain/entities/Building.js';
 import { BUILDING_DEFS } from '../config/buildings.js';
-import { ClaudeDataSource } from '../infrastructure/ClaudeDataSource.js';
+import { HubDataSource } from '../infrastructure/HubDataSource.js';
 import { WebSocketClient } from '../infrastructure/WebSocketClient.js';
 
 import { AgentManager } from '../application/AgentManager.js';
@@ -24,7 +24,7 @@ import { ActivityPanel } from "./shared/ActivityPanel.js";
 
 export class App {
     world: World | null;
-    dataSource: ClaudeDataSource | null;
+    dataSource: HubDataSource | null;
     wsClient: WebSocketClient | null;
     agentManager: AgentManager | null;
     modeManager: ModeManager | null;
@@ -66,7 +66,7 @@ export class App {
                 this.world.addBuilding(new Building(def));
             }
 
-            this.dataSource = new ClaudeDataSource();
+            this.dataSource = new HubDataSource();
             this.wsClient = new WebSocketClient();
 
             this.toast = new Toast();

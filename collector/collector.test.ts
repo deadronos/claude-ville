@@ -3,8 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import { CLAUDE_RATE_TABLE, estimateCost } from '../shared/cost.js';
 
-// Note: We don't import from collector/index.ts because it has side effects (require load-local-env)
-// Instead we test the concepts and patterns used in the collector
+// We test the collector concepts directly here.
 
 describe('collector', () => {
   describe('snapshot structure and normalization', () => {

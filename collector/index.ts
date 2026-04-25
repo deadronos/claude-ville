@@ -1,5 +1,3 @@
-import '../load-local-env.js';
-
 import crypto from 'crypto';
 import os from 'os';
 
@@ -62,7 +60,7 @@ export function getCollectorConfig(): CollectorRuntimeConfig {
   };
 }
 
-  const defaultCollectorDeps: CollectorRuntimeDeps = {
+const defaultCollectorDeps: CollectorRuntimeDeps = {
   createFileWatchers,
   createHash: crypto.createHash,
   adapters,
@@ -148,12 +146,3 @@ export function createCollectorRuntime(
 }
 
 export { normalizeSession } from './snapshot.js';
-
-if (process.env.COLLECTOR_DISABLE_AUTOSTART !== '1') {
-  const runtime = createCollectorRuntime();
-  runtime.attachSignalHandlers();
-  void runtime.main().catch((error) => {
-    console.error('[collector] fatal error:', error);
-    process.exit(1);
-  });
-}

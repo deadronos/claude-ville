@@ -4,7 +4,7 @@ import { World } from '../../../domain/entities/World.js';
 import { Building } from '../../../domain/entities/Building.js';
 import { BUILDING_DEFS } from '../../../config/buildings.js';
 import { eventBus } from '../../../domain/events/DomainEvent.js';
-import { ClaudeDataSource } from '../../../infrastructure/ClaudeDataSource.js';
+import { HubDataSource } from '../../../infrastructure/HubDataSource.js';
 import { WebSocketClient } from '../../../infrastructure/WebSocketClient.js';
 import { AgentManager } from '../../../application/AgentManager.js';
 import { SessionWatcher } from '../../../application/SessionWatcher.js';
@@ -38,7 +38,7 @@ export interface ClaudeVilleSnapshot {
 
 export class ClaudeVilleController {
   world: World;
-  dataSource: ClaudeDataSource;
+  dataSource: HubDataSource;
   wsClient: WebSocketClient;
   agentManager: AgentManager;
   sessionWatcher: SessionWatcher;
@@ -63,7 +63,7 @@ export class ClaudeVilleController {
       this.world.addBuilding(new Building(def));
     }
 
-    this.dataSource = new ClaudeDataSource();
+    this.dataSource = new HubDataSource();
     this.wsClient = new WebSocketClient();
     this.agentManager = new AgentManager(this.world, this.dataSource);
     this.sessionWatcher = new SessionWatcher(this.agentManager, this.wsClient, this.dataSource);

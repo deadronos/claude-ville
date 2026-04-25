@@ -1,13 +1,13 @@
 import { eventBus } from '../domain/events/DomainEvent.js';
 import { AgentManager } from './AgentManager.js';
 import { WebSocketClient } from '../infrastructure/WebSocketClient.js';
-import { ClaudeDataSource } from '../infrastructure/ClaudeDataSource.js';
+import { HubDataSource } from '../infrastructure/HubDataSource.js';
 import { REFRESH_INTERVAL } from '../config/constants.js';
 
 export class SessionWatcher {
     agentManager: AgentManager;
     wsClient: WebSocketClient;
-    dataSource: ClaudeDataSource;
+    dataSource: HubDataSource;
     pollTimer: ReturnType<typeof setInterval> | null;
     running: boolean;
     _onWsInit: (data: any) => void;
@@ -15,7 +15,7 @@ export class SessionWatcher {
     _onWsDisconnected: () => void;
     _onWsConnected: () => void;
 
-    constructor(agentManager: AgentManager, wsClient: WebSocketClient, dataSource: ClaudeDataSource) {
+    constructor(agentManager: AgentManager, wsClient: WebSocketClient, dataSource: HubDataSource) {
         this.agentManager = agentManager;
         this.wsClient = wsClient;
         this.dataSource = dataSource;

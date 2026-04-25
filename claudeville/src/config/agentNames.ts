@@ -73,14 +73,14 @@ interface TeamInfo {
     name?: string;
 }
 
-function getNameKind(session: { agentId?: string; agentType?: string }, teamInfo: TeamInfo | null) {
+function getNameKind(session: { agentId?: string | null; agentType?: string | null }, teamInfo: TeamInfo | null) {
     if (teamInfo?.name) return 'agent';
     if (session.agentId) return 'agent';
     if (session.agentType && session.agentType !== 'main') return 'agent';
     return 'session';
 }
 
-export function resolveAgentDisplayName(session: { provider?: string; agentId?: string; sessionId?: string; displayName?: string; agentName?: string }, teamInfo: TeamInfo | null = null) {
+export function resolveAgentDisplayName(session: { provider?: string | null; agentId?: string | null; sessionId?: string | null; displayName?: string | null; agentName?: string | null }, teamInfo: TeamInfo | null = null) {
     const provider = session.provider || 'unknown';
     const candidate: string | null = teamInfo?.name || session.displayName || session.agentName || null;
     const nameKind = getNameKind(session, teamInfo);

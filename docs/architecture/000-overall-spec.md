@@ -72,7 +72,7 @@ Application services orchestrate state and live updates:
 
 Infrastructure adapters provide transport and data access:
 
-- `ClaudeDataSource`
+- `HubDataSource`
 - `WebSocketClient`
 
 ### `claudeville/src/presentation`
@@ -103,7 +103,7 @@ Current providers include:
 ### Legacy app data flow
 
 1. The app loads runtime configuration.
-2. `ClaudeDataSource` fetches session lists, teams, tasks, and usage.
+2. `HubDataSource` fetches session lists, teams, tasks, and usage.
 3. `SessionWatcher` keeps the world updated via WebSocket or polling fallback.
 4. `AgentManager` normalizes sessions into `World` entities.
 5. Presentation components render the world, dashboard, top bar, sidebar, and activity panel.

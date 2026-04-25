@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "npx concurrently --names \"server,vite\" --prefix-colors \"blue,green\" \"tsx claudeville/server.ts\" \"vite\"",
     "dev:server": "tsx claudeville/server.ts",
-    "dev:collector": "tsx collector/index.ts",
+    "dev:collector": "tsx collector/start.ts",
     "dev:hubreceiver": "tsx hubreceiver/server.ts",
     "dev:frontend": "vite",
     "build:frontend": "vite build",
