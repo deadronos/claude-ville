@@ -21,6 +21,7 @@ describe('OpenClawAdapter fixtures', () => {
     fs.mkdirSync(projectDir, { recursive: true });
 
     const sessionFile = path.join(tmpHome, '.openclaw', 'agents', 'agent-alpha', 'sessions', 'session-1.jsonl');
+    const trajectoryFile = path.join(tmpHome, '.openclaw', 'agents', 'agent-alpha', 'sessions', 'session-1.trajectory.jsonl');
     writeJsonl(sessionFile, [
       JSON.stringify({ type: 'session', version: 3, id: 'session-1', timestamp: '2024-01-01T00:00:00Z', cwd: projectDir }),
       JSON.stringify({ type: 'message', timestamp: '2024-01-01T00:00:01Z', message: {
@@ -33,7 +34,12 @@ describe('OpenClawAdapter fixtures', () => {
       } }),
     ]);
 
+    writeJsonl(trajectoryFile, [
+      JSON.stringify({ type: 'session', version: 3, id: 'session-1', timestamp: '2024-01-01T00:00:00Z', cwd: projectDir }),
+    ]);
+
     fs.utimesSync(sessionFile, new Date('2024-01-01T00:00:01Z'), new Date('2024-01-01T00:00:01Z'));
+    fs.utimesSync(trajectoryFile, new Date('2024-01-01T00:00:01Z'), new Date('2024-01-01T00:00:01Z'));
 
     process.env.HOME = tmpHome;
     vi.resetModules();

@@ -22,6 +22,10 @@ type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Utility ─────────────────────────────────────────────
 
+function isPrimarySessionFile(fileName: string) {
+  return fileName.endsWith('.jsonl') && !fileName.endsWith('.trajectory.jsonl');
+}
+
 // ─── Session parsing ──────────────────────────────────────
 
 async function parseSession(filePath: string) {
@@ -221,7 +225,7 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<OpenClawS
 
         try {
           const sessionFiles = await fs.promises.readdir(sessionsDir);
-          const jsonlFiles = sessionFiles.filter((f: string) => f.endsWith('.jsonl'));
+          const jsonlFiles = sessionFiles.filter((f: string) => isPrimarySessionFile(f));
           const fileResults = await Promise.all(
             jsonlFiles.map(async (file: string) => {
               const filePath = path.join(sessionsDir, file);
