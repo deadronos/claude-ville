@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { debugAdapterError } = require('./jsonl-utils');
 
 // Type for directory entries from readdirSync with withFileTypes: true
 type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
@@ -30,7 +31,8 @@ function readLastLines(filePath: string, lineCount: number) {
     const content = fs.readFileSync(filePath, 'utf-8');
     const lines = content.trim().split('\n');
     return lines.slice(-lineCount);
-  } catch {
+  } catch (err) {
+    debugAdapterError('claude', 'readLastLines', err, filePath);
     return [];
   }
 }
@@ -39,7 +41,9 @@ function parseJsonLines(lines: string[]) {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch { /* ignore */ }
+    try { results.push(JSON.parse(line)); } catch (err) {
+      debugAdapterError('claude', 'parseJsonLines', err, line.substring(0, 120));
+    }
   }
   return results;
 }
@@ -85,7 +89,9 @@ function getSessionDetail(sessionId: string, projectPath: string | null) {
       }
       if (detail.model && detail.lastTool && detail.lastMessage) break;
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('claude', 'getSessionDetail', err, sessionFile);
+  }
 
   return detail;
 }
@@ -122,7 +128,9 @@ function getSubAgentDetail(filePath: string) {
       }
       if (detail.model && detail.lastTool && detail.lastMessage) break;
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('claude', 'getSubAgentDetail', err, filePath);
+  }
   return detail;
 }
 
@@ -153,7 +161,9 @@ function getToolHistory(sessionFilePath: string, maxItems = 15) {
         tools.push({ tool: block.name || 'unknown', detail, ts: entry.timestamp || 0 });
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('claude', 'getToolHistory', err, sessionFilePath);
+  }
   return tools.slice(-maxItems);
 }
 
@@ -176,7 +186,9 @@ function getRecentMessages(sessionFilePath: string, maxItems = 5) {
         messages.push({ role: msg.role, text: text.substring(0, 200), ts: entry.timestamp || 0 });
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('claude', 'getRecentMessages', err, sessionFilePath);
+  }
   return messages.slice(-maxItems);
 }
 
@@ -213,7 +225,9 @@ function getTokenUsage(sessionFilePath: string) {
         (lastUsage.cache_read_input_tokens || 0) +
         (lastUsage.cache_creation_input_tokens || 0);
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('claude', 'getTokenUsage', err, sessionFilePath);
+  }
   return usage;
 }
 
@@ -231,7 +245,9 @@ function resolveSessionFilePath(sessionId: string, project: string | null) {
         const agentFile = path.join(projectsDir, dir.name, 'subagents', `agent-${agentId}.jsonl`);
         if (fs.existsSync(agentFile)) return agentFile;
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      debugAdapterError('claude', 'resolveSessionFilePath', err, projectsDir);
+    }
     return null;
   }
 
@@ -245,7 +261,9 @@ function getSessionFileActivity(sessionId: string, project: string | null) {
   const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
   try {
     if (fs.existsSync(sessionFile)) return fs.statSync(sessionFile).mtimeMs;
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('claude', 'getSessionFileActivity', err, sessionFile);
+  }
   return 0;
 }
 
@@ -343,7 +361,10 @@ class ClaudeAdapter {
         try {
           sessionDirs = fs.readdirSync(projPath, { withFileTypes: true })
             .filter((d: Dirent) => d.isDirectory());
-        } catch { continue; }
+        } catch (err) {
+          debugAdapterError('claude', 'getActiveSubAgents readdir project', err, projPath);
+          continue;
+        }
 
         for (const sessionDir of sessionDirs) {
           const subagentsDir = path.join(projPath, sessionDir.name, 'subagents');
@@ -353,12 +374,18 @@ class ClaudeAdapter {
           try {
             agentFiles = fs.readdirSync(subagentsDir)
               .filter((f: string) => f.startsWith('agent-') && f.endsWith('.jsonl'));
-          } catch { continue; }
+          } catch (err) {
+            debugAdapterError('claude', 'getActiveSubAgents readdir subagents', err, subagentsDir);
+            continue;
+          }
 
           for (const agentFile of agentFiles) {
             const filePath = path.join(subagentsDir, agentFile);
             let stat;
-            try { stat = fs.statSync(filePath); } catch { continue; }
+            try { stat = fs.statSync(filePath); } catch (err) {
+              debugAdapterError('claude', 'getActiveSubAgents stat', err, filePath);
+              continue;
+            }
 
             if (now - stat.mtimeMs > activeThresholdMs) continue;
 
@@ -384,7 +411,9 @@ class ClaudeAdapter {
           }
         }
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      debugAdapterError('claude', 'getActiveSubAgents', err, projectsDir);
+    }
 
     return results;
   }
@@ -406,7 +435,10 @@ class ClaudeAdapter {
         try {
           files = fs.readdirSync(projPath)
             .filter((f: string) => f.endsWith('.jsonl') && !f.startsWith('.'));
-        } catch { continue; }
+        } catch (err) {
+          debugAdapterError('claude', 'getOrphanSessions readdir project', err, projPath);
+          continue;
+        }
 
         for (const file of files) {
           const sessionId = file.replace('.jsonl', '');
@@ -415,7 +447,10 @@ class ClaudeAdapter {
 
           const filePath = path.join(projPath, file);
           let stat;
-          try { stat = fs.statSync(filePath); } catch { continue; }
+          try { stat = fs.statSync(filePath); } catch (err) {
+            debugAdapterError('claude', 'getOrphanSessions stat', err, filePath);
+            continue;
+          }
 
           if (now - stat.mtimeMs > activeThresholdMs) continue;
 
@@ -437,7 +472,9 @@ class ClaudeAdapter {
           });
         }
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      debugAdapterError('claude', 'getOrphanSessions', err, projectsDir);
+    }
 
     return results;
   }
@@ -475,7 +512,9 @@ class ClaudeAdapter {
             recursive: true,
           });
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        debugAdapterError('claude', 'getWatchPaths', err, projectsDir);
+      }
     }
 
     // Teams directory (detect team creation/changes)
@@ -506,13 +545,15 @@ class ClaudeAdapter {
             return { teamName: dir.name, ...config };
           } catch (err) {
             if (err instanceof Error && 'code' in err && err.code === 'ENOENT') return null;
+            debugAdapterError('claude', 'getTeams read/parse config', err, configPath);
             return { teamName: dir.name, error: 'parse failed' };
           }
         });
 
       const results = await Promise.all(teamPromises);
       return results.filter(Boolean);
-    } catch {
+    } catch (err) {
+      debugAdapterError('claude', 'getTeams readdir', err, TEAMS_DIR);
       return [];
     }
   }
@@ -532,7 +573,8 @@ class ClaudeAdapter {
               try {
                 const content = await fs.promises.readFile(path.join(groupDir, file), 'utf-8');
                 return JSON.parse(content);
-              } catch {
+              } catch (err) {
+                debugAdapterError('claude', 'getTasks read/parse task', err, path.join(groupDir, file));
                 return null;
               }
             });
@@ -543,14 +585,16 @@ class ClaudeAdapter {
               tasks: tasks.sort((a, b) => Number(a.id || 0) - Number(b.id || 0)),
               count: tasks.length,
             };
-          } catch {
+          } catch (err) {
+            debugAdapterError('claude', 'getTasks readdir group', err, groupDir);
             return null;
           }
         });
 
       const taskGroups = (await Promise.all(groupPromises)).filter(Boolean);
       return taskGroups;
-    } catch {
+    } catch (err) {
+      debugAdapterError('claude', 'getTasks readdir', err, TASKS_DIR);
       return [];
     }
   }

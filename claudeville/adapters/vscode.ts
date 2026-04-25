@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { readLines, parseJsonLines } = require('./jsonl-utils');
+const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
 
 const VSCODE_USER_DIR = process.env.VSCODE_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User');
@@ -79,13 +79,15 @@ async function scanResourceSessionContents(filePath: string): Promise<Array<{ ca
             text: String(text || '').trim(),
             ts: stat.mtimeMs,
           };
-        } catch {
+        } catch (err) {
+          debugAdapterError('vscode', 'scanResourceSessionContents file', err, contentPath);
           return null;
         }
       }));
 
     entries = contentRows.filter(Boolean).sort((a, b) => a.ts - b.ts);
-  } catch {
+  } catch (err) {
+    debugAdapterError('vscode', 'scanResourceSessionContents', err, sessionRoot);
     entries = [];
   }
 
@@ -109,7 +111,8 @@ function extractAssistantText(responseRaw: string) {
         }
       }
     }
-  } catch {
+  } catch (err) {
+    debugAdapterError('vscode', 'extractAssistantText', err, responseRaw.substring(0, 120));
     // JSON parse failed; use raw text as-is
     return responseRaw.substring(0, 200).trim();
   }
@@ -139,14 +142,14 @@ async function parseSession(filePath: string) {
       if (normalized) {
         detail.lastMessage = normalized.substring(0, 120);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      debugAdapterError('vscode', 'parseSession content.txt', err, filePath);
     }
     return detail;
   }
 
-  const lines = await readLines(filePath, { from: 'end', count: 300 });
-  const entries = parseJsonLines(lines);
+  const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'vscode' });
+  const entries = parseJsonLines(lines, 'vscode');
 
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
@@ -216,8 +219,8 @@ async function getToolHistory(filePath: string, maxItems = 15) {
   }
 
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 300 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'vscode' });
+    const entries = parseJsonLines(lines, 'vscode');
 
     for (const entry of entries) {
       if (entry.type !== 'tool_call') continue;
@@ -233,11 +236,13 @@ async function getToolHistory(filePath: string, maxItems = 15) {
         tools.push({
           tool: entry.data.toolName || 'tool.execution_start',
           detail: summarizeJson(entry.data.arguments, 120),
-        ts: typeof entry.timestamp === 'number' ? entry.timestamp : 0,
+          ts: typeof entry.timestamp === 'number' ? entry.timestamp : 0,
         });
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('vscode', 'getToolHistory', err, filePath);
+  }
 
   return tools.slice(-maxItems);
 }
@@ -267,8 +272,8 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
             ts: fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0,
           });
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        debugAdapterError('vscode', 'getRecentMessages content.txt', err, filePath);
       }
     }
 
@@ -276,8 +281,8 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
   }
 
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 300 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'vscode' });
+    const entries = parseJsonLines(lines, 'vscode');
 
     for (const entry of entries) {
       if (entry.type !== 'agent_response' || !entry.attrs) continue;
@@ -300,7 +305,9 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
         ts: typeof entry.timestamp === 'number' ? entry.timestamp : 0,
       });
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('vscode', 'getRecentMessages', err, filePath);
+  }
 
   return messages.slice(-maxItems);
 }
@@ -317,8 +324,8 @@ async function readWorkspacePath(workspaceDir: string): Promise<string | null> {
     if (typeof uri === 'string' && uri.startsWith('file://')) {
       return decodeURIComponent(uri.replace('file://', ''));
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    debugAdapterError('vscode', 'readWorkspacePath', err, workspaceFile);
   }
 
   return null;
@@ -350,7 +357,8 @@ async function scanAllSessions(activeThresholdMs: number) {
     let workspaceDirs = [];
     try {
       workspaceDirs = await fs.promises.readdir(root.workspaceStorageDir, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      debugAdapterError('vscode', 'scanAllSessions readdir workspaceStorage', err, root.workspaceStorageDir);
       continue;
     }
 
@@ -371,7 +379,8 @@ async function scanAllSessions(activeThresholdMs: number) {
           let debugLogDirs = [];
           try {
             debugLogDirs = await fs.promises.readdir(debugLogsDir, { withFileTypes: true });
-          } catch {
+          } catch (err) {
+            debugAdapterError('vscode', 'scanAllSessions readdir debug-logs', err, debugLogsDir);
             debugLogDirs = [];
           }
 
@@ -393,7 +402,8 @@ async function scanAllSessions(activeThresholdMs: number) {
                   project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
                 };
-              } catch {
+              } catch (err) {
+                debugAdapterError('vscode', 'scanAllSessions stat debug log', err, mainLogFile);
                 return null;
               }
             }));
@@ -407,7 +417,8 @@ async function scanAllSessions(activeThresholdMs: number) {
           let transcriptFiles = [];
           try {
             transcriptFiles = await fs.promises.readdir(transcriptsDir);
-          } catch {
+          } catch (err) {
+            debugAdapterError('vscode', 'scanAllSessions readdir transcripts', err, transcriptsDir);
             transcriptFiles = [];
           }
 
@@ -428,7 +439,8 @@ async function scanAllSessions(activeThresholdMs: number) {
                   project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
                 };
-              } catch {
+              } catch (err) {
+                debugAdapterError('vscode', 'scanAllSessions stat transcript', err, transcriptPath);
                 return null;
               }
             }));
@@ -442,7 +454,8 @@ async function scanAllSessions(activeThresholdMs: number) {
           let sessionDirs = [];
           try {
             sessionDirs = await fs.promises.readdir(resourcesDir, { withFileTypes: true });
-          } catch {
+          } catch (err) {
+            debugAdapterError('vscode', 'scanAllSessions readdir resources', err, resourcesDir);
             sessionDirs = [];
           }
 
@@ -453,7 +466,8 @@ async function scanAllSessions(activeThresholdMs: number) {
               let toolDirs = [];
               try {
                 toolDirs = await fs.promises.readdir(sessionRoot, { withFileTypes: true });
-              } catch {
+              } catch (err) {
+                debugAdapterError('vscode', 'scanAllSessions readdir resource session', err, sessionRoot);
                 return null;
               }
 
@@ -464,7 +478,8 @@ async function scanAllSessions(activeThresholdMs: number) {
                 try {
                   const stat = await fs.promises.stat(contentFile);
                   return { filePath: contentFile, mtime: stat.mtimeMs };
-                } catch {
+                } catch (err) {
+                  debugAdapterError('vscode', 'scanAllSessions stat content', err, contentFile);
                   return null;
                 }
               });

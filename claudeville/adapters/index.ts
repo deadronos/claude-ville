@@ -4,6 +4,7 @@
  */
 const { estimateCost } = require('../../shared/cost.ts');
 const { normalizeTokens } = require('../../shared/session-utils.js');
+const { debugAdapterError } = require('./jsonl-utils');
 const { sanitizeSessionDetail, sanitizeSessionSummary } = require('./sanitize.ts');
 const { ClaudeAdapter } = require('./claude.ts');
 const { CodexAdapter } = require('./codex.ts');
@@ -79,8 +80,8 @@ function getAllWatchPaths() {
     if (!adapter.isAvailable()) continue;
     try {
       paths.push(...adapter.getWatchPaths());
-    } catch {
-      // ignore
+    } catch (err) {
+      debugAdapterError('adapters', 'getAllWatchPaths', err, adapter.name);
     }
   }
   return paths;

@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { readLines, parseJsonLines } = require('./jsonl-utils');
+const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
 
 const PI_DIR = path.join(os.homedir(), '.pi');
 const SESSIONS_DIR = path.join(PI_DIR, 'agent', 'sessions');
@@ -39,8 +39,8 @@ async function parseSession(filePath: string) {
     lastMessage: null,
   };
 
-  const lines = await readLines(filePath, { from: 'end', count: 80 });
-  const entries = parseJsonLines(lines);
+  const lines = await readLines(filePath, { from: 'end', count: 80, scope: 'pi' });
+  const entries = parseJsonLines(lines, 'pi');
 
   // Iterate in reverse from the end
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -115,8 +115,8 @@ function extractText(content: unknown) {
 async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 100 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 100, scope: 'pi' });
+    const entries = parseJsonLines(lines, 'pi');
 
     for (const entry of entries) {
       if (entry.type !== 'message' || !entry.message) continue;
@@ -138,7 +138,9 @@ async function getToolHistory(filePath: string, maxItems = 15) {
         });
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('pi', 'getToolHistory', err, filePath);
+  }
   return tools.slice(-maxItems);
 }
 
@@ -147,8 +149,8 @@ async function getToolHistory(filePath: string, maxItems = 15) {
 async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 60 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 60, scope: 'pi' });
+    const entries = parseJsonLines(lines, 'pi');
 
     for (const entry of entries) {
       if (entry.type !== 'message' || !entry.message) continue;
@@ -164,7 +166,9 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
         ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
       });
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('pi', 'getRecentMessages', err, filePath);
+  }
   return messages.slice(-maxItems);
 }
 
@@ -243,13 +247,15 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResul
                   fileName: file,
                   projectDir: projectDir.name,
                 } as ScanResult;
-              } catch {
+              } catch (err) {
+                debugAdapterError('pi', 'scanAllSessionFiles stat', err, filePath);
                 return null;
               }
             })
           );
           return fileResults.filter((r: ScanResult | null): r is ScanResult => r !== null);
-        } catch {
+        } catch (err) {
+          debugAdapterError('pi', 'scanAllSessionFiles readdir project', err, projectPath);
           return [];
         }
       })
@@ -258,7 +264,9 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResul
     for (const group of dirResults) {
       results.push(...group);
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('pi', 'scanAllSessionFiles', err, SESSIONS_DIR);
+  }
 
   return results;
 }
@@ -336,7 +344,9 @@ class PiAdapter {
 
     try {
       paths.push({ type: 'directory', path: SESSIONS_DIR, recursive: true, filter: '.jsonl' });
-    } catch { /* ignore */ }
+    } catch (err) {
+      debugAdapterError('pi', 'getWatchPaths', err, SESSIONS_DIR);
+    }
 
     return paths;
   }

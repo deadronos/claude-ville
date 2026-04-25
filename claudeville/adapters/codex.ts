@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { readLines, parseJsonLines } = require('./jsonl-utils');
+const { debugAdapterError, readLines, parseJsonLines } = require('./jsonl-utils');
 
 const CODEX_DIR = path.join(os.homedir(), '.codex');
 const SESSIONS_DIR = path.join(CODEX_DIR, 'sessions');
@@ -43,8 +43,8 @@ async function parseRollout(filePath: string) {
   };
 
   // session_meta is on the first line of the file → read first
-  const firstLines = await readLines(filePath, { from: 'start', count: 5 });
-  const firstEntries = parseJsonLines(firstLines);
+  const firstLines = await readLines(filePath, { from: 'start', count: 5, scope: 'codex' });
+  const firstEntries = parseJsonLines(firstLines, 'codex');
   for (const entry of firstEntries) {
     if (entry.type === 'session_meta' && entry.payload) {
       detail.model = entry.payload.model || null;
@@ -54,8 +54,8 @@ async function parseRollout(filePath: string) {
   }
 
   // Recent tools/messages are read from end of file
-  const lastLines = await readLines(filePath, { from: 'end', count: 50 });
-  const entries = parseJsonLines(lastLines);
+  const lastLines = await readLines(filePath, { from: 'end', count: 50, scope: 'codex' });
+  const entries = parseJsonLines(lastLines, 'codex');
 
   for (const entry of entries) {
     const payload = entry.payload;
@@ -113,8 +113,8 @@ async function parseRollout(filePath: string) {
 async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 100 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 100, scope: 'codex' });
+    const entries = parseJsonLines(lines, 'codex');
 
     for (const entry of entries) {
       if (entry.type !== 'response_item' || !entry.payload) continue;
@@ -136,7 +136,9 @@ async function getToolHistory(filePath: string, maxItems = 15) {
         });
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('codex', 'getToolHistory', err, filePath);
+  }
   return tools.slice(-maxItems);
 }
 
@@ -146,8 +148,8 @@ async function getToolHistory(filePath: string, maxItems = 15) {
 async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
   try {
-    const lines = await readLines(filePath, { from: 'end', count: 60 });
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(filePath, { from: 'end', count: 60, scope: 'codex' });
+    const entries = parseJsonLines(lines, 'codex');
 
     for (const entry of entries) {
       if (entry.type !== 'response_item' || !entry.payload) continue;
@@ -178,7 +180,9 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
         });
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('codex', 'getRecentMessages', err, filePath);
+  }
   return messages.slice(-maxItems);
 }
 
@@ -232,24 +236,28 @@ async function scanRecentRollouts(activeThresholdMs: number) {
                     const stat = await fs.promises.stat(filePath);
                     if (now - stat.mtimeMs > activeThresholdMs) return null;
                     return { filePath, mtime: stat.mtimeMs, fileName: file };
-                  } catch {
+                  } catch (err) {
+                    debugAdapterError('codex', 'scanRecentRollouts stat', err, filePath);
                     return null;
                   }
                 }));
                 return fileResults.filter(Boolean);
-              } catch {
+              } catch (err) {
+                debugAdapterError('codex', 'scanRecentRollouts readdir day', err, dayDir);
                 return [];
               }
             }));
 
             return dayResults.flat();
-          } catch {
+          } catch (err) {
+            debugAdapterError('codex', 'scanRecentRollouts readdir month', err, monthDir);
             return [];
           }
         }));
 
         return monthResults.flat();
-      } catch {
+      } catch (err) {
+        debugAdapterError('codex', 'scanRecentRollouts readdir year', err, yearDir);
         return [];
       }
     }));
@@ -257,7 +265,9 @@ async function scanRecentRollouts(activeThresholdMs: number) {
     for (const group of yearResults) {
       results.push(...group);
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    debugAdapterError('codex', 'scanRecentRollouts', err, SESSIONS_DIR);
+  }
 
   return results;
 }
