@@ -54,6 +54,9 @@ export class WebSocketClient {
             this.ws.onerror = () => {
                 console.error('[WS] Error occurred');
                 this.connected = false;
+                // Some browsers fire error without a close event; keep the app's
+                // fallback polling alive by treating this as a disconnect.
+                eventBus.emit('ws:disconnected');
             };
         } catch (err) {
             console.error('[WS] Connection failed:', err.message);
