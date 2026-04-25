@@ -70,6 +70,7 @@ type SnapshotBuilderDeps = {
 
 export function getCollectorConfig(): CollectorRuntimeConfig {
   const hostname = require('os').hostname();
+  const activeThresholdMs = Number(process.env.COLLECTOR_ACTIVE_THRESHOLD_MS || DEFAULT_ACTIVE_THRESHOLD_MS);
 
   return {
     hubUrl: process.env.HUB_URL || 'http://localhost:3030',
@@ -77,7 +78,7 @@ export function getCollectorConfig(): CollectorRuntimeConfig {
     collectorId: process.env.COLLECTOR_ID || `collector-${hostname}`,
     collectorHost: process.env.COLLECTOR_HOST || hostname,
     flushIntervalMs: Number(process.env.FLUSH_INTERVAL_MS || 2000),
-    activeThresholdMs: DEFAULT_ACTIVE_THRESHOLD_MS,
+    activeThresholdMs,
   };
 }
 

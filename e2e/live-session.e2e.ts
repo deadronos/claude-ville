@@ -450,7 +450,7 @@ async function waitForSidebarSessionStatus(page: Page, sessionId: string, status
   );
 }
 
-async function waitForSidebarSessionGone(page: Page, sessionId: string, timeoutMs = 180_000) {
+async function waitForSidebarSessionGone(page: Page, sessionId: string, timeoutMs = 60_000) {
   await page.waitForFunction(
     (targetSessionId) => {
       const rows = Array.from(document.querySelectorAll('#sidebar .sidebar__agent'));
@@ -504,6 +504,7 @@ describe('manual live session E2E', () => {
         COLLECTOR_ID: `claudeville-e2e-${Date.now()}`,
         COLLECTOR_HOST: os.hostname(),
         FLUSH_INTERVAL_MS: '250',
+        COLLECTOR_ACTIVE_THRESHOLD_MS: '15000',
       });
       startedProcesses.push(collector);
       await waitForJson(`${hubUrl}/health`, (json) => json?.ok === true && Number(json.collectors || 0) >= 1, 30_000);
@@ -545,8 +546,8 @@ describe('manual live session E2E', () => {
       }
 
       await waitForSidebarSessionStatus(page, firstSession.sessionId, ['waiting', 'idle'], 120_000);
-      await waitForHubSessionGone(hubUrl, firstSession.sessionId, 180_000);
-      await waitForSidebarSessionGone(page, firstSession.sessionId, 180_000);
+      await waitForHubSessionGone(hubUrl, firstSession.sessionId, 60_000);
+      await waitForSidebarSessionGone(page, firstSession.sessionId, 60_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
       const secondProject = createClaudePromptWorkspace();
