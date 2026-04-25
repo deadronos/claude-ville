@@ -1,26 +1,29 @@
 import { eventBus } from '../domain/events/DomainEvent.js';
+import { AgentManager } from './AgentManager.js';
+import { WebSocketClient } from '../infrastructure/WebSocketClient.js';
+import { ClaudeDataSource } from '../infrastructure/ClaudeDataSource.js';
 import { REFRESH_INTERVAL } from '../config/constants.js';
 
 export class SessionWatcher {
-    agentManager: any;
-    wsClient: any;
-    dataSource: any;
-    pollTimer: any;
+    agentManager: AgentManager;
+    wsClient: WebSocketClient;
+    dataSource: ClaudeDataSource;
+    pollTimer: ReturnType<typeof setInterval> | null;
     running: boolean;
     _onWsInit: (data: any) => void;
     _onWsUpdate: (data: any) => void;
     _onWsDisconnected: () => void;
     _onWsConnected: () => void;
 
-    constructor(agentManager, wsClient, dataSource) {
+    constructor(agentManager: AgentManager, wsClient: WebSocketClient, dataSource: ClaudeDataSource) {
         this.agentManager = agentManager;
         this.wsClient = wsClient;
         this.dataSource = dataSource;
         this.pollTimer = null;
         this.running = false;
 
-        this._onWsInit = (data) => this.agentManager.handleWebSocketMessage(data);
-        this._onWsUpdate = (data) => this.agentManager.handleWebSocketMessage(data);
+        this._onWsInit = (data: any) => this.agentManager.handleWebSocketMessage(data);
+        this._onWsUpdate = (data: any) => this.agentManager.handleWebSocketMessage(data);
         this._onWsDisconnected = () => this._startPolling();
         this._onWsConnected = () => {
             void this._poll();
@@ -31,18 +34,13 @@ export class SessionWatcher {
         if (this.running) return;
         this.running = true;
 
-        // Subscribe to WebSocket events
         eventBus.on('ws:init', this._onWsInit);
         eventBus.on('ws:update', this._onWsUpdate);
         eventBus.on('ws:disconnected', this._onWsDisconnected);
         eventBus.on('ws:connected', this._onWsConnected);
 
-        // Connect WebSocket
         this.wsClient.connect();
 
-        // Always start fallback polling and keep it running as a safety net.
-        // WebSocket updates stay the fast path, but polling ensures the UI recovers
-        // if a push is delayed, dropped, or the socket stays open without updates.
         this._startPolling();
     }
 
@@ -81,8 +79,8 @@ export class SessionWatcher {
             ]);
             this.agentManager.handleWebSocketMessage({ sessions });
             if (usage) eventBus.emit('usage:updated', usage);
-        } catch (err) {
-            console.error('[SessionWatcher] Polling failed:', err.message);
+        } catch (err: unknown) {
+            console.error('[SessionWatcher] Polling failed:', (err as Error).message);
         }
     }
 }

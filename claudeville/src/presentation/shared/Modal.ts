@@ -1,19 +1,19 @@
 export class Modal {
-    overlay: HTMLElement | null;
-    titleEl: HTMLElement | null;
-    contentEl: HTMLElement | null;
-    closeBtn: HTMLElement | null;
+    overlay!: HTMLElement;
+    titleEl!: HTMLElement;
+    contentEl!: HTMLElement;
+    closeBtn!: HTMLElement;
     _onClose: () => void;
     _onKeydown: (e: KeyboardEvent) => void;
 
     constructor() {
-        this.overlay = document.getElementById('modalOverlay');
-        this.titleEl = document.getElementById('modalTitle');
-        this.contentEl = document.getElementById('modalContent');
-        this.closeBtn = document.getElementById('modalClose');
+        this.overlay = document.getElementById('modalOverlay')!;
+        this.titleEl = document.getElementById('modalTitle')!;
+        this.contentEl = document.getElementById('modalContent')!;
+        this.closeBtn = document.getElementById('modalClose')!;
 
         this._onClose = () => this.close();
-        this._onKeydown = (e) => {
+        this._onKeydown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') this.close();
         };
 
@@ -23,7 +23,7 @@ export class Modal {
         });
     }
 
-    open(title, contentHTML) {
+    open(title: string, contentHTML: string) {
         this.titleEl.textContent = title;
         this.contentEl.innerHTML = contentHTML;
         this.overlay.style.display = 'flex';

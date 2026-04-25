@@ -5,7 +5,7 @@ function normalizeAgentNamePool(rawPool = '') {
   return pool.length > 0 ? pool : DEFAULT_AGENT_NAME_POOL;
 }
 
-function normalizeNameMode(rawMode, fallback = 'autodetected') {
+function normalizeNameMode(rawMode: unknown, fallback: string = 'autodetected'): string {
   const mode = String(rawMode || '').trim().toLowerCase();
   return mode === 'pooled' || mode === 'autodetected' ? mode : fallback;
 }
@@ -19,9 +19,9 @@ function readProviderNameModes(env = process.env) {
     copilot: env.CLAUDEVILLE_NAME_MODE_COPILOT,
   };
 
-  const modes = {};
+  const modes: Record<string, string> = {};
   for (const [provider, value] of Object.entries(providers)) {
-    const mode = normalizeNameMode(value, null);
+    const mode = normalizeNameMode(value, 'autodetected');
     if (mode) {
       modes[provider] = mode;
     }

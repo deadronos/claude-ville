@@ -1,13 +1,23 @@
+interface TaskParams {
+    id: string;
+    subject: string;
+    description: string;
+    status: string;
+    owner: string;
+    blockedBy: string[];
+    activeForm: string;
+}
+
 export class Task {
     id: string;
     subject: string;
     description: string;
     status: string;
     owner: string;
-    blockedBy: any[];
-    activeForm: any;
+    blockedBy: string[];
+    activeForm: string;
 
-    constructor({ id, subject, description, status, owner, blockedBy, activeForm }) {
+    constructor({ id, subject, description, status, owner, blockedBy, activeForm }: TaskParams) {
         this.id = id;
         this.subject = subject;
         this.description = description;

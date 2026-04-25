@@ -18,11 +18,14 @@ const { readLines, parseJsonLines } = require('./jsonl-utils');
 const COPILOT_DIR = path.join(os.homedir(), '.copilot');
 const SESSION_STATE_DIR = path.join(COPILOT_DIR, 'session-state');
 
+// Type for directory entries from readdirSync with withFileTypes: true
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+
 // ─── Utility ─────────────────────────────────────────────
 
 // ─── Session parsing ──────────────────────────────────────
 
-async function parseSession(filePath) {
+async function parseSession(filePath: string) {
   const detail = {
     model: null,
     project: null,
@@ -101,7 +104,7 @@ async function parseSession(filePath) {
   return detail;
 }
 
-function extractText(content) {
+function extractText(content: unknown) {
   if (typeof content === 'string') return content.trim();
   if (!Array.isArray(content)) return '';
   for (const block of content) {
@@ -114,7 +117,7 @@ function extractText(content) {
 
 // ─── Tool history ────────────────────────────────────
 
-async function getToolHistory(filePath, maxItems = 15) {
+async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 100 });
@@ -157,7 +160,7 @@ async function getToolHistory(filePath, maxItems = 15) {
 
 // ─── Recent messages ──────────────────────────────────────
 
-async function getRecentMessages(filePath, maxItems = 5) {
+async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 60 });
@@ -182,16 +185,17 @@ async function getRecentMessages(filePath, maxItems = 5) {
 
 // ─── Session scan ────────────────────────────────────────
 
-async function scanAllSessions(activeThresholdMs) {
-  const results = [];
+async function scanAllSessions(activeThresholdMs: number) {
+  type ScanResult = { filePath: string; mtime: number; sessionId: string };
+  const results: ScanResult[] = [];
   if (!fs.existsSync(SESSION_STATE_DIR)) return results;
 
   const now = Date.now();
 
   try {
     const sessionDirs = (await fs.promises.readdir(SESSION_STATE_DIR, { withFileTypes: true }))
-      .filter(d => d.isDirectory());
-    const dirResults = await Promise.all(sessionDirs.map(async (sessionDir) => {
+      .filter((d: Dirent) => d.isDirectory());
+    const dirResults = await Promise.all(sessionDirs.map(async (sessionDir: Dirent) => {
       const eventsFile = path.join(SESSION_STATE_DIR, sessionDir.name, 'events.jsonl');
       if (!fs.existsSync(eventsFile)) return null;
 
@@ -225,7 +229,7 @@ class CopilotAdapter {
     return fs.existsSync(SESSION_STATE_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs) {
+  async getActiveSessions(activeThresholdMs: number) {
     const sessions = await scanAllSessions(activeThresholdMs);
 
     return Promise.all(sessions.map(async ({ filePath, mtime, sessionId }) => {
@@ -249,7 +253,7 @@ class CopilotAdapter {
     })).then(results => results.sort((a, b) => b.lastActivity - a.lastActivity));
   }
 
-  async getSessionDetail(sessionId, project, filePath = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
       return {
         toolHistory: await getToolHistory(filePath),

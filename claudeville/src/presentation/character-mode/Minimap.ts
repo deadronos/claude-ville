@@ -1,9 +1,10 @@
 import { MAP_SIZE } from '../../config/constants.js';
 import { THEME } from '../../config/theme.js';
+import { Camera } from './Camera.js';
 
 const MINIMAP_SIZE = 150;
 
-const BUILDING_COLORS = {
+const BUILDING_COLORS: Record<string, string> = {
     command: '#8b0000',
     forge: '#ff6b00',
     mine: '#ffd700',
@@ -11,9 +12,19 @@ const BUILDING_COLORS = {
     chathall: '#51cf66',
 };
 
+interface World {
+    buildings: Map<string, { type: string; position: { tileX: number; tileY: number }; width: number; height: number }>;
+    agents: Map<string, { status: string; position: { tileX: number; tileY: number } }>;
+}
+
+interface MainCanvas extends HTMLCanvasElement {
+    width: number;
+    height: number;
+}
+
 export class Minimap {
     canvas: HTMLCanvasElement;
-    ctx: CanvasRenderingContext2D | null;
+    ctx: CanvasRenderingContext2D;
     scale: number;
     onNavigate: ((tileX: number, tileY: number) => void) | null;
 
@@ -31,7 +42,7 @@ export class Minimap {
             cursor: pointer;
             z-index: 10;
         `;
-        this.ctx = this.canvas.getContext('2d');
+        this.ctx = this.canvas.getContext('2d')!;
         this.scale = MINIMAP_SIZE / MAP_SIZE;
         this.onNavigate = null;
 
@@ -39,7 +50,7 @@ export class Minimap {
         this.canvas.addEventListener('mousemove', this._onMouseMove.bind(this));
     }
 
-    attach(container) {
+    attach(container: HTMLElement) {
         container.appendChild(this.canvas);
     }
 
@@ -49,7 +60,7 @@ export class Minimap {
         }
     }
 
-    _onClick(e) {
+    _onClick(e: MouseEvent) {
         if (!this.onNavigate) return;
         const rect = this.canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
@@ -63,21 +74,18 @@ export class Minimap {
         this.canvas.style.cursor = 'crosshair';
     }
 
-    draw(world, camera, mainCanvas) {
+    draw(world: World, camera: Camera | null, mainCanvas: MainCanvas | null) {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
 
-        // Background
         ctx.fillStyle = '#0a0f0a';
         ctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
 
-        // Terrain approximation (simple green fill)
         ctx.fillStyle = THEME.grass[1];
         ctx.globalAlpha = 0.4;
         ctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
         ctx.globalAlpha = 1;
 
-        // Buildings
         for (const building of world.buildings.values()) {
             const color = BUILDING_COLORS[building.type] || '#666';
             ctx.fillStyle = color;
@@ -89,7 +97,6 @@ export class Minimap {
             );
         }
 
-        // Agents
         for (const agent of world.agents.values()) {
             ctx.fillStyle = agent.status === 'working' ? THEME.working :
                 agent.status === 'waiting' ? THEME.waiting : THEME.idle;
@@ -102,7 +109,6 @@ export class Minimap {
             ctx.fill();
         }
 
-        // Viewport rectangle
         if (camera && mainCanvas) {
             const topLeft = camera.screenToTile(0, 0);
             const bottomRight = camera.screenToTile(mainCanvas.width, mainCanvas.height);
@@ -116,7 +122,6 @@ export class Minimap {
             );
         }
 
-        // Border
         ctx.strokeStyle = THEME.border;
         ctx.lineWidth = 1;
         ctx.strokeRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);

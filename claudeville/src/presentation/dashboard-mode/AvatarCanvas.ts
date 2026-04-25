@@ -1,12 +1,14 @@
+import { Agent } from '../../domain/entities/Agent.js';
+
 /**
  * Mini character avatar canvas for dashboard
  * Statically recreates AgentSprite drawing logic
  */
 export class AvatarCanvas {
-    agent: any;
+    agent: Agent;
     canvas: HTMLCanvasElement;
 
-    constructor(agent) {
+    constructor(agent: Agent) {
         this.agent = agent;
         this.canvas = document.createElement('canvas');
         this.canvas.width = 36;
@@ -16,16 +18,15 @@ export class AvatarCanvas {
     }
 
     draw() {
-        const ctx = this.canvas.getContext('2d');
+        const ctx = this.canvas.getContext('2d')!;
         const w = this.canvas.width;
         const h = this.canvas.height;
-        const app = this.agent.appearance;
+        const app = (this.agent as any).appearance;
 
         ctx.clearRect(0, 0, w, h);
         ctx.save();
         ctx.translate(w / 2, h / 2 + 4);
 
-        // Scale up for visibility
         const scale = 1.3;
         ctx.scale(scale, scale);
 

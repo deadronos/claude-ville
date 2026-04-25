@@ -1,6 +1,7 @@
 require('../load-local-env.ts');
 
-const http = require('http');
+import http from 'http';
+import net from 'net';
 const { applySnapshot, getCurrentState, getSessionDetail, getHistory, defaultUsage } = require('./state');
 const { createHubreceiverRequestHandler } = require('./routes');
 const { createHubWebSocketManager } = require('./ws');
@@ -21,7 +22,7 @@ const server = http.createServer(createHubreceiverRequestHandler({
   maxSnapshotBytes: MAX_SNAPSHOT_BYTES,
 }));
 
-server.on('upgrade', (req, socket) => {
+server.on('upgrade', (req: http.IncomingMessage, socket: net.Socket) => {
   if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
     wsManager.handleUpgrade(req, socket);
     return;

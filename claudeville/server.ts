@@ -1,9 +1,13 @@
 require('../load-local-env.ts');
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+import * as http from 'http';
+import * as net from 'net';
+import * as fs from 'fs';
+import * as path from 'path';
 const { buildRuntimeConfig } = require('../runtime-config.shared');
+
+type HttpRequest = http.IncomingMessage;
+type HttpResponse = http.ServerResponse;
 
 // ─── Adapter load ─────────────────────────────────────
 const {
@@ -23,7 +27,7 @@ const { createFileWatchers } = require('../shared/watch-utils');
 const { DISCONNECTED_CODES } = require('../shared/ws-helpers');
 
 // Claude adapter (teams/tasks are Claude-only)
-const claudeAdapter = adapters.find(a => a.provider === 'claude');
+const claudeAdapter = adapters.find((a: { provider: string }) => a.provider === 'claude');
 
 // ─── Config ────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || 4000);
@@ -34,7 +38,7 @@ const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 const { MIME_TYPES } = require('../shared/mime-types');
 
 // ─── WebSocket client management ──────────────────────────
-const wsClients = new Set();
+const wsClients = new Set<net.Socket>();
 
 // ─── API handlers ─────────────────────────────────────────
 
@@ -42,12 +46,12 @@ const wsClients = new Set();
  * GET /api/sessions
  * Collect sessions from all active adapters
  */
-async function handleGetSessions(req, res) {
+async function handleGetSessions(req: HttpRequest, res: HttpResponse) {
   try {
     const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
     sendJson(res, 200, { sessions, count: sessions.length, timestamp: Date.now() });
-  } catch (err) {
-    console.error('session query failed:', err.message);
+  } catch (err: unknown) {
+    console.error('session query failed:', err instanceof Error ? err.message : String(err));
     sendError(res, 500, 'failed to load session info');
   }
 }
@@ -56,12 +60,12 @@ async function handleGetSessions(req, res) {
  * GET /api/teams
  * Claude team info (Claude only)
  */
-async function handleGetTeams(req, res) {
+async function handleGetTeams(req: HttpRequest, res: HttpResponse) {
   try {
     const teams = claudeAdapter ? await claudeAdapter.getTeams() : [];
     sendJson(res, 200, { teams, count: teams.length });
-  } catch (err) {
-    console.error('team query failed:', err.message);
+  } catch (err: unknown) {
+    console.error('team query failed:', err instanceof Error ? err.message : String(err));
     sendError(res, 500, 'failed to load team info');
   }
 }
@@ -70,12 +74,12 @@ async function handleGetTeams(req, res) {
  * GET /api/tasks
  * Claude task info (Claude only)
  */
-async function handleGetTasks(req, res) {
+async function handleGetTasks(req: HttpRequest, res: HttpResponse) {
   try {
     const taskGroups = claudeAdapter ? await claudeAdapter.getTasks() : [];
     sendJson(res, 200, { taskGroups, totalGroups: taskGroups.length });
-  } catch (err) {
-    console.error('task query failed:', err.message);
+  } catch (err: unknown) {
+    console.error('task query failed:', err instanceof Error ? err.message : String(err));
     sendError(res, 500, 'failed to load task info');
   }
 }
@@ -84,9 +88,9 @@ async function handleGetTasks(req, res) {
  * GET /api/session-detail?sessionId=xxx&project=xxx&provider=claude
  * Returns tool history + recent messages for a specific session
  */
-async function handleGetSessionDetail(req, res) {
+async function handleGetSessionDetail(req: HttpRequest, res: HttpResponse) {
   try {
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
     const sessionId = url.searchParams.get('sessionId');
     const project = url.searchParams.get('project');
     const provider = url.searchParams.get('provider') || 'claude';
@@ -95,8 +99,8 @@ async function handleGetSessionDetail(req, res) {
 
     const result = await getSessionDetailByProvider(provider, sessionId, project);
     sendJson(res, 200, result);
-  } catch (err) {
-    console.error('session detail query failed:', err.message);
+  } catch (err: unknown) {
+    console.error('session detail query failed:', err instanceof Error ? err.message : String(err));
     sendError(res, 500, 'failed to load session detail');
   }
 }
@@ -105,12 +109,12 @@ async function handleGetSessionDetail(req, res) {
  * GET /api/providers
  * List of active providers
  */
-function handleGetProviders(req, res) {
+function handleGetProviders(req: HttpRequest, res: HttpResponse) {
   try {
     const providers = getActiveProviders();
     sendJson(res, 200, { providers, count: providers.length });
-  } catch (err) {
-    console.error('provider query failed:', err.message);
+  } catch (err: unknown) {
+    console.error('provider query failed:', err instanceof Error ? err.message : String(err));
     sendError(res, 500, 'failed to load provider info');
   }
 }
@@ -119,12 +123,12 @@ function handleGetProviders(req, res) {
  * GET /api/usage
  * Claude usage / subscription info
  */
-function handleGetUsage(req, res) {
+function handleGetUsage(req: HttpRequest, res: HttpResponse) {
   try {
     const usage = usageQuota.fetchUsage();
     sendJson(res, 200, usage);
-  } catch (err) {
-    console.error('usage query failed:', err.message);
+  } catch (err: unknown) {
+    console.error('usage query failed:', err instanceof Error ? err.message : String(err));
     sendError(res, 500, 'failed to load usage info');
   }
 }
@@ -133,12 +137,12 @@ function handleGetUsage(req, res) {
  * GET /api/history?lines=100
  * Returns recent message history
  */
-async function handleGetHistory(req, res) {
+async function handleGetHistory(req: HttpRequest, res: HttpResponse) {
   try {
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
     const limit = safeLimit(url.searchParams.get('lines'));
     const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
-    const entries = [];
+    const entries: { provider: string; sessionId: string; project: string | null; role: string; text: string; ts: number }[] = [];
 
     for (const session of sessions) {
       const messages = session.detail?.messages || [];
@@ -157,17 +161,18 @@ async function handleGetHistory(req, res) {
 
     entries.sort((a, b) => a.ts - b.ts);
     sendJson(res, 200, { entries: entries.slice(-limit) });
-  } catch (err) {
-    console.error('history query failed:', err.message);
+  } catch (err: unknown) {
+    console.error('history query failed:', err instanceof Error ? err.message : String(err));
     sendError(res, 500, 'failed to load history');
   }
 }
 
 // ─── Static file serving ─────────────────────────────────────
 
-function handleStaticFile(req, res) {
+function handleStaticFile(req: HttpRequest, res: HttpResponse) {
   try {
-    let filePath = path.join(STATIC_DIR, req.url === '/' ? 'index.html' : req.url);
+    const reqUrl = req.url ?? '/';
+    let filePath = path.join(STATIC_DIR, reqUrl === '/' ? 'index.html' : reqUrl);
 
     const resolvedPath = path.resolve(filePath);
     if (!resolvedPath.startsWith(STATIC_DIR)) {
@@ -203,21 +208,21 @@ function handleStaticFile(req, res) {
 
     const stream = fs.createReadStream(filePath, isText ? { encoding: 'utf-8' } : undefined);
     stream.pipe(res);
-    stream.on('error', (err) => {
+    stream.on('error', (err: Error) => {
       console.error('file stream error:', err.message);
       if (!res.headersSent) {
         sendError(res, 500, 'Internal Server Error');
       }
     });
-  } catch (err) {
-    console.error('static file serving failed:', err.message);
+  } catch (err: unknown) {
+    console.error('static file serving failed:', err instanceof Error ? err.message : String(err));
     if (!res.headersSent) {
       sendError(res, 500, 'Internal Server Error');
     }
   }
 }
 
-function handleRuntimeConfig(req, res) {
+function handleRuntimeConfig(req: HttpRequest, res: HttpResponse) {
   const runtimeConfig = buildRuntimeConfig(process.env);
   setCorsHeaders(res);
   res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
@@ -226,7 +231,7 @@ function handleRuntimeConfig(req, res) {
 
 // ─── WebSocket implementation (RFC 6455) ──────────────────────────
 
-function handleWebSocketUpgrade(req, socket) {
+function handleWebSocketUpgrade(req: HttpRequest, socket: net.Socket) {
   const key = req.headers['sec-websocket-key'];
   if (!key) {
     socket.destroy();
@@ -251,10 +256,10 @@ function handleWebSocketUpgrade(req, socket) {
     }, 100);
   });
 
-  socket.on('data', (buffer) => {
+  socket.on('data', (buffer: Buffer) => {
     try {
       handleWebSocketFrame(socket, buffer);
-    } catch (err) {
+    } catch (err: unknown) {
       reportWebSocketFrameIssue(socket, 'frame handling error', err);
     }
   });
@@ -268,7 +273,7 @@ function handleWebSocketUpgrade(req, socket) {
   });
 }
 
-function handleWebSocketFrame(socket, buffer) {
+function handleWebSocketFrame(socket: net.Socket, buffer: Buffer) {
   if (buffer.length < 2) return;
 
   const firstByte = buffer[0];
@@ -318,7 +323,7 @@ function handleWebSocketFrame(socket, buffer) {
     case 0x8:
       try {
         socket.end(createWebSocketFrame('', 0x8));
-      } catch (err) {
+      } catch {
         socket.destroy();
       }
       wsClients.delete(socket);
@@ -326,7 +331,7 @@ function handleWebSocketFrame(socket, buffer) {
     case 0x9:
       try {
         socket.write(createWebSocketFrame(payload, 0xa));
-      } catch (err) {
+      } catch {
         reportWebSocketFrameIssue(socket, `pong frame creation failed`);
       }
       break;
@@ -338,58 +343,55 @@ function handleWebSocketFrame(socket, buffer) {
   }
 }
 
-function handleTextMessage(socket, message) {
+function handleTextMessage(socket: net.Socket, message: string) {
   try {
     const data = JSON.parse(message);
     if (data.type === 'ping') {
       wsSend(socket, { type: 'pong', timestamp: Date.now() });
     }
-  } catch (err) {
+  } catch (err: unknown) {
     reportWebSocketFrameIssue(socket, 'invalid JSON text frame', err);
   }
 }
 
-function wsSend(socket: any, data: any) {
+function wsSend(socket: net.Socket, data: unknown) {
   try {
     if (!socket.destroyed && socket.writable) {
-      socket.write(createWebSocketFrame(JSON.stringify(data)), (err) => {
-        if (err && !DISCONNECTED_CODES.has(err.code)) {
-          console.error(`[WebSocket] send failed (${err.code}): ${err.message}`);
-        }
-      });
+      const frame = createWebSocketFrame(JSON.stringify(data));
+      if (!socket.write(frame)) {
+        console.error('[WebSocket] write returned false, buffer full');
+      }
     } else {
       wsClients.delete(socket);
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[WebSocket] send error: ${msg}`);
     wsClients.delete(socket);
   }
 }
 
-function wsBroadcast(data: any) {
+function wsBroadcast(data: unknown) {
   let frame: Buffer;
   try {
     frame = createWebSocketFrame(JSON.stringify(data));
-  } catch (err: any) {
+  } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[WebSocket] broadcast frame creation failed: ${msg}`);
     return;
   }
 
-  const deadSockets: any[] = [];
-  for (const socket of wsClients as Set<any>) {
+  const deadSockets: net.Socket[] = [];
+  for (const socket of wsClients) {
     try {
       if (!socket.destroyed && socket.writable) {
-        socket.write(frame, (err) => {
-          if (err && !DISCONNECTED_CODES.has(err.code)) {
-            console.error(`[WebSocket] broadcast send failed (${err.code}): ${err.message}`);
-          }
-        });
+        if (!socket.write(frame)) {
+          deadSockets.push(socket);
+        }
       } else {
         deadSockets.push(socket);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[WebSocket] broadcast error: ${msg}`);
       deadSockets.push(socket);
@@ -404,9 +406,9 @@ function wsBroadcast(data: any) {
 const WS_FRAME_ISSUE_WINDOW_MS = 5000;
 const WS_FRAME_ISSUE_CLOSE_THRESHOLD = 3;
 
-function reportWebSocketFrameIssue(socket: any, reason: string, err?: any) {
+function reportWebSocketFrameIssue(socket: net.Socket, reason: string, err?: unknown) {
   const now = Date.now();
-  const state = socket._claudevilleWsFrameIssue || { count: 0, lastLoggedAt: 0 };
+  const state = (socket as unknown as { _claudevilleWsFrameIssue?: { count: number; lastLoggedAt: number } })._claudevilleWsFrameIssue || { count: 0, lastLoggedAt: 0 };
   state.count += 1;
 
   if (state.count === 1 || now - state.lastLoggedAt >= WS_FRAME_ISSUE_WINDOW_MS) {
@@ -415,7 +417,7 @@ function reportWebSocketFrameIssue(socket: any, reason: string, err?: any) {
     state.lastLoggedAt = now;
   }
 
-  (socket as any)._claudevilleWsFrameIssue = state;
+  (socket as unknown as { _claudevilleWsFrameIssue: { count: number; lastLoggedAt: number } })._claudevilleWsFrameIssue = state;
 
   if (state.count >= WS_FRAME_ISSUE_CLOSE_THRESHOLD && !socket.destroyed) {
     try {
@@ -429,7 +431,7 @@ function reportWebSocketFrameIssue(socket: any, reason: string, err?: any) {
 
 // ─── Data broadcast ────────────────────────────────
 
-async function sendInitialData(socket) {
+async function sendInitialData(socket: net.Socket) {
   try {
     const [sessions, teams] = await Promise.all([
       getAllSessions(ACTIVE_THRESHOLD_MS),
@@ -442,12 +444,12 @@ async function sendInitialData(socket) {
       usage: usageQuota.fetchUsage(),
       timestamp: Date.now(),
     });
-  } catch (err) {
+  } catch {
     // ignore initial data send failure
   }
 }
 
-let watchDebounce = null;
+let watchDebounce: ReturnType<typeof setTimeout> | null = null;
 let broadcastInFlight = false;
 let broadcastPendingCount = 0;
 
@@ -470,8 +472,8 @@ async function broadcastUpdate() {
       usage: usageQuota.fetchUsage(),
       timestamp: Date.now(),
     });
-  } catch (err) {
-    console.error('[Watch] data processing failed:', err.message);
+  } catch (err: unknown) {
+    console.error('[Watch] data processing failed:', err instanceof Error ? err.message : String(err));
   } finally {
     broadcastInFlight = false;
     if (broadcastPendingCount > 0 && wsClients.size > 0) {
@@ -501,7 +503,7 @@ function startFileWatcher() {
 
 // ─── HTTP server ──────────────────────────────────────────
 
-const server = http.createServer((req, res) => {
+const server = http.createServer((req: HttpRequest, res: HttpResponse) => {
   if (req.method === 'OPTIONS') {
     setCorsHeaders(res);
     res.writeHead(204);
@@ -509,7 +511,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+  const parsedUrl = new URL(req.url ?? '/', `http://${req.headers.host}`);
   const pathname = parsedUrl.pathname;
 
   if (req.method === 'GET') {
@@ -548,7 +550,7 @@ const server = http.createServer((req, res) => {
   handleStaticFile(req, res);
 });
 
-server.on('upgrade', (req, socket, head) => {
+server.on('upgrade', (req: HttpRequest, socket: net.Socket, head: Buffer) => {
   if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
     handleWebSocketUpgrade(req, socket);
   } else {
@@ -605,7 +607,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
 // ─── Error handling ────────────────────────────────────────
 
-server.on('error', (err) => {
+server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`port ${PORT} is already in use`);
   } else {
@@ -613,17 +615,17 @@ server.on('error', (err) => {
   }
 });
 
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', (err: Error) => {
   console.error('unhandled exception:', err.message);
 });
 
-process.on('unhandledRejection', (reason) => {
+process.on('unhandledRejection', (reason: unknown) => {
   console.error('unhandled promise rejection:', reason);
 });
 
 process.on('SIGINT', () => {
   console.log('\nshutting down server...');
-  for (const socket of wsClients as Set<any>) {
+  for (const socket of wsClients) {
     try {
       socket.end(createWebSocketFrame('', 0x8));
     } catch { /* ignore */ }

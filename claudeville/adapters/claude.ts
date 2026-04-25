@@ -6,12 +6,15 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// Type for directory entries from readdirSync with withFileTypes: true
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+
 const CLAUDE_DIR = process.env.CLAUDE_DIR || path.join(os.homedir(), '.claude');
 const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const TEAMS_DIR = path.join(CLAUDE_DIR, 'teams');
 const TASKS_DIR = path.join(CLAUDE_DIR, 'tasks');
 
-function resolveProjectDisplayPath(projectPathMap, encodedProjectDirName) {
+function resolveProjectDisplayPath(projectPathMap: Map<string, string>, encodedProjectDirName: string) {
   const mapped = projectPathMap.get(encodedProjectDirName);
   if (mapped) return mapped;
   // Encoded project dir names use '/' -> '-' substitution; reverse-transform loses info.
@@ -21,7 +24,7 @@ function resolveProjectDisplayPath(projectPathMap, encodedProjectDirName) {
 
 // ─── Utility ─────────────────────────────────────────────
 
-function readLastLines(filePath, lineCount) {
+function readLastLines(filePath: string, lineCount: number) {
   try {
     if (!fs.existsSync(filePath)) return [];
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -32,7 +35,7 @@ function readLastLines(filePath, lineCount) {
   }
 }
 
-function parseJsonLines(lines) {
+function parseJsonLines(lines: string[]) {
   const results = [];
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -43,7 +46,7 @@ function parseJsonLines(lines) {
 
 // ─── Session parsing ─────────────────────────────────────
 
-function getSessionDetail(sessionId, projectPath) {
+function getSessionDetail(sessionId: string, projectPath: string | null) {
   const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
   if (!projectPath) return detail;
 
@@ -87,7 +90,7 @@ function getSessionDetail(sessionId, projectPath) {
   return detail;
 }
 
-function getSubAgentDetail(filePath) {
+function getSubAgentDetail(filePath: string) {
   const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
   try {
     const lines = readLastLines(filePath, 20);
@@ -123,7 +126,7 @@ function getSubAgentDetail(filePath) {
   return detail;
 }
 
-function getToolHistory(sessionFilePath, maxItems = 15) {
+function getToolHistory(sessionFilePath: string, maxItems = 15) {
   const tools = [];
   try {
     const lines = readLastLines(sessionFilePath, 100);
@@ -154,7 +157,7 @@ function getToolHistory(sessionFilePath, maxItems = 15) {
   return tools.slice(-maxItems);
 }
 
-function getRecentMessages(sessionFilePath, maxItems = 5) {
+function getRecentMessages(sessionFilePath: string, maxItems = 5) {
   const messages = [];
   try {
     const lines = readLastLines(sessionFilePath, 60);
@@ -177,7 +180,7 @@ function getRecentMessages(sessionFilePath, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
-function getTokenUsage(sessionFilePath) {
+function getTokenUsage(sessionFilePath: string) {
   const usage = {
     totalInput: 0,
     totalOutput: 0,
@@ -214,7 +217,7 @@ function getTokenUsage(sessionFilePath) {
   return usage;
 }
 
-function resolveSessionFilePath(sessionId, project) {
+function resolveSessionFilePath(sessionId: string, project: string | null) {
   if (!project) return null;
   const encoded = project.replace(/\//g, '-');
   const projectsDir = path.join(CLAUDE_DIR, 'projects', encoded);
@@ -223,7 +226,7 @@ function resolveSessionFilePath(sessionId, project) {
     const agentId = sessionId.replace('subagent-', '');
     try {
       const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
-        .filter(d => d.isDirectory());
+        .filter((d: Dirent) => d.isDirectory());
       for (const dir of sessionDirs) {
         const agentFile = path.join(projectsDir, dir.name, 'subagents', `agent-${agentId}.jsonl`);
         if (fs.existsSync(agentFile)) return agentFile;
@@ -236,7 +239,7 @@ function resolveSessionFilePath(sessionId, project) {
   return fs.existsSync(sessionFile) ? sessionFile : null;
 }
 
-function getSessionFileActivity(sessionId, project) {
+function getSessionFileActivity(sessionId: string, project: string | null) {
   if (!project) return 0;
   const encoded = project.replace(/\//g, '-');
   const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
@@ -257,7 +260,7 @@ class ClaudeAdapter {
     return fs.existsSync(CLAUDE_DIR);
   }
 
-  getActiveSessions(activeThresholdMs) {
+  getActiveSessions(activeThresholdMs: number) {
     const lines = readLastLines(HISTORY_FILE, 1000);
     const entries = parseJsonLines(lines);
     const now = Date.now();
@@ -323,7 +326,7 @@ class ClaudeAdapter {
     return [...mainSessions, ...subAgents, ...orphans];
   }
 
-  _getActiveSubAgents(activeThresholdMs, projectPathMap = new Map()) {
+  _getActiveSubAgents(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map()) {
     const projectsDir = path.join(CLAUDE_DIR, 'projects');
     if (!fs.existsSync(projectsDir)) return [];
 
@@ -332,14 +335,14 @@ class ClaudeAdapter {
 
     try {
       const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
-        .filter(d => d.isDirectory());
+        .filter((d: Dirent) => d.isDirectory());
 
       for (const projDir of projDirs) {
         const projPath = path.join(projectsDir, projDir.name);
         let sessionDirs;
         try {
           sessionDirs = fs.readdirSync(projPath, { withFileTypes: true })
-            .filter(d => d.isDirectory());
+            .filter((d: Dirent) => d.isDirectory());
         } catch { continue; }
 
         for (const sessionDir of sessionDirs) {
@@ -349,7 +352,7 @@ class ClaudeAdapter {
           let agentFiles;
           try {
             agentFiles = fs.readdirSync(subagentsDir)
-              .filter(f => f.startsWith('agent-') && f.endsWith('.jsonl'));
+              .filter((f: string) => f.startsWith('agent-') && f.endsWith('.jsonl'));
           } catch { continue; }
 
           for (const agentFile of agentFiles) {
@@ -386,7 +389,7 @@ class ClaudeAdapter {
     return results;
   }
 
-  _getOrphanSessions(activeThresholdMs, projectPathMap = new Map(), knownIds = new Set()) {
+  _getOrphanSessions(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map(), knownIds: Set<string> = new Set()) {
     const projectsDir = path.join(CLAUDE_DIR, 'projects');
     if (!fs.existsSync(projectsDir)) return [];
 
@@ -395,14 +398,14 @@ class ClaudeAdapter {
 
     try {
       const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
-        .filter(d => d.isDirectory());
+        .filter((d: Dirent) => d.isDirectory());
 
       for (const projDir of projDirs) {
         const projPath = path.join(projectsDir, projDir.name);
         let files;
         try {
           files = fs.readdirSync(projPath)
-            .filter(f => f.endsWith('.jsonl') && !f.startsWith('.'));
+            .filter((f: string) => f.endsWith('.jsonl') && !f.startsWith('.'));
         } catch { continue; }
 
         for (const file of files) {
@@ -439,7 +442,7 @@ class ClaudeAdapter {
     return results;
   }
 
-  getSessionDetail(sessionId, project) {
+  getSessionDetail(sessionId: string, project: string | null) {
     const filePath = resolveSessionFilePath(sessionId, project);
     if (!filePath) return { toolHistory: [], messages: [], tokenUsage: null };
     return {
@@ -463,7 +466,7 @@ class ClaudeAdapter {
     if (fs.existsSync(projectsDir)) {
       try {
         const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
-          .filter(d => d.isDirectory());
+          .filter((d: Dirent) => d.isDirectory());
         for (const dir of projDirs) {
           paths.push({
             type: 'directory',
@@ -494,15 +497,15 @@ class ClaudeAdapter {
     try {
       const teamDirs = await fs.promises.readdir(TEAMS_DIR, { withFileTypes: true });
       const teamPromises = teamDirs
-        .filter(d => d.isDirectory())
-        .map(async (dir) => {
+        .filter((d: Dirent) => d.isDirectory())
+        .map(async (dir: Dirent) => {
           const configPath = path.join(TEAMS_DIR, dir.name, 'config.json');
           try {
             const content = await fs.promises.readFile(configPath, 'utf-8');
             const config = JSON.parse(content);
             return { teamName: dir.name, ...config };
           } catch (err) {
-            if (err.code === 'ENOENT') return null;
+            if (err instanceof Error && 'code' in err && err.code === 'ENOENT') return null;
             return { teamName: dir.name, error: 'parse failed' };
           }
         });
@@ -518,14 +521,14 @@ class ClaudeAdapter {
     try {
       const taskDirs = await fs.promises.readdir(TASKS_DIR, { withFileTypes: true });
       const groupPromises = taskDirs
-        .filter(dir => dir.isDirectory())
-        .map(async (dir) => {
+        .filter((dir: Dirent) => dir.isDirectory())
+        .map(async (dir: Dirent) => {
           const groupDir = path.join(TASKS_DIR, dir.name);
           try {
             const files = await fs.promises.readdir(groupDir);
-            const jsonFiles = files.filter(f => f.endsWith('.json'));
+            const jsonFiles = files.filter((f: string) => f.endsWith('.json'));
 
-            const taskPromises = jsonFiles.map(async (file) => {
+            const taskPromises = jsonFiles.map(async (file: string) => {
               try {
                 const content = await fs.promises.readFile(path.join(groupDir, file), 'utf-8');
                 return JSON.parse(content);

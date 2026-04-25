@@ -1,9 +1,11 @@
+import { World } from '../../domain/entities/World.js';
+import { Agent } from '../../domain/entities/Agent.js';
 import { eventBus } from '../../domain/events/DomainEvent.js';
 import { i18n } from '../../config/i18n.js';
 
 // Project color palette
-const PROVIDER_ICONS = { claude: 'C', codex: 'X', gemini: 'G', openclaw: 'O', copilot: 'P' };
-const PROVIDER_COLORS = { claude: '#a78bfa', codex: '#4ade80', gemini: '#60a5fa', openclaw: '#f97316', copilot: '#22d3ee' };
+const PROVIDER_ICONS: Record<string, string> = { claude: 'C', codex: 'X', gemini: 'G', openclaw: 'O', copilot: 'P' };
+const PROVIDER_COLORS: Record<string, string> = { claude: '#a78bfa', codex: '#4ade80', gemini: '#60a5fa', openclaw: '#f97316', copilot: '#22d3ee' };
 
 const PROJECT_COLORS = [
     '#e8d44d', '#4ade80', '#60a5fa', '#f97316', '#a78bfa',
@@ -11,16 +13,16 @@ const PROJECT_COLORS = [
 ];
 
 export class Sidebar {
-    world: any;
+    world: World;
     listEl: HTMLElement | null;
     countEl: HTMLElement | null;
     selectedId: string | null;
     _projectColorMap: Map<string, string>;
     _onUpdate: () => void;
-    _onAgentSelected: (agent: any) => void;
+    _onAgentSelected: (agent: Agent | null) => void;
     _onAgentDeselected: () => void;
 
-    constructor(world) {
+    constructor(world: World) {
         this.world = world;
         this.listEl = document.getElementById('agentList');
         this.countEl = document.getElementById('agentCount');
@@ -28,7 +30,7 @@ export class Sidebar {
         this._projectColorMap = new Map();
 
         this._onUpdate = () => this.render();
-        this._onAgentSelected = (agent) => {
+        this._onAgentSelected = (agent: Agent | null) => {
             this.selectedId = agent?.id || null;
             this.render();
         };
@@ -36,17 +38,17 @@ export class Sidebar {
             this.selectedId = null;
             this.render();
         };
-        eventBus.on('agent:added', this._onUpdate);
-        eventBus.on('agent:updated', this._onUpdate);
-        eventBus.on('agent:removed', this._onUpdate);
-        eventBus.on('agent:selected', this._onAgentSelected);
-        eventBus.on('agent:deselected', this._onAgentDeselected);
+        eventBus.on('agent:added', this._onUpdate as (data?: unknown) => void);
+        eventBus.on('agent:updated', this._onUpdate as (data?: unknown) => void);
+        eventBus.on('agent:removed', this._onUpdate as (data?: unknown) => void);
+        eventBus.on('agent:selected', this._onAgentSelected as (data?: unknown) => void);
+        eventBus.on('agent:deselected', this._onAgentDeselected as (data?: unknown) => void);
 
         this.render();
     }
 
     render() {
-        const agents = Array.from(this.world.agents.values());
+        const agents = Array.from(this.world.agents.values()) as Agent[];
         if (this.countEl) this.countEl.textContent = String(agents.length);
 
         // Group by project
@@ -102,17 +104,17 @@ export class Sidebar {
         }
     }
 
-    _groupByProject(agents) {
-        const groups = new Map();
+    _groupByProject(agents: Agent[]) {
+        const groups = new Map<string, Agent[]>();
         for (const agent of agents) {
-            const key = agent.projectPath || '_unknown';
+            const key = (agent as any).projectPath || '_unknown';
             if (!groups.has(key)) groups.set(key, []);
-            groups.get(key).push(agent);
+            groups.get(key)!.push(agent);
         }
         return groups;
     }
 
-    _assignProjectColors(groups) {
+    _assignProjectColors(groups: Map<string, Agent[]>) {
         let idx = 0;
         for (const key of groups.keys()) {
             if (!this._projectColorMap.has(key)) {
@@ -122,7 +124,7 @@ export class Sidebar {
         }
     }
 
-    _shortProjectName(path) {
+    _shortProjectName(path: string | undefined) {
         if (!path || path === '_unknown') return i18n.t('unknownProject');
         const parts = path.replace(/\/+$/, '').split('/').filter(Boolean);
         const last = parts[parts.length - 1] || path;
@@ -131,14 +133,14 @@ export class Sidebar {
         return last;
     }
 
-    _escape(str) {
+    _escape(str: string) {
         if (!str) return '';
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
     }
 
-    _shortModel(model) {
+    _shortModel(model: string | undefined) {
         if (!model) return '';
         return model
             .replace('claude-', '')
@@ -147,10 +149,10 @@ export class Sidebar {
     }
 
     destroy() {
-        eventBus.off('agent:added', this._onUpdate);
-        eventBus.off('agent:updated', this._onUpdate);
-        eventBus.off('agent:removed', this._onUpdate);
-        eventBus.off('agent:selected', this._onAgentSelected);
-        eventBus.off('agent:deselected', this._onAgentDeselected);
+        eventBus.off('agent:added', this._onUpdate as (data?: unknown) => void);
+        eventBus.off('agent:updated', this._onUpdate as (data?: unknown) => void);
+        eventBus.off('agent:removed', this._onUpdate as (data?: unknown) => void);
+        eventBus.off('agent:selected', this._onAgentSelected as (data?: unknown) => void);
+        eventBus.off('agent:deselected', this._onAgentDeselected as (data?: unknown) => void);
     }
 }

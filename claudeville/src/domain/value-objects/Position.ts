@@ -2,7 +2,7 @@ export class Position {
     tileX: number;
     tileY: number;
 
-    constructor(tileX, tileY) {
+    constructor(tileX: number, tileY: number) {
         this.tileX = tileX;
         this.tileY = tileY;
     }
@@ -14,13 +14,13 @@ export class Position {
         };
     }
 
-    distanceTo(other) {
+    distanceTo(other: Position) {
         const dx = this.tileX - other.tileX;
         const dy = this.tileY - other.tileY;
         return Math.sqrt(dx * dx + dy * dy);
     }
 
-    lerp(target, t) {
+    lerp(target: Position, t: number) {
         return new Position(
             this.tileX + (target.tileX - this.tileX) * t,
             this.tileY + (target.tileY - this.tileY) * t,

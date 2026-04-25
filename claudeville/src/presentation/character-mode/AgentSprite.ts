@@ -1,3 +1,4 @@
+import { Agent } from '../../domain/entities/Agent.js';
 import { Position } from '../../domain/value-objects/Position.js';
 import { AgentStatus } from '../../domain/value-objects/AgentStatus.js';
 import { TILE_WIDTH, TILE_HEIGHT } from '../../config/constants.js';
@@ -6,7 +7,7 @@ import { THEME } from '../../config/theme.js';
 import { getBubbleConfig } from '../../config/bubbleConfig.js';
 
 export class AgentSprite {
-    agent: any;
+    agent: Agent;
     x: number;
     y: number;
     targetX: number;
@@ -22,9 +23,9 @@ export class AgentSprite {
     chatting: boolean;
     chatTimer: number;
     chatBubbleAnim: number;
-    _zoom: number;
+    _zoom!: number;
 
-    constructor(agent) {
+    constructor(agent: Agent) {
         this.agent = agent;
         this.x = 0;
         this.y = 0;
@@ -38,11 +39,10 @@ export class AgentSprite {
         this.statusAnim = 0;
         this._lastBuildingType = null;
 
-        // Chat system
-        this.chatPartner = null;     // Chat partner AgentSprite
-        this.chatting = false;       // Currently chatting
-        this.chatTimer = 0;          // Chat animation timer
-        this.chatBubbleAnim = 0;     // Speech bubble animation
+        this.chatPartner = null;
+        this.chatting = false;
+        this.chatTimer = 0;
+        this.chatBubbleAnim = 0;
 
         const screen = agent.position.toScreen(TILE_WIDTH, TILE_HEIGHT);
         this.x = screen.x;
@@ -52,7 +52,6 @@ export class AgentSprite {
     }
 
     _pickTarget() {
-        // If there's a chat partner, move to their location
         if (this.chatPartner) {
             this.targetX = this.chatPartner.x + (this.x < this.chatPartner.x ? -25 : 25);
             this.targetY = this.chatPartner.y;
@@ -61,9 +60,8 @@ export class AgentSprite {
             return;
         }
 
-        // Only move to building based on tool when WORKING, free roam when IDLE/WAITING
         const isWorking = this.agent.status === AgentStatus.WORKING;
-        const buildingType = isWorking ? this.agent.targetBuildingType : null;
+        const buildingType = isWorking ? (this.agent as any).targetBuildingType : null;
         let building = null;
 
         if (buildingType) {
@@ -71,7 +69,6 @@ export class AgentSprite {
         }
 
         if (!building) {
-            // No mapping: 70% random building, 30% empty land
             if (Math.random() < 0.7) {
                 building = BUILDING_DEFS[Math.floor(Math.random() * BUILDING_DEFS.length)];
             } else {
@@ -87,7 +84,6 @@ export class AgentSprite {
             }
         }
 
-        // Move inside building (near center of building)
         const tx = building.x + 0.3 * building.width + Math.random() * 0.4 * building.width;
         const ty = building.y + 0.3 * building.height + Math.random() * 0.4 * building.height;
         const target = new Position(tx, ty);
@@ -98,20 +94,17 @@ export class AgentSprite {
         this.waitTimer = 0;
     }
 
-    update(particleSystem) {
+    update(particleSystem: { spawn(type: string, x: number, y: number, count?: number): void } | null) {
         this.statusAnim += 0.05;
 
-        // Handle chatting state
         if (this.chatting) {
             this.chatBubbleAnim += 0.06;
-            // Face the chat partner if nearby
             if (this.chatPartner) {
                 this.facingLeft = this.chatPartner.x < this.x;
             }
-            return; // Don't move while chatting
+            return;
         }
 
-        // Moving toward chat partner → start chat when close enough
         if (this.chatPartner) {
             const cpDx = this.chatPartner.x - this.x;
             const cpDy = this.chatPartner.y - this.y;
@@ -122,7 +115,6 @@ export class AgentSprite {
                 this.moving = false;
                 this.walkFrame = 0;
                 this.facingLeft = cpDx < 0;
-                // Set partner to chatting too
                 if (!this.chatPartner.chatting) {
                     this.chatPartner.chatPartner = this;
                     this.chatPartner.chatting = true;
@@ -133,14 +125,12 @@ export class AgentSprite {
                 }
                 return;
             }
-            // Update target if partner position changed
             this.targetX = this.chatPartner.x + (this.x < this.chatPartner.x ? -25 : 25);
             this.targetY = this.chatPartner.y;
         }
 
-        // When WORKING status and tool changes, immediately turn toward new building
         if (this.agent.status === AgentStatus.WORKING && !this.chatPartner) {
-            const curBuilding = this.agent.targetBuildingType;
+            const curBuilding = (this.agent as any).targetBuildingType;
             if (curBuilding && curBuilding !== this._lastBuildingType) {
                 this._lastBuildingType = curBuilding;
                 this._pickTarget();
@@ -173,7 +163,7 @@ export class AgentSprite {
             return;
         }
 
-        const speed = this.chatPartner ? 2.5 : 1.5; // Move faster when going to chat
+        const speed = this.chatPartner ? 2.5 : 1.5;
         this.x += (dx / dist) * speed;
         this.y += (dy / dist) * speed;
         this.walkFrame += 0.15;
@@ -184,23 +174,21 @@ export class AgentSprite {
         }
     }
 
-    /** Start chat (called from IsometricRenderer) */
-    startChat(partnerSprite) {
+    startChat(partnerSprite: AgentSprite) {
         this.chatPartner = partnerSprite;
         this.chatting = false;
         this.chatBubbleAnim = 0;
-        this._pickTarget(); // Start moving toward partner
+        this._pickTarget();
     }
 
-    /** End chat */
     endChat() {
         this.chatPartner = null;
         this.chatting = false;
         this.chatBubbleAnim = 0;
-        this._pickTarget(); // Resume normal behavior
+        this._pickTarget();
     }
 
-    draw(ctx, zoom = 1) {
+    draw(ctx: CanvasRenderingContext2D, zoom = 1) {
         this._zoom = zoom;
 
         ctx.save();
@@ -220,9 +208,8 @@ export class AgentSprite {
         ctx.scale(scaleX, 1);
 
         const swing = this.moving ? Math.sin(this.walkFrame * 4) * 4 : 0;
-        const app = this.agent.appearance;
+        const app = (this.agent as any).appearance;
 
-        // Legs
         ctx.strokeStyle = app.pants;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -234,11 +221,9 @@ export class AgentSprite {
         ctx.lineTo(3 + swing, 16);
         ctx.stroke();
 
-        // Body
         ctx.fillStyle = app.shirt;
         ctx.fillRect(-5, -2, 10, 12);
 
-        // Arms
         ctx.strokeStyle = app.skin;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -250,36 +235,30 @@ export class AgentSprite {
         ctx.lineTo(8 - swing, 8);
         ctx.stroke();
 
-        // Head
         ctx.fillStyle = app.skin;
         ctx.beginPath();
         ctx.arc(0, -6, 5, 0, Math.PI * 2);
         ctx.fill();
 
-        // Hair
         this._drawHair(ctx, app);
 
-        // Eyes
         this._drawEyes(ctx, app);
 
-        // Accessory
         this._drawAccessory(ctx, app);
 
         ctx.restore();
 
-        // Chat effect
         if (this.chatting) {
             this._drawChatEffect(ctx);
         }
 
-        // Status indicators (drawn without flip, zoom-independent)
         if (!this.chatting) {
             this._drawStatus(ctx);
         }
         this._drawNameTag(ctx);
     }
 
-    _drawHair(ctx, app) {
+    _drawHair(ctx: CanvasRenderingContext2D, app: { hairStyle: string; hair: string }) {
         ctx.fillStyle = app.hair;
         switch (app.hairStyle) {
             case 'short':
@@ -311,7 +290,7 @@ export class AgentSprite {
         }
     }
 
-    _drawEyes(ctx, app) {
+    _drawEyes(ctx: CanvasRenderingContext2D, app: { eyeStyle: string }) {
         ctx.fillStyle = '#000';
         switch (app.eyeStyle) {
             case 'normal':
@@ -345,7 +324,7 @@ export class AgentSprite {
         }
     }
 
-    _drawAccessory(ctx, app) {
+    _drawAccessory(ctx: CanvasRenderingContext2D, app: { accessory: string }) {
         switch (app.accessory) {
             case 'crown':
                 ctx.fillStyle = '#ffd700';
@@ -388,18 +367,18 @@ export class AgentSprite {
         }
     }
 
-    _drawStatus(ctx) {
+    _drawStatus(ctx: CanvasRenderingContext2D) {
         const agent = this.agent;
         const t = this.statusAnim;
-        const bubble = agent.bubbleText;
-        const s = 1 / (this._zoom || 1); // Zoom inverse correction
+        const bubble = (agent as any).bubbleText;
+        const s = 1 / (this._zoom || 1);
 
         if (agent.status === AgentStatus.WORKING || (agent.status === AgentStatus.WAITING && bubble)) {
             this._drawBubble(ctx, bubble || '...', agent.status === AgentStatus.WORKING ? THEME.working : '#f97316');
         } else if (agent.status === AgentStatus.IDLE) {
             ctx.save();
             ctx.translate(this.x, this.y);
-            ctx.scale(s, s); // Zoom inverse correction
+            ctx.scale(s, s);
             ctx.fillStyle = THEME.idle;
             ctx.textAlign = 'center';
             const offsetY = Math.sin(t * 1.5) * 4;
@@ -415,7 +394,7 @@ export class AgentSprite {
         } else if (agent.status === AgentStatus.WAITING) {
             ctx.save();
             ctx.translate(this.x, this.y);
-            ctx.scale(s, s); // Zoom inverse correction
+            ctx.scale(s, s);
             ctx.translate(0, -36);
             ctx.fillStyle = 'rgba(26, 26, 46, 0.9)';
             ctx.strokeStyle = '#f97316';
@@ -432,19 +411,17 @@ export class AgentSprite {
         }
     }
 
-    _drawBubble(ctx, text, accentColor) {
+    _drawBubble(ctx: CanvasRenderingContext2D, text: string, accentColor: string) {
         ctx.save();
-        const s = 1 / (this._zoom || 1); // Zoom inverse correction
+        const s = 1 / (this._zoom || 1);
         const cfg = getBubbleConfig();
 
         ctx.translate(this.x, this.y);
-        ctx.scale(s, s); // Fixed size relative to screen
+        ctx.scale(s, s);
 
-        // Measure text size + auto-truncate
         ctx.font = `bold ${cfg.statusFontSize}px sans-serif`;
         const maxWidth = cfg.statusMaxWidth;
         let displayText = text;
-        // Truncate by actual pixel width, not character count
         while (displayText.length > 0 && ctx.measureText(displayText).width > maxWidth) {
             displayText = displayText.substring(0, displayText.length - 1);
         }
@@ -458,7 +435,6 @@ export class AgentSprite {
 
         ctx.translate(0, -38);
 
-        // Speech bubble background
         const halfW = bubbleW / 2;
         ctx.fillStyle = 'rgba(26, 26, 46, 0.92)';
         ctx.strokeStyle = accentColor;
@@ -480,7 +456,6 @@ export class AgentSprite {
         ctx.fill();
         ctx.stroke();
 
-        // Text
         ctx.fillStyle = '#eee';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -489,7 +464,7 @@ export class AgentSprite {
         ctx.restore();
     }
 
-    _bubblePath(ctx, width) {
+    _bubblePath(ctx: CanvasRenderingContext2D, width: number) {
         const hw = width / 2;
         const r = 5;
         ctx.beginPath();
@@ -508,7 +483,7 @@ export class AgentSprite {
         ctx.closePath();
     }
 
-    _drawChatEffect(ctx) {
+    _drawChatEffect(ctx: CanvasRenderingContext2D) {
         ctx.save();
         const s = 1 / (this._zoom || 1);
         const cfg = getBubbleConfig();
@@ -517,11 +492,9 @@ export class AgentSprite {
 
         const t = this.chatBubbleAnim;
 
-        // Speech bubble (alternating effect)
         const phase = Math.floor(t * 1.5) % 3;
         const bubbleY = -38;
 
-        // Background circle
         ctx.fillStyle = 'rgba(26, 26, 46, 0.92)';
         ctx.strokeStyle = '#4ade80';
         ctx.lineWidth = 1.5;
@@ -530,7 +503,6 @@ export class AgentSprite {
         ctx.fill();
         ctx.stroke();
 
-        // Tail
         ctx.fillStyle = 'rgba(26, 26, 46, 0.92)';
         ctx.beginPath();
         ctx.moveTo(-3, bubbleY + 12);
@@ -538,7 +510,6 @@ export class AgentSprite {
         ctx.lineTo(3, bubbleY + 12);
         ctx.fill();
 
-        // Chat icon (animated dots inside bubble)
         ctx.fillStyle = '#4ade80';
         ctx.font = `bold ${cfg.chatFontSize}px sans-serif`;
         ctx.textAlign = 'center';
@@ -546,22 +517,21 @@ export class AgentSprite {
         const dots = ['.', '..', '...'][phase];
         ctx.fillText(dots, 0, bubbleY - 1);
 
-        // Floating emoji particles above
         const floatY = -56 + Math.sin(t * 2) * 4;
         ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3);
         ctx.font = `${cfg.chatFontSize + 1}px sans-serif`;
-        const emojis = ['\u{1F4AC}', '\u{1F4AD}', '\u2728'];
+        const emojis = ['\u{1F4AC}', '\u{1F4AD}', '✨'];
         ctx.fillText(emojis[Math.floor(t) % emojis.length], 0, floatY);
         ctx.globalAlpha = 1;
 
         ctx.restore();
     }
 
-    _drawNameTag(ctx) {
+    _drawNameTag(ctx: CanvasRenderingContext2D) {
         ctx.save();
-        const s = 1 / (this._zoom || 1); // Zoom inverse correction
+        const s = 1 / (this._zoom || 1);
         ctx.translate(this.x, this.y);
-        ctx.scale(s, s); // Fixed size relative to screen
+        ctx.scale(s, s);
         ctx.translate(0, 24);
         const name = this.agent.name;
         ctx.font = 'bold 10px sans-serif';
@@ -587,7 +557,7 @@ export class AgentSprite {
         ctx.restore();
     }
 
-    hitTest(screenX, screenY) {
+    hitTest(screenX: number, screenY: number) {
         const dx = screenX - this.x;
         const dy = screenY - this.y;
         return Math.abs(dx) < 12 && dy > -20 && dy < 20;

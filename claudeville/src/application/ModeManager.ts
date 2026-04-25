@@ -18,20 +18,20 @@ export class ModeManager {
         this._bindButtons();
     }
 
-    switchMode(mode) {
+    switchMode(mode: string) {
         if (mode === this.currentMode) return;
         this.currentMode = mode;
 
         if (mode === 'character') {
-            this.characterEl.style.display = '';
-            this.dashboardEl.style.display = 'none';
-            this.btnCharacter.classList.add('topbar__mode-btn--active');
-            this.btnDashboard.classList.remove('topbar__mode-btn--active');
+            this.characterEl!.style.display = '';
+            this.dashboardEl!.style.display = 'none';
+            this.btnCharacter!.classList.add('topbar__mode-btn--active');
+            this.btnDashboard!.classList.remove('topbar__mode-btn--active');
         } else {
-            this.characterEl.style.display = 'none';
-            this.dashboardEl.style.display = '';
-            this.btnDashboard.classList.add('topbar__mode-btn--active');
-            this.btnCharacter.classList.remove('topbar__mode-btn--active');
+            this.characterEl!.style.display = 'none';
+            this.dashboardEl!.style.display = '';
+            this.btnDashboard!.classList.add('topbar__mode-btn--active');
+            this.btnCharacter!.classList.remove('topbar__mode-btn--active');
         }
 
         eventBus.emit('mode:changed', mode);
@@ -42,7 +42,7 @@ export class ModeManager {
     }
 
     _bindButtons() {
-        this.btnCharacter.addEventListener('click', () => this.switchMode('character'));
-        this.btnDashboard.addEventListener('click', () => this.switchMode('dashboard'));
+        this.btnCharacter!.addEventListener('click', () => this.switchMode('character'));
+        this.btnDashboard!.addEventListener('click', () => this.switchMode('dashboard'));
     }
 }

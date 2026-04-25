@@ -16,12 +16,21 @@ const { readLines, parseJsonLines } = require('./jsonl-utils');
 const PI_DIR = path.join(os.homedir(), '.pi');
 const SESSIONS_DIR = path.join(PI_DIR, 'agent', 'sessions');
 
+type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean; isSymlink(): boolean };
+
 // ─── Utility ─────────────────────────────────────────────
 
 // ─── Session parsing ──────────────────────────────────────
 
-async function parseSession(filePath) {
-  const detail = {
+async function parseSession(filePath: string) {
+  const detail: {
+    model: string | null;
+    provider: string | null;
+    project: string | null;
+    lastTool: string | null;
+    lastToolInput: string | null;
+    lastMessage: string | null;
+  } = {
     model: null,
     provider: null,
     project: null,
@@ -63,8 +72,9 @@ async function parseSession(filePath) {
       // Last text message
       if (!detail.lastMessage && msg.content) {
         const text = extractText(msg.content);
-        if (text) {
-          detail.lastMessage = text.substring(0, 80);
+        const msgText: string | null = text ? text.substring(0, 80) : null;
+        if (msgText !== null) {
+          detail.lastMessage = msgText;
         }
       }
 
@@ -90,19 +100,19 @@ async function parseSession(filePath) {
   return detail;
 }
 
-function extractText(content) {
+function extractText(content: unknown) {
   if (typeof content === 'string') return content.trim();
   if (!Array.isArray(content)) return '';
   for (const block of content) {
-    if (block.type === 'text' && block.text) return block.text.trim();
-    if (block.type === 'output_text' && block.text) return block.text.trim();
+    if ((block as { type?: string; text?: string }).type === 'text' && (block as { type?: string; text?: string }).text) return (block as { type?: string; text?: string }).text!.trim();
+    if ((block as { type?: string; text?: string }).type === 'output_text' && (block as { type?: string; text?: string }).text) return (block as { type?: string; text?: string }).text!.trim();
   }
   return '';
 }
 
 // ─── Tool history ───────────────────────────────────
 
-async function getToolHistory(filePath, maxItems = 15) {
+async function getToolHistory(filePath: string, maxItems = 15) {
   const tools = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 100 });
@@ -134,7 +144,7 @@ async function getToolHistory(filePath, maxItems = 15) {
 
 // ─── Recent messages ──────────────────────────────────────
 
-async function getRecentMessages(filePath, maxItems = 5) {
+async function getRecentMessages(filePath: string, maxItems = 5) {
   const messages = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 60 });
@@ -158,22 +168,22 @@ async function getRecentMessages(filePath, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
-function encodeProjectKey(value) {
+function encodeProjectKey(value: string) {
   return encodeURIComponent(value || '');
 }
 
-function decodeProjectKey(value) {
+function decodeProjectKey(value: string) {
   return decodeURIComponent(value || '');
 }
 
-function buildSessionId(projectDir, fileName) {
+function buildSessionId(projectDir: string, fileName: string) {
   // projectDir is like --Users-openclaw-Github-claude-ville--
   // fileName is like 2026-04-24T22-19-42-919Z_019dc193-cfc7-71ff-bfd9-d2fc9f1735e6.jsonl
   const sessionId = fileName.replace('.jsonl', '');
   return `pi:${encodeProjectKey(projectDir)}:${encodeProjectKey(sessionId)}`;
 }
 
-function parseSessionId(sessionId) {
+function parseSessionId(sessionId: string) {
   if (!sessionId.startsWith('pi:')) {
     return {
       projectDir: null,
@@ -188,7 +198,7 @@ function parseSessionId(sessionId) {
   };
 }
 
-function projectDirToPath(projectDir) {
+function projectDirToPath(projectDir: string) {
   // Convert --Users-openclaw-Github-claude-ville-- back to /Users/openclaw/Github/claude-ville
   return projectDir
     .replace(/^--/, '/')
@@ -196,31 +206,33 @@ function projectDirToPath(projectDir) {
     .replace(/-/g, '/');
 }
 
-function resolveProjectPath(detail, projectDir) {
+function resolveProjectPath(detail: { project: string | null }, projectDir: string) {
   return detail.project || projectDirToPath(projectDir);
 }
 
 // ─── Session scan ────────────────────────────────────────
 
-async function scanAllSessionFiles(activeThresholdMs) {
-  const results = [];
+interface ScanResult { filePath: string; mtime: number; fileName: string; projectDir: string }
+
+async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResult[]> {
+  const results: ScanResult[] = [];
   if (!fs.existsSync(SESSIONS_DIR)) return results;
 
   const now = Date.now();
 
   try {
     const projectDirs = (await fs.promises.readdir(SESSIONS_DIR, { withFileTypes: true }))
-      .filter(d => d.isDirectory());
+      .filter((d: Dirent) => d.isDirectory());
 
     const dirResults = await Promise.all(
-      projectDirs.map(async (projectDir) => {
+      projectDirs.map(async (projectDir: Dirent) => {
         const projectPath = path.join(SESSIONS_DIR, projectDir.name);
         try {
           const sessionFiles = await fs.promises.readdir(projectPath);
-          const jsonlFiles = sessionFiles.filter(f => f.endsWith('.jsonl'));
+          const jsonlFiles = sessionFiles.filter((f: string) => f.endsWith('.jsonl'));
 
           const fileResults = await Promise.all(
-            jsonlFiles.map(async (file) => {
+            jsonlFiles.map(async (file: string) => {
               const filePath = path.join(projectPath, file);
               try {
                 const stat = await fs.promises.stat(filePath);
@@ -230,13 +242,13 @@ async function scanAllSessionFiles(activeThresholdMs) {
                   mtime: stat.mtimeMs,
                   fileName: file,
                   projectDir: projectDir.name,
-                };
+                } as ScanResult;
               } catch {
                 return null;
               }
             })
           );
-          return fileResults.filter(Boolean);
+          return fileResults.filter((r: ScanResult | null): r is ScanResult => r !== null);
         } catch {
           return [];
         }
@@ -262,7 +274,7 @@ class PiAdapter {
     return fs.existsSync(SESSIONS_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs) {
+  async getActiveSessions(activeThresholdMs: number) {
     const sessionFiles = await scanAllSessionFiles(activeThresholdMs);
     const sessions = await Promise.all(sessionFiles.map(async ({ filePath, mtime, fileName, projectDir }) => {
       const detail = await parseSession(filePath);
@@ -289,7 +301,7 @@ class PiAdapter {
     return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  async getSessionDetail(sessionId, project, filePath = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
       return {
         toolHistory: await getToolHistory(filePath),
@@ -318,8 +330,8 @@ class PiAdapter {
     return { toolHistory: [], messages: [] };
   }
 
-  getWatchPaths() {
-    const paths = [];
+  getWatchPaths(): Array<{ type: string; path: string; recursive?: boolean; filter?: string }> {
+    const paths: Array<{ type: string; path: string; recursive?: boolean; filter?: string }> = [];
     if (!fs.existsSync(SESSIONS_DIR)) return paths;
 
     try {

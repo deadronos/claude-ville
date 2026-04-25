@@ -1,4 +1,5 @@
 import { TILE_WIDTH, TILE_HEIGHT, MAP_SIZE } from '../../config/constants.js';
+import { AgentSprite } from './AgentSprite.js';
 
 export class Camera {
     canvas: HTMLCanvasElement;
@@ -12,10 +13,10 @@ export class Camera {
     dragStartY: number;
     camStartX: number;
     camStartY: number;
-    followTarget: any;
+    followTarget: AgentSprite | null;
     followSmoothing: number;
 
-    constructor(canvas) {
+    constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
         this.x = 0;
         this.y = 0;
@@ -64,7 +65,7 @@ export class Camera {
         this.canvas.removeEventListener('wheel', this._onWheel);
     }
 
-    followAgent(sprite) {
+    followAgent(sprite: AgentSprite) {
         this.followTarget = sprite;
     }
 
@@ -80,7 +81,7 @@ export class Camera {
         this.y += (targetY - this.y) * this.followSmoothing;
     }
 
-    _onMouseDown(e) {
+    _onMouseDown(e: MouseEvent) {
         if (e.button !== 0) return;
         this.dragging = true;
         this.dragStartX = e.clientX;
@@ -92,7 +93,7 @@ export class Camera {
         if (this.followTarget) this.stopFollow();
     }
 
-    _onMouseMove(e) {
+    _onMouseMove(e: MouseEvent) {
         if (!this.dragging) return;
         const dx = (e.clientX - this.dragStartX) / this.zoom;
         const dy = (e.clientY - this.dragStartY) / this.zoom;
@@ -105,7 +106,7 @@ export class Camera {
         this.canvas.style.cursor = 'grab';
     }
 
-    _onWheel(e) {
+    _onWheel(e: WheelEvent) {
         e.preventDefault();
         const mouseX = e.offsetX;
         const mouseY = e.offsetY;
@@ -129,28 +130,28 @@ export class Camera {
         this.y = (mouseY / this.zoom) - worldBeforeY;
     }
 
-    worldToScreen(worldX, worldY) {
+    worldToScreen(worldX: number, worldY: number) {
         return {
             x: (worldX + this.x) * this.zoom,
             y: (worldY + this.y) * this.zoom,
         };
     }
 
-    screenToWorld(screenX, screenY) {
+    screenToWorld(screenX: number, screenY: number) {
         return {
             x: screenX / this.zoom - this.x,
             y: screenY / this.zoom - this.y,
         };
     }
 
-    screenToTile(screenX, screenY) {
+    screenToTile(screenX: number, screenY: number) {
         const world = this.screenToWorld(screenX, screenY);
         const tileX = (world.x / (TILE_WIDTH / 2) + world.y / (TILE_HEIGHT / 2)) / 2;
         const tileY = (world.y / (TILE_HEIGHT / 2) - world.x / (TILE_WIDTH / 2)) / 2;
         return { tileX: Math.floor(tileX), tileY: Math.floor(tileY) };
     }
 
-    applyTransform(ctx) {
+    applyTransform(ctx: CanvasRenderingContext2D) {
         ctx.setTransform(this.zoom, 0, 0, this.zoom, this.x * this.zoom, this.y * this.zoom);
     }
 }
