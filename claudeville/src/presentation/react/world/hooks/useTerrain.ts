@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 import { MAP_SIZE } from '../../../../config/constants.js';
 import { THEME } from '../../../../config/theme.js';
@@ -6,10 +6,16 @@ import type { TerrainTileModel } from '../types.js';
 import { isoToScreen } from '../utils.js';
 
 export function useTerrain(buildings: any[]) {
+  const terrainSeedRef = useRef<number[] | null>(null);
+
+  if (!terrainSeedRef.current) {
+    terrainSeedRef.current = Array.from({ length: MAP_SIZE * MAP_SIZE }, () => Math.random());
+  }
+
   return useMemo(() => {
     const pathTiles = new Set<string>();
     const waterTiles = new Set<string>();
-    const terrainSeed = Array.from({ length: MAP_SIZE * MAP_SIZE }, () => Math.random());
+    const terrainSeed = terrainSeedRef.current || [];
 
     for (const building of buildings) {
       for (let x = building.position.tileX - 1; x <= building.position.tileX + building.width; x += 1) {

@@ -63,4 +63,41 @@ describe('useTerrain', () => {
       water: true,
     });
   });
+
+  it('keeps the terrain seed stable across rerenders with a fresh building array', () => {
+    let randomCalls = 0;
+    vi.spyOn(Math, 'random').mockImplementation(() => {
+      randomCalls += 1;
+      return randomCalls <= MAP_SIZE * MAP_SIZE ? 0 : 0.95;
+    });
+
+    const firstBuildings = [
+      {
+        position: { tileX: 10, tileY: 10 },
+        width: 2,
+        height: 2,
+      },
+    ];
+
+    const { result, rerender } = renderHook(({ buildings }) => useTerrain(buildings), {
+      initialProps: { buildings: firstBuildings },
+    });
+
+    const initialTiles = result.current.tiles.map((tile) => tile.color);
+
+    rerender({
+      buildings: [
+        {
+          position: { tileX: 10, tileY: 10 },
+          width: 2,
+          height: 2,
+        },
+      ],
+    });
+
+    const rerenderedTiles = result.current.tiles.map((tile) => tile.color);
+
+    expect(rerenderedTiles).toEqual(initialTiles);
+    expect(Math.random).toHaveBeenCalledTimes(MAP_SIZE * MAP_SIZE);
+  });
 });
