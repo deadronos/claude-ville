@@ -35,4 +35,4 @@ android/.idea/modules.xml
 android/*.iml
 android/app/*.iml
 android/.DS_Store
-
+.idea/
