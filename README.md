@@ -99,6 +99,22 @@ Set `HUB_HTTP_URL` and `HUB_WS_URL` for the frontend if the hubreceiver runs on 
 `HUB_URL` is also accepted by the frontend as a shortcut for `HUB_HTTP_URL`.
 The browser app uses the configured hub HTTP base for session, detail, usage, and history requests in split mode.
 
+### Manual live E2E
+
+To verify the split stack against a real Claude Code session in a real browser, run:
+
+```bash
+npm run test:e2e
+```
+
+This manual-only test is intentionally separate from `npm test`. It boots `npm run dev:hubreceiver`, `npm run dev:collector`, and `npm run dev:frontend`, opens Chromium via Playwright, spawns fresh `claude -p ...` prompts in temporary project directories, and verifies that the sidebar updates without a manual browser refresh.
+
+Requirements:
+
+- Claude Code CLI available on your `PATH` (override with `CLAUDEVILLE_E2E_CLAUDE_BIN` if needed)
+- Playwright Chromium installed once via `npx playwright install chromium`
+- A working Claude Code login/session, since the test uses real prompts
+
 ### Display name pools
 
 When ClaudeVille sees a long raw session or agent identifier, it now shows a short stable display name instead. You can customize the generated names with `.env.local`:

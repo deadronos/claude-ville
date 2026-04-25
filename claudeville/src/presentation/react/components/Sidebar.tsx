@@ -37,6 +37,9 @@ export function Sidebar({ agents, selectedAgentId, onFocus }: { agents: any[]; s
                   key={agent.id}
                   type="button"
                   className={`sidebar__agent ${selectedAgentId === agent.id ? 'sidebar__agent--selected' : ''}`}
+                  data-session-id={agent.id}
+                  data-status={agent.status}
+                  data-provider={agent.provider || 'unknown'}
                   onClick={() => onFocus(agent.id)}
                 >
                   <span className={`sidebar__agent-dot sidebar__agent-dot--${agent.status}`} />
