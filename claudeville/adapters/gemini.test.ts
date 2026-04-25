@@ -39,7 +39,7 @@ describe('gemini adapter', () => {
       fs.writeFileSync(file, JSON.stringify({ sessionId: 'abc', messages: [] }));
       const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
       const result = await readJsonFile(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual({ sessionId: 'abc', messages: [] });
     });
 
@@ -49,7 +49,7 @@ describe('gemini adapter', () => {
       fs.writeFileSync(file, 'not valid json');
       const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
       const result = await readJsonFile(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toBeNull();
     });
   });
@@ -82,7 +82,7 @@ describe('gemini adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.model).toBe('gemini-2.5-flash');
     });
 
@@ -112,7 +112,7 @@ describe('gemini adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastMessage).toBe('Hi there!');
     });
 
@@ -142,7 +142,7 @@ describe('gemini adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Bash');
       expect(result.lastToolInput).toBe('ls -la');
     });
@@ -173,7 +173,7 @@ describe('gemini adapter', () => {
         return detail;
       };
       const result = await parseSession(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Read');
     });
   });
@@ -202,7 +202,7 @@ describe('gemini adapter', () => {
         return tools.slice(-maxItems);
       };
       const result = await getToolHistory(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].tool).toBe('Bash');
       expect(result[0].ts).toBeGreaterThan(0);
@@ -234,7 +234,7 @@ describe('gemini adapter', () => {
         return tools.slice(-maxItems);
       };
       const result = await getToolHistory(file, 5);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(5);
     });
   });
@@ -266,7 +266,7 @@ describe('gemini adapter', () => {
         return msgList.slice(-maxItems);
       };
       const result = await getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(2);
       expect(result[0].role).toBe('user');
       expect(result[0].text).toBe('Hello');
@@ -299,7 +299,7 @@ describe('gemini adapter', () => {
         return msgList.slice(-maxItems);
       };
       const result = await getRecentMessages(file);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].text).toBe('Visible');
     });
@@ -330,7 +330,7 @@ describe('gemini adapter', () => {
         return msgList.slice(-maxItems);
       };
       const result = await getRecentMessages(file, 3);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(3);
     });
   });
@@ -367,7 +367,7 @@ describe('gemini adapter', () => {
         return results;
       };
       const result = await scanActiveSessions(path.join(tmp, 'tmp'), 120000);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual([]);
     });
 
@@ -404,7 +404,7 @@ describe('gemini adapter', () => {
         return results;
       };
       const result = await scanActiveSessions(path.join(tmp, 'tmp'), 120000);
-      fs.rmdirSync(tmp, { recursive: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
       expect(result[0].fileName).toBe('session-abc123.json');
       expect(result[0].projectHash).toBe('abc123hash');

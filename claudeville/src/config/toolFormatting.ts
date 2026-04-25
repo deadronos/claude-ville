@@ -149,18 +149,10 @@ export function extractObjectDetail(obj: Record<string, unknown>, keys: string[]
     return null;
 }
 
-export function parseToolDetail(toolName: string, rawInput: unknown) {
-    if (rawInput && typeof rawInput === 'object') {
-        const genericMatch = extractValueFromUnknown(rawInput);
-        if (genericMatch) {
-            return genericMatch;
-        }
-    }
-
-    const text = normalizeInlineText(rawInput);
+function parseToolDetailText(textInput: unknown, keys: string[]) {
+    const text = normalizeInlineText(textInput);
     if (!text) return null;
 
-    const keys = [...(TOOL_DETAIL_KEYS[toolName] || []), ...DEFAULT_DETAIL_KEYS];
     const regexMatch = extractRegexField(text, keys);
     if (regexMatch) {
         return regexMatch;
@@ -188,6 +180,34 @@ export function parseToolDetail(toolName: string, rawInput: unknown) {
             .replace(/[{}[\]"]/g, ' ')
             .replace(/[:,]/g, ' ')
     );
+}
+
+function extractEmbeddedTextDetail(obj: Record<string, unknown>, keys: string[]) {
+    for (const value of Object.values(obj)) {
+        if (typeof value !== 'string') continue;
+        const detail = parseToolDetailText(value, keys);
+        if (detail) return detail;
+    }
+
+    return null;
+}
+
+export function parseToolDetail(toolName: string, rawInput: unknown) {
+    const keys = [...(TOOL_DETAIL_KEYS[toolName] || []), ...DEFAULT_DETAIL_KEYS];
+
+    if (rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)) {
+        const objectMatch = extractObjectDetail(rawInput as Record<string, unknown>, keys);
+        if (objectMatch) {
+            return objectMatch;
+        }
+
+        const embeddedTextMatch = extractEmbeddedTextDetail(rawInput as Record<string, unknown>, keys);
+        if (embeddedTextMatch) {
+            return embeddedTextMatch;
+        }
+    }
+
+    return parseToolDetailText(rawInput, keys);
 }
 
 export function formatToolLabel(toolName: string) {

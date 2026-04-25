@@ -14,6 +14,10 @@ describe('toolFormatting', () => {
         expect(parseToolDetail('Task', { description: 'Ship feature' })).toBe('Ship feature');
     });
 
+    it('falls back from structured wrappers to JSON-string content', () => {
+        expect(parseToolDetail('run_in_terminal', { raw: '{"command":"npm test","goal":"Run tests"}' })).toBe('npm test');
+    });
+
     it('falls back to cleaned text and truncates bubble snippets', () => {
         expect(parseToolDetail('UnknownTool', '{ "foo": "bar" }')).toBe('foo bar');
         expect(normalizeBubbleSnippet('abcdefghijklmnopqrstuvwxyz', 10)).toBe('abcdefghij');

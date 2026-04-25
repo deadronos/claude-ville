@@ -5,11 +5,13 @@
  */
 import fs from 'fs';
 
-/**
- * @typedef {{ from?: 'start' | 'end'; count?: number; scope?: string }} ReadLinesOptions
- */
+type ReadLinesOptions = {
+  from?: 'start' | 'end';
+  count?: number;
+  scope?: string;
+};
 
-export function debugAdapterError(scope, operation, err, context = '') {
+export function debugAdapterError(scope: string, operation: string, err: unknown, context = '') {
   if (!process.env.DEBUG) return;
 
   const message = err instanceof Error ? err.message : String(err);
@@ -19,11 +21,8 @@ export function debugAdapterError(scope, operation, err, context = '') {
 
 /**
  * Read the last N (or first N) lines of a file as strings.
- * @param {string} filePath
- * @param {ReadLinesOptions} options
- * @returns {Promise<string[]>}
  */
-export async function readLines(filePath, { from = 'end', count = 50, scope = 'jsonl-utils' } = {}) {
+export async function readLines(filePath: string, { from = 'end', count = 50, scope = 'jsonl-utils' }: ReadLinesOptions = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
     const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -38,11 +37,9 @@ export async function readLines(filePath, { from = 'end', count = 50, scope = 'j
 
 /**
  * Parse an array of JSONL strings into objects, skipping bad lines.
- * @param {string[]} lines
- * @returns {any[]}
  */
-export function parseJsonLines(lines, scope = 'jsonl-utils') {
-  const results = [];
+export function parseJsonLines(lines: string[], scope = 'jsonl-utils') {
+  const results: any[] = [];
   for (const line of lines) {
     if (!line.trim()) continue;
     try { results.push(JSON.parse(line)); } catch (err) {
