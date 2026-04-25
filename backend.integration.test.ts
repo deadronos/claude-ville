@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
 const hubreceiverEntrypoint = path.join(repoRoot, 'hubreceiver', 'server.ts');
-const collectorEntrypoint = path.join(repoRoot, 'collector', 'index.ts');
+const collectorEntrypoint = path.join(repoRoot, 'collector', 'start.ts');
 const legacyServerEntrypoint = path.join(repoRoot, 'claudeville', 'server.ts');
 
 function delay(ms: number) {

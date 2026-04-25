@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ClaudeDataSource } from './ClaudeDataSource.js';
+import { HubDataSource } from './HubDataSource.js';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -49,11 +49,11 @@ vi.mock('../config/runtime.js', () => ({
   getHubApiUrl: (path: string, searchParams?: URLSearchParams | string | Record<string, string | number | boolean | null | undefined>) => mockGetHubApiUrl(path, searchParams),
 }));
 
-describe('ClaudeDataSource', () => {
-  let ds: ClaudeDataSource;
+describe('HubDataSource', () => {
+  let ds: HubDataSource;
 
   beforeEach(() => {
-    ds = new ClaudeDataSource();
+    ds = new HubDataSource();
     mockFetch.mockReset();
     mockGetHubApiUrl.mockImplementation(buildHubApiUrl);
   });

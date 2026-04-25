@@ -2,7 +2,7 @@ import { Agent } from '../domain/entities/Agent.js';
 import { World } from '../domain/entities/World.js';
 import { AgentStatus } from '../domain/value-objects/AgentStatus.js';
 import { resolveAgentDisplayName } from '../config/agentNames.js';
-import { ClaudeDataSource } from '../infrastructure/ClaudeDataSource.js';
+import { HubDataSource } from '../infrastructure/HubDataSource.js';
 
 interface TeamMember {
     agentId?: string;
@@ -20,10 +20,10 @@ interface Team {
 
 export class AgentManager {
     world: World;
-    dataSource: ClaudeDataSource;
+    dataSource: HubDataSource;
     _teamMembers: Map<string, TeamMember>;
 
-    constructor(world: World, dataSource: ClaudeDataSource) {
+    constructor(world: World, dataSource: HubDataSource) {
         this.world = world;
         this.dataSource = dataSource;
         this._teamMembers = new Map();

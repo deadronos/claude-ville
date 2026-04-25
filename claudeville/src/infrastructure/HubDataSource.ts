@@ -1,6 +1,6 @@
 import { getHubApiUrl } from '../config/runtime.js';
 
-export class ClaudeDataSource {
+export class HubDataSource {
     async getSessions() {
         try {
             const res = await fetch(getHubApiUrl('/api/sessions'), { cache: 'no-store' });

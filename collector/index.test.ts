@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { estimateCost } from '../shared/cost.js';
 
-// Test collector logic patterns
-// Since collector/index.ts has side effects (require load-local-env),
-// we test the core logic patterns directly
+// Test collector logic patterns directly.
 
 describe('collector logic', () => {
   describe('estimateCost', () => {

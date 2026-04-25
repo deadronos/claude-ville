@@ -81,8 +81,8 @@ vi.mock('../config/i18n.js', () => ({
   },
 }));
 
-vi.mock('../infrastructure/ClaudeDataSource.js', () => ({
-  ClaudeDataSource: class MockClaudeDataSource {
+vi.mock('../infrastructure/HubDataSource.js', () => ({
+  HubDataSource: class MockHubDataSource {
     getUsage = vi.fn(async () => appState.usageResponse);
   },
 }));

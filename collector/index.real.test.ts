@@ -53,7 +53,6 @@ async function drainAsyncWork() {
 
 async function loadCollectorModule(): Promise<CollectorModule> {
   vi.resetModules();
-  vi.stubEnv('COLLECTOR_DISABLE_AUTOSTART', '1');
   return import('./index.ts');
 }
 
