@@ -11,11 +11,16 @@ describe('shared cost utilities', () => {
     });
   });
 
-  it('estimates cost for known models and falls back to sonnet', () => {
+  it('estimates cost for known Claude models and unknown Claude aliases', () => {
     expect(estimateCost('claude-opus-4-6', { input: 1_000_000, output: 500_000 })).toBe(52.5);
     expect(estimateCost('claude-sonnet-4-5', { input: 1_000_000, output: 1_000_000 })).toBe(18);
     expect(estimateCost('claude-haiku-4-5', { input: 1_000_000, output: 1_000_000 })).toBe(4.8);
-    expect(estimateCost('unknown-model', { input: 1_000_000, output: 1_000_000 })).toBe(18);
+    expect(estimateCost('claude-new-model', { input: 1_000_000, output: 1_000_000 })).toBe(18);
+  });
+
+  it('does not apply Claude pricing to non-Claude models without explicit rates', () => {
+    expect(estimateCost('gpt-4', { input: 1_000_000, output: 1_000_000 })).toBe(0);
+    expect(estimateCost('nano-gpt/moonshotai/kimi-k2.6:thinking', { input: 1_000_000, output: 1_000_000 })).toBe(0);
   });
 
   it('treats missing or partial token counts as zero', () => {

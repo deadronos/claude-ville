@@ -15,8 +15,12 @@ describe('adapter registry logic', () => {
       expect(estimateCost('claude-haiku-4-5', { input: 1_000_000, output: 0 })).toBeCloseTo(0.8);
     });
 
-    it('falls back to Sonnet for unknown models', () => {
-      expect(estimateCost('gpt-4', { input: 1_000_000, output: 0 })).toBe(3);
+    it('does not apply Claude rates to non-Claude models without explicit rates', () => {
+      expect(estimateCost('gpt-4', { input: 1_000_000, output: 0 })).toBe(0);
+    });
+
+    it('falls back to Sonnet rates for unknown Claude model aliases', () => {
+      expect(estimateCost('claude-future', { input: 1_000_000, output: 0 })).toBe(3);
     });
 
     it('returns 0 for zero tokens', () => {

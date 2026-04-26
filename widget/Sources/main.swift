@@ -354,7 +354,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func readProjectPath() -> String? {
         guard let resURL = Bundle.main.resourceURL else { return nil }
         let f = resURL.appendingPathComponent("project_path")
-        return try? String(contentsOf: f, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let p = try? String(contentsOf: f, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        if p.isEmpty { return nil }
+        return FileManager.default.fileExists(atPath: p) ? p : nil
     }
 
     // MARK: - Hub URL Resolution

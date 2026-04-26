@@ -181,6 +181,18 @@ describe('ClaudeVilleApp', () => {
     expect(controllerMock.dispose).toHaveBeenCalledTimes(1);
   });
 
+  it('logs boot failures while the controller exposes the boot error snapshot', async () => {
+    const error = new Error('boot exploded');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    controllerMock.boot.mockRejectedValueOnce(error);
+
+    render(<ClaudeVilleApp />);
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith('[ClaudeVille] boot failed', error);
+    });
+  });
+
   it('wires the shell controls to the controller and keeps the sidebar agent clickable', async () => {
     render(<ClaudeVilleApp />);
 

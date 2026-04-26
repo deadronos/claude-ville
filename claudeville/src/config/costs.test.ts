@@ -42,9 +42,14 @@ describe('costs', () => {
       expect(cost).toBe(4.8);
     });
 
-    it('falls back to Sonnet for unknown models', () => {
-      const cost = estimateClaudeCost('unknown-model', { input: 1_000_000, output: 1_000_000 });
+    it('falls back to Sonnet for unknown Claude model aliases', () => {
+      const cost = estimateClaudeCost('claude-future', { input: 1_000_000, output: 1_000_000 });
       expect(cost).toBe(18);
+    });
+
+    it('returns 0 for non-Claude models without explicit rates', () => {
+      const cost = estimateClaudeCost('gpt-4', { input: 1_000_000, output: 1_000_000 });
+      expect(cost).toBe(0);
     });
 
     it('returns 0 for zero tokens', () => {

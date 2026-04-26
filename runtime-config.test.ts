@@ -136,6 +136,9 @@ describe('runtime config', () => {
           gemini: env.CLAUDEVILLE_NAME_MODE_GEMINI,
           openclaw: env.CLAUDEVILLE_NAME_MODE_OPENCLAW,
           copilot: env.CLAUDEVILLE_NAME_MODE_COPILOT,
+          pi: env.CLAUDEVILLE_NAME_MODE_PI,
+          opencode: env.CLAUDEVILLE_NAME_MODE_OPENCODE,
+          hermes: env.CLAUDEVILLE_NAME_MODE_HERMES,
         };
 
         const modes: Record<string, string> = {};
@@ -159,6 +162,9 @@ describe('runtime config', () => {
           gemini: env.CLAUDEVILLE_NAME_MODE_GEMINI,
           openclaw: env.CLAUDEVILLE_NAME_MODE_OPENCLAW,
           copilot: env.CLAUDEVILLE_NAME_MODE_COPILOT,
+          pi: env.CLAUDEVILLE_NAME_MODE_PI,
+          opencode: env.CLAUDEVILLE_NAME_MODE_OPENCODE,
+          hermes: env.CLAUDEVILLE_NAME_MODE_HERMES,
         };
 
         const modes: Record<string, string> = {};
@@ -183,6 +189,9 @@ describe('runtime config', () => {
           gemini: env.CLAUDEVILLE_NAME_MODE_GEMINI,
           openclaw: env.CLAUDEVILLE_NAME_MODE_OPENCLAW,
           copilot: env.CLAUDEVILLE_NAME_MODE_COPILOT,
+          pi: env.CLAUDEVILLE_NAME_MODE_PI,
+          opencode: env.CLAUDEVILLE_NAME_MODE_OPENCODE,
+          hermes: env.CLAUDEVILLE_NAME_MODE_HERMES,
         };
 
         const modes: Record<string, string> = {};
@@ -213,6 +222,9 @@ describe('runtime config', () => {
           gemini: env.CLAUDEVILLE_NAME_MODE_GEMINI,
           openclaw: env.CLAUDEVILLE_NAME_MODE_OPENCLAW,
           copilot: env.CLAUDEVILLE_NAME_MODE_COPILOT,
+          pi: env.CLAUDEVILLE_NAME_MODE_PI,
+          opencode: env.CLAUDEVILLE_NAME_MODE_OPENCODE,
+          hermes: env.CLAUDEVILLE_NAME_MODE_HERMES,
         };
 
         const modes: Record<string, string> = {};

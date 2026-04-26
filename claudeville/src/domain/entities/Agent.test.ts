@@ -156,9 +156,14 @@ describe('Agent', () => {
       expect(agent.cost).toBe(0);
     });
 
-    it('uses unknown model rate (falls back to Sonnet)', () => {
-      const agent = new Agent(makeProps({ model: 'unknown-model', tokens: { input: 1_000_000, output: 0 } }));
+    it('falls back to Sonnet rates for unknown Claude model aliases', () => {
+      const agent = new Agent(makeProps({ model: 'claude-future', tokens: { input: 1_000_000, output: 0 } }));
       expect(agent.cost).toBe(3); // Sonnet input rate
+    });
+
+    it('returns 0 for non-Claude models without explicit rates', () => {
+      const agent = new Agent(makeProps({ model: 'unknown-model', tokens: { input: 1_000_000, output: 0 } }));
+      expect(agent.cost).toBe(0);
     });
   });
 

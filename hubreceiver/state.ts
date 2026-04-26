@@ -28,6 +28,22 @@ export function defaultUsage() {
 
 const collectors = new Map();
 
+type AnyRecord = Record<string, any>;
+type DetailMessage = { role?: string; text?: string; ts?: number };
+type SessionDetail = { messages?: DetailMessage[]; toolHistory?: unknown[]; tokenUsage?: unknown; sessionId?: string };
+type Usage = ReturnType<typeof defaultUsage> | AnyRecord;
+type NormalizedSnapshot = {
+  collectorId: string;
+  hostName: string;
+  timestamp: number;
+  sessions: AnyRecord[];
+  teams: AnyRecord[];
+  taskGroups: AnyRecord[];
+  providers: AnyRecord[];
+  usage: Usage;
+  sessionDetails: Record<string, unknown>;
+};
+
 interface SnapshotInput {
   collectorId?: string;
   hostName?: string;
@@ -45,11 +61,11 @@ function normalizeSnapshot(snapshot: SnapshotInput) {
     collectorId: snapshot.collectorId || 'default',
     hostName: snapshot.hostName || 'unknown',
     timestamp: Number(snapshot.timestamp || Date.now()),
-    sessions: Array.isArray(snapshot.sessions) ? snapshot.sessions : [],
-    teams: Array.isArray(snapshot.teams) ? snapshot.teams : [],
-    taskGroups: Array.isArray(snapshot.taskGroups) ? snapshot.taskGroups : [],
-    providers: Array.isArray(snapshot.providers) ? snapshot.providers : [],
-    usage: snapshot.usage || defaultUsage(),
+    sessions: Array.isArray(snapshot.sessions) ? snapshot.sessions as AnyRecord[] : [],
+    teams: Array.isArray(snapshot.teams) ? snapshot.teams as AnyRecord[] : [],
+    taskGroups: Array.isArray(snapshot.taskGroups) ? snapshot.taskGroups as AnyRecord[] : [],
+    providers: Array.isArray(snapshot.providers) ? snapshot.providers as AnyRecord[] : [],
+    usage: (snapshot.usage || defaultUsage()) as Usage,
     sessionDetails: snapshot.sessionDetails && typeof snapshot.sessionDetails === 'object'
       ? snapshot.sessionDetails
       : {},
@@ -63,17 +79,17 @@ export function applySnapshot(snapshot: SnapshotInput) {
 }
 
 export function getCurrentState() {
-  const sessionMap = new Map();
-  const teamMap = new Map();
-  const taskMap = new Map();
-  const providerMap = new Map();
-  const detailMap = new Map();
+  const sessionMap = new Map<string, Record<string, any>>();
+  const teamMap = new Map<string, Record<string, any>>();
+  const taskMap = new Map<string, Record<string, any>>();
+  const providerMap = new Map<string, Record<string, any>>();
+  const detailMap = new Map<string, SessionDetail>();
 
-  let latestUsage = defaultUsage();
+  let latestUsage: Usage = defaultUsage();
   let latestUsageTs = 0;
   let latestTimestamp = 0;
 
-  for (const snapshot of collectors.values()) {
+  for (const snapshot of collectors.values() as Iterable<NormalizedSnapshot>) {
     latestTimestamp = Math.max(latestTimestamp, snapshot.timestamp);
 
     for (const session of snapshot.sessions) {
@@ -107,7 +123,7 @@ export function getCurrentState() {
     }
 
     for (const [key, detail] of Object.entries(snapshot.sessionDetails)) {
-      detailMap.set(key, detail);
+      detailMap.set(key, detail as SessionDetail);
     }
 
     if (snapshot.usage && snapshot.timestamp >= latestUsageTs) {
