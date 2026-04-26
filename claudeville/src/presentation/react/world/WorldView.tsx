@@ -9,19 +9,21 @@ import { WorldScene } from './components/WorldScene.js';
 import { BubbleDebugOverlay } from './components/BubbleDebugOverlay.js';
 import { PostProcessing } from './components/PostProcessing.js';
 import { useWorldSprites } from './hooks/useWorldSprites.js';
+import { useWorldStore } from './state/useWorldStore.js';
 import type { CameraModel, InteractionModel, ViewportSize, WorldViewProps } from './types.js';
 import { createCenteredCamera, getCameraFocusPosition, isoToScreen, screenToWorld } from './utils.js';
 
 export function WorldView({
   active,
-  agents,
-  buildings,
-  selectedAgentId,
-  selectedAgentName,
   bubbleConfig,
   onSelectAgent,
   onClearSelection,
-}: WorldViewProps) {
+}: Omit<WorldViewProps, 'agents' | 'buildings' | 'selectedAgentId' | 'selectedAgentName'>) {
+  const agents = useWorldStore((s) => s.agents);
+  const buildings = useWorldStore((s) => s.buildings);
+  const selectedAgentId = useWorldStore((s) => s.selectedAgentId);
+  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+  const selectedAgentName = selectedAgent?.name ?? null;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<CameraModel>(createCenteredCamera(1, 1));
   const roofAlphaRef = useRef(new Map<string, number>());

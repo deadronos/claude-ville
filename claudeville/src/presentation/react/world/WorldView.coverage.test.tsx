@@ -15,6 +15,13 @@ const worldViewMocks = vi.hoisted(() => ({
   observerDisconnect: vi.fn(),
 }));
 
+// Module-level shared state between test and mock
+const sharedStoreState = {
+  agents: [] as any[],
+  buildings: [] as any[],
+  selectedAgentId: 'agent-1' as string | null,
+};
+
 vi.mock('@react-three/fiber', () => ({
   Canvas: (props: Record<string, any>) => {
     worldViewMocks.canvasProps = props;
@@ -43,10 +50,21 @@ vi.mock('./components/FocusReticle.js', () => ({
   },
 }));
 
+vi.mock('./components/PostProcessing.js', () => ({
+  PostProcessing: () => null,
+}));
+
 vi.mock('./hooks/useWorldSprites.js', () => ({
   useWorldSprites: (_agents: unknown[], spritesRef: { current: Map<string, unknown> }) => {
     spritesRef.current = new Map(worldViewMocks.sprites.map((sprite) => [sprite.agent.id, sprite]));
     return worldViewMocks.sprites;
+  },
+}));
+
+vi.mock('./state/useWorldStore.js', () => ({
+  useWorldStore: (selector: (state: any) => any) => selector(sharedStoreState),
+  _setStoreState: (s: Partial<typeof sharedStoreState>) => {
+    Object.assign(sharedStoreState, s);
   },
 }));
 
@@ -89,6 +107,11 @@ beforeEach(() => {
   utilsMocks.getCameraFocusPosition.mockClear();
   utilsMocks.isoToScreen.mockClear();
   utilsMocks.screenToWorld.mockClear();
+
+  // Reset store state for each test
+  sharedStoreState.agents = [];
+  sharedStoreState.buildings = [];
+  sharedStoreState.selectedAgentId = 'agent-1';
 
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
     worldViewMocks.animationCallbacks.push(callback);
@@ -148,13 +171,16 @@ function renderWorldView(overrides: Partial<ComponentProps<typeof WorldView>> = 
 
 describe('WorldView', () => {
   it('tracks the selected agent, handles pointer and wheel interaction, clears selection on pointer miss, and navigates from the minimap', async () => {
+    // Store state already reset in beforeEach, just need to set up the right agent
     worldViewMocks.sprites = [
       {
-        agent: { id: 'agent-1' },
+        agent: { id: 'agent-1', name: 'Scout 7' },
         x: 100,
         y: 50,
       },
     ];
+    // Also update sharedStoreState since useWorldSprites reads from it
+    sharedStoreState.agents = [{ id: 'agent-1', name: 'Scout 7' }];
     const onClearSelection = vi.fn();
     const { container, getByTestId } = renderWorldView({ onClearSelection });
     const worldRoot = container.firstElementChild as HTMLDivElement;
@@ -219,6 +245,9 @@ describe('WorldView', () => {
   });
 
   it('hides selection UI when there is no selected agent or the sprite cannot be found', async () => {
+    // Reset store state for this test - set selectedAgentId to null
+    sharedStoreState.selectedAgentId = null;
+    sharedStoreState.agents = [];
     worldViewMocks.sprites = [];
     const { container, queryByTestId, rerender } = renderWorldView({
       selectedAgentId: null,
@@ -228,10 +257,15 @@ describe('WorldView', () => {
     expect(queryByTestId('focus-reticle')).toBeNull();
     expect(container.querySelector('.world-view__selected-agent-marker')).toBeNull();
 
+    // Now set up store to return a selected agent
+    sharedStoreState.selectedAgentId = 'agent-missing';
+    sharedStoreState.agents = [{ id: 'agent-missing', name: 'Ghost' }];
+    worldViewMocks.sprites = [{ agent: { id: 'agent-missing', name: 'Ghost' }, x: 0, y: 0 }];
+
     rerender(
       <WorldView
         active
-        agents={[{ id: 'agent-missing' } as any]}
+        agents={[{ id: 'agent-missing', name: 'Ghost' } as any]}
         buildings={[]}
         selectedAgentId="agent-missing"
         selectedAgentName="Ghost"
