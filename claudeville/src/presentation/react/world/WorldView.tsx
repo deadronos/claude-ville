@@ -6,6 +6,7 @@ import type { AgentSprite } from '../../character-mode/AgentSprite.js';
 import { FocusReticle } from './components/FocusReticle.js';
 import { MinimapOverlay } from './components/MinimapOverlay.js';
 import { WorldScene } from './components/WorldScene.js';
+import { BubbleDebugOverlay } from './components/BubbleDebugOverlay.js';
 import { useWorldSprites } from './hooks/useWorldSprites.js';
 import type { CameraModel, InteractionModel, ViewportSize, WorldViewProps } from './types.js';
 import { createCenteredCamera, getCameraFocusPosition, isoToScreen, screenToWorld } from './utils.js';
@@ -309,6 +310,11 @@ export function WorldView({
         cameraRef={cameraRef}
         viewport={viewport}
         onNavigate={navigateToTile}
+      />
+      <BubbleDebugOverlay
+        spritesRef={spritesRef}
+        selectedAgentId={selectedAgentId}
+        cameraRef={cameraRef}
       />
     </div>
   );

@@ -1,0 +1,150 @@
+/* ─── Bubble debug overlay ──────────────────────────────── */
+
+.bubble-debug__toggle {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    z-index: 9999;
+    font-size: 10px;
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #888;
+    border: 1px solid #555;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: monospace;
+}
+
+.bubble-debug__toggle:hover {
+    color: #ccc;
+    border-color: #888;
+}
+
+.bubble-debug__panel {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.88);
+    color: #ccc;
+    font-size: 10px;
+    font-family: monospace;
+    line-height: 14px;
+    padding: 6px 8px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    max-height: 80%;
+    overflow: auto;
+    min-width: 240px;
+}
+
+.bubble-debug__header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.bubble-debug__title {
+    color: #eee;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.bubble-debug__close {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+.bubble-debug__close:hover {
+    color: #ef4444;
+}
+
+.bubble-debug__sel-info {
+    color: #8b8b9e;
+    margin-bottom: 2px;
+}
+
+.bubble-debug__sel-id {
+    color: #e8d44d;
+}
+
+.bubble-debug__table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.bubble-debug__th {
+    padding-right: 4px;
+    color: #666;
+    text-align: left;
+    font-weight: normal;
+}
+
+.bubble-debug__td {
+    padding-right: 4px;
+}
+
+.bubble-debug__tr {
+    color: #aaa;
+}
+
+.bubble-debug__tr--selected {
+    color: #e8d44d;
+}
+
+.bubble-debug__name {
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bubble-debug__status {
+    padding-right: 4px;
+}
+
+.bubble-debug__status--idle {
+    color: #60a5fa;
+}
+
+.bubble-debug__status--working {
+    color: #4ade80;
+}
+
+.bubble-debug__status--waiting {
+    color: #f97316;
+}
+
+.bubble-debug__chat {
+    padding-right: 4px;
+    text-align: center;
+}
+
+.bubble-debug__show {
+    padding-right: 4px;
+    text-align: center;
+}
+
+.bubble-debug__text {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bubble-debug__text--null {
+    color: #f87171;
+}
+
+.bubble-debug__text--ok {
+    color: #eee;
+}
+
+.bubble-debug__more {
+    color: #666;
+    text-align: center;
+}
