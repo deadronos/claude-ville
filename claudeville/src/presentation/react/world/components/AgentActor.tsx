@@ -24,6 +24,9 @@ function Bubble({
   inverseZoom: number;
   y?: number;
 }) {
+  if (import.meta.env.DEV && (!text || text === '...')) {
+    console.warn('[Bubble] empty/fallback text received, y=%d invZoom=%f text=%o', y, inverseZoom, text);
+  }
   const maxChars = Math.max(8, Math.floor((bubbleConfig.statusMaxWidth - bubbleConfig.statusPaddingH) / (bubbleConfig.statusFontSize * 0.56)));
   const displayText = text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
   const width = Math.min(displayText.length * bubbleConfig.statusFontSize * 0.56 + bubbleConfig.statusPaddingH, bubbleConfig.statusMaxWidth);
@@ -253,6 +256,17 @@ export function AgentActor({
   const swing = sprite.moving ? Math.sin(sprite.walkFrame * 4) * 4 : 0;
   const app = sprite.agent.appearance;
   const bubbleText = sprite.agent.bubbleText;
+  const currentStatus = sprite.agent.status;
+  const currentTool = sprite.agent.currentTool;
+
+  if (import.meta.env.DEV && showUi) {
+    if (currentStatus !== 'idle' && currentStatus !== 'working' && currentStatus !== 'waiting') {
+      console.warn('[AgentActor] unexpected status=%s tool=%o bubble=%o chat=%o showUi=%o', currentStatus, currentTool, bubbleText, sprite.chatting, showUi);
+    }
+    if (currentStatus === 'working' && !bubbleText) {
+      console.warn('[AgentActor] WORKING with null bubbleText, tool=%o', currentTool);
+    }
+  }
 
   return (
     <group
