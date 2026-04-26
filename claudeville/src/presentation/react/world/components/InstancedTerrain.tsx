@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -6,6 +6,8 @@ import { TILE_HEIGHT, TILE_WIDTH } from '../../../../config/constants.js';
 import { useTerrain } from '../hooks/useTerrain.js';
 
 const vertexShader = /* glsl */ `
+  attribute vec3 instanceColor;
+  attribute float instanceWater;
   varying vec3 vColor;
   varying float vWater;
   varying vec2 vUv;
@@ -94,6 +96,13 @@ export function InstancedTerrain({ buildings }: { buildings: any[] }) {
     return geo;
   }, [colorArray, waterArray]);
 
+  useEffect(() => {
+    if (meshRef.current && meshRef.current.instanceMatrix) {
+      meshRef.current.instanceMatrix.fromArray(matrixArray);
+      meshRef.current.instanceMatrix.needsUpdate = true;
+    }
+  }, [matrixArray]);
+
   useFrame(({ clock }) => {
     if (shaderRef.current) {
       shaderRef.current.uniforms.uTime.value = clock.elapsedTime;
@@ -103,15 +112,6 @@ export function InstancedTerrain({ buildings }: { buildings: any[] }) {
   if (count === 0) return null;
 
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[geometry, shaderMaterial, count]}
-      onAfterRender={() => {
-        if (meshRef.current) {
-          meshRef.current.instanceMatrix.fromArray(matrixArray);
-          meshRef.current.instanceMatrix.needsUpdate = true;
-        }
-      }}
-    />
+    <instancedMesh ref={meshRef} args={[geometry, shaderMaterial, count]} />
   );
 }
