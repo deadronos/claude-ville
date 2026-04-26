@@ -359,6 +359,23 @@ function parseSessionId(sessionId: string): { channel: string; workspaceId: stri
   };
 }
 
+async function hasRealActivity(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.promises.stat(filePath);
+    if (stat.size === 0) return false;
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    const nonEmptyLines = content.split('\n').filter(ln => ln.trim().length > 0);
+    // JSONL files (debug logs, transcripts): require session_start + at least one real event
+    // content.txt text files: one line of actual text counts as real activity
+    if (filePath.endsWith('content.txt')) {
+      return nonEmptyLines.length >= 1;
+    }
+    return nonEmptyLines.length > 1;
+  } catch {
+    return false;
+  }
+}
+
 async function scanAllSessions(activeThresholdMs: number) {
   const now = Date.now();
   const effectiveThresholdMs = Math.max(Number(activeThresholdMs || 0), MIN_ACTIVE_WINDOW_MS);
@@ -406,6 +423,8 @@ async function scanAllSessions(activeThresholdMs: number) {
               try {
                 const stat = await fs.promises.stat(mainLogFile);
                 if (now - stat.mtimeMs > effectiveThresholdMs) return null;
+                // Filter out blank new-chat tabs (opened but never used)
+                if (!(await hasRealActivity(mainLogFile))) return null;
                 return {
                   channel: root.channel,
                   workspaceId,
@@ -442,6 +461,7 @@ async function scanAllSessions(activeThresholdMs: number) {
               try {
                 const stat = await fs.promises.stat(transcriptPath);
                 if (now - stat.mtimeMs > effectiveThresholdMs) return null;
+                if (!(await hasRealActivity(transcriptPath))) return null;
 
                 return {
                   channel: root.channel,
@@ -507,6 +527,8 @@ async function scanAllSessions(activeThresholdMs: number) {
 
               if (!newest) return null;
               if (now - newest.mtime > effectiveThresholdMs) return null;
+              // Filter out blank sessions
+              if (!(await hasRealActivity(newest.filePath))) return null;
 
               return {
                 channel: root.channel,

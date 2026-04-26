@@ -182,6 +182,49 @@ describe('VSCodeAdapter real module coverage', () => {
     }
   });
 
+  it('ignores blank-new-chat-tab sessions (session_start only, no real activity)', async () => {
+    const tmpRoot = makeTmpRoot();
+    try {
+      const vscodeUserDir = path.join(tmpRoot, 'Code', 'User');
+      const insidersUserDir = path.join(tmpRoot, 'Code - Insiders', 'User');
+      const projectPath = path.join(tmpRoot, 'project');
+      fs.mkdirSync(projectPath, { recursive: true });
+
+      const copilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-blank', projectPath);
+      // Blank new-chat tab: only session_start, no llm_request, tool_call, or any real event
+      writeDebugLog(copilotDir, 'blank-session', [
+        { type: 'session_start', attrs: { copilotVersion: '1.0', vscodeVersion: '1.95.0' } },
+      ]);
+      // Real session: has activity beyond session_start
+      writeDebugLog(copilotDir, 'real-session', [
+        { type: 'session_start', attrs: { copilotVersion: '1.0', vscodeVersion: '1.95.0' } },
+        { type: 'llm_request', attrs: { model: 'gpt-4o' } },
+      ]);
+      // Transcript also with only session_start
+      writeTranscript(copilotDir, 'blank-transcript', [
+        { type: 'session_start', attrs: { copilotVersion: '1.0', vscodeVersion: '1.95.0' } },
+      ]);
+      // Transcript with real activity
+      writeTranscript(copilotDir, 'real-transcript', [
+        { type: 'session_start', attrs: { copilotVersion: '1.0', vscodeVersion: '1.95.0' } },
+        { type: 'assistant.message', data: { content: 'Real transcript' }, timestamp: 1_000 },
+      ]);
+
+      const adapter = await loadAdapter(vscodeUserDir, insidersUserDir);
+      const sessions = await adapter.getActiveSessions(60_000);
+
+      // Only sessions with real activity should be reported
+      expect(sessions).toHaveLength(2);
+      const ids = sessions.map(s => s.sessionId);
+      expect(ids).toContain('vscode:vscode:workspace-blank:real-session');
+      expect(ids).toContain('vscode:vscode:workspace-blank:real-transcript');
+      expect(ids).not.toContain('vscode:vscode:workspace-blank:blank-session');
+      expect(ids).not.toContain('vscode:vscode:workspace-blank:blank-transcript');
+    } finally {
+      rmTmp(tmpRoot);
+    }
+  });
+
   it('loads session detail by session id for debug logs and by file path for resource sessions', async () => {
     const tmpRoot = makeTmpRoot();
     try {
