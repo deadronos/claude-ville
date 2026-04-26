@@ -33,13 +33,15 @@ function agentToScreen(agent: Agent): { x: number; y: number } {
 
 export function useEcsWorld(agents: Agent[], buildings: Building[]) {
   const worldRef = useRef<ECSWorld | null>(null);
+  const agentMapRef = useRef<Map<string, any>>(new Map());
+  const buildingMapRef = useRef<Map<string, any>>(new Map());
+
   if (!worldRef.current) {
     worldRef.current = createWorld();
   }
   const world = worldRef.current;
-
-  const agentMap = new Map<string, any>();
-  const buildingMap = new Map<string, any>();
+  const agentMap = agentMapRef.current;
+  const buildingMap = buildingMapRef.current;
 
   // Sync agents → ECS entities
   for (const agent of agents) {

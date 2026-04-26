@@ -97,7 +97,7 @@ export function InstancedTerrain({ buildings }: { buildings: any[] }) {
   }, [colorArray, waterArray]);
 
   useEffect(() => {
-    if (meshRef.current && meshRef.current.instanceMatrix) {
+    if (meshRef.current && meshRef.current.instanceMatrix && typeof meshRef.current.instanceMatrix.fromArray === 'function') {
       meshRef.current.instanceMatrix.fromArray(matrixArray);
       meshRef.current.instanceMatrix.needsUpdate = true;
     }

@@ -1,8 +1,18 @@
 import { OrthographicCamera } from '@react-three/drei';
 
-import type { ViewportSize } from '../types.js';
+import type { CameraModel, ViewportSize } from '../types.js';
 
-export function ScreenSpaceCamera({ viewport }: { viewport: ViewportSize }) {
+export function ScreenSpaceCamera({
+  viewport,
+  cameraRef,
+}: {
+  viewport: ViewportSize;
+  cameraRef?: { current: CameraModel };
+}) {
+  const x = cameraRef?.current?.x ?? 0;
+  const y = cameraRef?.current?.y ?? 0;
+  const zoom = cameraRef?.current?.zoom ?? 1;
+
   return (
     <OrthographicCamera
       makeDefault
@@ -13,8 +23,8 @@ export function ScreenSpaceCamera({ viewport }: { viewport: ViewportSize }) {
       bottom={viewport.height}
       near={-1000}
       far={1000}
-      position={[0, 0, 100]}
-      zoom={1}
+      position={[x, y, 100]}
+      zoom={zoom}
     />
   );
 }

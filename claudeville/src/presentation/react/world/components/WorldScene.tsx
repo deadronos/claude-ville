@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { THEME } from '../../../../config/theme.js';
@@ -22,6 +24,7 @@ export function WorldScene({
   onHoverBuilding,
   interactionRef,
 }: WorldSceneProps) {
+  const rootRef = useRef<THREE.Group | null>(null);
   const agents = sprites.map(s => s.agent);
   const { world } = useEcsWorld(agents, buildings);
 
@@ -29,11 +32,18 @@ export function WorldScene({
   const proximitySystem = createProximitySystem(world, roofAlphaRef);
   const cameraFollowSystem = createCameraFollowSystem(world, cameraRef, viewport);
 
+  useFrame(() => {
+    if (rootRef.current) {
+      rootRef.current.position.set(Math.round(cameraRef.current.x * cameraRef.current.zoom), Math.round(cameraRef.current.y * cameraRef.current.zoom), 0);
+      rootRef.current.scale.set(cameraRef.current.zoom, cameraRef.current.zoom, 1);
+    }
+  });
+
   return (
     <>
-      <ScreenSpaceCamera viewport={viewport} />
+      <ScreenSpaceCamera viewport={viewport} cameraRef={cameraRef} />
       <color attach="background" args={[THEME.bg]} />
-      <group>
+      <group ref={rootRef}>
         <InstancedTerrain buildings={buildings} />
         {world.with('Building').entities.map((entity: any) => (
           <BuildingActor

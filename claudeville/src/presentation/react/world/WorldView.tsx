@@ -149,6 +149,41 @@ export function WorldView({
     };
   }, []);
 
+  // Manual wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!active) return;
+      event.preventDefault();
+
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+      const worldBefore = screenToWorld(mouseX, mouseY, cameraRef.current);
+      let rawDelta = event.deltaY;
+      if (event.deltaMode === 1) {
+        rawDelta *= 16;
+      }
+      if (event.deltaMode === 2) {
+        rawDelta *= 100;
+      }
+      const clamped = Math.max(-60, Math.min(60, rawDelta));
+      const factor = 1 - clamped * 0.003;
+      cameraRef.current.zoom = Math.max(cameraRef.current.minZoom, Math.min(cameraRef.current.maxZoom, cameraRef.current.zoom * factor));
+      cameraRef.current.x = mouseX / cameraRef.current.zoom - worldBefore.x;
+      cameraRef.current.y = mouseY / cameraRef.current.zoom - worldBefore.y;
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [active]);
+
   const navigateToTile = (tileX: number, tileY: number) => {
     const screen = isoToScreen(tileX, tileY);
     const focus = getCameraFocusPosition(screen.x, screen.y, viewportRef.current, cameraRef.current.zoom);
@@ -199,32 +234,6 @@ export function WorldView({
         }
         interactionRef.current.dragging = false;
         setDragging(false);
-      }}
-      onWheel={(event) => {
-        if (!active) {
-          return;
-        }
-        event.preventDefault();
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) {
-          return;
-        }
-
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
-        const worldBefore = screenToWorld(mouseX, mouseY, cameraRef.current);
-        let rawDelta = event.deltaY;
-        if (event.deltaMode === 1) {
-          rawDelta *= 16;
-        }
-        if (event.deltaMode === 2) {
-          rawDelta *= 100;
-        }
-        const clamped = Math.max(-60, Math.min(60, rawDelta));
-        const factor = 1 - clamped * 0.003;
-        cameraRef.current.zoom = Math.max(cameraRef.current.minZoom, Math.min(cameraRef.current.maxZoom, cameraRef.current.zoom * factor));
-        cameraRef.current.x = mouseX / cameraRef.current.zoom - worldBefore.x;
-        cameraRef.current.y = mouseY / cameraRef.current.zoom - worldBefore.y;
       }}
       onTouchStart={(event) => {
         if (event.touches.length === 2) {
