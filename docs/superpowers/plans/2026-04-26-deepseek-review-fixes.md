@@ -389,7 +389,7 @@ npm run lint
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add claudeville/adapters/*.test.ts collector/*.test.ts claudeville/server.test.ts claudeville/src/presentation/react/ClaudeVilleApp.test.tsx vitest.setup.ts
