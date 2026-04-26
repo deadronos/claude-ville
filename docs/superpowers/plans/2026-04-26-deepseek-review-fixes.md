@@ -156,7 +156,7 @@ npm run lint
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add shared/watch-utils.js shared/watch-utils.test.ts collector/index.ts collector/index.real.test.ts claudeville/server.ts
@@ -172,18 +172,18 @@ git commit -m "fix: clean up watchers and collector timers"
 - Modify: `claudeville/src/main.tsx`
 - Test: `claudeville/src/presentation/react/ErrorBoundary.test.tsx`
 
-- [ ] **Step 1: Write failing boundary test**
+- [x] **Step 1: Write failing boundary test**
 
 Create a test component that throws in render. Render it inside `ErrorBoundary` and assert the fallback includes a concise failure message and does not rethrow to the test runner.
 
 Run: `npm run test -- claudeville/src/presentation/react/ErrorBoundary.test.tsx`
 Expected: fail because the component does not exist.
 
-- [ ] **Step 2: Implement `ErrorBoundary`**
+- [x] **Step 2: Implement `ErrorBoundary`**
 
 Use a class component with `getDerivedStateFromError()` and `componentDidCatch()`. Log the error via `console.error('[React] render failed:', error)` and render a fallback using the existing `boot-error` classes so styling stays consistent.
 
-- [ ] **Step 3: Wrap the root**
+- [x] **Step 3: Wrap the root**
 
 Update `claudeville/src/main.tsx`:
 
@@ -195,7 +195,7 @@ createRoot(rootElement).render(
 );
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
