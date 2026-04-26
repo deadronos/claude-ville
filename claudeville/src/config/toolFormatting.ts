@@ -1,65 +1,129 @@
 const TOOL_LABELS: Record<string, string> = {
+    // PascalCase (Claude, Copilot, Codex, Gemini)
     Read: 'Reading',
-    read_file: 'Reading',
-    list_dir: 'Listing',
-    view_image: 'Viewing',
     Edit: 'Editing',
     Write: 'Writing',
     NotebookEdit: 'Writing',
-    create_file: 'Writing',
-    create_directory: 'Preparing',
-    apply_patch: 'Editing',
     Bash: 'Running',
-    run_in_terminal: 'Running',
-    runTests: 'Testing',
     Grep: 'Searching',
     Glob: 'Finding',
-    grep_search: 'Searching',
-    file_search: 'Finding',
-    semantic_search: 'Searching',
-    search_subagent: 'Searching',
     WebSearch: 'Researching',
     WebFetch: 'Fetching',
     Task: 'Delegating',
     TaskCreate: 'Planning',
     TaskUpdate: 'Planning',
     TaskList: 'Planning',
+    SendMessage: 'Messaging',
+    RunSubagent: 'Delegating',
+    // snake_case (VS Code, Copilot, Claude)
+    read_file: 'Reading',
+    list_dir: 'Listing',
+    view_image: 'Viewing',
+    create_file: 'Writing',
+    create_directory: 'Preparing',
+    apply_patch: 'Editing',
+    edit_file: 'Editing',
+    write_file: 'Writing',
+    run_in_terminal: 'Running',
+    run_tests: 'Testing',
+    runTests: 'Testing',
+    grep_search: 'Searching',
+    file_search: 'Finding',
+    semantic_search: 'Searching',
+    search_subagent: 'Searching',
     manage_todo_list: 'Planning',
     execution_subagent: 'Executing',
+    run_subagent: 'Delegating',
     runSubagent: 'Delegating',
-    SendMessage: 'Messaging',
     task_complete: 'Wrapping up',
+    tool_call: 'Using tool',
+    // lowercase (OpenCode, OpenClaw, PI, future providers)
+    read: 'Reading',
+    edit: 'Editing',
+    write: 'Writing',
+    bash: 'Running',
+    grep: 'Searching',
+    glob: 'Finding',
+    websearch: 'Researching',
+    webfetch: 'Fetching',
+    task: 'Delegating',
+    sendmessage: 'Messaging',
+    search: 'Searching',
+    shell: 'Running',
+    // OpenCode-specific tools
+    question: 'Asking',
+    todowrite: 'Planning',
+    skill: 'Loading',
+    MiniMax_web_search: 'Researching',
+    MiniMax_understand_image: 'Analyzing',
+    context7_resolve_library_id: 'Looking up',
+    'context7_resolve-library-id': 'Looking up',
+    context7_query_docs: 'Checking docs',
+    'context7_query-docs': 'Checking docs',
 };
 
 const TOOL_DETAIL_KEYS: Record<string, string[]> = {
+    // PascalCase
     Read: ['file_path', 'filePath', 'path'],
-    read_file: ['filePath', 'path'],
-    list_dir: ['path'],
     Edit: ['file_path', 'filePath', 'path'],
     Write: ['file_path', 'filePath', 'path'],
-    create_file: ['filePath', 'path'],
-    create_directory: ['dirPath', 'path'],
-    apply_patch: ['explanation'],
+    NotebookEdit: ['file_path', 'filePath', 'path'],
     Bash: ['command'],
-    run_in_terminal: ['command'],
-    runTests: ['files', 'testNames'],
     Grep: ['pattern', 'query'],
     Glob: ['pattern', 'query'],
-    grep_search: ['query', 'includePattern'],
-    file_search: ['query'],
-    semantic_search: ['query'],
-    search_subagent: ['query', 'description'],
     WebSearch: ['query'],
     WebFetch: ['url'],
     Task: ['recipient', 'description', 'prompt'],
     TaskCreate: ['title', 'step'],
     TaskUpdate: ['title', 'step'],
     TaskList: ['title'],
+    SendMessage: ['recipient', 'message', 'text'],
+    RunSubagent: ['description', 'prompt'],
+    // snake_case
+    read_file: ['filePath', 'path'],
+    list_dir: ['path'],
+    view_image: ['path', 'image_source'],
+    edit_file: ['filePath', 'path'],
+    write_file: ['filePath', 'path'],
+    create_file: ['filePath', 'path'],
+    create_directory: ['dirPath', 'path'],
+    apply_patch: ['explanation'],
+    run_in_terminal: ['command'],
+    run_tests: ['files', 'testNames'],
+    runTests: ['files', 'testNames'],
+    grep_search: ['query', 'includePattern'],
+    file_search: ['query'],
+    semantic_search: ['query'],
+    search_subagent: ['query', 'description'],
     manage_todo_list: ['title', 'step'],
     execution_subagent: ['description', 'query'],
+    run_subagent: ['description', 'prompt'],
     runSubagent: ['description', 'prompt'],
-    SendMessage: ['recipient', 'message', 'text'],
     task_complete: ['summary'],
+    tool_call: ['name', 'command'],
+    // lowercase aliases (OpenCode, OpenClaw, PI)
+    read: ['filePath', 'file_path', 'path'],
+    edit: ['filePath', 'file_path', 'path'],
+    write: ['filePath', 'file_path', 'path'],
+    bash: ['command'],
+    grep: ['pattern', 'query'],
+    glob: ['pattern', 'query'],
+    websearch: ['query'],
+    webfetch: ['url'],
+    task: ['recipient', 'description', 'prompt'],
+    sendmessage: ['recipient', 'message', 'text'],
+    search: ['query', 'pattern'],
+    shell: ['command'],
+    // OpenCode-specific tools
+    question: ['question'],
+    todowrite: ['content', 'title'],
+    skill: ['name'],
+    MiniMax_web_search: ['query'],
+    MiniMax_understand_image: ['prompt', 'image_source'],
+    context7_resolve_library_id: ['libraryName', 'query'],
+    'context7_resolve-library-id': ['libraryName', 'query'],
+    context7_query_docs: ['libraryId', 'query'],
+    'context7_query-docs': ['libraryId', 'query'],
 };
 
 const DEFAULT_DETAIL_KEYS = [
@@ -215,7 +279,7 @@ export function formatToolLabel(toolName: string) {
         return TOOL_LABELS[toolName];
     }
 
-    if (toolName.startsWith('mcp__playwright__browser_')) {
+    if (toolName.startsWith('mcp__playwright__browser_') || toolName.startsWith('playwright_browser_')) {
         return 'Browsing';
     }
 
@@ -229,6 +293,15 @@ export function formatToolLabel(toolName: string) {
 
     if (toolName.startsWith('vscode_')) {
         return 'Updating code';
+    }
+
+    if (toolName.startsWith('MiniMax_')) {
+        const last = toolName.split('_').pop();
+        return last ? `${last.charAt(0).toUpperCase()}${last.slice(1)}` : 'Using tool';
+    }
+
+    if (toolName.startsWith('context7_')) {
+        return 'Looking up';
     }
 
     return toolName;
