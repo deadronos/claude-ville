@@ -161,7 +161,7 @@ Updated on 26 April 2026 by `codex/plan-deepseek-review-fixes`.
 - **WebSocket diagnostics and backpressure behavior:** Legacy WebSocket socket errors and initial-data failures are now logged. `ws` owns protocol parsing, buffering, ping/pong handling, and send callbacks instead of the server dropping sockets based on raw `write()` return values.
 - **Watcher lifecycle cleanup:** `shared/watch-utils.js` now returns watcher handles and an idempotent `close()` function. The collector and legacy server retain watcher/interval handles and clear them during shutdown.
 - **Collector interval cleanup:** `collector/index.ts` stores and clears its periodic publish interval during shutdown.
-- **Collector detail fetch concurrency:** `collector/snapshot.ts` fetches missing session details with `Promise.all` while preserving output order.
+- **Collector detail fetch concurrency:** `collector/snapshot.ts` fetches missing session details with `Promise.all` while preserving output order and isolating per-session detail lookup failures.
 - **React error boundary:** Added a top-level `ErrorBoundary` around `ClaudeVilleApp` in `claudeville/src/main.tsx`.
 - **R3F geometry allocation:** Memoized dynamic geometries in `AgentActor.tsx` for status bubbles, name tags, spiky hair, and crown accessories, with regression tests around stable constructor calls.
 - **Hubreceiver error language:** Normalized the missing `sessionId` API error to English.
@@ -172,7 +172,7 @@ Updated on 26 April 2026 by `codex/plan-deepseek-review-fixes`.
 
 ### Already Covered Or Rechecked
 
-- **Collector runtime coverage:** `collector/index.real.test.ts` now covers startup publish, watcher-triggered flush, interval-triggered retry behavior, and shutdown cleanup.
+- **Collector runtime coverage:** `collector/index.real.test.ts` now covers startup publish, watcher-triggered flush, interval-triggered retry behavior, shutdown cleanup, and interval callback removal after `clearInterval`.
 - **Adapter fixture coverage:** The repo already has real fixture tests for the adapter registry and several providers, including `index.fixture.test.ts`, `gemini.fixture.test.ts`, `openclaw.fixture.test.ts`, and `vscode.real.test.ts`. The broad `claude.test.ts` still contains some inline helper tests and remains a cleanup candidate.
 - **Frontend component coverage:** React shell tests already covered boot, mode switching, settings, selection, and activity surfaces; this branch adds the top-level error boundary and AgentActor geometry tests.
 

@@ -60,6 +60,7 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
   let watcherCallback: (() => void) | undefined;
   let intervalCallback: (() => void) | undefined;
   let nextTimeoutId = 1;
+  let nextIntervalId = 1;
   const watcherClose = vi.fn();
 
   const timeoutCallbacks = new Map<number, () => void>();
@@ -84,11 +85,19 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
     return process;
   });
   const processExitSpy = vi.fn();
+  const intervalCallbacks = new Map<number, () => void>();
   const setIntervalSpy = vi.fn((callback: () => void) => {
+    const intervalId = nextIntervalId++;
     intervalCallback = callback;
-    return 1 as unknown as ReturnType<typeof setInterval>;
+    intervalCallbacks.set(intervalId, callback);
+    return intervalId as unknown as ReturnType<typeof setInterval>;
   });
-  const clearIntervalSpy = vi.fn();
+  const clearIntervalSpy = vi.fn((timer: ReturnType<typeof setInterval>) => {
+    intervalCallbacks.delete(Number(timer));
+    if (intervalCallbacks.size === 0) {
+      intervalCallback = undefined;
+    }
+  });
   const setTimeoutSpy = vi.fn((callback: () => void) => {
     const timerId = nextTimeoutId++;
     timeoutCallbacks.set(timerId, () => {
@@ -146,6 +155,7 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
     setTimeoutSpy,
     clearTimeoutSpy,
     timeoutCallbacks,
+    intervalCallbacks,
     signalHandlers,
     get watcherCallback() {
       return watcherCallback;
@@ -287,6 +297,8 @@ describe('collector/index.ts real module coverage', () => {
     expect(harness.watcherClose).toHaveBeenCalledTimes(1);
     expect(harness.clearIntervalSpy).toHaveBeenCalledTimes(1);
     expect(harness.clearIntervalSpy).toHaveBeenCalledWith(1);
+    expect(harness.intervalCallbacks.size).toBe(0);
+    expect(harness.intervalCallback).toBeUndefined();
     expect(harness.processExitSpy).toHaveBeenCalledTimes(1);
     expect(harness.processExitSpy).toHaveBeenCalledWith(0);
   });

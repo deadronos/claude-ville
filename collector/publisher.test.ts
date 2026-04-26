@@ -12,6 +12,13 @@ describe('collector publisher', () => {
     expect(computeSnapshotFingerprint(snapshot, createHash)).toBe(computeSnapshotFingerprint(snapshot, createHash));
   });
 
+  it('ignores volatile snapshot timestamps when computing fingerprints', () => {
+    const snapshot1 = { collectorId: 'c1', timestamp: 1000, sessions: [{ sessionId: 's1' }] };
+    const snapshot2 = { collectorId: 'c1', timestamp: 2000, sessions: [{ sessionId: 's1' }] };
+
+    expect(computeSnapshotFingerprint(snapshot1, createHash)).toBe(computeSnapshotFingerprint(snapshot2, createHash));
+  });
+
   it('publishes a snapshot once until a flush marks it dirty again', async () => {
     const snapshot = { collectorId: 'c1', sessions: [{ sessionId: 's1' }] };
     const buildSnapshot = vi.fn().mockResolvedValue(snapshot);

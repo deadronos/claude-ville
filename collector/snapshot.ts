@@ -54,7 +54,14 @@ export async function buildCollectorSnapshot(deps: CollectorSnapshotDeps, config
 
   const activeSessions = await deps.getAllSessions(config.activeThresholdMs);
   const normalizedSessions = await Promise.all(activeSessions.map(async (session) => {
-    const detail = session.detail || await deps.getSessionDetailByProvider(session.provider, session.sessionId, session.project ?? null);
+    let detail: SessionDetail | null = session.detail || null;
+    if (!detail) {
+      try {
+        detail = await deps.getSessionDetailByProvider(session.provider, session.sessionId, session.project ?? null);
+      } catch {
+        detail = null;
+      }
+    }
     const normalized = normalizeSession(session, detail);
 
     const key = `${session.provider}:${session.sessionId}`;

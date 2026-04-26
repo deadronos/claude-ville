@@ -121,4 +121,36 @@ describe('collector snapshot helpers', () => {
       'copilot:s2': { tokenUsage: { input: 3, output: 4 } },
     });
   });
+
+  it('keeps building a snapshot when one session detail lookup fails', async () => {
+    const getAllSessions = vi.fn().mockResolvedValue([
+      { provider: 'claude', sessionId: 's1', project: '/repo/one', model: 'claude-sonnet-4-5', tokens: { input: 10, output: 5 } },
+      { provider: 'copilot', sessionId: 's2', project: '/repo/two', model: 'claude-haiku-4-5' },
+    ]);
+    const getSessionDetailByProvider = vi.fn()
+      .mockRejectedValueOnce(new Error('detail file disappeared'))
+      .mockResolvedValueOnce({ tokenUsage: { input: 3, output: 4 } });
+
+    const snapshot = await buildCollectorSnapshot(
+      {
+        getAllSessions,
+        getSessionDetailByProvider,
+        getActiveProviders: () => [],
+      },
+      {
+        collectorId: 'collector-1',
+        collectorHost: 'host-1',
+        activeThresholdMs: 120000,
+      },
+    );
+
+    expect(snapshot.sessions.map((session) => session.sessionId)).toEqual(['s1', 's2']);
+    expect(snapshot.sessions[0].tokens).toEqual({ input: 10, output: 5 });
+    expect(snapshot.sessions[0].tokenUsage).toBeNull();
+    expect(snapshot.sessions[1].tokens).toEqual({ input: 3, output: 4 });
+    expect(snapshot.sessionDetails).toEqual({
+      'claude:s1': null,
+      'copilot:s2': { tokenUsage: { input: 3, output: 4 } },
+    });
+  });
 });
