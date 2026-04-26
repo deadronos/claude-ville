@@ -341,6 +341,19 @@ describe('ClaudeVilleApp browser selection flow', () => {
       expect(await page.locator('#panelCurrentTool').textContent()).toContain('Bash');
       expect(await page.locator('#panelToolHistory').textContent()).toContain('npm test');
       expect(await page.locator('#panelMessages').textContent()).toContain('Alpha is compiling');
+
+      const closeButton = page.locator('#panelClose');
+      await closeButton.click();
+      await activityPanel.waitFor({ state: 'hidden' });
+      await page.waitForTimeout(250);
+
+      const canvasAfterClose = await canvas.boundingBox();
+      expect(canvasAfterClose).not.toBeNull();
+      const canvasStayedMountedAfterClose = await page.evaluate(() => {
+        return document.querySelector('.content__canvas') === (window as any).__worldCanvas;
+      });
+      expect(canvasStayedMountedAfterClose).toBe(true);
+      await page.waitForFunction(() => document.querySelector('.world-view__selected-agent-ring') === null);
     } catch (error) {
       const hubOutput = hubreceiver.getOutput();
       throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n[hubreceiver stdout]\n${hubOutput.stdout}\n[hubreceiver stderr]\n${hubOutput.stderr}`);

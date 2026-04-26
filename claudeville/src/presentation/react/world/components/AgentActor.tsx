@@ -309,20 +309,22 @@ export function AgentActor({
         <Eyes style={app.eyeStyle} />
         <Accessory type={app.accessory} />
       </group>
-      {showUi && sprite.chatting ? <ChatIndicator bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} /> : null}
-      {showUi && !sprite.chatting && sprite.agent.status === AgentStatus.IDLE ? <IdleIndicator inverseZoom={inverseZoom} /> : null}
-      {showUi && !sprite.chatting && (sprite.agent.status === AgentStatus.WORKING || (sprite.agent.status === AgentStatus.WAITING && bubbleText)) ? (
-        <Bubble
-          text={bubbleText || '...'}
-          accentColor={sprite.agent.status === AgentStatus.WORKING ? THEME.working : THEME.waiting}
-          bubbleConfig={bubbleConfig}
-          inverseZoom={inverseZoom}
-        />
-      ) : null}
-      {showUi && !sprite.chatting && sprite.agent.status === AgentStatus.WAITING && !bubbleText ? (
-        <Bubble text="..." accentColor={THEME.waiting} bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} y={-34} />
-      ) : null}
-      {showUi ? <NameTag name={sprite.agent.name} inverseZoom={inverseZoom} /> : null}
+      <group visible={showUi}>
+        {sprite.chatting ? <ChatIndicator bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} /> : null}
+        {!sprite.chatting && sprite.agent.status === AgentStatus.IDLE ? <IdleIndicator inverseZoom={inverseZoom} /> : null}
+        {!sprite.chatting && (sprite.agent.status === AgentStatus.WORKING || (sprite.agent.status === AgentStatus.WAITING && bubbleText)) ? (
+          <Bubble
+            text={bubbleText || '...'}
+            accentColor={sprite.agent.status === AgentStatus.WORKING ? THEME.working : THEME.waiting}
+            bubbleConfig={bubbleConfig}
+            inverseZoom={inverseZoom}
+          />
+        ) : null}
+        {!sprite.chatting && sprite.agent.status === AgentStatus.WAITING && !bubbleText ? (
+          <Bubble text="..." accentColor={THEME.waiting} bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} y={-34} />
+        ) : null}
+        <NameTag name={sprite.agent.name} inverseZoom={inverseZoom} />
+      </group>
     </group>
   );
 }

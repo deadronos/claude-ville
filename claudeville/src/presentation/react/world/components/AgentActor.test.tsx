@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, renderHook } from '@testing-library/react';
 
 import type { BubbleConfig } from '../types.js';
-import { Accessory, Bubble, Hair, NameTag } from './AgentActor.js';
+import { AgentActor, Accessory, Bubble, Hair, NameTag } from './AgentActor.js';
+import { AgentStatus } from '../../../../domain/value-objects/AgentStatus.js';
 import { useInverseZoom } from '../hooks/useInverseZoom.js';
 import { createPolygonGeometry, createRoundedRectGeometry } from '../utils.js';
 
@@ -95,5 +96,75 @@ describe('AgentActor geometry creation', () => {
     });
 
     expect(result.current).toBe(0.5);
+  });
+
+  it('keeps speech and name text mounted while the UI visibility toggles', () => {
+    const sprite = {
+      x: 12,
+      y: 18,
+      moving: false,
+      walkFrame: 0,
+      facingLeft: false,
+      chatting: false,
+      agent: {
+        id: 'agent-1',
+        name: 'Agent One',
+        status: AgentStatus.WAITING,
+        bubbleText: null,
+        appearance: {
+          pants: '#111111',
+          shirt: '#222222',
+          skin: '#f5d0a0',
+          hairStyle: 'bald',
+          hair: '#333333',
+          eyeStyle: 'default',
+          accessory: 'none',
+        },
+      },
+    } as any;
+
+    const cameraRef = {
+      current: {
+        x: 0,
+        y: 0,
+        zoom: 1,
+        minZoom: 0.5,
+        maxZoom: 4,
+        followAgentId: null,
+        followSmoothing: 0,
+      },
+    };
+    const interactionRef = { current: { moved: false } };
+
+    const { rerender } = render(
+      <AgentActor
+        sprite={sprite}
+        selected={false}
+        showUi={false}
+        cameraRef={cameraRef as any}
+        bubbleConfig={bubbleConfig}
+        onSelect={() => {}}
+        interactionRef={interactionRef}
+      />,
+    );
+
+    expect(createRoundedRectGeometry).toHaveBeenCalled();
+    expect(document.body.textContent).toContain('...');
+    expect(document.body.textContent).toContain('Agent One');
+
+    rerender(
+      <AgentActor
+        sprite={sprite}
+        selected={false}
+        showUi={true}
+        cameraRef={cameraRef as any}
+        bubbleConfig={bubbleConfig}
+        onSelect={() => {}}
+        interactionRef={interactionRef}
+      />,
+    );
+
+    expect(document.body.textContent).toContain('...');
+    expect(document.body.textContent).toContain('Agent One');
   });
 });
