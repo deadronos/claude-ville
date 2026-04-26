@@ -32,10 +32,28 @@ function asTimestamp(value: unknown): number {
   return 0;
 }
 
+/**
+ * Extract tool name from a Hermes entry, handling both:
+ * - assistant entries with tool_calls array (e.g. tool_calls[0].function.name)
+ * - tool entries with name/tool/tool_name fields
+ */
+function extractToolName(entry: any): string | null {
+  // Check nested tool_calls first (Hermes assistant entries)
+  const toolCalls = entry.tool_calls;
+  if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+    const firstCall = toolCalls[0];
+    if (firstCall?.function?.name) return firstCall.function.name;
+    if (firstCall?.name) return firstCall.name;
+    // Some providers use { id, type, function: { name, arguments } }
+  }
+  // Top-level fields
+  return entry.name || entry.tool || entry.tool_name || null;
+}
+
 function summarizeTool(entry: any): { tool: string; detail: string; ts: number } | null {
   if (!entry || typeof entry !== 'object') return null;
   const role = entry.role || entry.type;
-  const name = entry.name || entry.tool || entry.tool_name;
+  const name = extractToolName(entry);
   if (role !== 'tool' && !name && role !== 'tool_call') return null;
 
   let detail = '';
@@ -103,6 +121,76 @@ async function parseTranscript(filePath: string): Promise<AdapterSessionDetail &
   };
 }
 
+/**
+ * Parse tool history and messages from a session metadata JSON file.
+ * This handles sessions that only have session_*.json (no .jsonl transcript).
+ */
+function parseSessionMessages(metadata: any): {
+  toolHistory: Array<{ tool: string; detail: string; ts: number }>;
+  messages: Array<{ role: string; text: string; ts: number }>;
+  lastTool: string | null;
+  lastToolInput: string | null;
+  lastMessage: string | null;
+} {
+  const rawMessages: any[] = metadata?.messages ?? [];
+  const toolHistory: Array<{ tool: string; detail: string; ts: number }> = [];
+  const messages: Array<{ role: string; text: string; ts: number }> = [];
+
+  for (const entry of rawMessages) {
+    // Extract tool calls from assistant entries with tool_calls array
+    const toolCalls = entry.tool_calls;
+    if (Array.isArray(toolCalls)) {
+      for (const tc of toolCalls) {
+        const fn = tc?.function;
+        if (fn?.name) {
+          let detail = '';
+          const args = typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments ?? '');
+          try {
+            const parsed = JSON.parse(args);
+            detail = parsed.command || parsed.query || parsed.filePath || parsed.path || parsed.prompt || parsed.description || '';
+          } catch {
+            detail = args;
+          }
+          toolHistory.push({
+            tool: String(fn.name),
+            detail: detail.substring(0, 80),
+            ts: asTimestamp(entry.timestamp ?? entry.created_at ?? entry.createdAt),
+          });
+        }
+      }
+    }
+
+    // Summarize messages (skip tool role entries)
+    const role = entry.role || entry.type;
+    if (role === 'tool' || role === 'tool_call') continue;
+
+    const content = entry.content ?? entry.text;
+    const text = typeof content === 'string'
+      ? content
+      : Array.isArray(content)
+        ? content.find((part: any) => part?.type === 'text' && part.text)?.text
+        : null;
+    if (text && text.trim().length > 0) {
+      messages.push({
+        role: role || 'assistant',
+        text: text.trim().substring(0, 200),
+        ts: asTimestamp(entry.timestamp ?? entry.created_at ?? entry.createdAt),
+      });
+    }
+  }
+
+  const lastTool = toolHistory.at(-1) || null;
+  const lastMessage = [...messages].reverse().find((m) => m.role === 'assistant') || messages.at(-1) || null;
+
+  return {
+    toolHistory,
+    messages,
+    lastTool: lastTool?.tool || null,
+    lastToolInput: lastTool?.detail || null,
+    lastMessage: lastMessage?.text?.substring(0, 80) || null,
+  };
+}
+
 async function getSessionFiles(activeThresholdMs: number): Promise<SessionFile[]> {
   if (!fs.existsSync(SESSIONS_DIR)) return [];
   const now = Date.now();
@@ -160,9 +248,10 @@ export class HermesAdapter implements AgentAdapter {
     const sessions = await Promise.all(files.map(async ({ filePath, sessionId, mtime }) => {
       const metadata = await readJson(filePath);
       const transcript = transcriptPath(sessionId);
-      const detail = fs.existsSync(transcript)
+      const hasTranscript = fs.existsSync(transcript);
+      const detail = hasTranscript
         ? await parseTranscript(transcript)
-        : { lastTool: null, lastToolInput: null, lastMessage: null };
+        : parseSessionMessages(metadata);
       const updated = asTimestamp(metadata?.last_updated ?? metadata?.updated_at ?? metadata?.session_start) || mtime;
 
       return {
@@ -178,7 +267,7 @@ export class HermesAdapter implements AgentAdapter {
         lastTool: detail.lastTool,
         lastToolInput: detail.lastToolInput,
         parentSessionId: null,
-        filePath: fs.existsSync(transcript) ? transcript : filePath,
+        filePath: hasTranscript ? transcript : filePath,
       };
     }));
 
@@ -193,8 +282,22 @@ export class HermesAdapter implements AgentAdapter {
 
     const cleanId = sessionId.replace(/^hermes-/, '');
     const transcript = transcriptPath(cleanId);
-    if (!fs.existsSync(transcript)) return { toolHistory: [], messages: [] };
-    return this.getSessionDetail(sessionId, project, transcript);
+    if (fs.existsSync(transcript)) {
+      const detail = await parseTranscript(transcript);
+      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId };
+    }
+
+    // Fall back to the session metadata JSON file which has a messages array
+    const sessionFile = path.join(SESSIONS_DIR, `session_${cleanId}.json`);
+    if (fs.existsSync(sessionFile)) {
+      const metadata = await readJson(sessionFile);
+      if (metadata?.messages) {
+        const detail = parseSessionMessages(metadata);
+        return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId };
+      }
+    }
+
+    return { toolHistory: [], messages: [] };
   }
 
   getWatchPaths(): WatchPath[] {
