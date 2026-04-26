@@ -251,7 +251,7 @@ npm run lint
 
 Expected: all pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add claudeville/src/presentation/react/world/components/AgentActor.tsx claudeville/src/presentation/react/world/components/AgentActor.test.tsx
@@ -266,18 +266,18 @@ git commit -m "fix: memoize agent actor geometries"
 - Modify: `collector/snapshot.ts`
 - Test: `collector/snapshot.test.ts`
 
-- [ ] **Step 1: Write a timing/order test**
+- [x] **Step 1: Write a timing/order test**
 
 Create a test with three sessions whose mocked detail fetches resolve out of order. Assert `buildCollectorSnapshot()` keeps the original session order while awaiting details in parallel.
 
 Run: `npm run test -- collector/snapshot.test.ts`
 Expected: fail if the current code awaits each detail fetch sequentially or lacks the observable seam.
 
-- [ ] **Step 2: Implement parallel fetch**
+- [x] **Step 2: Implement parallel fetch**
 
 Replace the one-by-one loop with `await Promise.all(sessions.map(async (session) => ...))`. Preserve the existing per-session fallback behavior so one detail failure does not fail the entire snapshot.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 

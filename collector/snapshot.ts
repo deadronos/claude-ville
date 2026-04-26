@@ -50,18 +50,17 @@ export function normalizeSession(session: SessionSummary, detail: SessionDetail 
 }
 
 export async function buildCollectorSnapshot(deps: CollectorSnapshotDeps, config: CollectorSnapshotConfig) {
-  const normalizedSessions = [];
   const sessionDetails: Record<string, SessionDetail | null> = {};
 
   const activeSessions = await deps.getAllSessions(config.activeThresholdMs);
-  for (const session of activeSessions) {
+  const normalizedSessions = await Promise.all(activeSessions.map(async (session) => {
     const detail = session.detail || await deps.getSessionDetailByProvider(session.provider, session.sessionId, session.project ?? null);
     const normalized = normalizeSession(session, detail);
-    normalizedSessions.push(normalized);
 
     const key = `${session.provider}:${session.sessionId}`;
     sessionDetails[key] = detail;
-  }
+    return normalized;
+  }));
 
   const [teams, taskGroups] = await Promise.all([
     deps.claudeAdapter?.getTeams?.() || [],
