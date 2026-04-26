@@ -176,7 +176,11 @@ The branch introduces the following major architectural changes:
 
 ## Constraints
 
-- no external npm dependencies
+- Prefer platform-native APIs for simple local behavior, but established frameworks,
+  libraries, and npm dependencies are allowed when they reduce protocol risk,
+  security risk, maintenance burden, or implementation complexity. New
+  dependencies should be narrowly scoped, actively maintained, and covered by
+  tests around the ClaudeVille integration points.
 - ES modules in `src/`
 - CommonJS in server / adapter entrypoints
 - port `4000` remains the legacy app default
