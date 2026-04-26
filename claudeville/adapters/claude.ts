@@ -7,7 +7,7 @@ import path from 'path';
 import os from 'os';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
-import { debugAdapterError } from './jsonl-utils.js';
+import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 
 // Type for directory entries from readdirSync with withFileTypes: true
 type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
@@ -23,31 +23,6 @@ function resolveProjectDisplayPath(projectPathMap: Map<string, string>, encodedP
   // Encoded project dir names use '/' -> '-' substitution; reverse-transform loses info.
   // Instead of guessing a wrong path, expose a stable identifier.
   return `claude:projects:${encodedProjectDirName}`;
-}
-
-// ─── Utility ─────────────────────────────────────────────
-
-function readLastLines(filePath: string, lineCount: number) {
-  try {
-    if (!fs.existsSync(filePath)) return [];
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.trim().split('\n');
-    return lines.slice(-lineCount);
-  } catch (err) {
-    debugAdapterError('claude', 'readLastLines', err, filePath);
-    return [];
-  }
-}
-
-function parseJsonLines(lines: string[]) {
-  const results = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    try { results.push(JSON.parse(line)); } catch (err) {
-      debugAdapterError('claude', 'parseJsonLines', err, line.substring(0, 120));
-    }
-  }
-  return results;
 }
 
 // ─── Session parsing ─────────────────────────────────────
@@ -95,7 +70,7 @@ function extractDetailFromEntries(entries: any[]): SessionDetail {
 
 // ─── Session parsing ─────────────────────────────────────
 
-function getSessionDetail(sessionId: string, projectPath: string | null) {
+async function getSessionDetail(sessionId: string, projectPath: string | null) {
   if (!projectPath) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
 
   const encoded = projectPath.replace(/\//g, '-');
@@ -103,29 +78,29 @@ function getSessionDetail(sessionId: string, projectPath: string | null) {
   if (!fs.existsSync(sessionFile)) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
 
   try {
-    const lines = readLastLines(sessionFile, 30);
-    return extractDetailFromEntries(parseJsonLines(lines));
+    const lines = await readLines(sessionFile, { count: 30, scope: 'claude' });
+    return extractDetailFromEntries(parseJsonLines(lines, 'claude'));
   } catch (err) {
     debugAdapterError('claude', 'getSessionDetail', err, sessionFile);
     return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
   }
 }
 
-function getSubAgentDetail(filePath: string) {
+async function getSubAgentDetail(filePath: string) {
   try {
-    const lines = readLastLines(filePath, 20);
-    return extractDetailFromEntries(parseJsonLines(lines));
+    const lines = await readLines(filePath, { count: 20, scope: 'claude' });
+    return extractDetailFromEntries(parseJsonLines(lines, 'claude'));
   } catch (err) {
     debugAdapterError('claude', 'getSubAgentDetail', err, filePath);
     return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
   }
 }
 
-function getToolHistory(sessionFilePath: string, maxItems = 15) {
+async function getToolHistory(sessionFilePath: string, maxItems = 15) {
   const tools = [];
   try {
-    const lines = readLastLines(sessionFilePath, 100);
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(sessionFilePath, { count: 100, scope: 'claude' });
+    const entries = parseJsonLines(lines, 'claude');
 
     for (const entry of entries) {
       const msg = entry.message;
@@ -154,11 +129,11 @@ function getToolHistory(sessionFilePath: string, maxItems = 15) {
   return tools.slice(-maxItems);
 }
 
-function getRecentMessages(sessionFilePath: string, maxItems = 5) {
+async function getRecentMessages(sessionFilePath: string, maxItems = 5) {
   const messages = [];
   try {
-    const lines = readLastLines(sessionFilePath, 60);
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(sessionFilePath, { count: 60, scope: 'claude' });
+    const entries = parseJsonLines(lines, 'claude');
 
     for (const entry of entries) {
       const msg = entry.message;
@@ -179,7 +154,7 @@ function getRecentMessages(sessionFilePath: string, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
-function getTokenUsage(sessionFilePath: string) {
+async function getTokenUsage(sessionFilePath: string) {
   const usage = {
     totalInput: 0,
     totalOutput: 0,
@@ -189,8 +164,8 @@ function getTokenUsage(sessionFilePath: string) {
     turnCount: 0,
   };
   try {
-    const lines = readLastLines(sessionFilePath, 200);
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(sessionFilePath, { count: 200, scope: 'claude' });
+    const entries = parseJsonLines(lines, 'claude');
 
     let lastUsage = null;
     for (const entry of entries) {
@@ -218,7 +193,7 @@ function getTokenUsage(sessionFilePath: string) {
   return usage;
 }
 
-function resolveSessionFilePath(sessionId: string, project: string | null) {
+async function resolveSessionFilePath(sessionId: string, project: string | null) {
   if (!project) return null;
   const encoded = project.replace(/\//g, '-');
   const projectsDir = path.join(CLAUDE_DIR, 'projects', encoded);
@@ -226,9 +201,9 @@ function resolveSessionFilePath(sessionId: string, project: string | null) {
   if (sessionId.startsWith('subagent-')) {
     const agentId = sessionId.replace('subagent-', '');
     try {
-      const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
-        .filter((d: Dirent) => d.isDirectory());
+      const sessionDirs = await fs.promises.readdir(projectsDir, { withFileTypes: true });
       for (const dir of sessionDirs) {
+        if (!dir.isDirectory()) continue;
         const agentFile = path.join(projectsDir, dir.name, 'subagents', `agent-${agentId}.jsonl`);
         if (fs.existsSync(agentFile)) return agentFile;
       }
@@ -242,12 +217,15 @@ function resolveSessionFilePath(sessionId: string, project: string | null) {
   return fs.existsSync(sessionFile) ? sessionFile : null;
 }
 
-function getSessionFileActivity(sessionId: string, project: string | null) {
+async function getSessionFileActivity(sessionId: string, project: string | null) {
   if (!project) return 0;
   const encoded = project.replace(/\//g, '-');
   const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
   try {
-    if (fs.existsSync(sessionFile)) return fs.statSync(sessionFile).mtimeMs;
+    if (fs.existsSync(sessionFile)) {
+      const stat = await fs.promises.stat(sessionFile);
+      return stat.mtimeMs;
+    }
   } catch (err) {
     debugAdapterError('claude', 'getSessionFileActivity', err, sessionFile);
   }
@@ -266,8 +244,8 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   async getActiveSessions(activeThresholdMs: number) {
-    const lines = readLastLines(HISTORY_FILE, 1000);
-    const entries = parseJsonLines(lines);
+    const lines = await readLines(HISTORY_FILE, { count: 1000, scope: 'claude' });
+    const entries = parseJsonLines(lines, 'claude');
     const now = Date.now();
     const sessionsMap = new Map();
     const projectPathMap = new Map(); // encoded dir name -> actual path
@@ -299,14 +277,20 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
+    const sessionArray = Array.from(sessionsMap.values());
+    // Fetch file activity for all sessions in parallel
+    const sessionWithActivity = await Promise.all(sessionArray.map(async (session) => {
+      const fileMtime = await getSessionFileActivity(session.sessionId, session.project);
+      return { session, fileMtime };
+    }));
+
     const mainSessions = [];
-    for (const session of sessionsMap.values()) {
-      const fileMtime = getSessionFileActivity(session.sessionId, session.project);
+    for (const { session, fileMtime } of sessionWithActivity) {
       const lastActive = Math.max(session.lastActivity, fileMtime);
       if (now - lastActive > activeThresholdMs) continue;
 
       session.lastActivity = lastActive;
-      const detail = getSessionDetail(session.sessionId, session.project);
+      const detail = await getSessionDetail(session.sessionId, session.project);
       mainSessions.push({
         ...session,
         model: detail.model || session.model,
@@ -319,160 +303,177 @@ export class ClaudeAdapter implements AgentAdapter {
     mainSessions.sort((a, b) => b.lastActivity - a.lastActivity);
 
     // Sub-agents (pass project path map)
-    const subAgents = this._getActiveSubAgents(activeThresholdMs, projectPathMap);
+    const subAgents = await this._getActiveSubAgents(activeThresholdMs, projectPathMap);
 
     // Orphan sessions (not in history.jsonl or subagents/)
     const knownIds = new Set([
       ...Array.from(sessionsMap.keys()),
       ...subAgents.map(s => s.sessionId.replace('subagent-', '')),
     ]);
-    const orphans = this._getOrphanSessions(activeThresholdMs, projectPathMap, knownIds);
+    const orphans = await this._getOrphanSessions(activeThresholdMs, projectPathMap, knownIds);
 
     return [...mainSessions, ...subAgents, ...orphans];
   }
 
-  _getActiveSubAgents(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map()) {
+  async _getActiveSubAgents(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map()) {
     const projectsDir = path.join(CLAUDE_DIR, 'projects');
     if (!fs.existsSync(projectsDir)) return [];
 
     const now = Date.now();
-    const results = [];
 
+    let projDirs: Dirent[] = [];
     try {
-      const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
+      projDirs = (await fs.promises.readdir(projectsDir, { withFileTypes: true }))
         .filter((d: Dirent) => d.isDirectory());
-
-      for (const projDir of projDirs) {
-        const projPath = path.join(projectsDir, projDir.name);
-        let sessionDirs;
-        try {
-          sessionDirs = fs.readdirSync(projPath, { withFileTypes: true })
-            .filter((d: Dirent) => d.isDirectory());
-        } catch (err) {
-          debugAdapterError('claude', 'getActiveSubAgents readdir project', err, projPath);
-          continue;
-        }
-
-        for (const sessionDir of sessionDirs) {
-          const subagentsDir = path.join(projPath, sessionDir.name, 'subagents');
-          if (!fs.existsSync(subagentsDir)) continue;
-
-          let agentFiles;
-          try {
-            agentFiles = fs.readdirSync(subagentsDir)
-              .filter((f: string) => f.startsWith('agent-') && f.endsWith('.jsonl'));
-          } catch (err) {
-            debugAdapterError('claude', 'getActiveSubAgents readdir subagents', err, subagentsDir);
-            continue;
-          }
-
-          for (const agentFile of agentFiles) {
-            const filePath = path.join(subagentsDir, agentFile);
-            let stat;
-            try { stat = fs.statSync(filePath); } catch (err) {
-              debugAdapterError('claude', 'getActiveSubAgents stat', err, filePath);
-              continue;
-            }
-
-            if (now - stat.mtimeMs > activeThresholdMs) continue;
-
-            const agentId = agentFile.replace('agent-', '').replace('.jsonl', '');
-            const detail = getSubAgentDetail(filePath);
-            // Look up exact path from projectPathMap; fall back if hyphens in path broke decoding
-            const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
-
-            results.push({
-              sessionId: `subagent-${agentId}`,
-              provider: 'claude',
-              agentId,
-              agentType: 'sub-agent',
-              model: detail.model || 'unknown',
-              status: 'active',
-              lastActivity: stat.mtimeMs,
-              project: decodedProject,
-              lastMessage: detail.lastMessage,
-              lastTool: detail.lastTool,
-              lastToolInput: detail.lastToolInput,
-              parentSessionId: sessionDir.name,
-            });
-          }
-        }
-      }
     } catch (err) {
-      debugAdapterError('claude', 'getActiveSubAgents', err, projectsDir);
+      debugAdapterError('claude', 'getActiveSubAgents readdir projects', err, projectsDir);
+      return [];
     }
 
-    return results;
-  }
+    const projectResults = await Promise.all(projDirs.map(async (projDir: Dirent) => {
+      const projPath = path.join(projectsDir, projDir.name);
 
-  _getOrphanSessions(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map(), knownIds: Set<string> = new Set()) {
-    const projectsDir = path.join(CLAUDE_DIR, 'projects');
-    if (!fs.existsSync(projectsDir)) return [];
+      let sessionDirs: Dirent[] = [];
+      try {
+        sessionDirs = (await fs.promises.readdir(projPath, { withFileTypes: true }))
+          .filter((d: Dirent) => d.isDirectory());
+      } catch (err) {
+        debugAdapterError('claude', 'getActiveSubAgents readdir project', err, projPath);
+        return [];
+      }
 
-    const now = Date.now();
-    const results = [];
+      const sessionResults = await Promise.all(sessionDirs.map(async (sessionDir: Dirent) => {
+        const subagentsDir = path.join(projPath, sessionDir.name, 'subagents');
+        if (!fs.existsSync(subagentsDir)) return [];
 
-    try {
-      const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true })
-        .filter((d: Dirent) => d.isDirectory());
-
-      for (const projDir of projDirs) {
-        const projPath = path.join(projectsDir, projDir.name);
-        let files;
+        let agentFiles: string[] = [];
         try {
-          files = fs.readdirSync(projPath)
-            .filter((f: string) => f.endsWith('.jsonl') && !f.startsWith('.'));
+          agentFiles = (await fs.promises.readdir(subagentsDir))
+            .filter((f: string) => f.startsWith('agent-') && f.endsWith('.jsonl'));
         } catch (err) {
-          debugAdapterError('claude', 'getOrphanSessions readdir project', err, projPath);
-          continue;
+          debugAdapterError('claude', 'getActiveSubAgents readdir subagents', err, subagentsDir);
+          return [];
         }
 
-        for (const file of files) {
-          const sessionId = file.replace('.jsonl', '');
-          // Skip if session is already known
-          if (knownIds.has(sessionId)) continue;
-
-          const filePath = path.join(projPath, file);
+        const agentResults = await Promise.all(agentFiles.map(async (agentFile: string) => {
+          const filePath = path.join(subagentsDir, agentFile);
           let stat;
-          try { stat = fs.statSync(filePath); } catch (err) {
-            debugAdapterError('claude', 'getOrphanSessions stat', err, filePath);
-            continue;
+          try {
+            stat = await fs.promises.stat(filePath);
+          } catch (err) {
+            debugAdapterError('claude', 'getActiveSubAgents stat', err, filePath);
+            return null;
           }
 
-          if (now - stat.mtimeMs > activeThresholdMs) continue;
+          if (now - stat.mtimeMs > activeThresholdMs) return null;
 
-          const detail = getSubAgentDetail(filePath);
+          const agentId = agentFile.replace('agent-', '').replace('.jsonl', '');
+          const detail = await getSubAgentDetail(filePath);
           const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
 
-          results.push({
-            sessionId,
+          return {
+            sessionId: `subagent-${agentId}`,
             provider: 'claude',
-            agentId: sessionId,
-            agentType: 'team-member',
+            agentId,
+            agentType: 'sub-agent' as const,
             model: detail.model || 'unknown',
-            status: 'active',
+            status: 'active' as const,
             lastActivity: stat.mtimeMs,
             project: decodedProject,
             lastMessage: detail.lastMessage,
             lastTool: detail.lastTool,
             lastToolInput: detail.lastToolInput,
-          });
-        }
-      }
+            parentSessionId: sessionDir.name,
+          };
+        }));
+
+        return agentResults.filter((r) => r !== null);
+      }));
+
+      return sessionResults.flat();
+    }));
+
+    return projectResults.flat().filter(Boolean);
+  }
+
+  async _getOrphanSessions(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map(), knownIds: Set<string> = new Set()) {
+    const projectsDir = path.join(CLAUDE_DIR, 'projects');
+    if (!fs.existsSync(projectsDir)) return [];
+
+    const now = Date.now();
+
+    let projDirs: Dirent[] = [];
+    try {
+      projDirs = (await fs.promises.readdir(projectsDir, { withFileTypes: true }))
+        .filter((d: Dirent) => d.isDirectory());
     } catch (err) {
-      debugAdapterError('claude', 'getOrphanSessions', err, projectsDir);
+      debugAdapterError('claude', 'getOrphanSessions readdir projects', err, projectsDir);
+      return [];
     }
 
-    return results;
+    const projectResults = await Promise.all(projDirs.map(async (projDir: Dirent) => {
+      const projPath = path.join(projectsDir, projDir.name);
+
+      let files: string[] = [];
+      try {
+        files = (await fs.promises.readdir(projPath))
+          .filter((f: string) => f.endsWith('.jsonl') && !f.startsWith('.'));
+      } catch (err) {
+        debugAdapterError('claude', 'getOrphanSessions readdir project', err, projPath);
+        return [];
+      }
+
+      const fileResults = await Promise.all(files.map(async (file: string) => {
+        const sessionId = file.replace('.jsonl', '');
+        if (knownIds.has(sessionId)) return null;
+
+        const filePath = path.join(projPath, file);
+        let stat;
+        try {
+          stat = await fs.promises.stat(filePath);
+        } catch (err) {
+          debugAdapterError('claude', 'getOrphanSessions stat', err, filePath);
+          return null;
+        }
+
+        if (now - stat.mtimeMs > activeThresholdMs) return null;
+
+        const detail = await getSubAgentDetail(filePath);
+        const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
+
+        return {
+          sessionId,
+          provider: 'claude',
+          agentId: sessionId,
+          agentType: 'team-member' as const,
+          model: detail.model || 'unknown',
+          status: 'active' as const,
+          lastActivity: stat.mtimeMs,
+          project: decodedProject,
+          lastMessage: detail.lastMessage,
+          lastTool: detail.lastTool,
+          lastToolInput: detail.lastToolInput,
+        };
+      }));
+
+      return fileResults.filter((r) => r !== null);
+    }));
+
+    return projectResults.flat().filter(Boolean);
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
-    const sessionFilePath = filePath || resolveSessionFilePath(sessionId, project);
+    const sessionFilePath = filePath || await resolveSessionFilePath(sessionId, project);
     if (!sessionFilePath) return { toolHistory: [], messages: [], tokenUsage: null };
+    const [toolHistory, messages, tokenUsage] = await Promise.all([
+      getToolHistory(sessionFilePath),
+      getRecentMessages(sessionFilePath),
+      getTokenUsage(sessionFilePath),
+    ]);
     return {
-      toolHistory: getToolHistory(sessionFilePath),
-      messages: getRecentMessages(sessionFilePath),
-      tokenUsage: getTokenUsage(sessionFilePath),
+      toolHistory,
+      messages,
+      tokenUsage,
       sessionId,
     };
   }
