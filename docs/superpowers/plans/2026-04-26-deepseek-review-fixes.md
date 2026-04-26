@@ -51,7 +51,7 @@ Established libraries are allowed when advisable. For WebSocket work, explicitly
 - Potentially modify: `package.json`
 - Potentially modify: `package-lock.json`
 
-- [ ] **Step 1: Choose the transport implementation path**
+- [x] **Step 1: Choose the transport implementation path**
 
 Compare two approaches before editing production code:
 
@@ -60,14 +60,14 @@ Compare two approaches before editing production code:
 
 Default to the library if it materially reduces protocol correctness or security maintenance risk without forcing unrelated server rewrites. If adding a dependency, record why it was chosen and keep the integration narrow.
 
-- [ ] **Step 2: Write failing tests for fragmented and coalesced frames**
+- [x] **Step 2: Write failing tests for fragmented and coalesced frames**
 
 Add tests that connect to the legacy server's WebSocket endpoint, send a masked text frame split across two `socket.write()` calls, and assert the server replies to `{ "type": "ping" }` with a pong. Add a second test that sends two masked ping frames in one TCP write and expects two pong frames.
 
 Run: `npm run test -- claudeville/server.test.ts`
 Expected: the new tests fail because `handleWebSocketFrame` currently treats each `data` chunk as exactly one frame.
 
-- [ ] **Step 3: Implement the selected WebSocket fix**
+- [x] **Step 3: Implement the selected WebSocket fix**
 
 If patching the existing parser, replace the single-buffer parser with a small parser that stores `_claudevilleWsBuffer` and `_claudevilleWsContinuation` on the socket. The parser should:
 
@@ -80,11 +80,11 @@ If patching the existing parser, replace the single-buffer parser with a small p
 
 If adopting `ws`, keep the current HTTP server and route handlers, attach a `WebSocketServer` in `noServer` mode to the existing upgrade path, preserve existing `init`/`update` payloads, and remove only the custom frame parsing/sending code made obsolete by the library.
 
-- [ ] **Step 4: Keep diagnostics visible**
+- [x] **Step 4: Keep diagnostics visible**
 
 Change `socket.on('error')` to log the error message before removing the socket. Change `sendInitialData()` to log adapter/read failures instead of swallowing them.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 

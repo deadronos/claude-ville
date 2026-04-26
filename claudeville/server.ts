@@ -5,13 +5,12 @@ import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { WebSocketServer, type WebSocket } from 'ws';
 
 import { buildRuntimeConfig } from '../runtime-config.shared.js';
 import { MIME_TYPES } from '../shared/mime-types.js';
 import { setCorsHeaders, sendJson, sendError, safeLimit } from '../shared/http-utils.js';
-import { createWebSocketFrame, computeAcceptKey } from '../shared/ws-utils.js';
 import { createFileWatchers } from '../shared/watch-utils.js';
-import { DISCONNECTED_CODES } from '../shared/ws-helpers.js';
 import {
   adapters,
   getAllSessions,
@@ -36,7 +35,8 @@ const STATIC_DIR = fs.existsSync(path.join(BUILT_FRONTEND_DIR, 'index.html')) ? 
 const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
 // ─── WebSocket client management ──────────────────────────
-const wsClients = new Set<net.Socket>();
+const wsServer = new WebSocketServer({ noServer: true });
+const wsClients = new Set<WebSocket>();
 
 // ─── API handlers ─────────────────────────────────────────
 
@@ -227,138 +227,51 @@ function handleRuntimeConfig(req: HttpRequest, res: HttpResponse) {
   res.end(`window.__CLAUDEVILLE_CONFIG__ = ${JSON.stringify(runtimeConfig)};\n`);
 }
 
-// ─── WebSocket implementation (RFC 6455) ──────────────────────────
+// ─── WebSocket implementation ──────────────────────────
 
-function handleWebSocketUpgrade(req: HttpRequest, socket: net.Socket) {
-  const key = req.headers['sec-websocket-key'];
-  if (!key) {
-    socket.destroy();
-    return;
-  }
-
-  const acceptKey = computeAcceptKey(key);
-
-  const responseStr =
-    'HTTP/1.1 101 Switching Protocols\r\n' +
-    'Upgrade: websocket\r\n' +
-    'Connection: Upgrade\r\n' +
-    'Sec-WebSocket-Accept: ' + acceptKey + '\r\n' +
-    '\r\n';
-
-  socket.write(responseStr, () => {
-    wsClients.add(socket);
-    setTimeout(() => {
-      if (!socket.destroyed && socket.writable && wsClients.has(socket)) {
-        void sendInitialData(socket);
-      }
-    }, 100);
-  });
-
-  socket.on('data', (buffer: Buffer) => {
-    try {
-      handleWebSocketFrame(socket, buffer);
-    } catch (err: unknown) {
-      reportWebSocketFrameIssue(socket, 'frame handling error', err);
+function handleWebSocketConnection(socket: WebSocket) {
+  wsClients.add(socket);
+  setTimeout(() => {
+    if (socket.readyState === socket.OPEN && wsClients.has(socket)) {
+      void sendInitialData(socket);
     }
+  }, 100);
+
+  socket.on('message', (data) => {
+    const message = typeof data === 'string' ? data : data.toString('utf8');
+    handleTextMessage(socket, message);
   });
 
   socket.on('close', () => {
     wsClients.delete(socket);
   });
 
-  socket.on('error', () => {
+  socket.on('error', (err) => {
+    console.error('[WebSocket] socket error:', err.message);
     wsClients.delete(socket);
   });
 }
 
-function handleWebSocketFrame(socket: net.Socket, buffer: Buffer) {
-  if (buffer.length < 2) return;
-
-  const firstByte = buffer[0];
-  const secondByte = buffer[1];
-
-  const opcode = firstByte & 0x0f;
-  const isMasked = (secondByte & 0x80) !== 0;
-  let payloadLength = secondByte & 0x7f;
-  let offset = 2;
-
-  if (!isMasked) {
-    reportWebSocketFrameIssue(socket, 'client frame was not masked');
-    return;
-  }
-
-  if (payloadLength === 126) {
-    if (buffer.length < 4) return;
-    payloadLength = buffer.readUInt16BE(2);
-    offset = 4;
-  } else if (payloadLength === 127) {
-    if (buffer.length < 10) return;
-    payloadLength = Number(buffer.readBigUInt64BE(2));
-    offset = 10;
-  }
-
-  // Guard: reject frames larger than 100MB to prevent memory exhaustion
-  if (payloadLength > 100 * 1024 * 1024) {
-    reportWebSocketFrameIssue(socket, `frame too large: ${payloadLength} bytes`);
-    return;
-  }
-
-  if (buffer.length < offset + 4) return;
-  const maskKey = buffer.slice(offset, offset + 4);
-  offset += 4;
-
-  if (buffer.length < offset + payloadLength) return;
-
-  const payload = buffer.slice(offset, offset + payloadLength);
-  for (let i = 0; i < payload.length; i++) {
-    payload[i] ^= maskKey[i % 4];
-  }
-
-  switch (opcode) {
-    case 0x1:
-      handleTextMessage(socket, payload.toString('utf-8'));
-      break;
-    case 0x8:
-      try {
-        socket.end(createWebSocketFrame('', 0x8));
-      } catch {
-        socket.destroy();
-      }
-      wsClients.delete(socket);
-      break;
-    case 0x9:
-      try {
-        socket.write(createWebSocketFrame(payload, 0xa));
-      } catch {
-        reportWebSocketFrameIssue(socket, `pong frame creation failed`);
-      }
-      break;
-    case 0xa:
-      break;
-    default:
-      reportWebSocketFrameIssue(socket, `unsupported opcode 0x${opcode.toString(16)}`);
-      break;
-  }
-}
-
-function handleTextMessage(socket: net.Socket, message: string) {
+function handleTextMessage(socket: WebSocket, message: string) {
   try {
     const data = JSON.parse(message);
     if (data.type === 'ping') {
       wsSend(socket, { type: 'pong', timestamp: Date.now() });
     }
   } catch (err: unknown) {
-    reportWebSocketFrameIssue(socket, 'invalid JSON text frame', err);
+    console.warn('[WebSocket] invalid JSON text frame:', err instanceof Error ? err.message : String(err));
   }
 }
 
-function wsSend(socket: net.Socket, data: unknown) {
+function wsSend(socket: WebSocket, data: unknown) {
   try {
-    if (!socket.destroyed && socket.writable) {
-      const frame = createWebSocketFrame(JSON.stringify(data));
-      if (!socket.write(frame)) {
-        console.error('[WebSocket] write returned false, buffer full');
-      }
+    if (socket.readyState === socket.OPEN) {
+      socket.send(JSON.stringify(data), (err) => {
+        if (err) {
+          console.error('[WebSocket] send error:', err.message);
+          wsClients.delete(socket);
+        }
+      });
     } else {
       wsClients.delete(socket);
     }
@@ -370,66 +283,41 @@ function wsSend(socket: net.Socket, data: unknown) {
 }
 
 function wsBroadcast(data: unknown) {
-  let frame: Buffer;
+  let payload: string;
   try {
-    frame = createWebSocketFrame(JSON.stringify(data));
+    payload = JSON.stringify(data);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[WebSocket] broadcast frame creation failed: ${msg}`);
+    console.error(`[WebSocket] broadcast payload creation failed: ${msg}`);
     return;
   }
 
-  const deadSockets: net.Socket[] = [];
+  const deadSockets: WebSocket[] = [];
   for (const socket of wsClients) {
-    try {
-      if (!socket.destroyed && socket.writable) {
-        if (!socket.write(frame)) {
-          deadSockets.push(socket);
-        }
-      } else {
-        deadSockets.push(socket);
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[WebSocket] broadcast error: ${msg}`);
+    if (socket.readyState !== socket.OPEN) {
       deadSockets.push(socket);
+      continue;
     }
+    socket.send(payload, (err) => {
+      if (err) {
+        console.error('[WebSocket] broadcast error:', err.message);
+        wsClients.delete(socket);
+        try {
+          socket.close();
+        } catch {
+          // ignore close failures
+        }
+      }
+    });
   }
-  // Clean up dead sockets
   for (const socket of deadSockets) {
-    wsClients.delete(socket);
-  }
-}
-
-const WS_FRAME_ISSUE_WINDOW_MS = 5000;
-const WS_FRAME_ISSUE_CLOSE_THRESHOLD = 3;
-
-function reportWebSocketFrameIssue(socket: net.Socket, reason: string, err?: unknown) {
-  const now = Date.now();
-  const state = (socket as unknown as { _claudevilleWsFrameIssue?: { count: number; lastLoggedAt: number } })._claudevilleWsFrameIssue || { count: 0, lastLoggedAt: 0 };
-  state.count += 1;
-
-  if (state.count === 1 || now - state.lastLoggedAt >= WS_FRAME_ISSUE_WINDOW_MS) {
-    const suffix = err ? `: ${err instanceof Error ? err.message : String(err)}` : '';
-    console.warn(`[WebSocket] ${reason}${suffix}`);
-    state.lastLoggedAt = now;
-  }
-
-  (socket as unknown as { _claudevilleWsFrameIssue: { count: number; lastLoggedAt: number } })._claudevilleWsFrameIssue = state;
-
-  if (state.count >= WS_FRAME_ISSUE_CLOSE_THRESHOLD && !socket.destroyed) {
-    try {
-      socket.end(createWebSocketFrame('', 0x8));
-    } catch {
-      socket.destroy();
-    }
     wsClients.delete(socket);
   }
 }
 
 // ─── Data broadcast ────────────────────────────────
 
-async function sendInitialData(socket: net.Socket) {
+async function sendInitialData(socket: WebSocket) {
   try {
     const [sessions, teams] = await Promise.all([
       getAllSessions(ACTIVE_THRESHOLD_MS),
@@ -442,8 +330,8 @@ async function sendInitialData(socket: net.Socket) {
       usage: usageQuota.fetchUsage(),
       timestamp: Date.now(),
     });
-  } catch {
-    // ignore initial data send failure
+  } catch (err: unknown) {
+    console.error('[WebSocket] initial data send failed:', err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -550,7 +438,9 @@ const server = http.createServer((req: HttpRequest, res: HttpResponse) => {
 
 server.on('upgrade', (req: HttpRequest, socket: net.Socket, head: Buffer) => {
   if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
-    handleWebSocketUpgrade(req, socket);
+    wsServer.handleUpgrade(req, socket, head, (websocket) => {
+      handleWebSocketConnection(websocket);
+    });
   } else {
     socket.destroy();
   }
@@ -625,7 +515,7 @@ process.on('SIGINT', () => {
   console.log('\nshutting down server...');
   for (const socket of wsClients) {
     try {
-      socket.end(createWebSocketFrame('', 0x8));
+      socket.close();
     } catch { /* ignore */ }
   }
   server.close(() => {
