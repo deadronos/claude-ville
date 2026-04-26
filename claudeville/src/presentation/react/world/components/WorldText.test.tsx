@@ -23,18 +23,20 @@ describe('WorldText', () => {
     expect(textProps.lastProps).not.toBeNull();
     expect(String(textProps.lastProps?.characters)).toContain('Working…');
     expect(String(textProps.lastProps?.characters)).toContain('⚡');
+    expect(textProps.lastProps?.depthOffset).toBe(-1);
     expect(textProps.lastProps?.renderOrder).toBe(1000);
     expect(textProps.lastProps?.scale).toEqual([1, -1, 1]);
   });
 
   it('allows callers to override the default text settings', () => {
     render(
-      <WorldText characters="abc" renderOrder={7} fontSize={12}>
+      <WorldText characters="abc" renderOrder={7} depthOffset={-4} fontSize={12}>
         abc
       </WorldText>,
     );
 
     expect(textProps.lastProps?.characters).toBe('abc');
+    expect(textProps.lastProps?.depthOffset).toBe(-4);
     expect(textProps.lastProps?.renderOrder).toBe(7);
   });
 });

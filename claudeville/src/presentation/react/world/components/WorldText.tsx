@@ -26,6 +26,7 @@ export function WorldText(props: ComponentProps<typeof DreiText>) {
     <DreiText
       {...props}
       characters={characters}
+      depthOffset={props.depthOffset ?? -1}
       renderOrder={props.renderOrder ?? 1000}
       scale={[1, -1, 1]}
     />

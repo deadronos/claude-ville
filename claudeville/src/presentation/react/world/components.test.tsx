@@ -54,6 +54,7 @@ describe('React world components', () => {
       color: '#fff',
       anchorX: 'center',
       anchorY: 'middle',
+      depthOffset: -1,
       scale: [1, -1, 1],
       children: 'Hello world',
     }));
