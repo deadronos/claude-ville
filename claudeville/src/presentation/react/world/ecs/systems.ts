@@ -31,7 +31,7 @@ export function createMovementSystem(world: ECSWorld) {
           const speed = 1.5;
           entity.x = x + (dx / dist) * speed;
           entity.y = y + (dy / dist) * speed;
-          entity.walkFrame = ((entity.walkFrame as number) + 0.15);
+          entity.walkFrame = (((entity.walkFrame as number) || 0) + 0.15);
           entity.facingLeft = dx < 0;
         }
       }
