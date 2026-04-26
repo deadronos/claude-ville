@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
 import { useFrame } from '@react-three/fiber';
@@ -17,14 +17,12 @@ function Bubble({
   bubbleConfig,
   inverseZoom,
   y = -38,
-  agentId,
 }: {
   text: string;
   accentColor: string;
   bubbleConfig: BubbleConfig;
   inverseZoom: number;
   y?: number;
-  agentId?: string;
 }) {
   const maxChars = Math.max(8, Math.floor((bubbleConfig.statusMaxWidth - bubbleConfig.statusPaddingH) / (bubbleConfig.statusFontSize * 0.56)));
   const displayText = text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
@@ -256,8 +254,6 @@ export function AgentActor({
   const swing = sprite.moving ? Math.sin(sprite.walkFrame * 4) * 4 : 0;
   const app = sprite.agent.appearance;
   const bubbleText = sprite.agent.bubbleText;
-  const currentStatus = sprite.agent.status;
-  const currentTool = sprite.agent.currentTool;
 
   return (
     <group
@@ -313,11 +309,10 @@ export function AgentActor({
           accentColor={sprite.agent.status === AgentStatus.WORKING ? THEME.working : THEME.waiting}
           bubbleConfig={bubbleConfig}
           inverseZoom={inverseZoom}
-          agentId={sprite.agent.id}
         />
       ) : null}
       {showUi && !sprite.chatting && sprite.agent.status === AgentStatus.WAITING && !bubbleText ? (
-        <Bubble text="..." accentColor={THEME.waiting} bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} y={-34} agentId={sprite.agent.id} />
+        <Bubble text="..." accentColor={THEME.waiting} bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} y={-34} />
       ) : null}
       {showUi ? <NameTag name={sprite.agent.name} inverseZoom={inverseZoom} /> : null}
     </group>

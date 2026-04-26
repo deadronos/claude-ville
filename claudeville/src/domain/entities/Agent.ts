@@ -136,11 +136,7 @@ export class Agent {
         if (this.currentTool) {
             const toolLabel = formatToolLabel(this.currentTool);
             const detail = parseToolDetail(this.currentTool, this.currentToolInput);
-            const result = normalizeBubbleSnippet(detail ? `${toolLabel} ${detail}` : toolLabel);
-            if ((import.meta as any).env?.DEV && !result) {
-                console.warn('[Agent.bubbleText] tool=%s label=%s detail=%s result=null', this.currentTool, toolLabel, detail);
-            }
-            return result;
+            return normalizeBubbleSnippet(detail ? `${toolLabel} ${detail}` : toolLabel);
         }
         const lastMessage = this.lastMessage;
         if (lastMessage) return normalizeBubbleSnippet(lastMessage);
