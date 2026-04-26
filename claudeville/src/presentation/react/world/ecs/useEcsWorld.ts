@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { createWorld, ECSWorld } from './world.js';
+import { TILE_HEIGHT, TILE_WIDTH } from '../../../../config/constants.js';
 
 export interface Agent {
   id: string;
@@ -7,6 +8,7 @@ export interface Agent {
   status: string;
   bubbleText: string | null;
   appearance: any;
+  position?: { tileX: number; tileY: number };
 }
 
 export interface Building {
@@ -17,6 +19,16 @@ export interface Building {
     tileX: number;
     tileY: number;
   };
+}
+
+function agentToScreen(agent: Agent): { x: number; y: number } {
+  if (agent.position) {
+    return {
+      x: (agent.position.tileX - agent.position.tileY) * TILE_WIDTH / 2,
+      y: (agent.position.tileX + agent.position.tileY) * TILE_HEIGHT / 2,
+    };
+  }
+  return { x: 0, y: 0 };
 }
 
 export function useEcsWorld(agents: Agent[], buildings: Building[]) {
@@ -43,6 +55,9 @@ export function useEcsWorld(agents: Agent[], buildings: Building[]) {
     entity.bubbleText = agent.bubbleText;
     entity.appearance = agent.appearance;
     entity.Agent = true;
+    const screen = agentToScreen(agent);
+    entity.x = screen.x;
+    entity.y = screen.y;
   }
 
   // Remove stale agents
@@ -67,6 +82,7 @@ export function useEcsWorld(agents: Agent[], buildings: Building[]) {
     entity.tileY = building.position.tileY;
     entity.alpha = 1;
     entity.isBuilding = true;
+    entity.Building = true;
   }
 
   // Remove stale buildings
