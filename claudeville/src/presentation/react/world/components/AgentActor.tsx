@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
 import { useFrame } from '@react-three/fiber';
@@ -17,16 +17,15 @@ function Bubble({
   bubbleConfig,
   inverseZoom,
   y = -38,
+  agentId,
 }: {
   text: string;
   accentColor: string;
   bubbleConfig: BubbleConfig;
   inverseZoom: number;
   y?: number;
+  agentId?: string;
 }) {
-  if (import.meta.env.DEV && (!text || text === '...')) {
-    console.warn('[Bubble] empty/fallback text received, y=%d invZoom=%f text=%o', y, inverseZoom, text);
-  }
   const maxChars = Math.max(8, Math.floor((bubbleConfig.statusMaxWidth - bubbleConfig.statusPaddingH) / (bubbleConfig.statusFontSize * 0.56)));
   const displayText = text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
   const width = Math.min(displayText.length * bubbleConfig.statusFontSize * 0.56 + bubbleConfig.statusPaddingH, bubbleConfig.statusMaxWidth);
@@ -35,7 +34,7 @@ function Bubble({
   return (
     <group position={[0, y, 0.2]} scale={[inverseZoom, inverseZoom, 1]}>
       <mesh geometry={geometry}>
-        <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <lineSegments>
         <edgesGeometry args={[geometry]} />
@@ -49,6 +48,7 @@ function Bubble({
         anchorY="middle"
         outlineWidth={Math.max(0.75, bubbleConfig.statusFontSize * 0.08)}
         outlineColor="#05070d"
+        renderOrder={1001}
       >
         {displayText}
       </WorldText>
@@ -259,15 +259,6 @@ export function AgentActor({
   const currentStatus = sprite.agent.status;
   const currentTool = sprite.agent.currentTool;
 
-  if (import.meta.env.DEV && showUi) {
-    if (currentStatus !== 'idle' && currentStatus !== 'working' && currentStatus !== 'waiting') {
-      console.warn('[AgentActor] unexpected status=%s tool=%o bubble=%o chat=%o showUi=%o', currentStatus, currentTool, bubbleText, sprite.chatting, showUi);
-    }
-    if (currentStatus === 'working' && !bubbleText) {
-      console.warn('[AgentActor] WORKING with null bubbleText, tool=%o', currentTool);
-    }
-  }
-
   return (
     <group
       ref={groupRef}
@@ -322,10 +313,11 @@ export function AgentActor({
           accentColor={sprite.agent.status === AgentStatus.WORKING ? THEME.working : THEME.waiting}
           bubbleConfig={bubbleConfig}
           inverseZoom={inverseZoom}
+          agentId={sprite.agent.id}
         />
       ) : null}
       {showUi && !sprite.chatting && sprite.agent.status === AgentStatus.WAITING && !bubbleText ? (
-        <Bubble text="..." accentColor={THEME.waiting} bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} y={-34} />
+        <Bubble text="..." accentColor={THEME.waiting} bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} y={-34} agentId={sprite.agent.id} />
       ) : null}
       {showUi ? <NameTag name={sprite.agent.name} inverseZoom={inverseZoom} /> : null}
     </group>
