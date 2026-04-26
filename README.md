@@ -49,6 +49,9 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 | OpenClaw | `~/.openclaw/` | 🟠 Orange |
 | GitHub Copilot CLI | `~/.copilot/` | 🔵 Cyan |
 | VS Code / VS Code Insiders Copilot Chat | `~/Library/Application Support/Code*/User/workspaceStorage/.../GitHub.copilot-chat/debug-logs/.../main.jsonl` | 🩵 Light Blue |
+| Pi Coding Agent | `~/.pi/agent/sessions/` | 🟡 Yellow |
+| OpenCode | `~/.opencode/` | 🔴 Red |
+| Hermes | `~/.hermes/` | 🟢 Green |
 
 > The VS Code / Insiders adapter uses provider key `vscode` (shared for stable UI grouping). Session IDs are namespaced as `vscode:<channel>:<workspaceId>:<sessionId>`.
 
@@ -58,7 +61,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 
 - **World Mode** — Isometric pixel village where agents roam as characters with unique appearances
 - **Dashboard Mode** — Real-time agent cards showing tool usage, messages, and activity
-- **Multi-Provider** — Claude Code + Codex CLI + Gemini CLI + OpenClaw + Copilot CLI + VS Code Copilot Chat logs
+- **Multi-Provider** — Claude Code + Codex CLI + Gemini CLI + OpenClaw + Copilot CLI + VS Code Copilot Chat + Pi + OpenCode + Hermes
 - **Live Detection** — WebSocket + file watcher for instant session updates
 - **Agent Team & Swarm** — Auto-detects Claude Code teams, swarms, and sub-agents
 - **Project Grouping** — Agents grouped by project with color-coded sections
@@ -129,6 +132,9 @@ CLAUDEVILLE_NAME_MODE_CODEX=autodetected
 CLAUDEVILLE_NAME_MODE_GEMINI=autodetected
 CLAUDEVILLE_NAME_MODE_OPENCLAW=autodetected
 CLAUDEVILLE_NAME_MODE_COPILOT=autodetected
+CLAUDEVILLE_NAME_MODE_PI=autodetected
+CLAUDEVILLE_NAME_MODE_OPENCODE=autodetected
+CLAUDEVILLE_NAME_MODE_HERMES=autodetected
 
 # Separate pools for agent/team names and session names
 CLAUDEVILLE_AGENT_NAME_POOL=Atlas,Nova,Cipher,Pixel,Spark,Bolt,Echo,Flux,Helix,Onyx
@@ -215,7 +221,10 @@ claude-ville/
 │   │   ├── gemini.js          #   Gemini CLI adapter
 │   │   ├── copilot.js         #   Copilot CLI adapter
 │   │   ├── openclaw.js        #   OpenClaw adapter
-│   │   └── vscode.js          #   VS Code / Insiders adapter
+│   │   ├── vscode.js          #   VS Code / Insiders adapter
+│   │   ├── pi.js              #   Pi Coding Agent adapter
+│   │   ├── opencode.js        #   OpenCode adapter
+│   │   └── hermes.js          #   Hermes adapter
 │   ├── services/              #   Backend services
 │   │   └── usageQuota.js      #   Account & usage data
 │   ├── css/                   #   Stylesheets
