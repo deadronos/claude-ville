@@ -21,14 +21,41 @@ export function debugAdapterError(scope: string, operation: string, err: unknown
 
 /**
  * Read the last N (or first N) lines of a file as strings.
+ * Uses reverse seek for tail reads to avoid loading the entire file into memory.
  */
 export async function readLines(filePath: string, { from = 'end', count = 50, scope = 'jsonl-utils' }: ReadLinesOptions = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
-    const content = await fs.promises.readFile(filePath, 'utf-8');
-    const lines = content.trim().split('\n');
-    if (from === 'start') return lines.slice(0, count);
-    return lines.slice(-count);
+    const stat = await fs.promises.stat(filePath);
+    if (stat.size === 0) return [];
+
+    if (from === 'start') {
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      const lines = content.trim().split('\n');
+      return lines.slice(0, count);
+    }
+
+    // Tail read: use reverse seek to avoid loading entire file
+    const fd = await fs.promises.open(filePath, 'r');
+    try {
+      const bufs: Buffer[] = [];
+      const READ_SIZE = 8192;
+      let position = stat.size;
+
+      while (bufs.reduce((acc, b) => acc + b.length, 0) < stat.size && (position > 0 || bufs.length === 0)) {
+        const chunkSize = Math.min(READ_SIZE, position);
+        position -= chunkSize;
+        const buf = Buffer.alloc(chunkSize);
+        await fd.read(buf, 0, chunkSize, position);
+        bufs.unshift(buf);
+      }
+
+      const content = Buffer.concat(bufs).toString('utf-8');
+      const lines = content.trim().split('\n');
+      return lines.slice(-count);
+    } finally {
+      await fd.close();
+    }
   } catch (err) {
     debugAdapterError(scope, `readLines(${from})`, err, filePath);
     return [];

@@ -205,7 +205,7 @@ async function scanRecentRollouts(activeThresholdMs: number) {
       .map((d: Dirent) => d.name)
       .sort()
       .reverse()
-      .slice(0, 2); // Last 2 years only
+      .slice(0, 3); // Last 3 years — mtime filter handles cutoff
 
     const yearResults = await Promise.all(years.map(async (year: string) => {
       const yearDir = path.join(SESSIONS_DIR, year);
@@ -215,7 +215,7 @@ async function scanRecentRollouts(activeThresholdMs: number) {
           .map((d: Dirent) => d.name)
           .sort()
           .reverse()
-          .slice(0, 2); // Last 2 months only
+          .slice(0, 6); // Last 6 months — mtime filter handles cutoff
 
         const monthResults = await Promise.all(months.map(async (month: string) => {
           const monthDir = path.join(yearDir, month);
@@ -225,7 +225,7 @@ async function scanRecentRollouts(activeThresholdMs: number) {
               .map((d: Dirent) => d.name)
               .sort()
               .reverse()
-              .slice(0, 3); // Last 3 days only
+              .slice(0, 14); // Last 14 days — mtime filter handles cutoff
 
             const dayResults = await Promise.all(days.map(async (day: string) => {
               const dayDir = path.join(monthDir, day);

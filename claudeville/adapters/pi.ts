@@ -184,7 +184,8 @@ function decodeProjectKey(value: string) {
 
 function buildSessionId(projectDir: string, fileName: string) {
   // projectDir is like --Users-openclaw-Github-claude-ville--
-  // fileName is like 2026-04-24T22-19-42-919Z_019dc193-cfc7-71ff-bfd9-d2fc9f1735e6.jsonl
+  // The encoding uses -- as boundary markers and - as path separators.
+  // This is ambiguous for paths containing hyphens but is the established format.
   const sessionId = fileName.replace('.jsonl', '');
   return `pi:${encodeProjectKey(projectDir)}:${encodeProjectKey(sessionId)}`;
 }
@@ -205,11 +206,17 @@ function parseSessionId(sessionId: string) {
 }
 
 export function projectDirToPath(projectDir: string) {
-  // Convert --Users-openclaw-Github-claude-ville-- back to /Users/openclaw/Github/claude-ville
-  return projectDir
+  if (!projectDir || projectDir.length < 3) return null;
+  // Format: --Users-openclaw-Github-claude-ville--
+  // Decoding: strip -- prefix/suffix, replace - with /
+  const decoded = projectDir
     .replace(/^--/, '/')
     .replace(/--$/, '')
-    .replace(/-/g, '/');
+    .replace(/--/g, '/'); // Restore any legitimate double-hyphen in path
+  const pathSegments = decoded.split('/').filter(s => s.length > 0);
+  // Must look like an absolute path (starts with / or has drive letter pattern)
+  if (pathSegments.length < 2) return null;
+  return decoded;
 }
 
 export function resolveProjectPath(detail: { project: string | null }, projectDir: string) {

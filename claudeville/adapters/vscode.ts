@@ -15,11 +15,17 @@ const VSCODE_USER_DIR = process.env.VSCODE_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User');
 const VSCODE_INSIDERS_USER_DIR = process.env.VSCODE_INSIDERS_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code - Insiders', 'User');
+const VSCODE_CURSOR_DIR = process.env.VSCODE_CURSOR_USER_DATA_DIR
+  || path.join(os.homedir(), 'Library', 'Application Support', 'Cursor', 'User');
+const VSCODE_OFFSET_DIR = process.env.VSCODE_OFFSET_USER_DATA_DIR
+  || path.join(os.homedir(), 'Library', 'Application Support', 'Offset', 'User');
 
 const STORAGE_ROOTS = [
   { channel: 'vscode', workspaceStorageDir: path.join(VSCODE_USER_DIR, 'workspaceStorage') },
   { channel: 'vscode-insiders', workspaceStorageDir: path.join(VSCODE_INSIDERS_USER_DIR, 'workspaceStorage') },
-];
+  { channel: 'cursor', workspaceStorageDir: path.join(VSCODE_CURSOR_DIR, 'workspaceStorage') },
+  { channel: 'offset', workspaceStorageDir: path.join(VSCODE_OFFSET_DIR, 'workspaceStorage') },
+].filter(root => root.workspaceStorageDir);
 
 type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
@@ -126,8 +132,8 @@ function extractAssistantText(responseRaw: string) {
     }
   } catch (err) {
     debugAdapterError('vscode', 'extractAssistantText', err, responseRaw.substring(0, 120));
-    // JSON parse failed; use raw text as-is
-    return responseRaw.substring(0, 200).trim();
+    // JSON parse failed; don't return garbage
+    return '';
   }
 
   return '';

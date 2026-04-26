@@ -36,8 +36,8 @@ async function parseSession(filePath: string) {
     lastMessage: null,
   };
 
-  // Extract metadata from session.start
-  const firstLines = await readLines(filePath, { from: 'start', count: 5, scope: 'copilot' });
+  // Extract metadata from session.start (first 50 lines covers most cases; model isn't always in first few lines)
+  const firstLines = await readLines(filePath, { from: 'start', count: 50, scope: 'copilot' });
   const firstEntries = parseJsonLines(firstLines, 'copilot');
   for (const entry of firstEntries) {
     if (entry.type === 'session.start' && entry.data) {

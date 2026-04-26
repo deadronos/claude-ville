@@ -35,7 +35,20 @@ type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
  * Reverse-map project path from SHA-256 hash
  * Compute hashes of candidate paths to match
  */
-const _hashToPathCache = new Map();
+const MAX_HASH_CACHE_SIZE = 500;
+const _hashToPathCache = new Map<string, string | null>();
+
+function evictIfNeeded() {
+  if (_hashToPathCache.size >= MAX_HASH_CACHE_SIZE) {
+    // Delete the oldest ~20% of entries (Map preserves insertion order)
+    const toDelete = Math.floor(_hashToPathCache.size * 0.2);
+    const keys = _hashToPathCache.keys();
+    for (let i = 0; i < toDelete; i++) {
+      const next = keys.next();
+      if (next.value) _hashToPathCache.delete(next.value);
+    }
+  }
+}
 
 function sha256(str: string) {
   return crypto.createHash('sha256').update(str).digest('hex');
@@ -43,9 +56,12 @@ function sha256(str: string) {
 
 function resolveProjectPath(projectHash: string) {
   // Check cache
-  if (_hashToPathCache.has(projectHash)) {
-    return _hashToPathCache.get(projectHash);
+  const cached = _hashToPathCache.get(projectHash);
+  if (cached !== undefined) {
+    return cached;
   }
+
+  evictIfNeeded();
 
   const homeDir = os.homedir();
 

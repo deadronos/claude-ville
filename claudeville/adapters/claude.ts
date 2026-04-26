@@ -52,88 +52,73 @@ function parseJsonLines(lines: string[]) {
 
 // ─── Session parsing ─────────────────────────────────────
 
-function getSessionDetail(sessionId: string, projectPath: string | null) {
-  const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
-  if (!projectPath) return detail;
+// ─── Shared session detail extraction ─────────────────────
 
-  const encoded = projectPath.replace(/\//g, '-');
-  const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
-  if (!fs.existsSync(sessionFile)) return detail;
+type SessionDetail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null } | {
+  model: string | null;
+  lastTool: string | null;
+  lastMessage: string | null;
+  lastToolInput: string | null;
+};
 
-  try {
-    const lines = readLastLines(sessionFile, 30);
-    const entries = parseJsonLines(lines);
+function extractDetailFromEntries(entries: any[]): SessionDetail {
+  const detail: SessionDetail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const msg = entries[i].message;
+    if (!msg || msg.role !== 'assistant') continue;
 
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const msg = entries[i].message;
-      if (!msg || msg.role !== 'assistant') continue;
+    if (!detail.model && msg.model) detail.model = msg.model;
 
-      if (!detail.model && msg.model) detail.model = msg.model;
+    const content = msg.content;
+    if (!Array.isArray(content)) continue;
 
-      const content = msg.content;
-      if (!Array.isArray(content)) continue;
-
-      for (const block of content) {
-        if (!detail.lastTool && block.type === 'tool_use') {
-          detail.lastTool = block.name || null;
-          if (block.input) {
-            if (block.input.command) detail.lastToolInput = block.input.command.substring(0, 60);
-            else if (block.input.file_path) detail.lastToolInput = block.input.file_path.split('/').pop();
-            else if (block.input.pattern) detail.lastToolInput = block.input.pattern;
-            else if (block.input.query) detail.lastToolInput = block.input.query.substring(0, 40);
-            else if (block.input.recipient) detail.lastToolInput = block.input.recipient;
-          }
-        }
-        if (!detail.lastMessage && block.type === 'text' && block.text) {
-          const text = block.text.trim();
-          if (text.length > 0) detail.lastMessage = text.substring(0, 80);
+    for (const block of content) {
+      if (!detail.lastTool && block.type === 'tool_use') {
+        detail.lastTool = block.name || null;
+        if (block.input) {
+          if (block.input.command) detail.lastToolInput = block.input.command.substring(0, 60);
+          else if (block.input.file_path) detail.lastToolInput = block.input.file_path.split('/').pop();
+          else if (block.input.pattern) detail.lastToolInput = block.input.pattern;
+          else if (block.input.query) detail.lastToolInput = block.input.query.substring(0, 40);
+          else if (block.input.recipient) detail.lastToolInput = block.input.recipient;
         }
       }
-      if (detail.model && detail.lastTool && detail.lastMessage) break;
+      if (!detail.lastMessage && block.type === 'text' && block.text) {
+        const text = block.text.trim();
+        if (text.length > 0) detail.lastMessage = text.substring(0, 80);
+      }
     }
-  } catch (err) {
-    debugAdapterError('claude', 'getSessionDetail', err, sessionFile);
+    if (detail.model && detail.lastTool && detail.lastMessage) break;
   }
-
   return detail;
 }
 
+// ─── Session parsing ─────────────────────────────────────
+
+function getSessionDetail(sessionId: string, projectPath: string | null) {
+  if (!projectPath) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+
+  const encoded = projectPath.replace(/\//g, '-');
+  const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
+  if (!fs.existsSync(sessionFile)) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+
+  try {
+    const lines = readLastLines(sessionFile, 30);
+    return extractDetailFromEntries(parseJsonLines(lines));
+  } catch (err) {
+    debugAdapterError('claude', 'getSessionDetail', err, sessionFile);
+    return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+  }
+}
+
 function getSubAgentDetail(filePath: string) {
-  const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
   try {
     const lines = readLastLines(filePath, 20);
-    const entries = parseJsonLines(lines);
-
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const msg = entries[i].message;
-      if (!msg || msg.role !== 'assistant') continue;
-
-      if (!detail.model && msg.model) detail.model = msg.model;
-      const content = msg.content;
-      if (!Array.isArray(content)) continue;
-
-      for (const block of content) {
-        if (!detail.lastTool && block.type === 'tool_use') {
-          detail.lastTool = block.name || null;
-          if (block.input) {
-            if (block.input.command) detail.lastToolInput = block.input.command.substring(0, 60);
-            else if (block.input.file_path) detail.lastToolInput = block.input.file_path.split('/').pop();
-            else if (block.input.pattern) detail.lastToolInput = block.input.pattern;
-            else if (block.input.query) detail.lastToolInput = block.input.query.substring(0, 40);
-            else if (block.input.recipient) detail.lastToolInput = block.input.recipient;
-          }
-        }
-        if (!detail.lastMessage && block.type === 'text' && block.text) {
-          const text = block.text.trim();
-          if (text.length > 0) detail.lastMessage = text.substring(0, 80);
-        }
-      }
-      if (detail.model && detail.lastTool && detail.lastMessage) break;
-    }
+    return extractDetailFromEntries(parseJsonLines(lines));
   } catch (err) {
     debugAdapterError('claude', 'getSubAgentDetail', err, filePath);
+    return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
   }
-  return detail;
 }
 
 function getToolHistory(sessionFilePath: string, maxItems = 15) {
@@ -287,7 +272,7 @@ export class ClaudeAdapter implements AgentAdapter {
     const sessionsMap = new Map();
     const projectPathMap = new Map(); // encoded dir name -> actual path
 
-    const HISTORY_SCAN_MS = 10 * 60 * 1000;
+    const HISTORY_SCAN_MS = activeThresholdMs;
     for (const entry of entries) {
       // Build project path map from all entries (regardless of active status)
       if (entry.project) {
