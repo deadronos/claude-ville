@@ -1,6 +1,6 @@
 # ClaudeVille Copilot Instructions
 
-ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. Treat `claudeville/` as the legacy all-in-one app and `collector/` + `hubreceiver/` + `frontend/` as the split-stack deployment path.
+ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. Treat `claudeville/` as the legacy all-in-one app and `collector/` + `hubreceiver/` + the Vite-served browser frontend as the split-stack deployment path.
 
 ## Start here
 
@@ -17,7 +17,7 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 - `npm run dev:server` — legacy server only (`tsx claudeville/server.ts`)
 - `npm run dev:hubreceiver` — hub API/WebSocket on port `3030`
 - `npm run dev:collector` — snapshot watcher/publisher
-- `npm run dev:frontend` — static browser UI on port `3001`
+- `npm run dev:frontend` — Vite browser UI on port `3001`
 
 ### Build the widget
 
@@ -36,7 +36,7 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 - `claudeville/server.ts` serves the legacy UI, REST API, `/runtime-config.js`, widget assets, and WebSocket updates.
 - `collector/index.ts` watches provider files and publishes snapshots to the hub.
 - `hubreceiver/server.ts` accepts snapshots, merges state, and exposes the canonical remote API/WebSocket surface.
-- `frontend/server.ts` serves the static browser UI and injects runtime config for remote deployments.
+- `vite.config.ts` serves the browser UI from `claudeville/`, injects runtime config during dev, proxies API/WebSocket traffic to the hub, and builds to `dist/frontend` for remote deployments.
 - `claudeville/src/domain`, `application`, `infrastructure`, and `presentation` follow the layered architecture documented in `docs/architecture/000-overall-spec.md`.
 - `claudeville/src/presentation/react` is the current React shell; `claudeville/src/presentation/character-mode` is the legacy canvas reference.
 
