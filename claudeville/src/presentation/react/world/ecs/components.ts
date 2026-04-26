@@ -7,7 +7,17 @@ interface Component<T> {
 function component<T extends object>(defaults: T): Component<T> {
   return {
     create(values?: Partial<T>): T {
-      return { ...defaults, ...values } as T;
+      const merged = { ...defaults };
+      for (const key of Object.keys(values ?? {})) {
+        const v = values![key];
+        const d = (merged as any)[key];
+        if (d && typeof d === 'object' && !Array.isArray(d) && v && typeof v === 'object' && !Array.isArray(v)) {
+          (merged as any)[key] = { ...d, ...v };
+        } else {
+          (merged as any)[key] = v;
+        }
+      }
+      return merged as T;
     },
     properties: defaults,
   };
