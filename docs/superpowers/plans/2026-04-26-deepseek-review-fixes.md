@@ -342,7 +342,7 @@ npm run lint
 
 Expected: all pass. If `npm run widget:build` cannot complete because macOS app packaging requires local-only tools, record the exact blocker in the final status.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add hubreceiver/routes.ts hubreceiver/*.test.ts package.json widget/build.sh claudeville/server.ts claudeville/server.test.ts
@@ -364,19 +364,19 @@ git commit -m "chore: address review cleanups"
 
 For each adapter with duplicate inline helpers, import the real adapter module and parse fixture files under a temporary directory. Assert normalized provider, session ID, project grouping, timestamps, token/cost fields, and detail extraction.
 
-- [ ] **Step 2: Add collector runtime coverage**
+- [x] **Step 2: Add collector runtime coverage**
 
 Extend `collector/index.real.test.ts` to exercise `main()`, `scheduleFlush()`, `publishSnapshot()`, watcher-triggered flush, interval-triggered flush, and `shutdown()`.
 
-- [ ] **Step 3: Add server error-path coverage**
+- [x] **Step 3: Add server error-path coverage**
 
 Add tests for `sendInitialData()` failure logging, socket error logging, malformed URL handling, and WebSocket close/ping behavior.
 
-- [ ] **Step 4: Add React smoke coverage**
+- [x] **Step 4: Add React smoke coverage**
 
 Keep this small: render `ClaudeVilleApp`, switch between world/dashboard modes, open/close settings, and assert no uncaught render errors. Reset `localStorageMock` in `vitest.setup.ts` before each test so component tests do not share state.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -403,7 +403,7 @@ git commit -m "test: cover review risk areas"
 **Files:**
 - Modify: `docs/deepseek-review.md`
 
-- [ ] **Step 1: Add a status appendix**
+- [x] **Step 1: Add a status appendix**
 
 Append a section with three statuses:
 
@@ -411,7 +411,7 @@ Append a section with three statuses:
 - `Deferred`: larger work that needs its own issue, such as auth/origin policy if product behavior is not yet agreed.
 - `Rejected/Needs Recheck`: findings that proved stale or inaccurate after code inspection.
 
-- [ ] **Step 2: Include verification evidence**
+- [x] **Step 2: Include verification evidence**
 
 Record the final command set and result:
 
@@ -422,7 +422,7 @@ npm run test
 npm run build
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/deepseek-review.md

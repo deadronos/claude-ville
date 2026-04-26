@@ -3,7 +3,7 @@
  * Sets up the window mocks needed by browser-dependent code.
  */
 import '@testing-library/jest-dom/vitest';
-import { vi } from 'vitest';
+import { beforeEach, vi } from 'vitest';
 
 // Minimal localStorage mock (Map-backed, survives per-test isolation)
 const localStorageMock = (() => {
@@ -22,6 +22,14 @@ Object.defineProperty(globalThis, 'localStorage', {
   value: localStorageMock,
   writable: true,
   configurable: true,
+});
+
+beforeEach(() => {
+  localStorageMock.clear();
+  localStorageMock.getItem.mockClear();
+  localStorageMock.setItem.mockClear();
+  localStorageMock.removeItem.mockClear();
+  localStorageMock.clear.mockClear();
 });
 
 const runtimeWindow = (globalThis.window ?? ({} as Window & typeof globalThis)) as Window & typeof globalThis & {
