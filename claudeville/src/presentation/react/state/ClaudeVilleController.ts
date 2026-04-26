@@ -223,6 +223,7 @@ export class ClaudeVilleController {
     }
 
     this.selectedAgentId = agentId;
+    useWorldStore.getState().setSelectedAgentId(agentId);
     eventBus.emit('agent:selected', agent);
     this._emitChange();
   }
@@ -233,6 +234,7 @@ export class ClaudeVilleController {
     }
 
     this.selectedAgentId = null;
+    useWorldStore.getState().setSelectedAgentId(null);
     eventBus.emit('agent:deselected');
     this._emitChange();
   }
