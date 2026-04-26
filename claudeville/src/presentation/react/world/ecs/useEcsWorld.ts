@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { createWorld, ECSWorld } from './world.js';
 
 export interface Agent {
@@ -19,14 +20,22 @@ export interface Building {
 }
 
 export function useEcsWorld(agents: Agent[], buildings: Building[]) {
-  const world = createWorld();
+  const worldRef = useRef<ECSWorld | null>(null);
+  if (!worldRef.current) {
+    worldRef.current = createWorld();
+  }
+  const world = worldRef.current;
+
+  const agentMap = new Map<string, any>();
+  const buildingMap = new Map<string, any>();
 
   // Sync agents → ECS entities
   for (const agent of agents) {
-    let entity = world.entities.find((e: any) => e.id === agent.id);
+    let entity = agentMap.get(agent.id);
     if (!entity) {
       entity = world.createEntity();
       world.addEntity(entity);
+      agentMap.set(agent.id, entity);
     }
     entity.id = agent.id;
     entity.name = agent.name;
@@ -36,19 +45,20 @@ export function useEcsWorld(agents: Agent[], buildings: Building[]) {
     entity.Agent = true;
   }
 
-  // Remove stale entities
+  // Remove stale agents
   for (const entity of [...world.entities]) {
-    if (entity.isAgent && !agents.some((a: any) => a.id === entity.id)) {
+    if (entity.Agent && !agents.some((a: any) => a.id === entity.id)) {
       world.removeEntity(entity);
     }
   }
 
   // Sync buildings → ECS entities
   for (const building of buildings) {
-    let entity = world.entities.find((e: any) => e.buildingType === building.type);
+    let entity = buildingMap.get(building.type);
     if (!entity) {
       entity = world.createEntity();
       world.addEntity(entity);
+      buildingMap.set(building.type, entity);
     }
     entity.buildingType = building.type;
     entity.width = building.width;
@@ -57,6 +67,13 @@ export function useEcsWorld(agents: Agent[], buildings: Building[]) {
     entity.tileY = building.position.tileY;
     entity.alpha = 1;
     entity.isBuilding = true;
+  }
+
+  // Remove stale buildings
+  for (const entity of [...world.entities]) {
+    if (entity.isBuilding && !buildings.some((b: any) => b.type === entity.buildingType)) {
+      world.removeEntity(entity);
+    }
   }
 
   return { world };
