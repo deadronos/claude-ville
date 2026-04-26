@@ -16,7 +16,7 @@ Introduce a split-stack topology:
 
 - `collector` runs close to the source machine and watches provider logs
 - `hubreceiver` accepts snapshots and exposes the merged API / WebSocket surface
-- `frontend` serves the static browser UI
+- `vite` serves the browser UI from `claudeville/`
 
 Use `runtime-config.shared.js` to generate a consistent browser configuration payload for both legacy and split-stack environments.
 

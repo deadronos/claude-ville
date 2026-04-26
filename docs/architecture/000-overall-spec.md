@@ -43,7 +43,7 @@ The distributed stack is made of three parts:
 
 - `collector` watches local provider files and publishes snapshots
 - `hubreceiver` accepts snapshots, merges state, and exposes HTTP / WebSocket APIs
-- `frontend` serves the static browser UI (from `claudeville/`) and injects runtime config pointing to the hubreceiver
+- `vite.config.ts` serves the browser UI from `claudeville/`, injects runtime config during dev, and builds the browser bundle to `dist/frontend` for remote deployments
 
 This mode is intended for cases where the browser UI runs remotely from the machine that owns the provider logs.
 
