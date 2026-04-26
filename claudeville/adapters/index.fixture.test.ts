@@ -52,6 +52,44 @@ describe('adapter registry fixtures', () => {
     ]);
     fs.utimesSync(openclawSession, new Date('2024-01-01T00:00:03Z'), new Date('2024-01-01T00:00:03Z'));
 
+    const opencodeSession = path.join(tmpHome, '.local', 'share', 'opencode', 'storage', 'session', 'demo-project', 'session-opencode.json');
+    writeJson(opencodeSession, {
+      id: 'session-opencode',
+      time: { created: '2024-01-01T00:00:04Z', updated: '2024-01-01T00:00:04Z' },
+      project: { path: workspaceDir },
+    });
+    const opencodeMessages = path.join(tmpHome, '.local', 'share', 'opencode', 'storage', 'message', 'demo-project', 'session-opencode.json');
+    writeJson(opencodeMessages, [
+      {
+        role: 'assistant',
+        modelID: 'anthropic/claude-sonnet-4-5',
+        parts: [
+          { type: 'tool-call', tool: 'bash', input: { command: 'npm test' } },
+          { type: 'text', text: 'OpenCode latest' },
+        ],
+        time: { created: '2024-01-01T00:00:04Z' },
+      },
+    ]);
+    fs.utimesSync(opencodeSession, new Date('2024-01-01T00:00:04Z'), new Date('2024-01-01T00:00:04Z'));
+
+    const hermesSessionId = '20240101_000005_abcdef';
+    const hermesSession = path.join(tmpHome, '.hermes', 'sessions', `session_${hermesSessionId}.json`);
+    writeJson(hermesSession, {
+      session_id: hermesSessionId,
+      provider: 'minimax',
+      model: 'MiniMax-M2.7',
+      platform: 'telegram',
+      display_name: 'Fixture Chat',
+      session_start: '2024-01-01T00:00:05Z',
+      last_updated: '2024-01-01T00:00:05Z',
+    });
+    const hermesTranscript = path.join(tmpHome, '.hermes', 'sessions', `${hermesSessionId}.jsonl`);
+    writeJsonl(hermesTranscript, [
+      JSON.stringify({ role: 'assistant', content: 'Hermes latest', timestamp: '2024-01-01T00:00:05Z' }),
+      JSON.stringify({ role: 'tool', name: 'patch', content: '{"mode":"replace"}', timestamp: '2024-01-01T00:00:05Z' }),
+    ]);
+    fs.utimesSync(hermesSession, new Date('2024-01-01T00:00:05Z'), new Date('2024-01-01T00:00:05Z'));
+
     process.env.HOME = tmpHome;
     vi.resetModules();
     registry = await import('./index.js');
@@ -71,6 +109,8 @@ describe('adapter registry fixtures', () => {
     const activeProviders = registry.getActiveProviders().map((provider: any) => provider.provider).sort();
     expect(activeProviders).toContain('gemini');
     expect(activeProviders).toContain('openclaw');
+    expect(activeProviders).toContain('opencode');
+    expect(activeProviders).toContain('hermes');
     // Pi may or may not be available depending on whether ~/.pi exists in the test environment
   });
 
@@ -84,6 +124,9 @@ describe('adapter registry fixtures', () => {
     expect(openclawSession).toBeDefined();
     expect(openclawSession.estimatedCost).toEqual(expect.any(Number));
     expect(openclawSession.detail.messages.length).toBeGreaterThan(0);
+
+    expect(sessions.find((s: any) => s.provider === 'opencode')).toBeDefined();
+    expect(sessions.find((s: any) => s.provider === 'hermes')).toBeDefined();
   });
 
   it('collects watch paths from active adapters only', () => {
@@ -93,8 +136,14 @@ describe('adapter registry fixtures', () => {
     // At minimum we expect gemini and openclaw paths; pi may add its sessions path
     const geminiPath = path.join(tmpHome, '.gemini', 'tmp', geminiHash, 'chats');
     const openclawPath = path.join(tmpHome, '.openclaw', 'agents', 'agent-alpha', 'sessions');
+    const opencodeSessionPath = path.join(tmpHome, '.local', 'share', 'opencode', 'storage', 'session');
+    const opencodeMessagePath = path.join(tmpHome, '.local', 'share', 'opencode', 'storage', 'message');
+    const hermesPath = path.join(tmpHome, '.hermes', 'sessions');
     expect(paths).toContain(geminiPath);
     expect(paths).toContain(openclawPath);
+    expect(paths).toContain(opencodeSessionPath);
+    expect(paths).toContain(opencodeMessagePath);
+    expect(paths).toContain(hermesPath);
   });
 
   it('returns empty detail for unknown providers', async () => {

@@ -23,9 +23,14 @@ describe('collector logic', () => {
       expect(cost).toBe(4.8);
     });
 
-    it('falls back to Sonnet for unknown models', () => {
-      const cost = estimateCost('unknown-model', { input: 1000000, output: 1000000 });
+    it('falls back to Sonnet for unknown Claude model aliases', () => {
+      const cost = estimateCost('claude-future', { input: 1000000, output: 1000000 });
       expect(cost).toBe(18); // Sonnet rate
+    });
+
+    it('returns 0 for non-Claude models without explicit rates', () => {
+      const cost = estimateCost('unknown-model', { input: 1000000, output: 1000000 });
+      expect(cost).toBe(0);
     });
 
     it('handles zero tokens', () => {

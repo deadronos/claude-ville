@@ -21,8 +21,9 @@ export function ClaudeVilleApp() {
   const stats = snapshot.world.getStats();
 
   useEffect(() => {
-    void controller.boot().catch(() => {
+    void controller.boot().catch((error) => {
       // Error state is exposed through the controller snapshot.
+      console.error('[ClaudeVille] boot failed', error);
     });
 
     return () => {

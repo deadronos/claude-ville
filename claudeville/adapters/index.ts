@@ -14,6 +14,8 @@ import { OpenClawAdapter } from './openclaw.js';
 import { CopilotAdapter } from './copilot.js';
 import { VSCodeAdapter } from './vscode.js';
 import { PiAdapter } from './pi.js';
+import { OpenCodeAdapter } from './opencode.js';
+import { HermesAdapter } from './hermes.js';
 
 export const adapters: AgentAdapter[] = [
   new ClaudeAdapter(),
@@ -23,6 +25,8 @@ export const adapters: AgentAdapter[] = [
   new CopilotAdapter(),
   new VSCodeAdapter(),
   new PiAdapter(),
+  new OpenCodeAdapter(),
+  new HermesAdapter(),
 ];
 
 /**

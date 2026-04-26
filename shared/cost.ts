@@ -14,7 +14,8 @@ export const CLAUDE_RATE_TABLE = {
 
 export function estimateCost(model: string, tokens: { input?: number; output?: number } | null): number {
   const rate = (CLAUDE_RATE_TABLE as Record<string, { input: number; output: number }>)[model]
-    ?? CLAUDE_RATE_TABLE['claude-sonnet-4-5'];
+    ?? (model?.startsWith('claude-') ? CLAUDE_RATE_TABLE['claude-sonnet-4-5'] : null);
+  if (!rate) return 0;
   const input  = Number(tokens?.input  ?? 0);
   const output = Number(tokens?.output ?? 0);
   return (input * rate.input + output * rate.output) / 1000000;

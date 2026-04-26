@@ -55,11 +55,12 @@ describe('collector', () => {
       expect(haikuCost).toBe(4.8);
     });
 
-    it('estimateCost falls back to sonnet rate for unknown models', () => {
+    it('estimateCost falls back to sonnet rate for unknown Claude aliases only', () => {
       const tokens = { input: 1000000, output: 1000000 };
-      const cost = estimateCost('unknown-model', tokens);
+      const cost = estimateCost('claude-future', tokens);
       // Falls back to sonnet: 1M * 3 + 1M * 15 = $18
       expect(cost).toBe(18);
+      expect(estimateCost('unknown-model', tokens)).toBe(0);
     });
 
     it('normalizeSession handles missing tokenUsage', () => {

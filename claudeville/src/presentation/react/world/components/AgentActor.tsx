@@ -8,6 +8,7 @@ import type { AgentSprite } from '../../../character-mode/AgentSprite.js';
 import { THEME } from '../../../../config/theme.js';
 import { AgentStatus } from '../../../../domain/value-objects/AgentStatus.js';
 import type { BubbleConfig, CameraModel } from '../types.js';
+import { useInverseZoom } from '../hooks/useInverseZoom.js';
 import { createPolygonGeometry, createRoundedRectGeometry } from '../utils.js';
 import { WorldText } from './WorldText.js';
 
@@ -257,7 +258,7 @@ export function AgentActor({
     groupRef.current.position.set(Math.round(sprite.x), Math.round(sprite.y), depth);
   });
 
-  const inverseZoom = 1 / cameraRef.current.zoom;
+  const inverseZoom = useInverseZoom(cameraRef);
   const swing = sprite.moving ? Math.sin(sprite.walkFrame * 4) * 4 : 0;
   const app = sprite.agent.appearance;
   const bubbleText = sprite.agent.bubbleText;
