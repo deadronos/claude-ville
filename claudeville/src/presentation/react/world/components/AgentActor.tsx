@@ -34,7 +34,7 @@ export function Bubble({
   );
 
   return (
-    <group position={[0, y, 0.2]} scale={[inverseZoom, inverseZoom, 1]}>
+    <group position={[0, y, 10]} scale={[inverseZoom, inverseZoom, 1]}>
       <mesh geometry={geometry}>
         <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
@@ -43,7 +43,7 @@ export function Bubble({
         <lineBasicMaterial color={accentColor} toneMapped={false} />
       </lineSegments>
       <WorldText
-        position={[0, 1, 0.01]}
+        position={[0, 1, 0.1]}
         fontSize={bubbleConfig.statusFontSize}
         color="#eeeeee"
         anchorX="center"
@@ -63,11 +63,11 @@ export function NameTag({ name, inverseZoom }: { name: string; inverseZoom: numb
   const geometry = useMemo(() => createRoundedRectGeometry(width, 16, 4), [width]);
 
   return (
-    <group position={[0, 24, 0.2]} scale={[inverseZoom, inverseZoom, 1]}>
+    <group position={[0, 24, 10]} scale={[inverseZoom, inverseZoom, 1]}>
       <mesh geometry={geometry}>
         <meshBasicMaterial color="#e8d44d" toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
-      <WorldText position={[0, 1, 0.01]} fontSize={10} color="#1a1a2e" anchorX="center" anchorY="middle" outlineWidth={0.8} outlineColor="#f6e98d">
+      <WorldText position={[0, 1, 0.1]} fontSize={10} color="#1a1a2e" anchorX="center" anchorY="middle" outlineWidth={0.8} outlineColor="#f6e98d">
         {name}
       </WorldText>
     </group>
@@ -76,7 +76,7 @@ export function NameTag({ name, inverseZoom }: { name: string; inverseZoom: numb
 
 function IdleIndicator({ inverseZoom }: { inverseZoom: number }) {
   return (
-    <group position={[0, -30, 0.2]} scale={[inverseZoom, inverseZoom, 1]}>
+    <group position={[0, -30, 10]} scale={[inverseZoom, inverseZoom, 1]}>
       <WorldText position={[10, 8, 0]} fontSize={9} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
       <WorldText position={[16, -2, 0]} fontSize={12} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
       <WorldText position={[22, -14, 0]} fontSize={15} color={THEME.idle} anchorX="center" anchorY="middle">Z</WorldText>
@@ -86,12 +86,12 @@ function IdleIndicator({ inverseZoom }: { inverseZoom: number }) {
 
 function ChatIndicator({ bubbleConfig, inverseZoom }: { bubbleConfig: BubbleConfig; inverseZoom: number }) {
   return (
-    <group position={[0, -38, 0.25]} scale={[inverseZoom, inverseZoom, 1]}>
+    <group position={[0, -38, 10]} scale={[inverseZoom, inverseZoom, 1]}>
       <mesh scale={[14, 14, 1]}>
         <circleGeometry args={[1, 20]} />
         <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
-      <WorldText position={[0, 0, 0.02]} fontSize={bubbleConfig.chatFontSize} color="#4ade80" anchorX="center" anchorY="middle">...</WorldText>
+      <WorldText position={[0, 0, 0.1]} fontSize={bubbleConfig.chatFontSize} color="#4ade80" anchorX="center" anchorY="middle">...</WorldText>
     </group>
   );
 }
