@@ -60,6 +60,20 @@ const TOOL_LABELS: Record<string, string> = {
     'context7_resolve-library-id': 'Looking up',
     context7_query_docs: 'Checking docs',
     'context7_query-docs': 'Checking docs',
+    // Generic adapter fallbacks
+    Ask: 'Asking',
+    Cmd: 'Running',
+    UseMcp: 'Using tool',
+    call_result: 'Processing',
+    command_execution: 'Running',
+    function_call: 'Calling',
+    tool_request: 'Requesting',
+    tool_result: 'Processing',
+    tool_use: 'Using tool',
+    'tool.execution_start': 'Running',
+    toolCall: 'Using tool',
+    tool: 'Using tool',
+    unknown: 'Working',
 };
 
 const TOOL_DETAIL_KEYS: Record<string, string[]> = {
@@ -124,6 +138,20 @@ const TOOL_DETAIL_KEYS: Record<string, string[]> = {
     'context7_resolve-library-id': ['libraryName', 'query'],
     context7_query_docs: ['libraryId', 'query'],
     'context7_query-docs': ['libraryId', 'query'],
+    // Generic adapter fallbacks
+    Ask: ['question', 'prompt'],
+    Cmd: ['command'],
+    UseMcp: ['tool_name', 'name'],
+    call_result: ['output', 'result'],
+    command_execution: ['command'],
+    function_call: ['name', 'arguments'],
+    tool_request: ['name', 'args'],
+    tool_result: ['output', 'result'],
+    tool_use: ['name', 'input'],
+    'tool.execution_start': ['toolName', 'arguments'],
+    toolCall: ['name', 'arguments'],
+    tool: ['name', 'command'],
+    unknown: [],
 };
 
 const DEFAULT_DETAIL_KEYS = [
