@@ -338,6 +338,8 @@ async function sendInitialData(socket: WebSocket) {
 let watchDebounce: ReturnType<typeof setTimeout> | null = null;
 let broadcastInFlight = false;
 let broadcastPendingCount = 0;
+let fileWatcherCleanup: (() => void) | null = null;
+let pollingIntervalId: ReturnType<typeof setInterval> | null = null;
 
 async function broadcastUpdate() {
   if (wsClients.size === 0) return;
@@ -377,14 +379,29 @@ function debouncedBroadcast() {
 // ─── File watching (multi-provider) ────────────────────────
 
 function startFileWatcher() {
-  const { watchCount } = createFileWatchers(getAllWatchPaths(), debouncedBroadcast);
+  const watcherHandle = createFileWatchers(getAllWatchPaths(), debouncedBroadcast);
+  fileWatcherCleanup = watcherHandle.close;
+  const { watchCount } = watcherHandle;
   console.log(`[Watch] started watching ${watchCount} paths`);
 
   // Periodic polling (2s) - prevent missed updates
-  setInterval(() => {
+  pollingIntervalId = setInterval(() => {
     if (wsClients.size > 0) void broadcastUpdate();
   }, 2000);
   console.log('[Watch] polling started at 2s interval');
+}
+
+function stopFileWatcher() {
+  if (watchDebounce) {
+    clearTimeout(watchDebounce);
+    watchDebounce = null;
+  }
+  fileWatcherCleanup?.();
+  fileWatcherCleanup = null;
+  if (pollingIntervalId) {
+    clearInterval(pollingIntervalId);
+    pollingIntervalId = null;
+  }
 }
 
 // ─── HTTP server ──────────────────────────────────────────
@@ -513,6 +530,7 @@ process.on('unhandledRejection', (reason: unknown) => {
 
 process.on('SIGINT', () => {
   console.log('\nshutting down server...');
+  stopFileWatcher();
   for (const socket of wsClients) {
     try {
       socket.close();

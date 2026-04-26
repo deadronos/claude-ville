@@ -60,13 +60,14 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
   let watcherCallback: (() => void) | undefined;
   let intervalCallback: (() => void) | undefined;
   let nextTimeoutId = 1;
+  const watcherClose = vi.fn();
 
   const timeoutCallbacks = new Map<number, () => void>();
   const signalHandlers = new Map<string, () => void>();
   const fetchMock = options.fetchMock ?? vi.fn().mockResolvedValue({ ok: true, status: 202, statusText: 'Accepted' });
   const createFileWatchers = vi.fn((paths: string[], onChange: () => void) => {
     watcherCallback = onChange;
-    return { watchCount: paths.length };
+    return { watchCount: paths.length, close: watcherClose };
   });
   const getAllSessions = vi.fn().mockResolvedValue(options.sessions ?? []);
   const getAllWatchPaths = vi.fn().mockReturnValue(options.watchPaths ?? ['/tmp/provider-a']);
@@ -87,6 +88,7 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
     intervalCallback = callback;
     return 1 as unknown as ReturnType<typeof setInterval>;
   });
+  const clearIntervalSpy = vi.fn();
   const setTimeoutSpy = vi.fn((callback: () => void) => {
     const timerId = nextTimeoutId++;
     timeoutCallbacks.set(timerId, () => {
@@ -114,6 +116,7 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
       setTimeout: setTimeoutSpy as typeof setTimeout,
       clearTimeout: clearTimeoutSpy as typeof clearTimeout,
       setInterval: setIntervalSpy as typeof setInterval,
+      clearInterval: clearIntervalSpy as typeof clearInterval,
       console: { log: logSpy, error: errorSpy },
       process: { on: processOnSpy as typeof process.on, exit: processExitSpy as typeof process.exit },
     },
@@ -131,6 +134,7 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
     runtime,
     fetchMock,
     createFileWatchers,
+    watcherClose,
     getAllSessions,
     getSessionDetailByProvider,
     logSpy,
@@ -138,6 +142,7 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
     processOnSpy,
     processExitSpy,
     setIntervalSpy,
+    clearIntervalSpy,
     setTimeoutSpy,
     clearTimeoutSpy,
     timeoutCallbacks,
@@ -279,8 +284,11 @@ describe('collector/index.ts real module coverage', () => {
     harness.signalHandlers.get('SIGTERM')?.();
 
     expect(harness.clearTimeoutSpy).toHaveBeenLastCalledWith(pendingTimerId as unknown as ReturnType<typeof setTimeout>);
-    expect(harness.processExitSpy).toHaveBeenNthCalledWith(1, 0);
-    expect(harness.processExitSpy).toHaveBeenNthCalledWith(2, 0);
+    expect(harness.watcherClose).toHaveBeenCalledTimes(1);
+    expect(harness.clearIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(harness.clearIntervalSpy).toHaveBeenCalledWith(1);
+    expect(harness.processExitSpy).toHaveBeenCalledTimes(1);
+    expect(harness.processExitSpy).toHaveBeenCalledWith(0);
   });
 
   it('keeps dirty state on failures and retries after an in-flight publish finishes', async () => {

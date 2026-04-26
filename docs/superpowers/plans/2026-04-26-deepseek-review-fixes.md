@@ -96,7 +96,7 @@ npm run lint
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add claudeville/server.ts claudeville/server.test.ts package.json package-lock.json
@@ -114,14 +114,14 @@ git commit -m "fix: buffer legacy websocket frames"
 - Test: `shared/watch-utils.test.ts`
 - Test: `collector/index.real.test.ts`
 
-- [ ] **Step 1: Write failing cleanup tests**
+- [x] **Step 1: Write failing cleanup tests**
 
 Add tests that mock `fs.watch()` to return closeable watcher objects. Assert `createFileWatchers(...).close()` calls each watcher's `close()` exactly once and clears the pending debounce timer. In `collector/index.real.test.ts`, inject `clearInterval`, call `runtime.main()`, then `runtime.shutdown()`, and assert watcher cleanup plus interval cleanup.
 
 Run: `npm run test -- shared/watch-utils.test.ts collector/index.real.test.ts`
 Expected: fail because watcher handles and interval IDs are not retained.
 
-- [ ] **Step 2: Return structured watcher handles**
+- [x] **Step 2: Return structured watcher handles**
 
 Update `createFileWatchers()` to return:
 
@@ -138,13 +138,13 @@ Update `createFileWatchers()` to return:
 
 Keep the function JavaScript-compatible and update JSDoc so TypeScript callers understand the returned shape.
 
-- [ ] **Step 3: Store lifecycle handles**
+- [x] **Step 3: Store lifecycle handles**
 
 In `collector/index.ts`, widen `CollectorRuntimeDeps` with `clearInterval`, store the watcher handle returned by `startWatchers()`, store the interval ID from `setInterval()`, and clear both in `shutdown()` before `process.exit(0)`.
 
 In `claudeville/server.ts`, retain the legacy file watcher handle and polling interval ID so local shutdown hooks can close them later. If the server has no existing explicit shutdown export, keep this change minimal by preparing the handles and using them in the existing process-signal path if present.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
