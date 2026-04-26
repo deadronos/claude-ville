@@ -206,7 +206,7 @@ npm run typecheck
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add claudeville/src/main.tsx claudeville/src/presentation/react/ErrorBoundary.tsx claudeville/src/presentation/react/ErrorBoundary.test.tsx
@@ -221,14 +221,14 @@ git commit -m "fix: add react error boundary"
 - Modify: `claudeville/src/presentation/react/world/components/AgentActor.tsx`
 - Test: `claudeville/src/presentation/react/world/components/AgentActor.test.tsx`
 
-- [ ] **Step 1: Add a regression test or measurable utility seam**
+- [x] **Step 1: Add a regression test or measurable utility seam**
 
 If direct component testing is practical, mock `createRoundedRectGeometry` and `createPolygonGeometry`, render `Bubble`, `NameTag`, `Hair`, and `Accessory` through `AgentActor`, rerender with identical props, and assert stable constructor call counts. If those internals are not exportable, extract tiny local memoized subcomponents first, then test the exported `AgentActor` behavior with stable props.
 
 Run: `npm run test -- claudeville/src/presentation/react/world/components/AgentActor.test.tsx`
 Expected: fail because dynamic geometry constructors run during every render.
 
-- [ ] **Step 2: Memoize dynamic geometries**
+- [x] **Step 2: Memoize dynamic geometries**
 
 Import `useMemo` and `useEffect`. Use `useMemo()` for:
 
@@ -239,7 +239,7 @@ Import `useMemo` and `useEffect`. Use `useMemo()` for:
 
 For geometries passed through the `geometry` prop, dispose them in a cleanup effect only if React Three Fiber will not already dispose them. Prefer the repo's existing R3F pattern in `TerrainLayer.tsx` and `BuildingActor.tsx`.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 
