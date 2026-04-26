@@ -38,6 +38,13 @@ const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 const wsServer = new WebSocketServer({ noServer: true });
 const wsClients = new Set<WebSocket>();
 
+function parseRequestUrl(req: HttpRequest) {
+  const host = req.headers.host && /^[A-Za-z0-9.:[\]-]+$/.test(req.headers.host)
+    ? req.headers.host
+    : `localhost:${PORT}`;
+  return new URL(req.url ?? '/', `http://${host}`);
+}
+
 // ─── API handlers ─────────────────────────────────────────
 
 /**
@@ -88,7 +95,7 @@ async function handleGetTasks(req: HttpRequest, res: HttpResponse) {
  */
 async function handleGetSessionDetail(req: HttpRequest, res: HttpResponse) {
   try {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+    const url = parseRequestUrl(req);
     const sessionId = url.searchParams.get('sessionId');
     const project = url.searchParams.get('project');
     const provider = url.searchParams.get('provider') || 'claude';
@@ -137,7 +144,7 @@ function handleGetUsage(req: HttpRequest, res: HttpResponse) {
  */
 async function handleGetHistory(req: HttpRequest, res: HttpResponse) {
   try {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+    const url = parseRequestUrl(req);
     const limit = safeLimit(url.searchParams.get('lines'));
     const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
     const entries: { provider: string; sessionId: string; project: string | null; role: string; text: string; ts: number }[] = [];
@@ -414,7 +421,7 @@ const server = http.createServer((req: HttpRequest, res: HttpResponse) => {
     return;
   }
 
-  const parsedUrl = new URL(req.url ?? '/', `http://${req.headers.host}`);
+  const parsedUrl = parseRequestUrl(req);
   const pathname = parsedUrl.pathname;
 
   if (req.method === 'GET') {

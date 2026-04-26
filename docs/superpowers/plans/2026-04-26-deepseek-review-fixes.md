@@ -288,7 +288,7 @@ npm run typecheck
 
 Expected: all pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add collector/snapshot.ts collector/snapshot.test.ts
@@ -306,15 +306,15 @@ git commit -m "perf: parallelize collector detail fetches"
 - Modify: `widget/build.sh`
 - Test: relevant existing route/build tests
 
-- [ ] **Step 1: Normalize hubreceiver error text**
+- [x] **Step 1: Normalize hubreceiver error text**
 
 Change the missing `sessionId` message from Korean to English, for example `sessionId is required`. Add or update the route test that asserts the response.
 
-- [ ] **Step 2: Harden malformed Host parsing**
+- [x] **Step 2: Harden malformed Host parsing**
 
 In `claudeville/server.ts`, wrap URL construction in a small helper that defaults the host to `localhost` when `req.headers.host` is missing or malformed. Add a test for a missing host header if the server test harness can construct it directly.
 
-- [ ] **Step 3: Make widget path resolution portable**
+- [x] **Step 3: Make widget path resolution portable**
 
 Replace `readlink -f` in `widget/build.sh` with a macOS-compatible helper:
 
@@ -325,11 +325,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
 Keep the script behavior otherwise unchanged.
 
-- [ ] **Step 4: Decide and verify production build coverage**
+- [x] **Step 4: Decide and verify production build coverage**
 
 If the team wants `npm run build` to validate the browser bundle, change it to `npm run typecheck && npm run build:frontend`. If that makes regular local checks too slow, leave `build` alone and document `npm run build:frontend` as a CI-required command in the review status appendix.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
