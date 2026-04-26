@@ -20,7 +20,7 @@ type CollectorRuntimeConfig = {
 };
 
 type CollectorRuntimeDeps = {
-  createFileWatchers: (paths: WatchPath[], onChange: () => void) => { watchCount: number };
+  createFileWatchers: (paths: WatchPath[], onChange: () => void) => { watchCount: number; close?: () => void };
   createHash: typeof crypto.createHash;
   adapters: Array<{
     provider?: string;
@@ -35,6 +35,7 @@ type CollectorRuntimeDeps = {
   setTimeout: typeof globalThis.setTimeout;
   clearTimeout: typeof globalThis.clearTimeout;
   setInterval: typeof globalThis.setInterval;
+  clearInterval: typeof globalThis.clearInterval;
   console: { log: (...args: unknown[]) => void; error: (...args: unknown[]) => void };
   process: Pick<typeof process, 'on' | 'exit'>;
 };
@@ -72,6 +73,7 @@ const defaultCollectorDeps: CollectorRuntimeDeps = {
   setTimeout: globalThis.setTimeout,
   clearTimeout: globalThis.clearTimeout,
   setInterval: globalThis.setInterval,
+  clearInterval: globalThis.clearInterval,
   console,
   process,
 };
@@ -109,9 +111,14 @@ export function createCollectorRuntime(
     },
     buildSnapshot,
   );
+  let watcherCleanup: (() => void) | null = null;
+  let intervalId: ReturnType<typeof globalThis.setInterval> | null = null;
+  let shuttingDown = false;
 
   function startWatchers() {
-    const { watchCount } = deps.createFileWatchers(deps.getAllWatchPaths(), publisher.scheduleFlush);
+    const watcherHandle = deps.createFileWatchers(deps.getAllWatchPaths(), publisher.scheduleFlush);
+    watcherCleanup = watcherHandle.close ?? null;
+    const { watchCount } = watcherHandle;
     deps.console.log(`[collector] watching ${watchCount} path(s)`);
   }
 
@@ -119,12 +126,22 @@ export function createCollectorRuntime(
     startWatchers();
     await publisher.publishSnapshot();
 
-    deps.setInterval(() => {
+    intervalId = deps.setInterval(() => {
       void publisher.publishSnapshot();
     }, config.flushIntervalMs);
   }
 
   function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (watcherCleanup) {
+      watcherCleanup();
+      watcherCleanup = null;
+    }
+    if (intervalId) {
+      deps.clearInterval(intervalId);
+      intervalId = null;
+    }
     publisher.clearFlushTimer();
     deps.process.exit(0);
   }

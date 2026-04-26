@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 
+import { ErrorBoundary } from './presentation/react/ErrorBoundary.js';
 import { ClaudeVilleApp } from './presentation/react/ClaudeVilleApp.js';
 
 const rootElement = document.getElementById('root');
@@ -9,5 +10,7 @@ if (!rootElement) {
 }
 
 createRoot(rootElement).render(
-  <ClaudeVilleApp />,
+  <ErrorBoundary>
+    <ClaudeVilleApp />
+  </ErrorBoundary>,
 );

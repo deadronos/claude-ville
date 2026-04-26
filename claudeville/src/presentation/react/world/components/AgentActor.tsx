@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
 import { useFrame } from '@react-three/fiber';
@@ -11,7 +11,7 @@ import type { BubbleConfig, CameraModel } from '../types.js';
 import { createPolygonGeometry, createRoundedRectGeometry } from '../utils.js';
 import { WorldText } from './WorldText.js';
 
-function Bubble({
+export function Bubble({
   text,
   accentColor,
   bubbleConfig,
@@ -27,7 +27,10 @@ function Bubble({
   const maxChars = Math.max(8, Math.floor((bubbleConfig.statusMaxWidth - bubbleConfig.statusPaddingH) / (bubbleConfig.statusFontSize * 0.56)));
   const displayText = text.length > maxChars ? `${text.slice(0, Math.max(1, maxChars - 1))}…` : text;
   const width = Math.min(displayText.length * bubbleConfig.statusFontSize * 0.56 + bubbleConfig.statusPaddingH, bubbleConfig.statusMaxWidth);
-  const geometry = createRoundedRectGeometry(width, bubbleConfig.statusBubbleH, 6);
+  const geometry = useMemo(
+    () => createRoundedRectGeometry(width, bubbleConfig.statusBubbleH, 6),
+    [bubbleConfig.statusBubbleH, width],
+  );
 
   return (
     <group position={[0, y, 0.2]} scale={[inverseZoom, inverseZoom, 1]}>
@@ -54,9 +57,9 @@ function Bubble({
   );
 }
 
-function NameTag({ name, inverseZoom }: { name: string; inverseZoom: number }) {
+export function NameTag({ name, inverseZoom }: { name: string; inverseZoom: number }) {
   const width = Math.max(name.length * 6 + 14, 48);
-  const geometry = createRoundedRectGeometry(width, 16, 4);
+  const geometry = useMemo(() => createRoundedRectGeometry(width, 16, 4), [width]);
 
   return (
     <group position={[0, 24, 0.2]} scale={[inverseZoom, inverseZoom, 1]}>
@@ -92,7 +95,9 @@ function ChatIndicator({ bubbleConfig, inverseZoom }: { bubbleConfig: BubbleConf
   );
 }
 
-function Hair({ style, color }: { style: string; color: string }) {
+export function Hair({ style, color }: { style: string; color: string }) {
+  const spikyGeometry = useMemo(() => createPolygonGeometry([[-4, 4], [-2, -2], [0, 3], [2, -2], [4, 4]]), []);
+
   switch (style) {
     case 'long':
       return (
@@ -113,7 +118,7 @@ function Hair({ style, color }: { style: string; color: string }) {
       );
     case 'spiky':
       return (
-        <mesh position={[0, -12, 0.1]} geometry={createPolygonGeometry([[-4, 4], [-2, -2], [0, 3], [2, -2], [4, 4]])}>
+        <mesh position={[0, -12, 0.1]} geometry={spikyGeometry}>
           <meshBasicMaterial color={color} toneMapped={false} side={THREE.DoubleSide} />
         </mesh>
       );
@@ -167,11 +172,13 @@ function Eyes({ style }: { style: string }) {
   );
 }
 
-function Accessory({ type }: { type: string }) {
+export function Accessory({ type }: { type: string }) {
+  const crownGeometry = useMemo(() => createPolygonGeometry([[-4, 3], [-4, 0], [-2, 2], [0, -1], [2, 2], [4, 0], [4, 3]]), []);
+
   switch (type) {
     case 'crown':
       return (
-        <mesh position={[0, -15, 0.12]} geometry={createPolygonGeometry([[-4, 3], [-4, 0], [-2, 2], [0, -1], [2, 2], [4, 0], [4, 3]])}>
+        <mesh position={[0, -15, 0.12]} geometry={crownGeometry}>
           <meshBasicMaterial color="#ffd700" toneMapped={false} side={THREE.DoubleSide} />
         </mesh>
       );

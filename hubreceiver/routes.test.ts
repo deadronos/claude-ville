@@ -222,7 +222,7 @@ describe('hubreceiver routes', () => {
     const missingRes = makeResponse();
     handler(missingReq, missingRes);
     expect(missingRes.writeHead).toHaveBeenCalledWith(400, expect.any(Object));
-    expect(missingRes.end).toHaveBeenCalledWith(JSON.stringify({ error: 'sessionId 필수' }));
+    expect(missingRes.end).toHaveBeenCalledWith(JSON.stringify({ error: 'sessionId is required' }));
 
     const unknownReq = makeRequest('GET', '/api/does-not-exist', { host: 'localhost' });
     const unknownRes = makeResponse();

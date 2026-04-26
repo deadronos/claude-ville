@@ -7,7 +7,9 @@ interface SnapshotWithSessions {
 }
 
 export function computeSnapshotFingerprint(snapshot: object, createHash: typeof crypto.createHash): string {
-  return createHash('sha1').update(JSON.stringify(snapshot)).digest('hex');
+  const stableSnapshot = { ...snapshot };
+  delete (stableSnapshot as { timestamp?: unknown }).timestamp;
+  return createHash('sha1').update(JSON.stringify(stableSnapshot)).digest('hex');
 }
 
 export async function sendCollectorSnapshot(snapshot: object, config: { hubUrl: string; hubAuthToken: string }, fetchFn: (url: string, options: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; statusText: string }>): Promise<void> {

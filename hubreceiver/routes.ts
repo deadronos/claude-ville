@@ -77,7 +77,7 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
       const sessionId = url.searchParams.get('sessionId');
       const provider = url.searchParams.get('provider') || 'claude';
       if (!sessionId) {
-        sendError(res, 400, 'sessionId 필수');
+        sendError(res, 400, 'sessionId is required');
         return;
       }
       sendJson(res, 200, deps.getSessionDetail(sessionId, provider));

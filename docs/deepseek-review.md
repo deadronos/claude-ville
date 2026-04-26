@@ -148,3 +148,58 @@ Both the legacy server (`claudeville/server.ts`) and the hubreceiver (`hubreceiv
 3. **R3F GPU resource leaks** — geometry allocation per render without disposal
 4. **Test coverage gaps** — core adapters and collector runtime effectively untested
 5. **Graceful shutdown** — file watchers, intervals, and sockets are never cleaned up outside process exit
+
+---
+
+## Implementation Status
+
+Updated on 26 April 2026 by `codex/plan-deepseek-review-fixes`.
+
+### Fixed In This Branch
+
+- **WebSocket frame correctness:** Replaced the legacy hand-rolled WebSocket frame parser/sender in `claudeville/server.ts` with the maintained `ws` package in `noServer` mode. Added raw TCP regression tests for fragmented client frames and multiple frames delivered in a single TCP chunk.
+- **WebSocket diagnostics and backpressure behavior:** Legacy WebSocket socket errors and initial-data failures are now logged. `ws` owns protocol parsing, buffering, ping/pong handling, and send callbacks instead of the server dropping sockets based on raw `write()` return values.
+- **Watcher lifecycle cleanup:** `shared/watch-utils.js` now returns watcher handles and an idempotent `close()` function. The collector and legacy server retain watcher/interval handles and clear them during shutdown.
+- **Collector interval cleanup:** `collector/index.ts` stores and clears its periodic publish interval during shutdown.
+- **Collector detail fetch concurrency:** `collector/snapshot.ts` fetches missing session details with `Promise.all` while preserving output order and isolating per-session detail lookup failures.
+- **React error boundary:** Added a top-level `ErrorBoundary` around `ClaudeVilleApp` in `claudeville/src/main.tsx`.
+- **R3F geometry allocation:** Memoized dynamic geometries in `AgentActor.tsx` for status bubbles, name tags, spiky hair, and crown accessories, with regression tests around stable constructor calls.
+- **Hubreceiver error language:** Normalized the missing `sessionId` API error to English.
+- **Legacy URL parsing:** Centralized legacy request URL parsing with a localhost fallback for missing or malformed Host headers.
+- **Production build validation:** `npm run build` now runs both TypeScript and the Vite frontend production build.
+- **Widget portability:** `widget/build.sh` no longer depends on GNU `readlink -f`.
+- **Test hygiene:** `vitest.setup.ts` resets the global `localStorage` mock before each test.
+
+### Already Covered Or Rechecked
+
+- **Collector runtime coverage:** `collector/index.real.test.ts` now covers startup publish, watcher-triggered flush, interval-triggered retry behavior, shutdown cleanup, and interval callback removal after `clearInterval`.
+- **Adapter fixture coverage:** The repo already has real fixture tests for the adapter registry and several providers, including `index.fixture.test.ts`, `gemini.fixture.test.ts`, `openclaw.fixture.test.ts`, and `vscode.real.test.ts`. The broad `claude.test.ts` still contains some inline helper tests and remains a cleanup candidate.
+- **Frontend component coverage:** React shell tests already covered boot, mode switching, settings, selection, and activity surfaces; this branch adds the top-level error boundary and AgentActor geometry tests.
+
+### Deferred
+
+- **Authentication and origin checks:** This is a real exposure risk, but it needs a product/runtime policy decision. Suggested follow-up: default local-address guard for legacy mode, bearer-token read/write protection for hubreceiver deployments, and explicit HTTP/WS origin allowlists for remote usage.
+- **State identity and dashboard refetch churn:** Stabilizing `agents` array identity and dashboard request dependencies should be handled as a separate performance branch.
+- **WorldScene per-frame complexity:** Optimize sprite/building lookup maps after profiling or adding scene-scale regression coverage.
+- **Agent stale-removal policy:** Needs behavior agreement because changing stale removal can affect visible session history.
+- **Adapter hardcoded scan windows:** Needs provider-specific follow-up for Codex and Copilot session-detail discovery.
+- **Snapshot structural validation:** Worth a focused hubreceiver contract-validation pass.
+- **ESLint React plugin and broader lint tightening:** Useful, but likely broad churn and should be a dedicated cleanup PR.
+- **Responsive sidebar/CSS polish, stable project color pruning, WorldText character memoization, and key collision cleanup:** Lower-risk UI quality follow-ups.
+
+### Verification Used
+
+Focused verification during implementation:
+
+```bash
+npm run test -- claudeville/server.test.ts
+npm run test -- shared/watch-utils.test.ts collector/index.real.test.ts
+npm run test -- claudeville/src/presentation/react/ErrorBoundary.test.tsx claudeville/src/presentation/react/ClaudeVilleApp.test.tsx
+npm run test -- claudeville/src/presentation/react/world/utils.test.ts claudeville/src/presentation/react/world/components/AgentActor.test.tsx
+npm run test -- collector/snapshot.test.ts collector/index.real.test.ts
+npm run test -- hubreceiver/routes.test.ts claudeville/server.test.ts
+npm run widget:build
+npm run build
+npm run typecheck
+npm run lint
+```
