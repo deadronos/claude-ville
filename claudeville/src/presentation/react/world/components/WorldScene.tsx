@@ -11,7 +11,7 @@ import { getCameraFocusPosition, isoToScreen } from '../utils.js';
 import { AgentActor } from './AgentActor.js';
 import { BuildingActor } from './BuildingActor.js';
 import { ScreenSpaceCamera } from './ScreenSpaceCamera.js';
-import { TerrainLayer } from './TerrainLayer.js';
+import { InstancedTerrain } from './InstancedTerrain.js';
 
 export function WorldScene({
   viewport,
@@ -74,7 +74,7 @@ export function WorldScene({
       <ScreenSpaceCamera viewport={viewport} />
       <color attach="background" args={[THEME.bg]} />
       <group ref={rootRef}>
-        <TerrainLayer buildings={buildings} />
+        <InstancedTerrain buildings={buildings} />
         {buildings.map((building) => (
           <group
             key={building.type}

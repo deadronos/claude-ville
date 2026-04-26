@@ -42,8 +42,8 @@ vi.mock('./components/ScreenSpaceCamera.js', () => ({
   ScreenSpaceCamera: () => <div data-testid="screen-space-camera" />,
 }));
 
-vi.mock('./components/TerrainLayer.js', () => ({
-  TerrainLayer: () => <div data-testid="terrain-layer" />,
+vi.mock('./components/InstancedTerrain.js', () => ({
+  InstancedTerrain: () => <div data-testid="instanced-terrain" />,
 }));
 
 vi.mock('./components/AgentActor.js', () => ({
