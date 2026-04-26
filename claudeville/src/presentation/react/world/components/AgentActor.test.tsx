@@ -99,27 +99,25 @@ describe('AgentActor geometry creation', () => {
   });
 
   it('keeps speech and name text mounted while the UI visibility toggles', () => {
-    const sprite = {
+    const entity = {
       x: 12,
       y: 18,
       moving: false,
       walkFrame: 0,
       facingLeft: false,
       chatting: false,
-      agent: {
-        id: 'agent-1',
-        name: 'Agent One',
-        status: AgentStatus.WAITING,
-        bubbleText: null,
-        appearance: {
-          pants: '#111111',
-          shirt: '#222222',
-          skin: '#f5d0a0',
-          hairStyle: 'bald',
-          hair: '#333333',
-          eyeStyle: 'default',
-          accessory: 'none',
-        },
+      id: 'agent-1',
+      name: 'Agent One',
+      status: AgentStatus.WAITING,
+      bubbleText: null,
+      appearance: {
+        pants: '#111111',
+        shirt: '#222222',
+        skin: '#f5d0a0',
+        hairStyle: 'bald',
+        hair: '#333333',
+        eyeStyle: 'default',
+        accessory: 'none',
       },
     } as any;
 
@@ -134,17 +132,15 @@ describe('AgentActor geometry creation', () => {
         followSmoothing: 0,
       },
     };
-    const interactionRef = { current: { moved: false } };
 
     const { rerender } = render(
       <AgentActor
-        sprite={sprite}
+        entity={entity}
         selected={false}
         showUi={false}
         cameraRef={cameraRef as any}
         bubbleConfig={bubbleConfig}
         onSelect={() => {}}
-        interactionRef={interactionRef}
       />,
     );
 
@@ -154,13 +150,12 @@ describe('AgentActor geometry creation', () => {
 
     rerender(
       <AgentActor
-        sprite={sprite}
+        entity={entity}
         selected={false}
         showUi={true}
         cameraRef={cameraRef as any}
         bubbleConfig={bubbleConfig}
         onSelect={() => {}}
-        interactionRef={interactionRef}
       />,
     );
 
