@@ -2,7 +2,7 @@
 
 ## Scope
 
-This spec describes the architecture of ClaudeVille after the changes merged on top of `upstream/main`.
+This spec describes the current ClaudeVille architecture.
 
 It covers:
 
@@ -21,29 +21,29 @@ ClaudeVille is designed to:
 - support multiple provider CLIs with a shared UI and data model
 - run as either a local all-in-one app or a distributed collector / hub / frontend stack
 - keep the UI readable with stable names, project grouping, and provider badges
-- stay dependency-free and use platform-native Node.js / browser APIs only
+- use pragmatic TypeScript, React, R3F, and Vite tooling while keeping runtime and protocol boundaries explicit
 
 ## Runtime modes
 
 ### Legacy mode
 
-The legacy app runs from `claudeville/server.js` and serves:
+The legacy app runs from `claudeville/server.ts` and serves:
 
 - the HTML shell
-- static CSS / JS assets
-- `/runtime-config.js`
-- the local session APIs
+- static CSS / JS assets or the built frontend bundle when `dist/frontend` exists
+- `/runtime-config.js`, generated from `runtime-config.shared.ts`
+- the local session, detail, team, task, provider, usage, and history APIs
 - a WebSocket endpoint for live updates
 
-In this mode, the app reads local provider files directly through the adapter layer.
+In this mode, the server reads local provider files through the adapter layer but still exposes the same browser-facing API contract used by the split stack.
 
 ### Split-stack mode
 
 The distributed stack is made of three parts:
 
-- `collector` watches local provider files and publishes snapshots
-- `hubreceiver` accepts snapshots, merges state, and exposes HTTP / WebSocket APIs
-- `vite.config.ts` serves the browser UI from `claudeville/`, injects runtime config during dev, and builds the browser bundle to `dist/frontend` for remote deployments
+- `collector/start.ts`, which boots the collector runtime created by `collector/index.ts`
+- `hubreceiver/server.ts`, which accepts snapshots, merges state, and exposes HTTP / WebSocket APIs
+- `vite.config.ts`, which serves the browser UI from `claudeville/`, injects runtime config during dev, proxies `/api` and `/ws`, and builds the browser bundle to `dist/frontend`
 
 This mode is intended for cases where the browser UI runs remotely from the machine that owns the provider logs.
 
@@ -80,10 +80,10 @@ Infrastructure adapters provide transport and data access:
 UI rendering is split by mode and runtime surface:
 
 - `App.ts` for the legacy imperative shell
-- `react/` for the React shell, controller, world scene, and dashboard composition
-- `character-mode/` for the isometric world renderer and camera math reference
-- `dashboard-mode/` for project-grouped cards and per-session details
-- `shared/` for top bar, sidebar, modal, toast, and activity panel
+- `react/` for the React shell, controller, mirrored world store, and R3F world composition
+- `character-mode/` for the legacy isometric renderer and camera math reference
+- `dashboard-mode/` for project-grouped cards and per-session details used by the non-React legacy shell
+- `shared/` for legacy shared chrome and helpers
 
 ### `claudeville/adapters`
 
@@ -97,18 +97,22 @@ Current providers include:
 - OpenClaw
 - GitHub Copilot CLI
 - VS Code / VS Code Insiders (shared `vscode` provider key)
+- Pi
+- OpenCode
+- Hermes
 
 ## Data flow
 
-### Legacy app data flow
+### Browser app data flow
 
-1. The app loads runtime configuration.
-2. `HubDataSource` fetches session lists, teams, tasks, and usage.
-3. `SessionWatcher` keeps the world updated via WebSocket or polling fallback.
-4. `AgentManager` normalizes sessions into `World` entities.
-5. Presentation components render the world, dashboard, top bar, sidebar, and activity panel.
+1. The browser app loads runtime configuration from injected Vite config in dev or `/runtime-config.js` in legacy mode.
+2. `HubDataSource` fetches sessions, teams, tasks, usage, and history from the configured runtime base URL.
+3. `SessionWatcher` and `WebSocketClient` keep the domain world updated from the legacy server or hubreceiver.
+4. `AgentManager` normalizes session data into `World` entities and shared cost / token presentation fields.
+5. `ClaudeVilleController` exposes a `useSyncExternalStore` snapshot for shell state and mirrors agents, buildings, and selection into `useWorldStore` for the hot world-render path.
+6. React presentation components render the world, dashboard, top bar, sidebar, settings, toasts, and activity panel.
 
-### Split-stack data flow
+### Split-stack ingest flow
 
 1. `collector` scans provider files and builds a snapshot.
 2. `hubreceiver` stores the latest snapshot per collector and merges the current state.
@@ -126,8 +130,8 @@ The browser layout is intentionally fixed in broad structure, but implemented wi
 
 The content area switches between:
 
-- world mode: canvas-based isometric rendering inside the React shell, with a screen-space orthographic camera and DOM overlays for focus/selection markers
-- dashboard mode: card-based project grouping
+- world mode: React Three Fiber isometric rendering inside the React shell, with a manual screen-space orthographic camera, ECS-backed world entities, instanced terrain, and DOM overlays for focus and selection markers
+- dashboard mode: card-based project grouping with per-agent detail hooks
 
 The optional right activity panel is a flex sibling; it should animate with transforms and opacity rather than width so the world viewport stays stable.
 
@@ -139,14 +143,14 @@ The current naming pipeline supports:
 
 - autodetected names when a human-friendly name already exists
 - pooled names for short stable labels
-- provider-specific overrides
+- provider-specific name-mode overrides
 - separate pools for agent/team names and session names
 
 This keeps the sidebar, dashboard, and activity panel readable even when session IDs are long or unstable.
 
 ## API surface
 
-The architecture exposes the following main data endpoints:
+The architecture exposes the following main endpoints:
 
 - `/api/sessions`
 - `/api/session-detail`
@@ -154,35 +158,32 @@ The architecture exposes the following main data endpoints:
 - `/api/tasks`
 - `/api/providers`
 - `/api/usage`
-- `/api/history` in the legacy app and split hubreceiver
+- `/api/history`
+- `/runtime-config.js` on the legacy server
+- `/api/collector/snapshot` and `/health` on the hubreceiver ingest surface
 
 The browser UI should always use the configured runtime base URL for remote deployments, including session-detail, usage, and history fetches.
 
-## Branch delta since `upstream/main`
+## Current major architectural themes
 
-The branch introduces the following major architectural changes:
+The current codebase centers on:
 
-- OpenClaw provider support
-- GitHub Copilot provider support
-- split collector / hubreceiver / frontend runtime
-- shared runtime config generation for browser and Node entrypoints
-- short stable display names and naming pools
+- multi-provider adapter support across Claude, Codex, Gemini, OpenClaw, Copilot, VS Code, Pi, OpenCode, and Hermes
+- split collector / hubreceiver / frontend runtime with a shared runtime-config builder
+- an import-safe collector runtime in `collector/index.ts` and a side-effecting CLI entrypoint in `collector/start.ts`
+- short stable display names, configurable name pools, and provider-specific name modes
 - project grouping and provider-aware dashboard rendering
-- shared cost helper used by the world, top bar, and activity panel
-- expanded activity panel token / tool / message inspection
-- React presentation shell and R3F world scene with screen-space camera and transform helpers
-- legacy `/api/history` restored for local mode parity
-- richer docs and issue tracking for OpenClaw naming behavior
+- shared cost and token presentation helpers reused across world, dashboard, activity panel, and widget surfaces
+- a React presentation shell with a controller snapshot plus a mirrored Zustand world store for the render-hot path
+- an R3F world scene built around a manual screen-space camera, ECS system helpers, instanced terrain, and DOM overlays
+- API parity between the legacy server and split stack for history and session-detail views
 
 ## Constraints
 
-- Prefer platform-native APIs for simple local behavior, but established frameworks,
-  libraries, and npm dependencies are allowed when they reduce protocol risk,
-  security risk, maintenance burden, or implementation complexity. New
-  dependencies should be narrowly scoped, actively maintained, and covered by
-  tests around the ClaudeVille integration points.
-- ES modules in `src/`
-- CommonJS in server / adapter entrypoints
+- Prefer platform-native APIs where simple, but the current stack intentionally uses established dependencies such as TypeScript, React, R3F, Vite, Vitest, Testing Library, and Playwright where they reduce maintenance or protocol risk.
+- TypeScript / TSX source uses ES module syntax with explicit `.js` import specifiers where required by the runtime; Node entrypoints execute through `tsx`.
 - port `4000` remains the legacy app default
+- port `3030` remains the hubreceiver default
+- port `3001` remains the frontend dev-server default
 - CSS layout should remain flexbox-based for app chrome, with fixed positioning reserved for modal / toast only
 - canvas-adjacent panels should avoid width animations; use transform and opacity so the R3F viewport does not churn

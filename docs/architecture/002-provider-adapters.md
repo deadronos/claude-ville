@@ -19,7 +19,21 @@ Keep a dedicated adapter per provider under `claudeville/adapters/` and require 
 - resolve a single session’s detail view
 - expose watch paths for live updates
 
-The registry in `claudeville/adapters/index.js` remains the aggregator that merges adapter output into the shared session model.
+The registry in `claudeville/adapters/index.ts` remains the aggregator that merges adapter output into the shared session model.
+
+The current registry wires these adapters:
+
+- `claude.ts`
+- `codex.ts`
+- `gemini.ts`
+- `openclaw.ts`
+- `copilot.ts`
+- `vscode.ts`
+- `pi.ts`
+- `opencode.ts`
+- `hermes.ts`
+
+The registry is also responsible for sanitizing summaries and details, normalizing token data, and attaching `estimatedCost` before data leaves the adapter layer.
 
 ## Consequences
 
