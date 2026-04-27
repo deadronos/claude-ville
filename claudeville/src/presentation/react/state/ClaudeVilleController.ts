@@ -255,6 +255,7 @@ export class ClaudeVilleController {
     }
 
     this.selectedAgentId = agentId;
+    useWorldStore.getState().setSelectedAgentId(agentId);
     if (this.mode !== 'character') {
       this.mode = 'character';
       eventBus.emit('mode:changed', 'character');

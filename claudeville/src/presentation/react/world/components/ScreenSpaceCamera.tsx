@@ -9,10 +9,6 @@ export function ScreenSpaceCamera({
   viewport: ViewportSize;
   cameraRef?: { current: CameraModel };
 }) {
-  const x = cameraRef?.current?.x ?? 0;
-  const y = cameraRef?.current?.y ?? 0;
-  const zoom = cameraRef?.current?.zoom ?? 1;
-
   return (
     <OrthographicCamera
       makeDefault
@@ -23,8 +19,8 @@ export function ScreenSpaceCamera({
       bottom={viewport.height}
       near={-1000}
       far={1000}
-      position={[x, y, 100]}
-      zoom={zoom}
+      position={[0, 0, 100]}
+      zoom={1}
     />
   );
 }

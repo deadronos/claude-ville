@@ -3,9 +3,12 @@ import * as THREE from 'three';
 import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from '../../../config/constants.js';
 import type { CameraModel, ViewportSize } from './types.js';
 
-// WorldView intentionally keeps the old canvas-style screen-space convention inside R3F:
-// +x moves right, +y moves down, and +z is used for painter-style depth ordering.
-// Keeping that convention isolated here prevents accidental sign flips across components.
+// World Coordinates:
+// - World uses isometric projection where isometric_x = (worldX - worldZ) * TILE_WIDTH/2
+//   and isometric_y = (worldX + worldZ) * TILE_HEIGHT/2 - worldY
+// - Camera targetX/targetZ are the isometric world coordinates the camera focuses on
+// - Panning adjusts targetX/targetZ, zooming adjusts zoom level
+
 export function isoToScreen(tileX: number, tileY: number) {
   return {
     x: (tileX - tileY) * TILE_WIDTH / 2,
@@ -13,37 +16,90 @@ export function isoToScreen(tileX: number, tileY: number) {
   };
 }
 
-export function screenToWorld(screenX: number, screenY: number, camera: CameraModel) {
+// Convert world coordinates to isometric screen coordinates
+export function worldToIso(worldX: number, worldZ: number): { x: number; y: number } {
   return {
-    x: screenX / camera.zoom - camera.x,
-    y: screenY / camera.zoom - camera.y,
+    x: (worldX - worldZ) * (TILE_WIDTH / 2),
+    y: (worldX + worldZ) * (TILE_HEIGHT / 2),
   };
 }
 
-export function screenToTile(screenX: number, screenY: number, camera: CameraModel) {
-  const world = screenToWorld(screenX, screenY, camera);
-  const tileX = (world.x / (TILE_WIDTH / 2) + world.y / (TILE_HEIGHT / 2)) / 2;
-  const tileY = (world.y / (TILE_HEIGHT / 2) - world.x / (TILE_WIDTH / 2)) / 2;
+// Convert isometric screen coordinates to world coordinates
+export function isoToWorld(isoX: number, isoY: number): { x: number; z: number } {
+  // isoX = (x - z) * TILE_WIDTH/2
+  // isoY = (x + z) * TILE_HEIGHT/2
+  // Solving: x = isoX / (TILE_WIDTH/2) + isoY / (TILE_HEIGHT/2)) / 2
+  //         z = isoY / (TILE_HEIGHT/2) - x
+  const x = (isoX / (TILE_WIDTH / 2) + isoY / (TILE_HEIGHT / 2)) / 2;
+  const z = isoY / (TILE_HEIGHT / 2) - x;
+  return { x, z };
+}
+
+// Convert screen coordinates to world coordinates using camera
+export function screenToWorld(
+  screenX: number,
+  screenY: number,
+  camera: CameraModel,
+  viewport: ViewportSize
+): { x: number; z: number } {
+  // First, get isometric coordinates relative to camera target
+  const isoX = (screenX - viewport.width / 2) / camera.zoom + camera.targetX;
+  const isoY = (screenY - viewport.height / 2) / camera.zoom + camera.targetZ;
+
+  // Then convert isometric to world
+  return isoToWorld(isoX, isoY);
+}
+
+// Convert world coordinates to screen coordinates using camera
+export function worldToScreen(
+  worldX: number,
+  worldZ: number,
+  camera: CameraModel,
+  viewport: ViewportSize
+): { x: number; y: number } {
+  const iso = worldToIso(worldX, worldZ);
   return {
-    tileX: Math.floor(tileX),
-    tileY: Math.floor(tileY),
+    x: (iso.x - camera.targetX) * camera.zoom + viewport.width / 2,
+    y: (iso.y - camera.targetZ) * camera.zoom + viewport.height / 2,
   };
 }
 
-export function getCameraFocusPosition(targetX: number, targetY: number, viewport: ViewportSize, zoom: number) {
+export function screenToTile(
+  screenX: number,
+  screenY: number,
+  camera: CameraModel,
+  viewport: ViewportSize
+) {
+  const world = screenToWorld(screenX, screenY, camera, viewport);
   return {
-    x: -targetX + viewport.width / (2 * zoom),
-    y: -targetY + viewport.height / (2 * zoom),
+    tileX: Math.floor(world.x),
+    tileZ: Math.floor(world.z),
   };
 }
 
+export function getCameraFocusPosition(
+  targetX: number,
+  targetZ: number,
+  viewport: ViewportSize,
+  zoom: number,
+) {
+  return {
+    x: Math.round(viewport.width / 2 - targetX * zoom),
+    y: Math.round(viewport.height / 2 - targetZ * zoom),
+  };
+}
+
+// Camera functions
 export function createCenteredCamera(width: number, height: number, zoom = 1.2): CameraModel {
-  const centerTile = MAP_SIZE / 2;
-  const center = isoToScreen(centerTile, centerTile);
-  const focus = getCameraFocusPosition(center.x, center.y, { width, height }, zoom);
+  // Center of map in world coordinates
+  const centerX = (MAP_SIZE - 1) / 2;
+  const centerZ = (MAP_SIZE - 1) / 2;
+  // Center of map in isometric coordinates
+  const isoCenter = worldToIso(centerX, centerZ);
+
   return {
-    x: focus.x,
-    y: focus.y,
+    targetX: isoCenter.x,
+    targetZ: isoCenter.y,
     zoom,
     minZoom: 0.5,
     maxZoom: 3,

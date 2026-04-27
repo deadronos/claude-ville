@@ -76,13 +76,11 @@ describe('AgentActor geometry creation', () => {
   it('updates inverse zoom from the camera during frame updates', () => {
     const cameraRef = {
       current: {
-        x: 0,
-        y: 0,
+        targetX: 0,
+        targetZ: 0,
         zoom: 1,
         minZoom: 0.5,
         maxZoom: 4,
-        viewportWidth: 100,
-        viewportHeight: 100,
         followAgentId: null,
         followSmoothing: 0,
       },

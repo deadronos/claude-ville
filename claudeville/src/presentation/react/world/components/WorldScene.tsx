@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { THEME } from '../../../../config/theme.js';
 import { useEcsWorld } from '../ecs/useEcsWorld.js';
 import { createMovementSystem, createProximitySystem, createCameraFollowSystem } from '../ecs/systems.js';
+import { getCameraFocusPosition } from '../utils.js';
 import { InstancedTerrain } from './InstancedTerrain.js';
 import { AgentActor } from './AgentActor.js';
 import { BuildingActor } from './BuildingActor.js';
@@ -22,7 +23,6 @@ export function WorldScene({
   hoveredBuildingId,
   onSelectAgent,
   onHoverBuilding,
-  interactionRef,
 }: WorldSceneProps) {
   const rootRef = useRef<THREE.Group | null>(null);
   const agents = sprites.map(s => s.agent);
@@ -30,12 +30,21 @@ export function WorldScene({
 
   const movementSystem = createMovementSystem(world);
   const proximitySystem = createProximitySystem(world, roofAlphaRef);
-  const cameraFollowSystem = createCameraFollowSystem(world, cameraRef, viewport);
+  const cameraFollowSystem = createCameraFollowSystem(world, cameraRef);
 
+  // Scene transform: offset content so camera target is at screen center
+  // We need to flip the Y axis because isometric Y increases up but Three.js Y increases down
   useFrame(() => {
     if (rootRef.current) {
-      rootRef.current.position.set(Math.round(cameraRef.current.x * cameraRef.current.zoom), Math.round(cameraRef.current.y * cameraRef.current.zoom), 0);
-      rootRef.current.scale.set(cameraRef.current.zoom, cameraRef.current.zoom, 1);
+      const scale = cameraRef.current.zoom;
+      const offset = getCameraFocusPosition(
+        cameraRef.current.targetX,
+        cameraRef.current.targetZ,
+        viewport,
+        scale,
+      );
+      rootRef.current.position.set(offset.x, offset.y, 0);
+      rootRef.current.scale.set(scale, scale, 1);
     }
   });
 

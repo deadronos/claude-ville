@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { TILE_HEIGHT, TILE_WIDTH } from '../../../../config/constants.js';
 import { useTerrain } from '../hooks/useTerrain.js';
 
-const vertexShader = /* glsl */ `
+export const INSTANCED_TERRAIN_VERTEX_SHADER = /* glsl */ `
   attribute vec3 instanceColor;
   attribute float instanceWater;
   varying vec3 vColor;
@@ -16,14 +16,11 @@ const vertexShader = /* glsl */ `
     vColor = instanceColor;
     vWater = instanceWater;
     vUv = uv;
-    vec3 pos = position;
+    vec4 transformed = vec4(position, 1.0);
     #ifdef USE_INSTANCING
-      mat4 instanceMat = instanceMatrix;
-      vec4 worldPos = instanceMat * vec4(pos, 1.0);
-      gl_Position = projectionMatrix * viewMatrix * worldPos;
-    #else
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      transformed = instanceMatrix * transformed;
     #endif
+    gl_Position = projectionMatrix * modelViewMatrix * transformed;
   }
 `;
 
@@ -74,7 +71,7 @@ export function InstancedTerrain({ buildings }: { buildings: any[] }) {
 
   const shaderMaterial = useMemo(() => {
     const mat = new THREE.ShaderMaterial({
-      vertexShader,
+      vertexShader: INSTANCED_TERRAIN_VERTEX_SHADER,
       fragmentShader,
       uniforms: { uTime: { value: 0 } },
       side: THREE.DoubleSide,
@@ -97,9 +94,10 @@ export function InstancedTerrain({ buildings }: { buildings: any[] }) {
   }, [colorArray, waterArray]);
 
   useEffect(() => {
-    if (meshRef.current && meshRef.current.instanceMatrix && typeof meshRef.current.instanceMatrix.fromArray === 'function') {
-      meshRef.current.instanceMatrix.fromArray(matrixArray);
-      meshRef.current.instanceMatrix.needsUpdate = true;
+    const instanceMatrix = meshRef.current?.instanceMatrix;
+    if (instanceMatrix) {
+      instanceMatrix.copyArray(matrixArray);
+      instanceMatrix.needsUpdate = true;
     }
   }, [matrixArray]);
 
@@ -112,6 +110,6 @@ export function InstancedTerrain({ buildings }: { buildings: any[] }) {
   if (count === 0) return null;
 
   return (
-    <instancedMesh ref={meshRef} args={[geometry, shaderMaterial, count]} />
+    <instancedMesh ref={meshRef} args={[geometry, shaderMaterial, count]} frustumCulled={false} />
   );
 }

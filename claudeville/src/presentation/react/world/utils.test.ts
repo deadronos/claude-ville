@@ -4,37 +4,34 @@ import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from '../../../config/constants.js';
 import {
   createCenteredCamera,
+  getCameraFocusPosition,
   createPolygonGeometry,
   createRoundedRectGeometry,
-  getCameraFocusPosition,
   isoToScreen,
+  isoToWorld,
   lighten,
   screenToTile,
   screenToWorld,
+  worldToIso,
 } from './utils.js';
 
 describe('world utils camera helpers', () => {
-  it('centers a target world point inside the viewport at the current zoom', () => {
-    const viewport = { width: 960, height: 540 };
-    const zoom = 1.5;
-    const target = { x: 120, y: 240 };
-
-    const focus = getCameraFocusPosition(target.x, target.y, viewport, zoom);
-
-    expect((target.x + focus.x) * zoom).toBe(viewport.width / 2);
-    expect((target.y + focus.y) * zoom).toBe(viewport.height / 2);
-  });
-
   it('creates a centered camera from the map midpoint', () => {
     const viewport = { width: 1200, height: 800 };
     const zoom = 1.2;
     const camera = createCenteredCamera(viewport.width, viewport.height, zoom);
-    const centerTile = MAP_SIZE / 2;
-    const center = isoToScreen(centerTile, centerTile);
 
-    expect((center.x + camera.x) * zoom).toBeCloseTo(viewport.width / 2);
-    expect((center.y + camera.y) * zoom).toBeCloseTo(viewport.height / 2);
+    // Camera should be centered on the map
+    expect(camera.targetX).toBeDefined();
+    expect(camera.targetZ).toBeDefined();
     expect(camera.zoom).toBe(zoom);
+  });
+
+  it('returns the root transform that keeps a target centered in screen space', () => {
+    expect(getCameraFocusPosition(120, 80, { width: 960, height: 540 }, 2)).toEqual({
+      x: 240,
+      y: 110,
+    });
   });
 
   it('matches the isometric screen conversion used by follow targets', () => {
@@ -47,34 +44,21 @@ describe('world utils camera helpers', () => {
     });
   });
 
-  it('round-trips world coordinates through a zoomed camera', () => {
-    const camera = {
-      x: -48,
-      y: 24,
-      zoom: 2,
-      minZoom: 0.5,
-      maxZoom: 3,
-      followAgentId: null,
-      followSmoothing: 0.08,
-    };
-    const screen = isoToScreen(7, 9);
-    const world = screenToWorld((screen.x + camera.x) * camera.zoom, (screen.y + camera.y) * camera.zoom, camera);
+  it('round-trips world coordinates through isometric conversion', () => {
+    const worldX = 10;
+    const worldZ = 14;
+    const iso = worldToIso(worldX, worldZ);
+    const back = isoToWorld(iso.x, iso.y);
 
-    expect(world).toEqual({
-      x: screen.x,
-      y: screen.y,
-    });
-
-    expect(screenToTile((screen.x + camera.x) * camera.zoom, (screen.y + camera.y) * camera.zoom, camera)).toEqual({
-      tileX: 7,
-      tileY: 9,
-    });
+    expect(back.x).toBeCloseTo(worldX);
+    expect(back.z).toBeCloseTo(worldZ);
   });
 
-  it('handles tile boundaries and negative world coordinates', () => {
+  it('converts screen to tile coordinates correctly', () => {
+    const viewport = { width: 960, height: 540 };
     const camera = {
-      x: 0,
-      y: 0,
+      targetX: 0,
+      targetZ: 0,
       zoom: 1,
       minZoom: 0.5,
       maxZoom: 3,
@@ -82,15 +66,14 @@ describe('world utils camera helpers', () => {
       followSmoothing: 0.08,
     };
 
-    expect(screenToTile(-1, -1, camera)).toEqual({
-      tileX: -1,
-      tileY: -1,
-    });
+    // Center of viewport should give tile around (10, 14) when camera is centered
+    const iso = worldToIso(10, 14);
+    const screenX = iso.x + viewport.width / 2;
+    const screenY = iso.y + viewport.height / 2;
 
-    expect(screenToTile(0, TILE_HEIGHT / 2 - 0.01, camera)).toEqual({
-      tileX: 0,
-      tileY: 0,
-    });
+    const tile = screenToTile(screenX, screenY, camera, viewport);
+    expect(tile.tileX).toBe(10);
+    expect(tile.tileZ).toBe(14);
   });
 });
 

@@ -70,29 +70,39 @@ vi.mock('./state/useWorldStore.js', () => ({
 
 const utilsMocks = vi.hoisted(() => ({
   createCenteredCamera: vi.fn((width: number, height: number, zoom = 1.2) => ({
-    x: width / 40,
-    y: height / 30,
+    targetX: width / 40,
+    targetZ: height / 30,
     zoom,
     minZoom: 0.5,
     maxZoom: 3,
     followAgentId: null,
     followSmoothing: 0.08,
   })),
-  getCameraFocusPosition: vi.fn((targetX: number, targetY: number, viewport: { width: number; height: number }, zoom: number) => ({
-    x: targetX / 10 + viewport.width / 100 + zoom,
-    y: targetY / 10 + viewport.height / 100 + zoom,
-  })),
   isoToScreen: vi.fn((tileX: number, tileY: number) => ({ x: tileX * 10, y: tileY * 20 })),
-  screenToWorld: vi.fn((screenX: number, screenY: number, camera: { x: number; y: number; zoom: number }) => ({
-    x: screenX / camera.zoom - camera.x,
-    y: screenY / camera.zoom - camera.y,
+  screenToWorld: vi.fn((screenX: number, screenY: number, camera: { targetX: number; targetZ: number; zoom: number }, viewport: { width: number; height: number }) => ({
+    x: screenX / camera.zoom - camera.targetX,
+    z: screenY / camera.zoom - camera.targetZ,
+  })),
+  getCameraFocusPosition: vi.fn((targetX: number, targetZ: number, viewport: { width: number; height: number }, zoom: number) => ({
+    x: Math.round(viewport.width / 2 - targetX * zoom),
+    y: Math.round(viewport.height / 2 - targetZ * zoom),
+  })),
+  worldToScreen: vi.fn((worldX: number, worldZ: number, camera: { targetX: number; targetZ: number; zoom: number }, viewport: { width: number; height: number }) => ({
+    x: worldX * camera.zoom + camera.targetX,
+    y: worldZ * camera.zoom + camera.targetZ,
+  })),
+  worldToIso: vi.fn((worldX: number, worldZ: number) => ({ x: worldX * 32, y: worldZ * 16 })),
+  isoToWorld: vi.fn((isoX: number, isoY: number) => ({ x: isoX / 32, z: isoY / 16 })),
+  screenToTile: vi.fn((screenX: number, screenY: number, camera: any, viewport: any) => ({
+    tileX: Math.floor(screenX / 32),
+    tileZ: Math.floor(screenY / 16),
   })),
 }));
 
 vi.mock('./utils.js', () => utilsMocks);
 
 import { WorldView } from './WorldView.js';
-import { createCenteredCamera, getCameraFocusPosition, isoToScreen, screenToWorld } from './utils.js';
+import { createCenteredCamera, isoToScreen, screenToWorld, worldToScreen, worldToIso, isoToWorld, screenToTile } from './utils.js';
 
 beforeEach(() => {
   worldViewMocks.canvasProps = null;
@@ -104,9 +114,9 @@ beforeEach(() => {
   worldViewMocks.resizeCallback = null;
   worldViewMocks.observerDisconnect.mockReset();
   utilsMocks.createCenteredCamera.mockClear();
-  utilsMocks.getCameraFocusPosition.mockClear();
   utilsMocks.isoToScreen.mockClear();
   utilsMocks.screenToWorld.mockClear();
+  utilsMocks.worldToScreen.mockClear();
 
   // Reset store state for each test
   sharedStoreState.agents = [];
@@ -157,10 +167,6 @@ function renderWorldView(overrides: Partial<ComponentProps<typeof WorldView>> = 
   return render(
     <WorldView
       active
-      agents={[{ id: 'agent-1' } as any]}
-      buildings={[]}
-      selectedAgentId="agent-1"
-      selectedAgentName="Scout 7"
       bubbleConfig={{ textScale: 1, statusFontSize: 14, statusMaxWidth: 260, statusBubbleH: 28, statusPaddingH: 24, chatFontSize: 14 }}
       onSelectAgent={vi.fn()}
       onClearSelection={vi.fn()}
@@ -206,8 +212,8 @@ describe('WorldView', () => {
 
     fireEvent.pointerMove(worldRoot, { clientX: 112, clientY: 92 });
     expect(worldViewMocks.worldSceneProps?.interactionRef.current.moved).toBe(true);
-    expect(worldViewMocks.worldSceneProps?.cameraRef.current.x).toBeCloseTo(20, 5);
-    expect(worldViewMocks.worldSceneProps?.cameraRef.current.y).toBeCloseTo(20, 5);
+    expect(worldViewMocks.worldSceneProps?.cameraRef.current.targetX).toBeCloseTo(0, 5);
+    expect(worldViewMocks.worldSceneProps?.cameraRef.current.targetZ).toBeCloseTo(0, 5);
 
     fireEvent.pointerUp(worldRoot);
     expect(worldRoot.className).not.toContain('world-view--dragging');
@@ -240,8 +246,7 @@ describe('WorldView', () => {
     expect(worldViewMocks.worldSceneProps!.interactionRef.current.moved).toBe(false);
 
     fireEvent.click(getByTestId('minimap-overlay'));
-    expect(isoToScreen).toHaveBeenCalledWith(6, 7);
-    expect(getCameraFocusPosition).toHaveBeenCalledWith(60, 140, { width: 400, height: 300 }, worldViewMocks.worldSceneProps?.cameraRef.current.zoom);
+    expect(worldToIso).toHaveBeenCalledWith(6, 7);
     expect(worldViewMocks.worldSceneProps?.cameraRef.current.followAgentId).toBeNull();
   });
 
@@ -250,10 +255,7 @@ describe('WorldView', () => {
     sharedStoreState.selectedAgentId = null;
     sharedStoreState.agents = [];
     worldViewMocks.sprites = [];
-    const { container, queryByTestId, rerender } = renderWorldView({
-      selectedAgentId: null,
-      selectedAgentName: null,
-    });
+    const { container, queryByTestId, rerender } = renderWorldView();
 
     expect(queryByTestId('focus-reticle')).toBeNull();
     expect(container.querySelector('.world-view__selected-agent-marker')).toBeNull();
@@ -266,10 +268,6 @@ describe('WorldView', () => {
     rerender(
       <WorldView
         active
-        agents={[{ id: 'agent-missing', name: 'Ghost' } as any]}
-        buildings={[]}
-        selectedAgentId="agent-missing"
-        selectedAgentName="Ghost"
         bubbleConfig={{ textScale: 1, statusFontSize: 14, statusMaxWidth: 260, statusBubbleH: 28, statusPaddingH: 24, chatFontSize: 14 }}
         onSelectAgent={vi.fn()}
         onClearSelection={vi.fn()}

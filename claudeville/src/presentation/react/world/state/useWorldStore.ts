@@ -6,7 +6,7 @@ export interface WorldAgent {
   status: string;
   bubbleText: string | null;
   appearance: Record<string, any>;
-  position?: { x: number; y: number };
+  position?: { tileX: number; tileY: number };
 }
 
 export interface WorldBuilding {

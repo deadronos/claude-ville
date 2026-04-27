@@ -12,8 +12,10 @@ export type BubbleConfig = {
 };
 
 export type CameraModel = {
-  x: number;
-  y: number;
+  // World position camera is focused on (isometric center)
+  targetX: number;
+  targetZ: number;
+  // Zoom level (1 = default, higher = zoomed in)
   zoom: number;
   minZoom: number;
   maxZoom: number;
@@ -48,7 +50,7 @@ export type InteractionModel = {
   startX: number;
   startY: number;
   camStartX: number;
-  camStartY: number;
+  camStartZ: number;
 };
 
 export type WorldViewProps = {

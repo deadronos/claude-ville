@@ -2,7 +2,7 @@ import { useFrame } from '@react-three/fiber';
 import type { ECSWorld } from './world.js';
 import type { MutableRefObject } from 'react';
 import type { CameraModel } from '../types.js';
-import { getCameraFocusPosition, isoToScreen } from '../utils.js';
+import { worldToIso } from '../utils.js';
 import { TILE_WIDTH } from '../../../../config/constants.js';
 import { BUILDING_STYLES } from '../styles.js';
 
@@ -55,7 +55,7 @@ export function createProximitySystem(
         const tileY = building.tileY as number;
         const width = building.width as number;
 
-        const center = isoToScreen(tileX + width / 2, tileY + (building.height as number) / 2);
+        const center = worldToIso(tileX + width / 2, tileY + (building.height as number) / 2);
         const halfW = (width * TILE_WIDTH) / 4;
 
         let agentNear = false;
@@ -80,8 +80,7 @@ export function createProximitySystem(
 
 export function createCameraFollowSystem(
   world: ECSWorld,
-  cameraRef: MutableRefObject<CameraModel>,
-  viewport: { width: number; height: number }
+  cameraRef: MutableRefObject<CameraModel>
 ) {
   return function CameraFollowSystem() {
     useFrame(() => {
@@ -92,9 +91,10 @@ export function createCameraFollowSystem(
       const target = agents.find((e: any) => e.id === camera.followAgentId);
       if (!target) return;
 
-      const focus = getCameraFocusPosition(target.x as number, target.y as number, viewport, camera.zoom);
-      camera.x += (focus.x - camera.x) * camera.followSmoothing;
-      camera.y += (focus.y - camera.y) * camera.followSmoothing;
+      // Agent x,y are already in isometric screen coordinates
+      // Camera targetX/targetZ are in the same coordinate space
+      camera.targetX += (target.x - camera.targetX) * camera.followSmoothing;
+      camera.targetZ += (target.y - camera.targetZ) * camera.followSmoothing;
     });
   };
 }
