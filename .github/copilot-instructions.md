@@ -57,3 +57,10 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 - `4000` for the legacy app
 - `3030` for the hubreceiver
 - `3001` for the frontend
+
+
+## Agent Skills & Learnings
+
+See [`../.agents/AGENTS.md`](.agents/AGENTS.md) for agent-specific skills and learnings. The `../.agents/` folder contains:
+- `../.agents/skills/` — reusable skills (e.g., self-improvement for capturing learnings)
+- `../.agents/.learnings/` — captured learnings during development
