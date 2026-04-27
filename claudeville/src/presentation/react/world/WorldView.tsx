@@ -7,20 +7,24 @@ import { FocusReticle } from './components/FocusReticle.js';
 import { MinimapOverlay } from './components/MinimapOverlay.js';
 import { WorldScene } from './components/WorldScene.js';
 import { BubbleDebugOverlay } from './components/BubbleDebugOverlay.js';
+import { PostProcessing } from './components/PostProcessing.js';
+import { ScreenSpaceCamera } from './components/ScreenSpaceCamera.js';
 import { useWorldSprites } from './hooks/useWorldSprites.js';
+import { useWorldStore } from './state/useWorldStore.js';
 import type { CameraModel, InteractionModel, ViewportSize, WorldViewProps } from './types.js';
-import { createCenteredCamera, getCameraFocusPosition, isoToScreen, screenToWorld } from './utils.js';
+import { createCenteredCamera, getCameraFocusPosition, screenToWorld, worldToIso } from './utils.js';
 
 export function WorldView({
   active,
-  agents,
-  buildings,
-  selectedAgentId,
-  selectedAgentName,
   bubbleConfig,
   onSelectAgent,
   onClearSelection,
-}: WorldViewProps) {
+}: Omit<WorldViewProps, 'agents' | 'buildings' | 'selectedAgentId' | 'selectedAgentName'>) {
+  const agents = useWorldStore((s) => s.agents);
+  const buildings = useWorldStore((s) => s.buildings);
+  const selectedAgentId = useWorldStore((s) => s.selectedAgentId);
+  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+  const selectedAgentName = selectedAgent?.name ?? null;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<CameraModel>(createCenteredCamera(1, 1));
   const roofAlphaRef = useRef(new Map<string, number>());
@@ -32,14 +36,14 @@ export function WorldView({
     startX: 0,
     startY: 0,
     camStartX: 0,
-    camStartY: 0,
+    camStartZ: 0,
   });
   const viewportRef = useRef<ViewportSize>({ width: 1, height: 1 });
   const touchStateRef = useRef({
     initialDistance: 0,
     initialZoom: 0,
-    centerWorldX: 0,
-    centerWorldY: 0,
+    centerTargetX: 0,
+    centerTargetZ: 0,
   });
   const [viewport, setViewport] = useState<ViewportSize>({ width: 1, height: 1 });
   const [dragging, setDragging] = useState(false);
@@ -64,9 +68,16 @@ export function WorldView({
       if (!sprite) {
         setSelectedAgentScreen(null);
       } else {
+        const camera = cameraRef.current;
+        const focus = getCameraFocusPosition(
+          camera.targetX,
+          camera.targetZ,
+          viewportRef.current,
+          camera.zoom,
+        );
         setSelectedAgentScreen({
-          x: (sprite.x + cameraRef.current.x) * cameraRef.current.zoom,
-          y: (sprite.y + cameraRef.current.y) * cameraRef.current.zoom,
+          x: sprite.x * camera.zoom + focus.x,
+          y: sprite.y * camera.zoom + focus.y,
         });
       }
       frameId = window.requestAnimationFrame(update);
@@ -116,25 +127,9 @@ export function WorldView({
         return;
       }
 
-      if (previousCamera.followAgentId) {
-        const sprite = spritesRef.current.get(previousCamera.followAgentId);
-        if (sprite) {
-          const focus = getCameraFocusPosition(sprite.x, sprite.y, { width, height }, previousCamera.zoom);
-          cameraRef.current = {
-            ...previousCamera,
-            x: focus.x,
-            y: focus.y,
-          };
-          return;
-        }
-      }
-
-      const currentCenter = screenToWorld(previousViewport.width / 2, previousViewport.height / 2, previousCamera);
-      cameraRef.current = {
-        ...previousCamera,
-        x: width / (2 * previousCamera.zoom) - currentCenter.x,
-        y: height / (2 * previousCamera.zoom) - currentCenter.y,
-      };
+      // Keep the same world point centered after resize
+      // The targetX/targetZ are already in isometric world coordinates
+      // Just keep them as is, zoom stays the same
     };
 
     const observer = new ResizeObserver(() => resize());
@@ -146,11 +141,51 @@ export function WorldView({
     };
   }, []);
 
-  const navigateToTile = (tileX: number, tileY: number) => {
-    const screen = isoToScreen(tileX, tileY);
-    const focus = getCameraFocusPosition(screen.x, screen.y, viewportRef.current, cameraRef.current.zoom);
-    cameraRef.current.x = focus.x;
-    cameraRef.current.y = focus.y;
+  // Manual wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!active) return;
+      event.preventDefault();
+
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+
+      // Get world point under cursor before zoom
+      const worldBefore = screenToWorld(mouseX, mouseY, cameraRef.current, viewportRef.current);
+
+      // Calculate new zoom
+      let rawDelta = event.deltaY;
+      if (event.deltaMode === 1) rawDelta *= 16;
+      if (event.deltaMode === 2) rawDelta *= 100;
+      const clamped = Math.max(-60, Math.min(60, rawDelta));
+      const factor = 1 - clamped * 0.003;
+      const newZoom = Math.max(cameraRef.current.minZoom, Math.min(cameraRef.current.maxZoom, cameraRef.current.zoom * factor));
+
+      // Temporarily set new zoom to get world point after
+      cameraRef.current.zoom = newZoom;
+      const worldAfter = screenToWorld(mouseX, mouseY, cameraRef.current, viewportRef.current);
+
+      // Adjust target to keep the world point under cursor stationary
+      cameraRef.current.targetX += worldBefore.x - worldAfter.x;
+      cameraRef.current.targetZ += worldBefore.z - worldAfter.z;
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [active]);
+
+  const navigateToTile = (tileX: number, tileZ: number) => {
+    const iso = worldToIso(tileX, tileZ);
+    cameraRef.current.targetX = iso.x;
+    cameraRef.current.targetZ = iso.y;
     cameraRef.current.followAgentId = null;
   };
 
@@ -166,8 +201,8 @@ export function WorldView({
         interactionRef.current.moved = false;
         interactionRef.current.startX = event.clientX;
         interactionRef.current.startY = event.clientY;
-        interactionRef.current.camStartX = cameraRef.current.x;
-        interactionRef.current.camStartY = cameraRef.current.y;
+        interactionRef.current.camStartX = cameraRef.current.targetX;
+        interactionRef.current.camStartZ = cameraRef.current.targetZ;
         cameraRef.current.followAgentId = null;
         setDragging(true);
       }}
@@ -180,8 +215,9 @@ export function WorldView({
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
           interactionRef.current.moved = true;
         }
-        cameraRef.current.x = interactionRef.current.camStartX + dx / cameraRef.current.zoom;
-        cameraRef.current.y = interactionRef.current.camStartY + dy / cameraRef.current.zoom;
+        // Pan opposite to drag direction (drag right -> world appears to move left)
+        cameraRef.current.targetX = interactionRef.current.camStartX - dx / cameraRef.current.zoom;
+        cameraRef.current.targetZ = interactionRef.current.camStartZ - dy / cameraRef.current.zoom;
       }}
       onPointerUp={() => {
         if (!active) {
@@ -197,32 +233,6 @@ export function WorldView({
         interactionRef.current.dragging = false;
         setDragging(false);
       }}
-      onWheel={(event) => {
-        if (!active) {
-          return;
-        }
-        event.preventDefault();
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) {
-          return;
-        }
-
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
-        const worldBefore = screenToWorld(mouseX, mouseY, cameraRef.current);
-        let rawDelta = event.deltaY;
-        if (event.deltaMode === 1) {
-          rawDelta *= 16;
-        }
-        if (event.deltaMode === 2) {
-          rawDelta *= 100;
-        }
-        const clamped = Math.max(-60, Math.min(60, rawDelta));
-        const factor = 1 - clamped * 0.003;
-        cameraRef.current.zoom = Math.max(cameraRef.current.minZoom, Math.min(cameraRef.current.maxZoom, cameraRef.current.zoom * factor));
-        cameraRef.current.x = mouseX / cameraRef.current.zoom - worldBefore.x;
-        cameraRef.current.y = mouseY / cameraRef.current.zoom - worldBefore.y;
-      }}
       onTouchStart={(event) => {
         if (event.touches.length === 2) {
           const t1 = event.touches[0];
@@ -234,19 +244,19 @@ export function WorldView({
 
           const centerX = (t1.clientX + t2.clientX) / 2 - rect.left;
           const centerY = (t1.clientY + t2.clientY) / 2 - rect.top;
-          const worldBefore = screenToWorld(centerX, centerY, cameraRef.current);
+          const worldBefore = screenToWorld(centerX, centerY, cameraRef.current, viewportRef.current);
 
           touchStateRef.current = {
             initialDistance: dist,
             initialZoom: cameraRef.current.zoom,
-            centerWorldX: worldBefore.x,
-            centerWorldY: worldBefore.y,
+            centerTargetX: worldBefore.x,
+            centerTargetZ: worldBefore.z,
           };
         }
       }}
       onTouchMove={(event) => {
         if (active && event.touches.length === 2) {
-          event.preventDefault(); // Prevent browser zoom/scroll
+          event.preventDefault();
           const t1 = event.touches[0];
           const t2 = event.touches[1];
           const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -262,8 +272,9 @@ export function WorldView({
             Math.min(cameraRef.current.maxZoom, touchStateRef.current.initialZoom * ratio)
           );
 
-          cameraRef.current.x = centerX / cameraRef.current.zoom - touchStateRef.current.centerWorldX;
-          cameraRef.current.y = centerY / cameraRef.current.zoom - touchStateRef.current.centerWorldY;
+          const worldAfter = screenToWorld(centerX, centerY, cameraRef.current, viewportRef.current);
+          cameraRef.current.targetX += touchStateRef.current.centerTargetX - worldAfter.x;
+          cameraRef.current.targetZ += touchStateRef.current.centerTargetZ - worldAfter.z;
         }
       }}
       onTouchEnd={() => {
@@ -274,7 +285,7 @@ export function WorldView({
         orthographic
         dpr={[1, 2]}
         frameloop="always"
-        gl={{ antialias: false, alpha: false, powerPreference: 'high-performance' }}
+        gl={{ antialias: false, alpha: true, powerPreference: 'high-performance' }}
         className="content__canvas world-view__canvas"
         onPointerMissed={() => {
           if (!interactionRef.current.moved) {
@@ -296,6 +307,7 @@ export function WorldView({
           onHoverBuilding={setHoveredBuildingId}
           interactionRef={interactionRef}
         />
+        <PostProcessing />
       </Canvas>
       {active && selectedAgentScreen ? (
         <div ref={selectedMarkerRef} className="world-view__selected-agent-marker" aria-hidden="true">

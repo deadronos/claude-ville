@@ -1,10 +1,7 @@
 import { useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
-
-import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-import type { AgentSprite } from '../../../character-mode/AgentSprite.js';
 import { THEME } from '../../../../config/theme.js';
 import { AgentStatus } from '../../../../domain/value-objects/AgentStatus.js';
 import type { BubbleConfig, CameraModel } from '../types.js';
@@ -232,55 +229,51 @@ export function Accessory({ type }: { type: string }) {
 }
 
 export function AgentActor({
-  sprite,
+  entity,
   selected,
   showUi,
   cameraRef,
   bubbleConfig,
   onSelect,
-  interactionRef,
 }: {
-  sprite: AgentSprite;
+  entity: {
+    id: string;
+    name: string;
+    status: string;
+    bubbleText: string | null;
+    appearance: any;
+    x: number;
+    y: number;
+    z?: number;
+    moving: boolean;
+    walkFrame: number;
+    facingLeft: boolean;
+    chatting?: boolean;
+  };
   selected: boolean;
   showUi: boolean;
   cameraRef: MutableRefObject<CameraModel>;
   bubbleConfig: BubbleConfig;
   onSelect: (agentId: string) => void;
-  interactionRef: MutableRefObject<{ moved: boolean }>;
 }) {
   const groupRef = useRef<THREE.Group | null>(null);
 
-  useFrame(() => {
-    if (!groupRef.current) {
-      return;
-    }
-    const depth = 20 + sprite.y * 0.001;
-    groupRef.current.position.set(Math.round(sprite.x), Math.round(sprite.y), depth);
-  });
-
   const inverseZoom = useInverseZoom(cameraRef);
-  const swing = sprite.moving ? Math.sin(sprite.walkFrame * 4) * 4 : 0;
-  const app = sprite.agent.appearance;
-  const bubbleText = sprite.agent.bubbleText;
+  const swing = entity.moving ? Math.sin(entity.walkFrame * 4) * 4 : 0;
+  const app = entity.appearance;
+  const bubbleText = entity.bubbleText;
+  const depth = 20 + entity.y * 0.001;
 
   return (
     <group
       ref={groupRef}
+      position={[Math.round(entity.x), Math.round(entity.y), depth]}
       onClick={(event) => {
         event.stopPropagation();
-        if (interactionRef.current.moved) {
-          return;
-        }
-        onSelect(sprite.agent.id);
+        onSelect(entity.id);
       }}
     >
-      <group scale={[sprite.facingLeft ? -1 : 1, selected ? 1.12 : 1, 1]}>
-        {selected ? (
-          <mesh position={[0, 16, 0]} scale={[16, 7, 1]}>
-            <circleGeometry args={[1, 24]} />
-            <meshBasicMaterial color="#ffd700" transparent opacity={0.35} depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
-          </mesh>
-        ) : null}
+      <group scale={[entity.facingLeft ? -1 : 1, selected ? 1.12 : 1, 1]}>
         <mesh position={[-3 - swing * 0.25, 12, 0.05]} rotation={[0, 0, 0.08]}>
           <planeGeometry args={[2, 10]} />
           <meshBasicMaterial color={app.pants} toneMapped={false} side={THREE.DoubleSide} />
@@ -310,20 +303,20 @@ export function AgentActor({
         <Accessory type={app.accessory} />
       </group>
       <group visible={showUi}>
-        {sprite.chatting ? <ChatIndicator bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} /> : null}
-        {!sprite.chatting && sprite.agent.status === AgentStatus.IDLE ? <IdleIndicator inverseZoom={inverseZoom} /> : null}
-        {!sprite.chatting && (sprite.agent.status === AgentStatus.WORKING || (sprite.agent.status === AgentStatus.WAITING && bubbleText)) ? (
+        {entity.chatting ? <ChatIndicator bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} /> : null}
+        {!entity.chatting && entity.status === AgentStatus.IDLE ? <IdleIndicator inverseZoom={inverseZoom} /> : null}
+        {!entity.chatting && (entity.status === AgentStatus.WORKING || (entity.status === AgentStatus.WAITING && bubbleText)) ? (
           <Bubble
             text={bubbleText || '...'}
-            accentColor={sprite.agent.status === AgentStatus.WORKING ? THEME.working : THEME.waiting}
+            accentColor={entity.status === AgentStatus.WORKING ? THEME.working : THEME.waiting}
             bubbleConfig={bubbleConfig}
             inverseZoom={inverseZoom}
           />
         ) : null}
-        {!sprite.chatting && sprite.agent.status === AgentStatus.WAITING && !bubbleText ? (
+        {!entity.chatting && entity.status === AgentStatus.WAITING && !bubbleText ? (
           <Bubble text="..." accentColor={THEME.waiting} bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} y={-34} />
         ) : null}
-        <NameTag name={sprite.agent.name} inverseZoom={inverseZoom} />
+        <NameTag name={entity.name} inverseZoom={inverseZoom} />
       </group>
     </group>
   );

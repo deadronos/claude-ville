@@ -9,6 +9,7 @@ import { SettingsModal } from './components/SettingsModal.js';
 import { Sidebar } from './components/Sidebar.js';
 import { ToastViewport } from './components/ToastViewport.js';
 import { WorldTimer } from './components/WorldTimer.js';
+import { useWorldStore } from './world/state/useWorldStore.js';
 
 export function ClaudeVilleApp() {
   const controller = useMemo(() => new ClaudeVilleController(), []);
@@ -99,10 +100,6 @@ export function ClaudeVilleApp() {
           <div className="content">
             <WorldView
               active={snapshot.mode === 'character'}
-              agents={agents}
-              buildings={buildings}
-              selectedAgentId={snapshot.selectedAgentId}
-              selectedAgentName={selectedAgent?.name || null}
               bubbleConfig={snapshot.bubbleConfig}
               onSelectAgent={(agentId) => controller.selectAgent(agentId)}
               onClearSelection={() => controller.clearSelection()}

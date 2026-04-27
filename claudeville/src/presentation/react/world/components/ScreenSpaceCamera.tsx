@@ -1,8 +1,14 @@
 import { OrthographicCamera } from '@react-three/drei';
 
-import type { ViewportSize } from '../types.js';
+import type { CameraModel, ViewportSize } from '../types.js';
 
-export function ScreenSpaceCamera({ viewport }: { viewport: ViewportSize }) {
+export function ScreenSpaceCamera({
+  viewport,
+  cameraRef,
+}: {
+  viewport: ViewportSize;
+  cameraRef?: { current: CameraModel };
+}) {
   return (
     <OrthographicCamera
       makeDefault

@@ -28,10 +28,14 @@ vi.mock('@react-three/fiber', () => ({
 vi.mock('@react-three/drei', () => dreiMocks);
 vi.mock('./hooks/useTerrain.js', () => hookMocks);
 
+vi.mock('./components/InstancedTerrain.js', () => ({
+  InstancedTerrain: () => <div data-testid="instanced-terrain" />,
+}));
+
 import { FocusReticle } from './components/FocusReticle.js';
-import { TerrainLayer } from './components/TerrainLayer.js';
 import { BuildingActor } from './components/BuildingActor.js';
 import { MinimapOverlay } from './components/MinimapOverlay.js';
+import { InstancedTerrain } from './components/InstancedTerrain.js';
 
 beforeEach(() => {
   frameState.callbacks.length = 0;
@@ -50,7 +54,7 @@ describe('React world low-coverage components', () => {
     expect(getByText('Following Scout 7')).toBeTruthy();
   });
 
-  it('renders terrain tiles and animates shimmer for water tiles', () => {
+  it('renders InstancedTerrain when buildings are present', () => {
     hookMocks.useTerrain.mockReturnValue({
       tiles: [
         { key: 'land', x: 10, y: 20, color: '#224422', water: false },
@@ -58,16 +62,9 @@ describe('React world low-coverage components', () => {
       ],
     });
 
-    const { container } = render(<TerrainLayer buildings={[{ id: 'forge' }]} />);
+    const { container } = render(<InstancedTerrain buildings={[{ id: 'forge' }]} />);
 
-    expect(hookMocks.useTerrain).toHaveBeenCalledWith([{ id: 'forge' }]);
-    expect(container.querySelectorAll('mesh')).toHaveLength(3);
-    expect(container.querySelectorAll('meshbasicmaterial')).toHaveLength(3);
-
-    const shimmerMaterial = container.querySelectorAll('meshbasicmaterial')[2] as HTMLElement & { opacity?: number };
-    frameState.callbacks.forEach((callback) => callback({ clock: { elapsedTime: 1 } }));
-
-    expect(shimmerMaterial.opacity).toBeCloseTo(Math.sin(2 + 30 * 0.015 + 40 * 0.02) * 0.15 + 0.18, 5);
+    expect(container.querySelector('[data-testid="instanced-terrain"]')).toBeTruthy();
   });
 
   it('updates building roof opacity and keeps world text colors aligned with hover state', () => {

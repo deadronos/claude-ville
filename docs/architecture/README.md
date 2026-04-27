@@ -1,6 +1,6 @@
 # ClaudeVille Architecture
 
-This folder documents the current architecture of ClaudeVille and the main decisions introduced since `upstream/main`.
+This folder documents the current architecture of ClaudeVille and the main decisions behind the split-stack, multi-provider, React/R3F codebase.
 
 ## Documents
 

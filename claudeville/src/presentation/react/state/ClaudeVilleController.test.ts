@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetBubbleConfig } from '../../../config/bubbleConfig.js';
 import { eventBus } from '../../../domain/events/DomainEvent.js';
 import { ClaudeVilleController } from './ClaudeVilleController.js';
+import { useWorldStore } from '../world/state/useWorldStore.js';
 
 function makeAgent(overrides: Record<string, unknown> = {}) {
   return {
@@ -24,6 +25,7 @@ describe('ClaudeVilleController', () => {
     localStorage.clear();
     document.documentElement.style.removeProperty('--text-scale');
     resetBubbleConfig();
+    useWorldStore.setState({ agents: [], buildings: [], selectedAgentId: null });
   });
 
   afterEach(() => {
@@ -56,6 +58,7 @@ describe('ClaudeVilleController', () => {
 
     expect(controller.getSnapshot().selectedAgentId).toBe(agent.id);
     expect(controller.getSnapshot().mode).toBe('character');
+    expect(useWorldStore.getState().selectedAgentId).toBe(agent.id);
     expect(modeChanges).toEqual(['dashboard', 'character']);
     expect(selectedAgents).toEqual([agent.id]);
 

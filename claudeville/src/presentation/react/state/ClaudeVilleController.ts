@@ -11,6 +11,7 @@ import { SessionWatcher } from '../../../application/SessionWatcher.js';
 import { getBubbleConfig, updateBubbleConfig } from '../../../config/bubbleConfig.js';
 import { getNameMode, setNameMode } from '../../../config/agentNames.js';
 import { i18n } from '../../../config/i18n.js';
+import { useWorldStore } from '../world/state/useWorldStore.js';
 
 export type AppMode = 'character' | 'dashboard';
 export type ToastTone = 'info' | 'success' | 'warning';
@@ -93,9 +94,11 @@ export class ClaudeVilleController {
           this.pushToast(i18n.t('agentJoined', agent.name), 'info');
         }
         this.knownAgents.add(agent.id);
+        useWorldStore.getState().setAgents(Array.from(this.world.agents.values()));
         this._emitChange();
       }),
       eventBus.on('agent:updated', () => {
+        useWorldStore.getState().setAgents(Array.from(this.world.agents.values()));
         this._emitChange();
       }),
       eventBus.on('agent:removed', (agent: any) => {
@@ -104,6 +107,7 @@ export class ClaudeVilleController {
           this.selectedAgentId = null;
         }
         this.pushToast(i18n.t('agentLeft', agent.name), 'warning');
+        useWorldStore.getState().setAgents(Array.from(this.world.agents.values()));
         this._emitChange();
       }),
       eventBus.on('usage:updated', (usage: any) => {
@@ -136,6 +140,8 @@ export class ClaudeVilleController {
       this.sessionWatcher.start();
       this.booted = true;
       this.bootError = null;
+      useWorldStore.getState().setAgents(Array.from(this.world.agents.values()));
+      useWorldStore.getState().setBuildings(Array.from(this.world.buildings.values()));
       this._emitChange();
     } catch (error) {
       this.bootError = error instanceof Error ? error : new Error(String(error));
@@ -217,6 +223,7 @@ export class ClaudeVilleController {
     }
 
     this.selectedAgentId = agentId;
+    useWorldStore.getState().setSelectedAgentId(agentId);
     eventBus.emit('agent:selected', agent);
     this._emitChange();
   }
@@ -227,6 +234,7 @@ export class ClaudeVilleController {
     }
 
     this.selectedAgentId = null;
+    useWorldStore.getState().setSelectedAgentId(null);
     eventBus.emit('agent:deselected');
     this._emitChange();
   }
@@ -247,6 +255,7 @@ export class ClaudeVilleController {
     }
 
     this.selectedAgentId = agentId;
+    useWorldStore.getState().setSelectedAgentId(agentId);
     if (this.mode !== 'character') {
       this.mode = 'character';
       eventBus.emit('mode:changed', 'character');

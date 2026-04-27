@@ -53,22 +53,22 @@ export function MinimapOverlay({
       }
 
       for (const sprite of spritesRef.current.values()) {
-        const tile = screenToTile(sprite.x, sprite.y, { ...cameraRef.current, x: 0, y: 0, zoom: 1, followAgentId: null, followSmoothing: 0, minZoom: 0.5, maxZoom: 3 });
+        const tile = screenToTile(sprite.x, sprite.y, { ...cameraRef.current, targetX: 0, targetZ: 0, zoom: 1, followAgentId: null, followSmoothing: 0, minZoom: 0.5, maxZoom: 3 }, viewport);
         context.fillStyle = sprite.agent.status === 'working' ? THEME.working : sprite.agent.status === 'waiting' ? THEME.waiting : THEME.idle;
         context.beginPath();
-        context.arc(tile.tileX * scale, tile.tileY * scale, 2, 0, Math.PI * 2);
+        context.arc(tile.tileX * scale, tile.tileZ * scale, 2, 0, Math.PI * 2);
         context.fill();
       }
 
-      const topLeft = screenToTile(0, 0, cameraRef.current);
-      const bottomRight = screenToTile(viewport.width, viewport.height, cameraRef.current);
+      const topLeft = screenToTile(0, 0, cameraRef.current, viewport);
+      const bottomRight = screenToTile(viewport.width, viewport.height, cameraRef.current, viewport);
       context.strokeStyle = '#ff4444';
       context.lineWidth = 1.5;
       context.strokeRect(
         topLeft.tileX * scale,
-        topLeft.tileY * scale,
+        topLeft.tileZ * scale,
         (bottomRight.tileX - topLeft.tileX) * scale,
-        (bottomRight.tileY - topLeft.tileY) * scale,
+        (bottomRight.tileZ - topLeft.tileZ) * scale,
       );
 
       context.strokeStyle = THEME.border;
