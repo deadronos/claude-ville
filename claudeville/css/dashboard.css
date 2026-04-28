@@ -76,8 +76,12 @@
 
 .dash-card:hover {
     border-color: var(--border-bright);
-    box-shadow: var(--shadow-md);
-    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-3px);
+}
+
+.dash-card:active {
+    transform: translateY(0) scale(0.98);
 }
 
 .dash-card--working { border-left: 4px solid var(--status-working); }
@@ -277,7 +281,7 @@
 .dash-card__tools-chevron {
     font-size: 10px;
     color: var(--text-muted);
-    transition: transform 0.2s ease;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     margin-left: auto;
 }
 
@@ -285,10 +289,23 @@
     transform: rotate(90deg);
 }
 
-.dash-card__tools {
-    max-height: 0;
+.dash-card__tool-list {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dash-card__tools--open .dash-card__tool-list {
+    grid-template-rows: 1fr;
+}
+
+.dash-card__tool-list-inner {
     overflow: hidden;
-    transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    min-height: 0;
+}
+
+.dash-card__tools {
+    overflow: hidden;
     background: rgba(0, 0, 0, 0.1);
 }
 

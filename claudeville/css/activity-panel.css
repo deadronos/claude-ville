@@ -21,6 +21,10 @@
     to { transform: translateX(0); opacity: 1; }
 }
 
+.activity-panel * {
+    scroll-behavior: smooth;
+}
+
 .activity-panel__header {
     display: flex;
     align-items: center;
@@ -56,22 +60,29 @@
 }
 
 .activity-panel__close {
-    font-size: var(--font-size-md);
+    font-size: 16px;
     color: var(--text-muted);
     background: transparent;
     border-radius: 6px;
-    padding: 6px;
+    padding: 6px 8px;
     cursor: pointer;
     transition: var(--transition-fast);
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    border: 1px solid transparent;
+    line-height: 1;
 }
 
 .activity-panel__close:hover {
     color: var(--text-main);
     background: var(--border-bright);
+    border-color: var(--border-bright);
+}
+
+.activity-panel__close:active {
+    transform: scale(0.9);
 }
 
 .activity-panel__meta {
@@ -117,6 +128,32 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+}
+
+.activity-panel__scroll-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-right: 6px;
+}
+
+.activity-panel__scroll-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+.activity-panel__scroll-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.activity-panel__scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.activity-panel__scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .activity-panel__section-title {
@@ -171,11 +208,14 @@
 }
 
 .activity-panel__tool-history {
-    flex: 1;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+@keyframes ap-tool-pulse {
+    0%, 100% { background: rgba(16, 163, 127, 0.08); border-color: rgba(16, 163, 127, 0.15); }
+    50% { background: rgba(16, 163, 127, 0.14); border-color: rgba(16, 163, 127, 0.25); }
 }
 
 .activity-panel__tool-item {
@@ -187,11 +227,18 @@
     border-radius: 6px;
     background: var(--border-main);
     border: 1px solid transparent;
+    transition: background var(--transition-fast), transform var(--transition-md);
+}
+
+.activity-panel__tool-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateX(3px);
 }
 
 .activity-panel__tool-item:first-child {
     background: rgba(16, 163, 127, 0.08);
-    border-color: rgba(16, 163, 127, 0.1);
+    border-color: rgba(16, 163, 127, 0.15);
+    animation: ap-tool-pulse 3s ease-in-out infinite;
 }
 
 .activity-panel__tool-item-icon {
@@ -217,36 +264,48 @@
 }
 
 .activity-panel__messages {
-    max-height: 240px;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .activity-panel__msg {
-    padding: 10px;
+    padding: 10px 10px 10px 12px;
     font-size: var(--font-size-sm);
     color: var(--text-main);
     background: var(--border-main);
     border-radius: 8px;
     line-height: 1.5;
+    border-left: 3px solid transparent;
+    transition: border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.activity-panel__msg:hover {
+    transform: translateX(2px);
 }
 
 .activity-panel__msg--assistant {
     background: rgba(16, 163, 127, 0.08);
+    border-left-color: var(--status-working);
 }
 
 .activity-panel__msg--user {
     background: rgba(255, 255, 255, 0.08);
+    border-left-color: var(--status-idle);
 }
 
 .activity-panel__msg-role {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-muted);
     text-transform: uppercase;
     margin-bottom: 4px;
     letter-spacing: 0.05em;
+    font-weight: 600;
 }
 
 .activity-panel__token-usage {

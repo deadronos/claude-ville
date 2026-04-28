@@ -151,6 +151,7 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
 
                         <div className={`dash-card__tools ${isOpen ? 'dash-card__tools--open' : ''}`} id={`card-tools-${agent.id}`}>
                           <div className="dash-card__tool-list">
+                            <div className="dash-card__tool-list-inner">
                             {toolHistory.length === 0 ? (
                               <div className="dash-card__loading">{i18n.t('noToolUsage')}</div>
                             ) : (
@@ -165,6 +166,7 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                                 );
                               })
                             )}
+                            </div>
                           </div>
                         </div>
                       </article>
