@@ -123,14 +123,15 @@ export function BuildingActor({
   });
 
   const labelColor = hovered ? THEME.text : THEME.textSecondary;
+  const depth = 10 + (building.position.tileY * 0.001) + (building.position.tileX * 0.00001);
 
   return (
-    <group position={[center.x, center.y, 10]}>
-      <mesh position={[8, 6, 0]} scale={[halfW + 5, halfH + 3, 1]}>
+    <group position={[center.x, center.y, depth]}>
+      <mesh position={[8, 6, -0.05]} scale={[halfW + 5, halfH + 3, 1]}>
         <circleGeometry args={[1, 24]} />
         <meshBasicMaterial color="black" transparent opacity={0.25} depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
-      <mesh geometry={foundationGeometry} position={[0, 0, 0.1]}>
+      <mesh geometry={foundationGeometry} position={[0, 0, 0.01]}>
         <meshBasicMaterial color="#3a3025" toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={backLeftGeometry} position={[0, 0, 0.12]}>

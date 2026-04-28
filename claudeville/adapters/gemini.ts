@@ -22,18 +22,15 @@ import os from 'os';
 import crypto from 'crypto';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import { readLines, parseJsonLines } from './jsonl-utils.js';
 
 const GEMINI_DIR = path.join(os.homedir(), '.gemini');
 const TMP_DIR = path.join(GEMINI_DIR, 'tmp');
 
-// Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
-
 // ─── Project path restoration ──────────────────────────────
 
 /**
- * Reverse-map project path from SHA-256 hash
- * Compute hashes of candidate paths to match
+ * Reverse-map project path from SHA-256 hash or handle named directories
  */
 const MAX_HASH_CACHE_SIZE = 500;
 const _hashToPathCache = new Map<string, string | null>();
@@ -64,6 +61,13 @@ function resolveProjectPath(projectHash: string) {
   evictIfNeeded();
 
   const homeDir = os.homedir();
+  const cwd = process.cwd();
+
+  // Candidate 0: Current working directory (match basename or hash)
+  if (sha256(cwd) === projectHash || path.basename(cwd) === projectHash) {
+    _hashToPathCache.set(projectHash, cwd);
+    return cwd;
+  }
 
   // Candidate 1: Home directory itself
   if (sha256(homeDir) === projectHash) {
@@ -72,10 +76,10 @@ function resolveProjectPath(projectHash: string) {
   }
 
   // Candidate 2: One level under home (Desktop, Documents, Projects, etc.)
-  const commonDirs = ['Desktop', 'Documents', 'Projects', 'Developer', 'dev', 'src', 'code', 'repos', 'workspace', 'work'];
+  const commonDirs = ['Desktop', 'Documents', 'Projects', 'Developer', 'dev', 'src', 'code', 'repos', 'workspace', 'work', 'Github'];
   for (const dir of commonDirs) {
     const fullPath = path.join(homeDir, dir);
-    if (sha256(fullPath) === projectHash) {
+    if (sha256(fullPath) === projectHash || (projectHash.length < 64 && path.basename(fullPath) === projectHash)) {
       _hashToPathCache.set(projectHash, fullPath);
       return fullPath;
     }
@@ -84,10 +88,10 @@ function resolveProjectPath(projectHash: string) {
       if (fs.existsSync(fullPath)) {
         const subdirs = fs.readdirSync(fullPath, { withFileTypes: true })
           .filter((d: Dirent) => d.isDirectory() && !d.name.startsWith('.'))
-          .slice(0, 50); // Limit if too many
+          .slice(0, 100); // Limit if too many
         for (const sub of subdirs) {
           const subPath = path.join(fullPath, sub.name);
-          if (sha256(subPath) === projectHash) {
+          if (sha256(subPath) === projectHash || (projectHash.length < 64 && sub.name === projectHash)) {
             _hashToPathCache.set(projectHash, subPath);
             return subPath;
           }
@@ -104,7 +108,7 @@ function resolveProjectPath(projectHash: string) {
       for (const dir of projDirs) {
         // Claude projects dir name format: -Users-name-path
         const projPath = '/' + dir.replace(/-/g, '/').replace(/^\//, '');
-        if (sha256(projPath) === projectHash) {
+        if (sha256(projPath) === projectHash || (projectHash.length < 64 && path.basename(projPath) === projectHash)) {
           _hashToPathCache.set(projectHash, projPath);
           return projPath;
         }
@@ -146,11 +150,18 @@ async function parseSession(filePath: string) {
   };
 
   try {
-    const session = await readJsonFile(filePath);
-    if (!session) return detail;
+    let messages: any[] = [];
+    if (filePath.endsWith('.jsonl')) {
+      const lines = await readLines(filePath, { count: 50, scope: 'gemini-adapter' });
+      messages = parseJsonLines(lines, 'gemini-adapter');
+    } else {
+      const session = await readJsonFile(filePath);
+      if (session && Array.isArray(session.messages)) {
+        messages = session.messages;
+      }
+    }
 
-    const messages = session.messages;
-    if (!Array.isArray(messages)) return detail;
+    if (messages.length === 0) return detail;
 
     // Iterate in reverse from the end
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -171,7 +182,7 @@ async function parseSession(filePath: string) {
           }
         }
 
-        // Tool usage (when functionCall exists)
+        // Tool usage (when toolCalls exists)
         if (!detail.lastTool && msg.toolCalls && Array.isArray(msg.toolCalls)) {
           for (const tc of msg.toolCalls) {
             detail.lastTool = tc.name || 'function_call';
@@ -210,10 +221,16 @@ async function getToolHistory(filePath: string, maxItems = 15) {
   type ToolEntry = { tool: string; detail: string; ts: number };
   const tools: ToolEntry[] = [];
   try {
-    const session = await readJsonFile(filePath);
-    if (!session) return tools;
-    const messages = session.messages;
-    if (!Array.isArray(messages)) return tools;
+    let messages: any[] = [];
+    if (filePath.endsWith('.jsonl')) {
+      const lines = await readLines(filePath, { count: 100, scope: 'gemini-adapter' });
+      messages = parseJsonLines(lines, 'gemini-adapter');
+    } else {
+      const session = await readJsonFile(filePath);
+      if (session && Array.isArray(session.messages)) {
+        messages = session.messages;
+      }
+    }
 
     for (const msg of messages) {
       // Check toolCalls in gemini type
@@ -259,10 +276,16 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
   type MsgEntry = { role: string; text: string; ts: number };
   const msgList: MsgEntry[] = [];
   try {
-    const session = await readJsonFile(filePath);
-    if (!session) return msgList;
-    const messages = session.messages;
-    if (!Array.isArray(messages)) return msgList;
+    let messages: any[] = [];
+    if (filePath.endsWith('.jsonl')) {
+      const lines = await readLines(filePath, { count: 20, scope: 'gemini-adapter' });
+      messages = parseJsonLines(lines, 'gemini-adapter');
+    } else {
+      const session = await readJsonFile(filePath);
+      if (session && Array.isArray(session.messages)) {
+        messages = session.messages;
+      }
+    }
 
     for (const msg of messages) {
       if (msg.type === 'info') continue; // Skip info messages
@@ -300,7 +323,7 @@ async function scanActiveSessions(activeThresholdMs: number) {
 
       try {
         const sessionFiles = await fs.promises.readdir(chatsDir);
-        const jsonFiles = sessionFiles.filter((f: string) => f.startsWith('session-') && f.endsWith('.json'));
+        const jsonFiles = sessionFiles.filter((f: string) => f.startsWith('session-') && (f.endsWith('.json') || f.endsWith('.jsonl')));
         const fileResults = await Promise.all(jsonFiles.map(async (file: string): Promise<ScanResult | null> => {
           const filePath = path.join(chatsDir, file);
           try {
@@ -404,6 +427,7 @@ export class GeminiAdapter implements AgentAdapter {
           const chatsDir = path.join(TMP_DIR, dir.name, 'chats');
           if (fs.existsSync(chatsDir)) {
             paths.push({ type: 'directory', path: chatsDir, filter: '.json' });
+            paths.push({ type: 'directory', path: chatsDir, filter: '.jsonl' });
           }
         }
       } catch { /* ignore */ }

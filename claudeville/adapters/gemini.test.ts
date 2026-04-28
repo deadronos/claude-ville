@@ -442,7 +442,7 @@ describe('gemini adapter', () => {
         expect(p).toHaveProperty('path');
         expect(['file', 'directory']).toContain(p.type);
         expect(p).toHaveProperty('filter');
-        expect(p.filter).toBe('.json');
+        expect(['.json', '.jsonl']).toContain(p.filter);
       }
     });
 

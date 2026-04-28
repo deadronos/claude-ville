@@ -33,9 +33,9 @@ export function Bubble({
   return (
     <group position={[0, y, 10]} scale={[inverseZoom, inverseZoom, 1]}>
       <mesh geometry={geometry}>
-        <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} depthWrite={true} />
       </mesh>
-      <lineSegments>
+      <lineSegments position={[0, 0, 0.01]}>
         <edgesGeometry args={[geometry]} />
         <lineBasicMaterial color={accentColor} toneMapped={false} />
       </lineSegments>
@@ -74,9 +74,9 @@ export function NameTag({ name, inverseZoom }: { name: string; inverseZoom: numb
 function IdleIndicator({ inverseZoom }: { inverseZoom: number }) {
   return (
     <group position={[0, -30, 10]} scale={[inverseZoom, inverseZoom, 1]}>
-      <WorldText position={[10, 8, 0]} fontSize={9} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
-      <WorldText position={[16, -2, 0]} fontSize={12} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
-      <WorldText position={[22, -14, 0]} fontSize={15} color={THEME.idle} anchorX="center" anchorY="middle">Z</WorldText>
+      <WorldText position={[10, 8, 0.1]} fontSize={9} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
+      <WorldText position={[16, -2, 0.1]} fontSize={12} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
+      <WorldText position={[22, -14, 0.1]} fontSize={15} color={THEME.idle} anchorX="center" anchorY="middle">Z</WorldText>
     </group>
   );
 }
@@ -262,7 +262,18 @@ export function AgentActor({
   const swing = entity.moving ? Math.sin(entity.walkFrame * 4) * 4 : 0;
   const app = entity.appearance;
   const bubbleText = entity.bubbleText;
-  const depth = 20 + entity.y * 0.001;
+  
+  // Tie-breaker based on ID to prevent z-fighting when agents are at exactly the same coordinates
+  const idHash = useMemo(() => {
+    let hash = 0;
+    for (let i = 0; i < entity.id.length; i++) {
+      hash = ((hash << 5) - hash) + entity.id.charCodeAt(i);
+      hash |= 0;
+    }
+    return (Math.abs(hash) % 1000) * 0.000001;
+  }, [entity.id]);
+
+  const depth = 20 + entity.y * 0.001 + entity.x * 0.00001 + idHash;
 
   return (
     <group
