@@ -1,14 +1,14 @@
 .sidebar {
     width: 260px;
-    background: rgba(23, 23, 23, 0.75);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--bg-glass-sidebar);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border-right: 1px solid var(--border-main);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
     overflow: hidden;
-    transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: var(--transition-md);
 }
 
 .sidebar--closed {
@@ -25,17 +25,18 @@
 }
 
 .sidebar__title {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     font-weight: 600;
-    color: #ececf1;
+    color: var(--text-main);
 }
 
 .sidebar__count {
-    font-size: 12px;
-    color: #8b8b9e;
-    background: rgba(255, 255, 255, 0.05);
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    background: var(--border-main);
     padding: 2px 8px;
     border-radius: 4px;
+    font-variant-numeric: tabular-nums;
 }
 
 .sidebar__list {
@@ -50,19 +51,20 @@
     gap: 12px;
     padding: 10px 12px;
     cursor: pointer;
-    transition: background 0.15s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: background var(--transition-fast), transform var(--transition-md);
     border-radius: 8px;
     margin-bottom: 2px;
     width: 100%;
 }
 
 .sidebar__agent:hover {
-    background: #212121;
+    background: var(--bg-main);
     transform: translateX(4px);
 }
 
 .sidebar__agent--selected {
-    background: #212121;
+    background: var(--bg-main);
+    box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .sidebar__agent-dot {
@@ -78,16 +80,16 @@
 }
 
 .sidebar__agent-dot--working { 
-    background: #10a37f; 
-    color: rgba(16, 163, 127, 0.5);
+    background: var(--status-working); 
+    color: var(--accent-glow);
     animation: smooth-breathe 2.5s ease-in-out infinite;
 }
 .sidebar__agent-dot--idle { 
-    background: #8e8ea0; 
+    background: var(--status-idle); 
 }
 .sidebar__agent-dot--waiting { 
-    background: #f59e0b; 
-    color: rgba(245, 158, 11, 0.5);
+    background: var(--status-waiting); 
+    color: rgba(245, 158, 11, 0.4);
     animation: smooth-breathe 2.5s ease-in-out infinite;
 }
 
@@ -98,8 +100,8 @@
 }
 
 .sidebar__agent-name {
-    font-size: 14px;
-    color: #ececf1;
+    font-size: var(--font-size-md);
+    color: var(--text-main);
     font-weight: 500;
     display: block;
     overflow: hidden;
@@ -108,8 +110,8 @@
 }
 
 .sidebar__agent-model {
-    font-size: 12px;
-    color: #8e8ea0;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
     display: block;
     margin-top: 2px;
     overflow: hidden;
@@ -126,8 +128,8 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    color: #8e8ea0;
-    font-size: 12px;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
     font-weight: 600;
 }
 
@@ -146,7 +148,8 @@
 }
 
 .sidebar__project-count {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--border-bright);
     padding: 2px 6px;
     border-radius: 4px;
+    font-variant-numeric: tabular-nums;
 }

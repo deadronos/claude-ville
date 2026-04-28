@@ -104,7 +104,7 @@ If the React scene ever feels “wrong,” compare it against those files first;
 - Do not duplicate follow math outside `getCameraFocusPosition()`.
 - Do not duplicate selected-agent marker projection math outside `WorldView` and `getCameraFocusPosition()`.
 - Do not replace the instanced terrain path with ad-hoc per-tile meshes unless profiling justifies it.
-- Do not animate the world container width from sibling panels; keep the canvas size stable and let the root group absorb pan and zoom changes.
+- Sibling panels (like the sidebar) may animate width if the world container uses `ResizeObserver` to trigger smooth updates.
 - Keep text and bubble scale corrections local so the rest of the scene can stay in screen-space units.
 
 ## Reference files

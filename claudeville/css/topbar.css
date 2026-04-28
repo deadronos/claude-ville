@@ -4,10 +4,10 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
-    background: rgba(33, 33, 33, 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--bg-glass);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border-bottom: 1px solid var(--border-main);
     flex-shrink: 0;
     z-index: 100;
 }
@@ -24,31 +24,31 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    color: #ececf1;
+    color: var(--text-main);
     background: transparent;
-    border: none;
     border-radius: 6px;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background var(--transition-fast);
     margin-right: 4px;
 }
 
 .topbar__sidebar-toggle:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--border-bright);
 }
 
 .topbar__logo {
-    font-size: 16px;
+    font-size: var(--font-size-lg);
     font-weight: 600;
-    color: #ececf1;
+    color: var(--text-main);
+    letter-spacing: -0.01em;
 }
 
 .topbar__version {
-    font-size: 11px;
-    color: #8e8ea0;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
     padding: 2px 6px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--border-main);
 }
 
 .topbar__center {
@@ -64,13 +64,13 @@
 }
 
 .topbar__stat-label {
-    font-size: 12px;
-    color: #8e8ea0;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
 }
 
 .topbar__stat-value {
-    font-size: 12px;
-    color: #ececf1;
+    font-size: var(--font-size-xs);
+    color: var(--text-main);
 }
 
 .topbar__badges {
@@ -82,8 +82,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
-    color: #8e8ea0;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 .topbar__badge-dot {
@@ -92,12 +93,12 @@
     border-radius: 50%;
 }
 
-.topbar__badge--working .topbar__badge-dot { background: #10a37f; }
-.topbar__badge--working { color: #10a37f; }
-.topbar__badge--idle .topbar__badge-dot { background: #8e8ea0; }
-.topbar__badge--idle { color: #8e8ea0; }
-.topbar__badge--waiting .topbar__badge-dot { background: #f59e0b; }
-.topbar__badge--waiting { color: #f59e0b; }
+.topbar__badge--working .topbar__badge-dot { background: var(--status-working); }
+.topbar__badge--working { color: var(--status-working); }
+.topbar__badge--idle .topbar__badge-dot { background: var(--status-idle); }
+.topbar__badge--idle { color: var(--status-idle); }
+.topbar__badge--waiting .topbar__badge-dot { background: var(--status-waiting); }
+.topbar__badge--waiting { color: var(--status-waiting); }
 
 .topbar__right {
     display: flex;
@@ -117,40 +118,38 @@
 .topbar__segmented-btn {
     padding: 6px 20px;
     border-radius: 99px;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     font-weight: 500;
-    color: #8e8ea0;
+    color: var(--text-muted);
     background: transparent;
-    border: none;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: var(--transition-md);
 }
 
 .topbar__segmented-btn:hover {
-    color: #ececf1;
+    color: var(--text-main);
 }
 
 .topbar__segmented-btn--active {
-    background: rgba(255, 255, 255, 0.1);
-    color: #ececf1;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    background: var(--border-bright);
+    color: var(--text-main);
+    box-shadow: var(--shadow-sm);
 }
 
 .topbar__settings-btn {
-    font-size: 16px;
+    font-size: var(--font-size-lg);
     width: 36px;
     height: 36px;
     border-radius: 6px;
-    color: #ececf1;
-    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    background: var(--border-main);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s;
-    border: none;
+    transition: var(--transition-fast);
     cursor: pointer;
 }
 
 .topbar__settings-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--border-bright);
 }

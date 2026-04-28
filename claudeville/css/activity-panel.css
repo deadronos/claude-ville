@@ -1,18 +1,18 @@
 .activity-panel {
-    width: 320px;
+    width: 340px;
     flex-shrink: 0;
-    background: rgba(33, 33, 33, 0.75);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    background: var(--bg-glass);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border: 1px solid var(--border-bright);
+    box-shadow: var(--shadow-lg);
     border-radius: 16px;
     margin: 16px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     will-change: transform, opacity;
-    animation: ap-slide-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: ap-slide-in 0.3s var(--transition-md);
     z-index: 10;
 }
 
@@ -26,7 +26,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-main);
     flex-shrink: 0;
 }
 
@@ -38,42 +38,45 @@
 }
 
 .activity-panel__name {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     font-weight: 600;
-    color: #ececf1;
+    color: var(--text-main);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .activity-panel__status {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     padding: 2px 8px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--border-main);
     white-space: nowrap;
+    text-transform: capitalize;
 }
 
 .activity-panel__close {
-    font-size: 14px;
-    color: #8e8ea0;
+    font-size: var(--font-size-md);
+    color: var(--text-muted);
     background: transparent;
-    border: none;
-    border-radius: 4px;
-    padding: 4px;
+    border-radius: 6px;
+    padding: 6px;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: var(--transition-fast);
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .activity-panel__close:hover {
-    color: #ececf1;
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+    background: var(--border-bright);
 }
 
 .activity-panel__meta {
     padding: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-main);
     flex-shrink: 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -87,14 +90,16 @@
 }
 
 .activity-panel__label {
-    font-size: 11px;
-    color: #8e8ea0;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
     text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
 }
 
 .activity-panel__value {
-    font-size: 13px;
-    color: #ececf1;
+    font-size: var(--font-size-sm);
+    color: var(--text-main);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -102,7 +107,7 @@
 
 .activity-panel__section {
     padding: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-main);
     flex-shrink: 0;
 }
 
@@ -115,10 +120,12 @@
 }
 
 .activity-panel__section-title {
-    font-size: 11px;
-    color: #8e8ea0;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
     text-transform: uppercase;
     margin-bottom: 12px;
+    letter-spacing: 0.05em;
+    font-weight: 500;
 }
 
 .activity-panel__current-tool {
@@ -126,39 +133,41 @@
     align-items: center;
     gap: 12px;
     padding: 12px;
-    background: rgba(16, 163, 127, 0.1);
+    background: rgba(16, 163, 127, 0.08);
     border-radius: 8px;
-    border-left: 3px solid #10a37f;
+    border-left: 3px solid var(--accent);
 }
 
 .activity-panel__current-tool--idle {
-    background: rgba(255, 255, 255, 0.05);
-    border-left-color: #8e8ea0;
+    background: var(--border-main);
+    border-left-color: var(--text-muted);
 }
 
 .activity-panel__tool-icon {
-    font-size: 16px;
+    font-size: 18px;
     flex-shrink: 0;
 }
 
 .activity-panel__tool-detail {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     min-width: 0;
 }
 
 .activity-panel__tool-name {
-    font-size: 13px;
-    color: #ececf1;
+    font-size: var(--font-size-sm);
+    color: var(--text-main);
+    font-weight: 500;
 }
 
 .activity-panel__tool-input {
-    font-size: 12px;
-    color: #8e8ea0;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-family: var(--font-mono);
 }
 
 .activity-panel__tool-history {
@@ -173,14 +182,16 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 10px;
-    font-size: 12px;
+    padding: 8px 10px;
+    font-size: var(--font-size-xs);
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--border-main);
+    border: 1px solid transparent;
 }
 
 .activity-panel__tool-item:first-child {
-    background: rgba(16, 163, 127, 0.1);
+    background: rgba(16, 163, 127, 0.08);
+    border-color: rgba(16, 163, 127, 0.1);
 }
 
 .activity-panel__tool-item-icon {
@@ -189,22 +200,24 @@
 }
 
 .activity-panel__tool-item-name {
-    color: #ececf1;
-    font-size: 12px;
+    color: var(--text-main);
+    font-size: var(--font-size-xs);
     white-space: nowrap;
+    font-weight: 500;
 }
 
 .activity-panel__tool-item-detail {
-    color: #8e8ea0;
-    font-size: 11px;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+    font-family: var(--font-mono);
 }
 
 .activity-panel__messages {
-    max-height: 200px;
+    max-height: 240px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -213,15 +226,15 @@
 
 .activity-panel__msg {
     padding: 10px;
-    font-size: 13px;
-    color: #ececf1;
-    background: rgba(255, 255, 255, 0.05);
+    font-size: var(--font-size-sm);
+    color: var(--text-main);
+    background: var(--border-main);
     border-radius: 8px;
     line-height: 1.5;
 }
 
 .activity-panel__msg--assistant {
-    background: rgba(16, 163, 127, 0.1);
+    background: rgba(16, 163, 127, 0.08);
 }
 
 .activity-panel__msg--user {
@@ -229,16 +242,17 @@
 }
 
 .activity-panel__msg-role {
-    font-size: 11px;
-    color: #8e8ea0;
+    font-size: 10px;
+    color: var(--text-muted);
     text-transform: uppercase;
     margin-bottom: 4px;
+    letter-spacing: 0.05em;
 }
 
 .activity-panel__token-usage {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
 }
 
 .activity-panel__token-row {
@@ -248,33 +262,34 @@
 }
 
 .activity-panel__token-label {
-    font-size: 12px;
-    color: #8e8ea0;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
 }
 
 .activity-panel__token-value {
-    font-size: 13px;
-    color: #ececf1;
-    font-weight: 500;
+    font-size: var(--font-size-sm);
+    color: var(--text-main);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
 .activity-panel__token-value--cost {
-    color: #10a37f;
+    color: var(--status-working);
 }
 
 .activity-panel__context-bar-wrap {
     width: 100%;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
+    height: 8px;
+    background: var(--border-main);
+    border-radius: 4px;
     overflow: hidden;
 }
 
 .activity-panel__context-bar {
     height: 100%;
-    border-radius: 3px;
-    background: linear-gradient(90deg, #10a37f, #f59e0b);
-    transition: width 0.5s ease;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--status-working), var(--status-waiting));
+    transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .activity-panel__token-grid {
@@ -287,24 +302,28 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 6px;
+    padding: 8px 12px;
+    background: var(--border-main);
+    border-radius: 8px;
 }
 
 .activity-panel__token-cell-label {
     font-size: 10px;
-    color: #8e8ea0;
+    color: var(--text-muted);
     text-transform: uppercase;
 }
 
 .activity-panel__token-cell-value {
-    font-size: 12px;
-    color: #ececf1;
+    font-size: var(--font-size-sm);
+    color: var(--text-main);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
 .activity-panel__empty {
-    color: #8e8ea0;
-    font-size: 12px;
-    padding: 8px 0;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    padding: 12px 0;
+    text-align: center;
+    font-style: italic;
 }

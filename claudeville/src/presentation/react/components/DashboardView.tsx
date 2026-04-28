@@ -34,12 +34,14 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
   }
 
   return (
-    <div id="dashboardMode" className="content__dashboard">
+    <div id="dashboardMode" className="content__dashboard" role="main" aria-label={i18n.t('dashboard')}>
       {agents.length === 0 ? (
-        <div id="dashboardEmpty" className="dashboard__empty dashboard__empty--visible">
-          <span className="dashboard__empty-icon">~</span>
-          <span data-i18n="noActiveAgents" className="dashboard__empty-text">{i18n.t('noActiveAgents')}</span>
-          <span data-i18n="noActiveAgentsSub" className="dashboard__empty-sub">{i18n.t('noActiveAgentsSub')}</span>
+        <div id="dashboardEmpty" className="dashboard__empty" role="status">
+          <div className="dashboard__empty-content">
+            <span className="dashboard__empty-icon" aria-hidden="true">🤖</span>
+            <h2 className="dashboard__empty-text">{i18n.t('noActiveAgents')}</h2>
+            <p className="dashboard__empty-sub">{i18n.t('noActiveAgentsSub')}</p>
+          </div>
         </div>
       ) : (
         <div id="dashboardGrid" className="dashboard__grid">
@@ -50,13 +52,13 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
             const accentIndex = colors.get(projectPath) ?? 0;
 
             return (
-              <div key={projectPath} className={`dashboard__section project-accent--${accentIndex}`} data-project={projectPath}>
-                <div className="dashboard__section-header">
-                  <span className="dashboard__section-dot" />
-                  <span className="dashboard__section-name">{shortProjectName(projectPath, i18n.t('unknownProject'))}</span>
-                  <span className="dashboard__section-path">{truncateProjectPath(projectPath)}</span>
-                  <span className="dashboard__section-count">{i18n.t('nAgents', groupAgents.length)}</span>
-                </div>
+              <section key={projectPath} className={`dashboard__section project-accent--${accentIndex}`} aria-labelledby={`project-title-${projectPath}`}>
+                <header className="dashboard__section-header">
+                  <span className="dashboard__section-dot" aria-hidden="true" />
+                  <h2 id={`project-title-${projectPath}`} className="dashboard__section-name">{shortProjectName(projectPath, i18n.t('unknownProject'))}</h2>
+                  <span className="dashboard__section-path" aria-label={i18n.t('projectPath')}>{truncateProjectPath(projectPath)}</span>
+                  <span className="dashboard__section-count tabular-nums" aria-label={i18n.t('agentCount')}>{i18n.t('nAgents', groupAgents.length)}</span>
+                </header>
                 <div className="dashboard__section-grid">
                   {groupAgents.map((agent) => {
                     const toolHistory = details[agent.id]?.toolHistory || [];
@@ -65,7 +67,20 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                     const isOpen = !!openCards[agent.id];
 
                     return (
-                      <div key={agent.id} className={`dash-card dash-card--${agent.status}`} onClick={() => onSelect(agent.id)}>
+                      <article 
+                        key={agent.id} 
+                        className={`dash-card dash-card--${agent.status}`} 
+                        onClick={() => onSelect(agent.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelect(agent.id);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={i18n.t('viewAgentDetails', { name: agent.name })}
+                      >
                         <div className="dash-card__header">
                           <AvatarPreview agent={agent} />
                           <div className="dash-card__info">
@@ -74,10 +89,10 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                               <span className={`dash-card__provider-badge provider-badge--${agent.provider || 'unknown'}`}>
                                 {providerLabel}
                               </span>
-                              <span className="dash-card__model">{shortModel(agent.model)}</span>
+                              <span className="dash-card__model tabular-nums">{shortModel(agent.model)}</span>
                               <span className="dash-card__role">{agent.role || ''}</span>
                             </div>
-                            <div className="dash-card__context-bar-wrap" data-context-pct={contextPercent}>
+                            <div className="dash-card__context-bar-wrap" aria-label={i18n.t('contextUsage', { percent: contextPercent })}>
                               <div
                                 className="dash-card__context-bar"
                                 ref={(node) => {
@@ -90,8 +105,8 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                               />
                             </div>
                           </div>
-                          <div className={`dash-card__status dash-card__status--${agent.status}`}>
-                            <span className="dash-card__status-dot" />
+                          <div className={`dash-card__status dash-card__status--${agent.status}`} role="status">
+                            <span className="dash-card__status-dot" aria-hidden="true" />
                             <span className="dash-card__status-label">
                               {i18n.t(agent.status === 'working' ? 'statusWorking' : agent.status === 'waiting' ? 'statusWaiting' : 'statusIdle')}
                             </span>
@@ -100,7 +115,7 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
 
                         <div className="dash-card__activity">
                           <div className={`dash-card__current-tool ${agent.currentTool ? '' : 'dash-card__current-tool--idle'}`}>
-                            <span className="dash-card__tool-icon">{agent.currentTool ? getToolIcon(agent.currentTool) : agent.status === 'idle' ? '💤' : '⏳'}</span>
+                            <span className="dash-card__tool-icon" aria-hidden="true">{agent.currentTool ? getToolIcon(agent.currentTool) : agent.status === 'idle' ? '💤' : '⏳'}</span>
                             <div className="dash-card__tool-info">
                               <div className="dash-card__tool-name">
                                 {agent.currentTool || (agent.status === 'idle' ? i18n.t('statusIdle') : `${i18n.t('statusWaiting')}...`)}
@@ -108,20 +123,30 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                               <div className="dash-card__tool-detail">{agent.currentToolInput || ''}</div>
                             </div>
                           </div>
-                          {agent.lastMessage ? <div className="dash-card__message">“{agent.lastMessage}”</div> : null}
+                          {agent.lastMessage ? <div className="dash-card__message" aria-label={i18n.t('lastMessage')}>“{agent.lastMessage}”</div> : null}
                         </div>
 
                         <div
                           className="dash-card__tools-header"
-                          data-agent-id={agent.id}
                           onClick={(event) => {
                             event.stopPropagation();
                             setOpenCards((current) => ({ ...current, [agent.id]: !current[agent.id] }));
                           }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setOpenCards((current) => ({ ...current, [agent.id]: !current[agent.id] }));
+                            }
+                          }}
+                          tabIndex={0}
+                          role="button"
+                          aria-expanded={isOpen}
+                          aria-controls={`card-tools-${agent.id}`}
                         >
                           <span className="dash-card__tools-title">{i18n.t('toolHistory')}</span>
-                          <span className="dash-card__tool-count-badge">{toolHistory.length}</span>
-                          <span className={`dash-card__tools-chevron ${isOpen ? 'dash-card__tools-chevron--open' : ''}`}>▶</span>
+                          <span className="dash-card__tool-count-badge tabular-nums">{toolHistory.length}</span>
+                          <span className={`dash-card__tools-chevron ${isOpen ? 'dash-card__tools-chevron--open' : ''}`} aria-hidden="true">▶</span>
                         </div>
 
                         <div className={`dash-card__tools ${isOpen ? 'dash-card__tools--open' : ''}`} id={`card-tools-${agent.id}`}>
@@ -133,20 +158,20 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                                 const category = getToolCategory(tool.tool);
                                 return (
                                   <div key={`${agent.id}-${tool.tool}-${index}`} className="dash-card__tool-item">
-                                    <span className={`dash-card__tool-item-icon tool-cat--${category}`}>{getToolIcon(tool.tool)}</span>
+                                    <span className={`dash-card__tool-item-icon tool-cat--${category}`} aria-hidden="true">{getToolIcon(tool.tool)}</span>
                                     <span className={`dash-card__tool-item-name tool-cat--${category}`}>{shortToolName(tool.tool)}</span>
-                                    <span className="dash-card__tool-item-detail">{truncateText(tool.detail, 60)}</span>
+                                    <span className="dash-card__tool-item-detail tabular-nums">{truncateText(tool.detail, 60)}</span>
                                   </div>
                                 );
                               })
                             )}
                           </div>
                         </div>
-                      </div>
+                      </article>
                     );
                   })}
                 </div>
-              </div>
+              </section>
             );
           })}
         </div>

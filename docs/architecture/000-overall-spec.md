@@ -20,7 +20,8 @@ ClaudeVille is designed to:
 - visualize active AI coding sessions in near real time
 - support multiple provider CLIs with a shared UI and data model
 - run as either a local all-in-one app or a distributed collector / hub / frontend stack
-- keep the UI readable with stable names, project grouping, and provider badges
+- keep the UI readable with stable names, project grouping, provider badges, and unique generative avatars
+- use vibrant, modern aesthetics (dark mode, glassmorphism, smooth transitions) to provide a premium "coding city" experience
 - use pragmatic TypeScript, React, R3F, and Vite tooling while keeping runtime and protocol boundaries explicit
 
 ## Runtime modes
@@ -123,10 +124,10 @@ Current providers include:
 
 The browser layout is intentionally fixed in broad structure, but implemented with flexbox rather than positioned panels:
 
-- top bar
-- left sidebar
+- top bar (with centered pill mode-switcher)
+- left sidebar (collapsible, project-grouped)
 - center content area
-- optional right activity panel
+- optional right activity panel (floating glassmorphism)
 
 The content area switches between:
 
@@ -186,4 +187,4 @@ The current codebase centers on:
 - port `3030` remains the hubreceiver default
 - port `3001` remains the frontend dev-server default
 - CSS layout should remain flexbox-based for app chrome, with fixed positioning reserved for modal / toast only
-- canvas-adjacent panels should avoid width animations; use transform and opacity so the R3F viewport does not churn
+- canvas-adjacent panels (like the sidebar) may use width transitions if the world view implements smooth resize handling (e.g. via `ResizeObserver`). However, frequent or jittery resize should still be avoided to minimize layout churn.

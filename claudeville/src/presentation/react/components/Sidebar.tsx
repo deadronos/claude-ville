@@ -16,32 +16,34 @@ export function Sidebar({ agents, selectedAgentId, onFocus, isOpen = true }: { a
   const colors = useStableProjectColors(projectKeys);
 
   return (
-    <aside id="sidebar" className={`sidebar ${!isOpen ? 'sidebar--closed' : ''}`}>
+    <aside id="sidebar" className={`sidebar ${!isOpen ? 'sidebar--closed' : ''}`} aria-label={i18n.t('agentList')}>
       <div className="sidebar__header">
-        <span data-i18n="agents" className="sidebar__title">{i18n.t('agents')}</span>
-        <span id="agentCount" className="sidebar__count">{agents.length}</span>
+        <h2 data-i18n="agents" className="sidebar__title">{i18n.t('agents')}</h2>
+        <span id="agentCount" className="sidebar__count tabular-nums" aria-label={i18n.t('totalAgents')}>{agents.length}</span>
       </div>
-      <div id="agentList" className="sidebar__list">
+      <div id="agentList" className="sidebar__list" role="list">
         {projectKeys.map((projectPath) => {
           const groupAgents = groups.get(projectPath) || [];
           const accentIndex = colors.get(projectPath) ?? 0;
 
           return (
-            <div key={projectPath} className={`sidebar__project-group project-accent--${accentIndex}`}>
-              <div className="sidebar__project-header">
-                <span className="sidebar__project-dot" />
+            <div key={projectPath} className={`sidebar__project-group project-accent--${accentIndex}`} role="group" aria-labelledby={`sidebar-project-${projectPath}`}>
+              <div className="sidebar__project-header" id={`sidebar-project-${projectPath}`}>
+                <span className="sidebar__project-dot" aria-hidden="true" />
                 <span className="sidebar__project-name">{shortProjectName(projectPath, i18n.t('unknownProject'))}</span>
-                <span className="sidebar__project-count">{groupAgents.length}</span>
+                <span className="sidebar__project-count tabular-nums">{groupAgents.length}</span>
               </div>
               {groupAgents.map((agent) => (
                 <button
                   key={agent.id}
                   type="button"
+                  role="listitem"
                   className={`sidebar__agent ${selectedAgentId === agent.id ? 'sidebar__agent--selected' : ''}`}
                   data-session-id={agent.id}
                   data-status={agent.status}
                   data-provider={agent.provider || 'unknown'}
                   onClick={() => onFocus(agent.id)}
+                  aria-label={i18n.t('focusAgent', { name: agent.name })}
                 >
                   <div style={{ position: 'relative' }}>
                     <GradientAvatar id={agent.id} size={28} />
@@ -50,10 +52,10 @@ export function Sidebar({ agents, selectedAgentId, onFocus, isOpen = true }: { a
                   <div className="sidebar__agent-info">
                     <span className="sidebar__agent-name">{agent.name}</span>
                     <span className="sidebar__agent-model">
-                      <span className={`provider-icon provider-icon--${agent.provider || 'unknown'}`}>
+                      <span className={`provider-icon provider-icon--${agent.provider || 'unknown'}`} aria-hidden="true">
                         {getProviderIcon(agent.provider)}
                       </span>{' '}
-                      {shortModel(agent.model)}
+                      <span className="tabular-nums">{shortModel(agent.model)}</span>
                     </span>
                   </div>
                 </button>

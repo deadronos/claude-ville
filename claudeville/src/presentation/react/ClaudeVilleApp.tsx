@@ -60,10 +60,12 @@ export function ClaudeVilleApp() {
             <span className="topbar__version">v0.1</span>
           </div>
           <div className="topbar__center">
-            <div className="topbar__segmented-control">
+            <div className="topbar__segmented-control" role="tablist" aria-label={i18n.t('viewMode')}>
               <button
                 id="btnModeCharacter"
                 type="button"
+                role="tab"
+                aria-selected={snapshot.mode === 'character'}
                 className={`topbar__segmented-btn ${snapshot.mode === 'character' ? 'topbar__segmented-btn--active' : ''}`}
                 onClick={() => controller.setMode('character')}
               >
@@ -72,6 +74,8 @@ export function ClaudeVilleApp() {
               <button
                 id="btnModeDashboard"
                 type="button"
+                role="tab"
+                aria-selected={snapshot.mode === 'dashboard'}
                 className={`topbar__segmented-btn ${snapshot.mode === 'dashboard' ? 'topbar__segmented-btn--active' : ''}`}
                 onClick={() => controller.setMode('dashboard')}
               >
@@ -80,21 +84,21 @@ export function ClaudeVilleApp() {
             </div>
           </div>
           <div className="topbar__right">
-            <div className="topbar__badges">
-              <span className="topbar__badge topbar__badge--working">
-                <span className="topbar__badge-dot" />
-                <span id="badgeWorking">{stats.working}</span> <span data-i18n="working">{i18n.t('working')}</span>
+            <div className="topbar__badges" role="status" aria-label={i18n.t('agentStats')}>
+              <span className="topbar__badge topbar__badge--working" title={i18n.t('working')}>
+                <span className="topbar__badge-dot" aria-hidden="true" />
+                <span id="badgeWorking" className="tabular-nums">{stats.working}</span> <span data-i18n="working" className="topbar__stat-label-text">{i18n.t('working')}</span>
               </span>
-              <span className="topbar__badge topbar__badge--idle">
-                <span className="topbar__badge-dot" />
-                <span id="badgeIdle">{stats.idle}</span> <span data-i18n="idle">{i18n.t('idle')}</span>
+              <span className="topbar__badge topbar__badge--idle" title={i18n.t('idle')}>
+                <span className="topbar__badge-dot" aria-hidden="true" />
+                <span id="badgeIdle" className="tabular-nums">{stats.idle}</span> <span data-i18n="idle" className="topbar__stat-label-text">{i18n.t('idle')}</span>
               </span>
-              <span className="topbar__badge topbar__badge--waiting">
-                <span className="topbar__badge-dot" />
-                <span id="badgeWaiting">{stats.waiting}</span> <span data-i18n="waiting">{i18n.t('waiting')}</span>
+              <span className="topbar__badge topbar__badge--waiting" title={i18n.t('waiting')}>
+                <span className="topbar__badge-dot" aria-hidden="true" />
+                <span id="badgeWaiting" className="tabular-nums">{stats.waiting}</span> <span data-i18n="waiting" className="topbar__stat-label-text">{i18n.t('waiting')}</span>
               </span>
             </div>
-            <button id="btnSettings" type="button" className="topbar__settings-btn" title="Settings" onClick={() => controller.openSettings()}>
+            <button id="btnSettings" type="button" className="topbar__settings-btn" aria-label={i18n.t('settings')} title={i18n.t('settings')} onClick={() => controller.openSettings()}>
               ⚙
             </button>
           </div>
