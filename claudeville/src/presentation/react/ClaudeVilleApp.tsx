@@ -42,7 +42,6 @@ export function ClaudeVilleApp() {
   }
 
   return (
-  return (
     <div className="app-container">
       <Sidebar agents={agents} selectedAgentId={snapshot.selectedAgentId} onFocus={(agentId) => controller.focusAgent(agentId)} />
 
