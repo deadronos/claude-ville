@@ -8,14 +8,15 @@ import {
   shortProjectName,
 } from '../../shared/dashboardViewModel.js';
 import { useStableProjectColors } from '../hooks/useStableProjectColors.js';
+import { GradientAvatar } from './GradientAvatar.js';
 
-export function Sidebar({ agents, selectedAgentId, onFocus }: { agents: any[]; selectedAgentId: string | null; onFocus: (agentId: string) => void; }) {
+export function Sidebar({ agents, selectedAgentId, onFocus, isOpen = true }: { agents: any[]; selectedAgentId: string | null; onFocus: (agentId: string) => void; isOpen?: boolean }) {
   const groups = useMemo(() => groupByProject(agents), [agents]);
   const projectKeys = useMemo(() => Array.from(groups.keys()), [groups]);
   const colors = useStableProjectColors(projectKeys);
 
   return (
-    <aside id="sidebar" className="sidebar">
+    <aside id="sidebar" className={`sidebar ${!isOpen ? 'sidebar--closed' : ''}`}>
       <div className="sidebar__header">
         <span data-i18n="agents" className="sidebar__title">{i18n.t('agents')}</span>
         <span id="agentCount" className="sidebar__count">{agents.length}</span>
@@ -42,7 +43,10 @@ export function Sidebar({ agents, selectedAgentId, onFocus }: { agents: any[]; s
                   data-provider={agent.provider || 'unknown'}
                   onClick={() => onFocus(agent.id)}
                 >
-                  <span className={`sidebar__agent-dot sidebar__agent-dot--${agent.status}`} />
+                  <div style={{ position: 'relative' }}>
+                    <GradientAvatar id={agent.id} size={28} />
+                    <span className={`sidebar__agent-dot sidebar__agent-dot--${agent.status}`} style={{ position: 'absolute', bottom: -2, right: -2, border: '2px solid #171717' }} />
+                  </div>
                   <div className="sidebar__agent-info">
                     <span className="sidebar__agent-name">{agent.name}</span>
                     <span className="sidebar__agent-model">

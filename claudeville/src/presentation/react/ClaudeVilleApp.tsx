@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { i18n } from '../../config/i18n.js';
 import { ClaudeVilleController, useClaudeVilleSnapshot } from './state/ClaudeVilleController.js';
@@ -12,6 +12,7 @@ import { WorldTimer } from './components/WorldTimer.js';
 import { useWorldStore } from './world/state/useWorldStore.js';
 
 export function ClaudeVilleApp() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const controller = useMemo(() => new ClaudeVilleController(), []);
   const snapshot = useClaudeVilleSnapshot(controller);
   const agents = Array.from(snapshot.world.agents.values());
@@ -43,19 +44,42 @@ export function ClaudeVilleApp() {
 
   return (
     <div className="app-container">
-      <Sidebar agents={agents} selectedAgentId={snapshot.selectedAgentId} onFocus={(agentId) => controller.focusAgent(agentId)} />
+      <Sidebar agents={agents} selectedAgentId={snapshot.selectedAgentId} onFocus={(agentId) => controller.focusAgent(agentId)} isOpen={isSidebarOpen} />
 
       <div className="main-wrapper">
         <header id="topbar" className="topbar">
           <div className="topbar__left">
+            <button className="topbar__sidebar-toggle" onClick={() => setIsSidebarOpen(!isSidebarOpen)} aria-label="Toggle Sidebar">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
             <span className="topbar__logo">ClaudeVille</span>
             <span className="topbar__version">v0.1</span>
           </div>
           <div className="topbar__center">
-            <div className="topbar__stat">
-              <span data-i18n="time" className="topbar__stat-label">{i18n.t('time')}</span>
-              <WorldTimer startTime={snapshot.world.startTime} />
+            <div className="topbar__segmented-control">
+              <button
+                id="btnModeCharacter"
+                type="button"
+                className={`topbar__segmented-btn ${snapshot.mode === 'character' ? 'topbar__segmented-btn--active' : ''}`}
+                onClick={() => controller.setMode('character')}
+              >
+                {i18n.t('world')}
+              </button>
+              <button
+                id="btnModeDashboard"
+                type="button"
+                className={`topbar__segmented-btn ${snapshot.mode === 'dashboard' ? 'topbar__segmented-btn--active' : ''}`}
+                onClick={() => controller.setMode('dashboard')}
+              >
+                {i18n.t('dashboard')}
+              </button>
             </div>
+          </div>
+          <div className="topbar__right">
             <div className="topbar__badges">
               <span className="topbar__badge topbar__badge--working">
                 <span className="topbar__badge-dot" />
@@ -70,26 +94,6 @@ export function ClaudeVilleApp() {
                 <span id="badgeWaiting">{stats.waiting}</span> <span data-i18n="waiting">{i18n.t('waiting')}</span>
               </span>
             </div>
-          </div>
-          <div className="topbar__right">
-            <button
-              id="btnModeCharacter"
-              type="button"
-              data-i18n="world"
-              className={`topbar__mode-btn ${snapshot.mode === 'character' ? 'topbar__mode-btn--active' : ''}`}
-              onClick={() => controller.setMode('character')}
-            >
-              {i18n.t('world')}
-            </button>
-            <button
-              id="btnModeDashboard"
-              type="button"
-              data-i18n="dashboard"
-              className={`topbar__mode-btn ${snapshot.mode === 'dashboard' ? 'topbar__mode-btn--active' : ''}`}
-              onClick={() => controller.setMode('dashboard')}
-            >
-              {i18n.t('dashboard')}
-            </button>
             <button id="btnSettings" type="button" className="topbar__settings-btn" title="Settings" onClick={() => controller.openSettings()}>
               ⚙
             </button>
