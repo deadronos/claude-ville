@@ -129,10 +129,14 @@ export function BuildingActor({
     <group position={[center.x, center.y, depth]}>
       <mesh position={[8, 6, -0.05]} scale={[halfW + 5, halfH + 3, 1]}>
         <circleGeometry args={[1, 24]} />
-        <meshBasicMaterial color="black" transparent opacity={0.25} depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="black" transparent opacity={0.35} depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Foundation Occlusion */}
+      <mesh geometry={foundationGeometry} position={[0, 0, -0.01]}>
+        <meshBasicMaterial color="black" transparent opacity={0.4} toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={foundationGeometry} position={[0, 0, 0.01]}>
-        <meshBasicMaterial color="#3a3025" toneMapped={false} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#2a2015" toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={backLeftGeometry} position={[0, 0, 0.12]}>
         <meshBasicMaterial color={lighten(style.wallColor, -15)} toneMapped={false} side={THREE.DoubleSide} />
@@ -141,13 +145,22 @@ export function BuildingActor({
         <meshBasicMaterial color={lighten(style.wallColor, -5)} toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={interiorGeometry} position={[0, 0, 0.14]}>
-        <meshBasicMaterial ref={interiorMaterial} color={lighten(style.wallColor, 35)} transparent opacity={0} toneMapped={false} depthWrite={false} side={THREE.DoubleSide} />
+        <meshBasicMaterial ref={interiorMaterial} color="#ffd700" transparent opacity={0} toneMapped={false} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={frontLeftGeometry} position={[0, 0, 0.15]}>
         <meshBasicMaterial ref={frontLeftMaterial} color={style.wallColor} toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={frontRightGeometry} position={[0, 0, 0.16]}>
         <meshBasicMaterial ref={frontRightMaterial} color={lighten(style.wallColor, 20)} toneMapped={false} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Building Window Props */}
+      <mesh position={[-halfW * 0.4, halfH * 0.4 - style.wallHeight * 0.5, 0.165]}>
+        <planeGeometry args={[6, 8]} />
+        <meshBasicMaterial color="#ffd700" transparent opacity={0.6} toneMapped={false} />
+      </mesh>
+      <mesh position={[halfW * 0.4, halfH * 0.4 - style.wallHeight * 0.5, 0.165]}>
+        <planeGeometry args={[6, 8]} />
+        <meshBasicMaterial color="#ffd700" transparent opacity={0.6} toneMapped={false} />
       </mesh>
       <mesh geometry={roofGeometries.left} position={[0, 0, 0.17]}>
         <meshBasicMaterial ref={roofMaterial} color={style.roofColor} toneMapped={false} side={THREE.DoubleSide} />
