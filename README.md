@@ -168,6 +168,7 @@ The widget:
   - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`~/.claude/`)
   - [Codex CLI](https://github.com/openai/codex) (`~/.codex/`)
   - [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`~/.gemini/`)
+- **OpenCode adapter**: `sqlite3` system binary (pre-installed on macOS, install via `apt-get install sqlite3` or similar on Linux)
 - **Widget only**: macOS + Xcode Command Line Tools (`xcode-select --install`)
 
 ## How It Works

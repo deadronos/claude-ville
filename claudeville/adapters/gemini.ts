@@ -32,7 +32,7 @@ const TMP_DIR = path.join(GEMINI_DIR, 'tmp');
 /**
  * Reverse-map project path from SHA-256 hash or handle named directories
  */
-const MAX_HASH_CACHE_SIZE = 500;
+const MAX_HASH_CACHE_SIZE = 1000;
 const _hashToPathCache = new Map<string, string | null>();
 
 function evictIfNeeded() {
