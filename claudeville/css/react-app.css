@@ -172,7 +172,7 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    background: #0a0a0f;
+    background: #171717;
     z-index: 1;
 }
 
@@ -197,19 +197,19 @@
 
 .world-view__minimap {
     position: absolute;
-    bottom: 12px;
-    right: 12px;
-    border: 2px solid rgba(232, 212, 77, 0.3);
-    background: rgba(10, 10, 15, 0.85);
-    border-radius: 4px;
+    bottom: 16px;
+    right: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(33, 33, 33, 0.9);
+    border-radius: 8px;
     overflow: hidden;
     z-index: 5;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .world-view__minimap canvas {
     display: block;
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: pixelated;
+    image-rendering: auto;
 }
 
 .world-view__selected-agent-marker {
@@ -219,29 +219,40 @@
     z-index: 4;
 }
 
+@keyframes ap-ring-pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+    50% {
+        transform: scale(1.15);
+        opacity: 0.4;
+    }
+}
+
 .world-view__selected-agent-ring {
-    width: 34px;
-    height: 18px;
-    border: 2px solid rgba(232, 212, 77, 0.95);
+    width: 40px;
+    height: 24px;
+    border: 2px solid rgba(255, 255, 255, 0.8);
     border-radius: 999px;
-    box-shadow: 0 0 0 2px rgba(26, 26, 46, 0.95), 0 0 14px rgba(232, 212, 77, 0.35);
-    background: rgba(232, 212, 77, 0.08);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.2), inset 0 0 8px rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.1);
+    animation: ap-ring-pulse 2s ease-in-out infinite;
 }
 
 .world-view__selected-agent-label {
     position: absolute;
     left: 50%;
-    top: -24px;
+    top: -28px;
     transform: translateX(-50%);
-    padding: 2px 8px;
-    border-radius: 999px;
-    border: 1px solid rgba(232, 212, 77, 0.7);
-    background: rgba(10, 10, 15, 0.9);
-    color: #fff7c2;
-    font-family: var(--font-mono);
-    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(33, 33, 33, 0.9);
+    color: #ececf1;
+    font-size: 11px;
     white-space: nowrap;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .world-view__focus-reticle {
@@ -254,11 +265,11 @@
 }
 
 .world-view__focus-cross {
-    width: 42px;
-    height: 42px;
-    border: 2px solid rgba(232, 212, 77, 0.95);
-    border-radius: 999px;
-    box-shadow: 0 0 0 2px rgba(26, 26, 46, 0.95), 0 0 18px rgba(232, 212, 77, 0.35);
+    width: 48px;
+    height: 48px;
+    border: 1px dashed rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    box-shadow: 0 0 12px rgba(0, 0, 0, 0.2);
     position: relative;
 }
 
@@ -266,41 +277,52 @@
 .world-view__focus-cross::after {
     content: '';
     position: absolute;
-    background: rgba(232, 212, 77, 0.95);
+    background: rgba(255, 255, 255, 0.8);
 }
 
 .world-view__focus-cross::before {
     left: 50%;
-    top: 6px;
-    bottom: 6px;
-    width: 2px;
+    top: 12px;
+    bottom: 12px;
+    width: 1px;
     transform: translateX(-50%);
 }
 
 .world-view__focus-cross::after {
     top: 50%;
-    left: 6px;
-    right: 6px;
-    height: 2px;
+    left: 12px;
+    right: 12px;
+    height: 1px;
     transform: translateY(-50%);
 }
 
 .world-view__focus-badge {
     position: absolute;
     left: 50%;
-    bottom: 18px;
+    bottom: 24px;
     transform: translateX(-50%);
     pointer-events: none;
     z-index: 4;
-    background: rgba(10, 10, 15, 0.92);
-    border: 1px solid rgba(232, 212, 77, 0.7);
-    border-radius: 999px;
-    color: #fff7c2;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 4px 10px;
+    background: rgba(33, 33, 33, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #ececf1;
+    font-size: 11px;
+    padding: 6px 12px;
     white-space: nowrap;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    animation: focus-badge-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes focus-badge-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
 }
 
 .content__dashboard {

@@ -41,6 +41,9 @@ The registry is also responsible for sanitizing summaries and details, normalizi
 - Session data is normalized before it reaches application services.
 - Adapter implementations remain file-format-specific, which keeps provider logic isolated.
 - Some parsing logic is duplicated today and should be kept under review for future refactors.
+- **Performance Optimizations**:
+    - **Caching**: Heavy adapters like `gemini.ts` use an LRU-style cache for project path restoration to avoid expensive recursive scans.
+    - **Scoped Reading**: Large logs in `vscode.ts` are checked for activity using partial reads (`readLines` with `count`) instead of loading entire files.
 - Adapter I/O operations must be non-blocking. Prefer `fs.promises` over synchronous `fs` methods, and use `Promise.all` for concurrent operations. Blocking the event loop degrades the responsiveness of all providers scanned together in `getAllSessions`.
 
 ## Compliance

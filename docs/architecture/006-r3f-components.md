@@ -42,7 +42,7 @@ The inverse helpers follow the same convention:
 - `createMovementSystem()`, `createProximitySystem()`, and `createCameraFollowSystem()` register focused `useFrame` loops for animation, roof fading, and follow behavior.
 - `PostProcessing` owns the post-processing surface; it currently mounts an empty `EffectComposer` placeholder.
 - All visible objects are built from flat meshes, shape geometries, or text; depth ordering is achieved with small z offsets.
-- `InstancedTerrain`, `BuildingActor`, and `AgentActor` all position themselves in the same isometric scene-space coordinate system.
+- `InstancedTerrain`, `Vegetation`, `BuildingActor`, and `AgentActor` all position themselves in the same isometric scene-space coordinate system.
 
 ## Per-component transform rules
 
@@ -50,14 +50,22 @@ The inverse helpers follow the same convention:
 
 - `useTerrain()` derives path tiles, water tiles, and per-tile palette choices from building placement plus a stable random seed.
 - `InstancedTerrain` creates a single diamond `ShapeGeometry`, uploads per-instance transform / color / water attributes, and positions each tile at `isoToScreen(tileX, tileY)`.
-- A custom shader animates water shimmer.
+- A custom shader animates fluid water shimmer using dual-scrolling noise layers and soft edge foam.
+- Passing cloud shadows are implemented as a low-frequency scrolling noise filter across the entire terrain.
 - Tiles remain flat and use `DoubleSide` materials because the scene is effectively 2D.
 - `frustumCulled={false}` is intentional because the parent root-group transform controls what is visible on screen.
+
+### Vegetation
+
+- `Vegetation` uses an `InstancedMesh` to render thousands of grass tufts across land tiles.
+- A custom vertex shader implements a gentle swaying wind effect.
+- Depth sorting is handled dynamically by assigning each tuft a unique Z-coordinate based on its Y-position, ensuring grass correctly occludes behind buildings.
 
 ### Buildings
 
 - `BuildingActor` computes a building center with `isoToScreen(tileX + width / 2, tileY + height / 2)`.
 - Geometry is layered with explicit z offsets for foundation, walls, roof, and label.
+- Enhanced visuals include interior "glow" meshes, foundation occlusion shading, and window props.
 - Roof transparency is controlled by a shared `roofAlphaRef`.
 
 ### Agents
@@ -65,6 +73,9 @@ The inverse helpers follow the same convention:
 - `useWorldSprites` keeps stable `AgentSprite` objects tied to domain agents.
 - `useEcsWorld()` converts agent tile positions into isometric scene `x` / `y` values and keeps stable ECS entities across renders.
 - `AgentActor` positions each entity at `entity.x`, `entity.y`, and uses a local `scale={[entity.facingLeft ? -1 : 1, selected ? 1.12 : 1, 1]}` for facing and selection emphasis.
+- **Animations**: Implements squash-and-stretch walk cycles and hopping via vertex-based sine scaling.
+- **Dynamic Shadows**: Elliptical gradient shadows that respond to agent height (scaling/fading during hops).
+- **Status Indicators**: Floating pixel-art emoji icons (⚙️, ⏳, 💬) rendered above agent bubbles.
 - Agent UI bubbles and labels scale with `inverseZoom = 1 / camera.zoom` so they remain readable at any zoom level.
 - `WorldText` flips Y back with `scale={[1, -1, 1]}` so text is upright in the y-down scene.
 
@@ -104,7 +115,7 @@ If the React scene ever feels “wrong,” compare it against those files first;
 - Do not duplicate follow math outside `getCameraFocusPosition()`.
 - Do not duplicate selected-agent marker projection math outside `WorldView` and `getCameraFocusPosition()`.
 - Do not replace the instanced terrain path with ad-hoc per-tile meshes unless profiling justifies it.
-- Do not animate the world container width from sibling panels; keep the canvas size stable and let the root group absorb pan and zoom changes.
+- Sibling panels (like the sidebar) may animate width if the world container uses `ResizeObserver` to trigger smooth updates.
 - Keep text and bubble scale corrections local so the rest of the scene can stay in screen-space units.
 
 ## Reference files
@@ -112,6 +123,7 @@ If the React scene ever feels “wrong,” compare it against those files first;
 - `claudeville/src/presentation/react/world/components/ScreenSpaceCamera.tsx`
 - `claudeville/src/presentation/react/world/components/WorldScene.tsx`
 - `claudeville/src/presentation/react/world/components/InstancedTerrain.tsx`
+- `claudeville/src/presentation/react/world/components/Vegetation.tsx`
 - `claudeville/src/presentation/react/world/components/BuildingActor.tsx`
 - `claudeville/src/presentation/react/world/components/AgentActor.tsx`
 - `claudeville/src/presentation/react/world/components/PostProcessing.tsx`

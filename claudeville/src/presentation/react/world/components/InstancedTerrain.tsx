@@ -11,6 +11,7 @@ export const INSTANCED_TERRAIN_VERTEX_SHADER = /* glsl */ `
   varying vec3 vColor;
   varying float vWater;
   varying vec2 vUv;
+  varying vec3 vWorldPos;
 
   void main() {
     vColor = instanceColor;
@@ -20,6 +21,7 @@ export const INSTANCED_TERRAIN_VERTEX_SHADER = /* glsl */ `
     #ifdef USE_INSTANCING
       transformed = instanceMatrix * transformed;
     #endif
+    vWorldPos = transformed.xyz;
     gl_Position = projectionMatrix * modelViewMatrix * transformed;
   }
 `;
@@ -29,13 +31,44 @@ const fragmentShader = /* glsl */ `
   varying vec3 vColor;
   varying float vWater;
   varying vec2 vUv;
+  varying vec3 vWorldPos;
+
+  // Simple noise for cloud shadows
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
 
   void main() {
     vec4 color = vec4(vColor, 1.0);
+    
+    // Cloud shadows
+    float cloud = noise(vWorldPos.xy * 0.005 + uTime * 0.05) * 0.15;
+    color.rgb -= cloud;
+
     if (vWater > 0.5) {
-      float shimmer = sin(uTime * 2.0 + vUv.x * 10.0 + vUv.y * 8.0) * 0.15 + 0.18;
-      color.rgb += shimmer;
+      // Fluid water effect using scrolling noise
+      float shimmer = noise(vWorldPos.xy * 0.05 + vec2(uTime * 0.1, uTime * 0.08)) * 0.15;
+      float highlight = noise(vWorldPos.xy * 0.1 - vec2(uTime * 0.2, uTime * 0.15)) * 0.2;
+      
+      color.rgb += shimmer + highlight;
+      color.a = 0.85; // Slight transparency
+      
+      // Soft edge foam based on UV
+      float edge = (1.0 - length(vUv - 0.5) * 2.0);
+      edge = smoothstep(0.0, 0.5, edge) * 0.2;
+      color.rgb += edge;
+    } else {
+      // Subtle depth tint based on Y position
+      color.rgb *= (1.0 - vWorldPos.y * 0.0001);
     }
+    
     gl_FragColor = color;
   }
 `;
@@ -75,6 +108,7 @@ export function InstancedTerrain({ buildings }: { buildings: any[] }) {
       fragmentShader,
       uniforms: { uTime: { value: 0 } },
       side: THREE.DoubleSide,
+      transparent: true,
     });
     shaderRef.current = mat;
     return mat;

@@ -9,7 +9,7 @@ export const THEME = {
     waiting: '#f97316',
     error: '#ef4444',
     border: 'rgba(232, 212, 77, 0.3)',
-    grass: ['#2d5a27', '#3a6b35', '#4a7c43'],
-    path: ['#6b5b3a', '#7a6a49'],
-    water: ['#1a4a6b', '#1e5580'],
+    grass: ['#3d7a37', '#4a8b45', '#5a9c53'],
+    path: ['#7b6b4a', '#8a7a59'],
+    water: ['#2a5a7b', '#2e6590'],
 };

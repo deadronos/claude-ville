@@ -25,7 +25,7 @@ export function ActivityPanel({ agent, onClose }: { agent: any | null; onClose: 
             {agent.status.toUpperCase()}
           </span>
         </div>
-        <button id="panelClose" className="activity-panel__close" type="button" onClick={onClose}>X</button>
+        <button id="panelClose" className="activity-panel__close" type="button" onClick={onClose} aria-label={i18n.t('close') || 'Close'}>×</button>
       </div>
 
       <div className="activity-panel__meta">
@@ -100,18 +100,20 @@ export function ActivityPanel({ agent, onClose }: { agent: any | null; onClose: 
 
       <div className="activity-panel__section activity-panel__section--grow">
         <div className="activity-panel__section-title">Tool History</div>
-        <div id="panelToolHistory" className="activity-panel__tool-history">
-          {detail.toolHistory.length === 0 ? (
-            <div className="activity-panel__empty">No tool usage</div>
-          ) : (
-            [...detail.toolHistory].reverse().map((tool, index) => (
-              <div key={`${agent.id}-tool-${index}`} className="activity-panel__tool-item">
-                <span className="activity-panel__tool-item-icon">{getToolIcon(tool.tool)}</span>
-                <span className="activity-panel__tool-item-name">{shortToolName(tool.tool)}</span>
-                <span className="activity-panel__tool-item-detail">{truncateText(tool.detail, 45)}</span>
-              </div>
-            ))
-          )}
+        <div className="activity-panel__scroll-container">
+          <div id="panelToolHistory" className="activity-panel__tool-history">
+            {detail.toolHistory.length === 0 ? (
+              <div className="activity-panel__empty">No tool usage</div>
+            ) : (
+              [...detail.toolHistory].reverse().map((tool, index) => (
+                <div key={`${agent.id}-tool-${index}`} className="activity-panel__tool-item">
+                  <span className="activity-panel__tool-item-icon">{getToolIcon(tool.tool)}</span>
+                  <span className="activity-panel__tool-item-name">{shortToolName(tool.tool)}</span>
+                  <span className="activity-panel__tool-item-detail">{truncateText(tool.detail, 45)}</span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 

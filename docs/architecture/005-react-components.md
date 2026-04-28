@@ -20,6 +20,8 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 | `claudeville/src/presentation/react/world/components/*` | R3F scene primitives | Terrain, buildings, agents, text, minimap, camera, and world-adjacent overlays. |
 | `claudeville/src/presentation/react/components/DashboardView.tsx` | Dashboard surface | Renders project-grouped cards and owns dashboard detail hooks and card open state. |
 | `claudeville/src/presentation/react/components/ActivityPanel.tsx` | Selection detail surface | Renders the selected agent’s metadata, tool history, token usage, and messages. |
+| `claudeville/src/presentation/react/components/Sidebar.tsx` | Agent list sidebar | Renders the collapsible agent list with project grouping and focus controls. |
+| `claudeville/src/presentation/react/components/GradientAvatar.tsx` | Generative visualizer | Generates unique circular gradient avatars based on agent IDs. |
 | `claudeville/src/presentation/character-mode/*` | Legacy reference renderer | Provides the older imperative canvas implementation and the canonical coordinate math that the React scene mirrors. |
 
 ## Ownership model
@@ -49,7 +51,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 - `focusAgent()` is the entry point for “jump to this agent from the sidebar.”
 - The world view should not apply a second camera snap when selection changes; the R3F scene owns follow behavior and `WorldView` only updates the logical follow target.
 - The selected-agent ring and focus badge are DOM overlays driven from the shared selected-agent state.
-- Side panels should not animate canvas width with CSS `width` transitions, because the canvas resize path feeds back into viewport math.
+- Side panels (like the sidebar) may animate width if the world viewport logic (via `ResizeObserver`) is robust enough to handle the transition without significant performance degradation.
 
 ## Practical invariants
 

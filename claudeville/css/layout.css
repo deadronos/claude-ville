@@ -10,6 +10,22 @@ body {
     overflow: hidden;
 }
 
+.app-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.main-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
 .main__body {
     display: flex;
     flex: 1;

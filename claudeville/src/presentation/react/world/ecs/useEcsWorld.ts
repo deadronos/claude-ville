@@ -58,8 +58,21 @@ export function useEcsWorld(agents: Agent[], buildings: Building[]) {
     entity.appearance = agent.appearance;
     entity.Agent = true;
     const screen = agentToScreen(agent);
-    entity.x = screen.x;
-    entity.y = screen.y;
+    
+    // Initialize position on first creation
+    if (entity.x === undefined) {
+      entity.x = screen.x;
+      entity.y = screen.y;
+      entity.targetX = screen.x;
+      entity.targetY = screen.y;
+    }
+
+    // Update target for movement system instead of snapping
+    if (entity.targetX !== screen.x || entity.targetY !== screen.y) {
+      entity.targetX = screen.x;
+      entity.targetY = screen.y;
+      entity.moving = true;
+    }
   }
 
   // Remove stale agents

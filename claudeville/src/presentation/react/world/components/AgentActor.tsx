@@ -33,9 +33,9 @@ export function Bubble({
   return (
     <group position={[0, y, 10]} scale={[inverseZoom, inverseZoom, 1]}>
       <mesh geometry={geometry}>
-        <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} depthWrite={true} />
       </mesh>
-      <lineSegments>
+      <lineSegments position={[0, 0, 0.01]}>
         <edgesGeometry args={[geometry]} />
         <lineBasicMaterial color={accentColor} toneMapped={false} />
       </lineSegments>
@@ -74,21 +74,30 @@ export function NameTag({ name, inverseZoom }: { name: string; inverseZoom: numb
 function IdleIndicator({ inverseZoom }: { inverseZoom: number }) {
   return (
     <group position={[0, -30, 10]} scale={[inverseZoom, inverseZoom, 1]}>
-      <WorldText position={[10, 8, 0]} fontSize={9} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
-      <WorldText position={[16, -2, 0]} fontSize={12} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
-      <WorldText position={[22, -14, 0]} fontSize={15} color={THEME.idle} anchorX="center" anchorY="middle">Z</WorldText>
+      <WorldText position={[10, 8, 0.1]} fontSize={9} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
+      <WorldText position={[16, -2, 0.1]} fontSize={12} color={THEME.idle} anchorX="center" anchorY="middle">z</WorldText>
+      <WorldText position={[22, -14, 0.1]} fontSize={15} color={THEME.idle} anchorX="center" anchorY="middle">Z</WorldText>
     </group>
   );
 }
 
 function ChatIndicator({ bubbleConfig, inverseZoom }: { bubbleConfig: BubbleConfig; inverseZoom: number }) {
   return (
-    <group position={[0, -38, 10]} scale={[inverseZoom, inverseZoom, 1]}>
+    <group position={[0, -42, 10]} scale={[inverseZoom, inverseZoom, 1]}>
       <mesh scale={[14, 14, 1]}>
         <circleGeometry args={[1, 20]} />
         <meshBasicMaterial color="#1a1a2e" toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
-      <WorldText position={[0, 0, 0.1]} fontSize={bubbleConfig.chatFontSize} color="#4ade80" anchorX="center" anchorY="middle">...</WorldText>
+      <WorldText position={[0, 0, 0.1]} fontSize={bubbleConfig.chatFontSize} color="#4ade80" anchorX="center" anchorY="middle">💬</WorldText>
+    </group>
+  );
+}
+
+function StatusIcon({ status, inverseZoom }: { status: string; inverseZoom: number }) {
+  const icon = status === AgentStatus.WORKING ? '⚙️' : status === AgentStatus.WAITING ? '⏳' : '💤';
+  return (
+    <group position={[18, -32, 11]} scale={[inverseZoom * 0.8, inverseZoom * 0.8, 1]}>
+      <WorldText fontSize={12} anchorX="center" anchorY="middle">{icon}</WorldText>
     </group>
   );
 }
@@ -259,10 +268,26 @@ export function AgentActor({
   const groupRef = useRef<THREE.Group | null>(null);
 
   const inverseZoom = useInverseZoom(cameraRef);
-  const swing = entity.moving ? Math.sin(entity.walkFrame * 4) * 4 : 0;
+  const walkTime = entity.walkFrame * 4;
+  const swing = entity.moving ? Math.sin(walkTime) * 4 : 0;
+  const hop = entity.moving ? Math.abs(Math.sin(walkTime)) * 3 : 0;
+  const squash = entity.moving ? 1.0 - Math.abs(Math.sin(walkTime)) * 0.1 : 1.0;
+  const stretch = entity.moving ? 1.0 + Math.abs(Math.sin(walkTime)) * 0.05 : 1.0;
+  
   const app = entity.appearance;
   const bubbleText = entity.bubbleText;
-  const depth = 20 + entity.y * 0.001;
+  
+  // Tie-breaker based on ID to prevent z-fighting when agents are at exactly the same coordinates
+  const idHash = useMemo(() => {
+    let hash = 0;
+    for (let i = 0; i < entity.id.length; i++) {
+      hash = ((hash << 5) - hash) + entity.id.charCodeAt(i);
+      hash |= 0;
+    }
+    return (Math.abs(hash) % 1000) * 0.000001;
+  }, [entity.id]);
+
+  const depth = 20 + entity.y * 0.001 + entity.x * 0.00001 + idHash;
 
   return (
     <group
@@ -273,7 +298,13 @@ export function AgentActor({
         onSelect(entity.id);
       }}
     >
-      <group scale={[entity.facingLeft ? -1 : 1, selected ? 1.12 : 1, 1]}>
+      {/* Dynamic Gradient Shadow */}
+      <mesh position={[0, 14, -0.01]} rotation={[-Math.PI / 2, 0, 0]} scale={[12 * (1 - hop * 0.1), 8 * (1 - hop * 0.1), 1]}>
+        <circleGeometry args={[1, 16]} />
+        <meshBasicMaterial color="black" transparent opacity={0.3 * (1 - hop * 0.1)} toneMapped={false} />
+      </mesh>
+
+      <group position={[0, -hop, 0]} scale={[entity.facingLeft ? -stretch : stretch, selected ? 1.12 * squash : squash, 1]}>
         <mesh position={[-3 - swing * 0.25, 12, 0.05]} rotation={[0, 0, 0.08]}>
           <planeGeometry args={[2, 10]} />
           <meshBasicMaterial color={app.pants} toneMapped={false} side={THREE.DoubleSide} />
@@ -306,12 +337,15 @@ export function AgentActor({
         {entity.chatting ? <ChatIndicator bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} /> : null}
         {!entity.chatting && entity.status === AgentStatus.IDLE ? <IdleIndicator inverseZoom={inverseZoom} /> : null}
         {!entity.chatting && (entity.status === AgentStatus.WORKING || (entity.status === AgentStatus.WAITING && bubbleText)) ? (
-          <Bubble
-            text={bubbleText || '...'}
-            accentColor={entity.status === AgentStatus.WORKING ? THEME.working : THEME.waiting}
-            bubbleConfig={bubbleConfig}
-            inverseZoom={inverseZoom}
-          />
+          <>
+            <Bubble
+              text={bubbleText || '...'}
+              accentColor={entity.status === AgentStatus.WORKING ? THEME.working : THEME.waiting}
+              bubbleConfig={bubbleConfig}
+              inverseZoom={inverseZoom}
+            />
+            <StatusIcon status={entity.status} inverseZoom={inverseZoom} />
+          </>
         ) : null}
         {!entity.chatting && entity.status === AgentStatus.WAITING && !bubbleText ? (
           <Bubble text="..." accentColor={THEME.waiting} bubbleConfig={bubbleConfig} inverseZoom={inverseZoom} y={-34} />

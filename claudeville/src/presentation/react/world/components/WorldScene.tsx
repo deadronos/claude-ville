@@ -7,9 +7,11 @@ import { useEcsWorld } from '../ecs/useEcsWorld.js';
 import { createMovementSystem, createProximitySystem, createCameraFollowSystem } from '../ecs/systems.js';
 import { getCameraFocusPosition } from '../utils.js';
 import { InstancedTerrain } from './InstancedTerrain.js';
+import { Vegetation } from './Vegetation.js';
 import { AgentActor } from './AgentActor.js';
 import { BuildingActor } from './BuildingActor.js';
 import { ScreenSpaceCamera } from './ScreenSpaceCamera.js';
+import { useTerrain } from '../hooks/useTerrain.js';
 import type { WorldSceneProps } from '../types.js';
 
 export function WorldScene({
@@ -27,6 +29,7 @@ export function WorldScene({
   const rootRef = useRef<THREE.Group | null>(null);
   const agents = sprites.map(s => s.agent);
   const { world } = useEcsWorld(agents, buildings);
+  const { waterTiles } = useTerrain(buildings);
 
   const movementSystem = createMovementSystem(world);
   const proximitySystem = createProximitySystem(world, roofAlphaRef);
@@ -54,6 +57,7 @@ export function WorldScene({
       <color attach="background" args={[THEME.bg]} />
       <group ref={rootRef}>
         <InstancedTerrain buildings={buildings} />
+        <Vegetation waterTiles={waterTiles} />
         {world.with('Building').entities.map((entity: any) => (
           <BuildingActor
             key={entity.buildingType}

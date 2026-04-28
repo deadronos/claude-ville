@@ -369,8 +369,11 @@ async function hasRealActivity(filePath: string): Promise<boolean> {
   try {
     const stat = await fs.promises.stat(filePath);
     if (stat.size === 0) return false;
-    const content = await fs.promises.readFile(filePath, 'utf-8');
-    const nonEmptyLines = content.split('\n').filter(ln => ln.trim().length > 0);
+
+    // Optimize: Read only the first 5 lines to check for content/metadata
+    const lines = await readLines(filePath, { from: 'start', count: 5, scope: 'vscode-activity' });
+    const nonEmptyLines = lines.filter(ln => ln.trim().length > 0);
+
     // JSONL files (debug logs, transcripts): require session_start + at least one real event
     // content.txt text files: one line of actual text counts as real activity
     if (filePath.endsWith('content.txt')) {
