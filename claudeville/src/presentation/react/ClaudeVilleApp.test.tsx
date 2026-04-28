@@ -226,7 +226,7 @@ describe('ClaudeVilleApp', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Toast one' }));
-    fireEvent.click(screen.getByRole('button', { name: 'X' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
 
     expect(controllerMock.dismissToast).toHaveBeenCalledWith('toast-1');
     expect(controllerMock.clearSelection).toHaveBeenCalledTimes(1);

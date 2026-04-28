@@ -7,16 +7,27 @@ interface Component<T> {
 function component<T extends object>(defaults: T): Component<T> {
   return {
     create(values?: Partial<T>): T {
-      const merged = { ...defaults };
-      for (const key of Object.keys(values ?? {})) {
-        const v = values![key];
-        const d = (merged as any)[key];
-        if (d && typeof d === 'object' && !Array.isArray(d) && v && typeof v === 'object' && !Array.isArray(v)) {
-          (merged as any)[key] = { ...d, ...v };
+      const merged: T = { ...defaults };
+      const overrides: Partial<T> = values ?? {};
+
+      for (const key of Object.keys(overrides) as Array<keyof T>) {
+        const nextValue = overrides[key];
+        const defaultValue = merged[key];
+
+        if (
+          defaultValue &&
+          typeof defaultValue === 'object' &&
+          !Array.isArray(defaultValue) &&
+          nextValue &&
+          typeof nextValue === 'object' &&
+          !Array.isArray(nextValue)
+        ) {
+          merged[key] = { ...defaultValue, ...nextValue } as T[keyof T];
         } else {
-          (merged as any)[key] = v;
+          merged[key] = nextValue as T[keyof T];
         }
       }
+
       return merged as T;
     },
     properties: defaults,

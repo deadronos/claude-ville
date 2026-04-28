@@ -37,9 +37,16 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
     <div id="dashboardMode" className="content__dashboard">
       {agents.length === 0 ? (
         <div id="dashboardEmpty" className="dashboard__empty dashboard__empty--visible">
-          <span className="dashboard__empty-icon">~</span>
-          <span data-i18n="noActiveAgents" className="dashboard__empty-text">{i18n.t('noActiveAgents')}</span>
-          <span data-i18n="noActiveAgentsSub" className="dashboard__empty-sub">{i18n.t('noActiveAgentsSub')}</span>
+          <div className="dashboard__empty-card">
+            <span className="dashboard__empty-eyebrow">COMMAND CENTER</span>
+            <span className="dashboard__empty-icon">◎</span>
+            <span data-i18n="noActiveAgents" className="dashboard__empty-text">{i18n.t('noActiveAgents')}</span>
+            <span data-i18n="noActiveAgentsSub" className="dashboard__empty-sub">{i18n.t('noActiveAgentsSub')}</span>
+            <div className="dashboard__empty-hints">
+              <span className="dashboard__empty-hint">Open a live provider session to populate the roster.</span>
+              <span className="dashboard__empty-hint">Use World mode while the command center is idle.</span>
+            </div>
+          </div>
         </div>
       ) : (
         <div id="dashboardGrid" className="dashboard__grid">
