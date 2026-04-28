@@ -53,13 +53,16 @@ const fragmentShader = /* glsl */ `
     color.rgb -= cloud;
 
     if (vWater > 0.5) {
-      // Improved water shimmer
-      float shimmer = sin(uTime * 1.5 + vWorldPos.x * 0.1 + vWorldPos.y * 0.08) * 0.1 + 
-                      cos(uTime * 2.0 - vWorldPos.x * 0.05 + vWorldPos.y * 0.12) * 0.08;
-      color.rgb += shimmer + 0.1;
+      // Fluid water effect using scrolling noise
+      float shimmer = noise(vWorldPos.xy * 0.05 + vec2(uTime * 0.1, uTime * 0.08)) * 0.15;
+      float highlight = noise(vWorldPos.xy * 0.1 - vec2(uTime * 0.2, uTime * 0.15)) * 0.2;
       
-      // Edge foam simulation (simple)
-      float edge = (1.0 - vUv.y) * 0.15;
+      color.rgb += shimmer + highlight;
+      color.a = 0.85; // Slight transparency
+      
+      // Soft edge foam based on UV
+      float edge = (1.0 - length(vUv - 0.5) * 2.0);
+      edge = smoothstep(0.0, 0.5, edge) * 0.2;
       color.rgb += edge;
     } else {
       // Subtle depth tint based on Y position
@@ -105,6 +108,7 @@ export function InstancedTerrain({ buildings }: { buildings: any[] }) {
       fragmentShader,
       uniforms: { uTime: { value: 0 } },
       side: THREE.DoubleSide,
+      transparent: true,
     });
     shaderRef.current = mat;
     return mat;
