@@ -1,11 +1,11 @@
 .topbar {
-    height: 52px;
+    height: 60px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
-    background: rgba(15, 15, 25, 0.95);
-    border-bottom: 2px solid rgba(232, 212, 77, 0.3);
+    background: #212121;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     flex-shrink: 0;
     z-index: 100;
 }
@@ -17,19 +17,17 @@
 }
 
 .topbar__logo {
-    font-size: calc(13px * var(--text-scale));
-    color: #e8d44d;
-    letter-spacing: 2px;
-    font-family: var(--font-retro);
+    font-size: 16px;
+    font-weight: 600;
+    color: #ececf1;
 }
 
 .topbar__version {
-    font-size: calc(8px * var(--text-scale));
-    color: #8b8b9e;
+    font-size: 11px;
+    color: #8e8ea0;
     padding: 2px 6px;
-    border: 1px solid rgba(139, 139, 158, 0.3);
-    border-radius: 2px;
-    font-family: var(--font-mono);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .topbar__center {
@@ -40,204 +38,86 @@
 
 .topbar__stat {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
 }
 
 .topbar__stat-label {
-    font-size: calc(8px * var(--text-scale));
-    color: #9090a8;
-    letter-spacing: 1px;
+    font-size: 12px;
+    color: #8e8ea0;
 }
 
 .topbar__stat-value {
-    font-size: calc(11px * var(--text-scale));
-    color: #e8d44d;
-    font-family: var(--font-mono);
+    font-size: 12px;
+    color: #ececf1;
 }
 
 .topbar__badges {
     display: flex;
-    gap: 10px;
+    gap: 12px;
 }
 
 .topbar__badge {
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: calc(9px * var(--text-scale));
-    padding: 3px 8px;
-    border-radius: 3px;
-    background: rgba(255, 255, 255, 0.05);
-    font-family: var(--font-mono);
+    gap: 6px;
+    font-size: 12px;
+    color: #8e8ea0;
 }
 
 .topbar__badge-dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    display: inline-block;
 }
 
-.topbar__badge--working .topbar__badge-dot {
-    background: #4ade80;
-    box-shadow: 0 0 4px #4ade80;
-}
-
-.topbar__badge--working {
-    color: #4ade80;
-}
-
-.topbar__badge--idle .topbar__badge-dot {
-    background: #60a5fa;
-    box-shadow: 0 0 4px #60a5fa;
-}
-
-.topbar__badge--idle {
-    color: #60a5fa;
-}
-
-.topbar__badge--waiting .topbar__badge-dot {
-    background: #f97316;
-    box-shadow: 0 0 4px #f97316;
-}
-
-.topbar__badge--waiting {
-    color: #f97316;
-}
-
-/* ── Divider ── */
-.topbar__divider {
-    width: 1px;
-    height: 24px;
-    background: rgba(139, 139, 158, 0.3);
-}
-
-/* ── Account/subscription section ── */
-.topbar__account {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.topbar__account-tier {
-    font-size: calc(8px * var(--text-scale));
-    padding: 3px 8px;
-    border-radius: 3px;
-    background: rgba(167, 139, 250, 0.15);
-    color: #a78bfa;
-    letter-spacing: 0.5px;
-    font-family: var(--font-mono);
-}
-
-.topbar__account-activity {
-    font-size: calc(8px * var(--text-scale));
-    color: #b0b0c0;
-    font-family: var(--font-mono);
-}
-
-/* ── Quota progress bar ── */
-.topbar__quota {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.topbar__quota-bar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.topbar__quota-label {
-    font-size: calc(8px * var(--text-scale));
-    color: #9090a8;
-    letter-spacing: 0.5px;
-    width: 16px;
-    font-family: var(--font-mono);
-}
-
-.topbar__quota-track {
-    width: 48px;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.topbar__quota-fill {
-    height: 100%;
-    border-radius: 3px;
-    background: #4ade80;
-    transition: width 0.5s ease, background-color 0.3s;
-    width: 0%;
-}
-
-.topbar__quota-fill--warn {
-    background: #eab308;
-}
-
-.topbar__quota-fill--danger {
-    background: #ef4444;
-}
-
-.topbar__quota-pct {
-    font-size: calc(8px * var(--text-scale));
-    color: #9090a8;
-    width: 22px;
-    text-align: right;
-    font-family: var(--font-mono);
-}
+.topbar__badge--working .topbar__badge-dot { background: #10a37f; }
+.topbar__badge--working { color: #10a37f; }
+.topbar__badge--idle .topbar__badge-dot { background: #8e8ea0; }
+.topbar__badge--idle { color: #8e8ea0; }
+.topbar__badge--waiting .topbar__badge-dot { background: #f59e0b; }
+.topbar__badge--waiting { color: #f59e0b; }
 
 .topbar__right {
     display: flex;
-    gap: 4px;
+    gap: 8px;
 }
 
 .topbar__mode-btn {
-    font-size: calc(9px * var(--text-scale));
-    padding: 6px 14px;
-    border: 1px solid rgba(232, 212, 77, 0.3);
-    border-radius: 3px;
-    color: #8b8b9e;
-    background: transparent;
+    font-size: 13px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    color: #ececf1;
+    background: rgba(255, 255, 255, 0.05);
     transition: all 0.15s;
-    font-family: var(--font-retro);
+    border: none;
+    cursor: pointer;
 }
 
 .topbar__mode-btn:hover {
-    color: #e8d44d;
-    border-color: rgba(232, 212, 77, 0.6);
+    background: rgba(255, 255, 255, 0.1);
 }
 
 .topbar__mode-btn--active {
-    color: #0a0a0f;
-    background: #e8d44d;
-    border-color: #e8d44d;
-}
-
-.topbar__mode-btn--active:hover {
-    color: #0a0a0f;
+    background: #10a37f;
+    color: #fff;
 }
 
 .topbar__settings-btn {
-    font-size: calc(16px * var(--text-scale));
-    width: 34px;
-    height: 34px;
+    font-size: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    color: #ececf1;
+    background: rgba(255, 255, 255, 0.05);
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(232, 212, 77, 0.3);
-    border-radius: 3px;
-    color: #8b8b9e;
-    background: transparent;
     transition: all 0.15s;
-    margin-left: 8px;
+    border: none;
     cursor: pointer;
 }
 
 .topbar__settings-btn:hover {
-    color: #e8d44d;
-    border-color: rgba(232, 212, 77, 0.6);
+    background: rgba(255, 255, 255, 0.1);
 }
