@@ -52,7 +52,7 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
             const accentIndex = colors.get(projectPath) ?? 0;
 
             return (
-              <section key={projectPath} className={`dashboard__section project-accent--${accentIndex}`} aria-labelledby={`project-title-${projectPath}`}>
+              <section key={projectPath} className={`dashboard__section project-accent--${accentIndex}`} data-project={projectPath} aria-labelledby={`project-title-${projectPath}`}>
                 <header className="dashboard__section-header">
                   <span className="dashboard__section-dot" aria-hidden="true" />
                   <h2 id={`project-title-${projectPath}`} className="dashboard__section-name">{shortProjectName(projectPath, i18n.t('unknownProject'))}</h2>

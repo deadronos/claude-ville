@@ -26,6 +26,7 @@ export function WorldScene({
   onSelectAgent,
   onHoverBuilding,
 }: WorldSceneProps) {
+  void onHoverBuilding;
   const rootRef = useRef<THREE.Group | null>(null);
   const agents = sprites.map(s => s.agent);
   const { world } = useEcsWorld(agents, buildings);

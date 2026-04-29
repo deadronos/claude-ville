@@ -14,7 +14,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 | --- | --- | --- |
 | `claudeville/src/presentation/react/ClaudeVilleApp.tsx` | Root React shell | Renders the top bar, sidebar, content column, world view, dashboard view, activity panel, settings modal, and toast viewport. |
 | `claudeville/src/presentation/react/state/ClaudeVilleController.ts` | External store and behavior | Boots the app, exposes a snapshot with `useSyncExternalStore`, owns mode/selection/settings/toasts, and mirrors world-facing state into `useWorldStore`. |
-| `claudeville/src/presentation/react/world/state/useWorldStore.ts` | World hot-path mirror | Holds agents, buildings, and `selectedAgentId` for the render-hot world slice. |
+| `claudeville/src/presentation/react/world/state/useWorldStore.ts` | World hot-path mirror | Holds agents, buildings, and `selectedAgentId` for the render-hot world slice using a tiny local `useSyncExternalStore` store. |
 | `claudeville/src/presentation/react/world/WorldView.tsx` | World viewport wrapper | Measures the canvas container, manages pointer and zoom input, keeps camera refs, reads from `useWorldStore`, and places DOM overlays like the selected-agent marker and focus reticle. |
 | `claudeville/src/presentation/react/world/hooks/useWorldSprites.ts` | Sprite cache | Reuses `AgentSprite` instances so the scene can mutate them every frame without recreating objects. |
 | `claudeville/src/presentation/react/world/components/*` | R3F scene primitives | Terrain, buildings, agents, text, minimap, camera, and world-adjacent overlays. |
@@ -56,7 +56,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 ## Practical invariants
 
 - Render top-bar, sidebar, settings, and activity-panel state from the controller snapshot, not from scattered local copies.
-- Render the world hot path from `useWorldStore` rather than re-deriving large agent/building arrays during scene updates.
+- Render the world hot path from the local `useWorldStore` helper rather than re-deriving large agent/building arrays during scene updates.
 - Use refs for mutable scene data and ephemeral pointer state.
 - Keep selection, mode, and layout concerns in the controller / React shell; keep per-frame motion in the R3F scene and ECS systems.
 - Treat the legacy imperative shell in `claudeville/src/presentation/App.ts` as historical reference, not the primary implementation path for the React UI.

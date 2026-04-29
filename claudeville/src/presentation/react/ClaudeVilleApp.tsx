@@ -8,15 +8,12 @@ import { DashboardView } from './components/DashboardView.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { Sidebar } from './components/Sidebar.js';
 import { ToastViewport } from './components/ToastViewport.js';
-import { WorldTimer } from './components/WorldTimer.js';
-import { useWorldStore } from './world/state/useWorldStore.js';
 
 export function ClaudeVilleApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const controller = useMemo(() => new ClaudeVilleController(), []);
   const snapshot = useClaudeVilleSnapshot(controller);
   const agents = Array.from(snapshot.world.agents.values());
-  const buildings = Array.from(snapshot.world.buildings.values());
   const selectedAgent = snapshot.selectedAgentId
     ? snapshot.world.agents.get(snapshot.selectedAgentId) || null
     : null;

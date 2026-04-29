@@ -35,7 +35,6 @@ const FRAGMENT_SHADER = /* glsl */ `
 
 export function Vegetation({ waterTiles }: { waterTiles: Set<string> }) {
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
-  const shaderRef = useRef<THREE.ShaderMaterial | null>(null);
 
   const { positions, count } = useMemo(() => {
     const pos = [];
@@ -83,10 +82,12 @@ export function Vegetation({ waterTiles }: { waterTiles: Set<string> }) {
     });
   }, []);
 
-  useFrame(({ clock }) => {
+  useFrame((state) => {
     if (meshRef.current) {
-      const mat = meshRef.current.material as THREE.ShaderMaterial;
-      mat.uniforms.uTime.value = clock.elapsedTime;
+      const mat = meshRef.current.material as THREE.ShaderMaterial | undefined;
+      if (mat?.uniforms?.uTime) {
+        mat.uniforms.uTime.value = state?.clock?.elapsedTime ?? 0;
+      }
     }
   });
 

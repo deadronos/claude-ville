@@ -20,6 +20,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import type { Dirent } from 'fs';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 import { readLines, parseJsonLines } from './jsonl-utils.js';

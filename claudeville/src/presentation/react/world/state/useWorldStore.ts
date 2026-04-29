@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { useSyncExternalStore } from 'react';
 
 export interface WorldAgent {
   id: string;
@@ -16,7 +16,7 @@ export interface WorldBuilding {
   position: { tileX: number; tileY: number };
 }
 
-export const useWorldStore = create<{
+export interface WorldStoreState {
   agents: WorldAgent[];
   buildings: WorldBuilding[];
   selectedAgentId: string | null;
@@ -25,22 +25,69 @@ export const useWorldStore = create<{
   setSelectedAgentId: (id: string | null) => void;
   updateAgent: (id: string, data: Partial<WorldAgent>) => void;
   removeAgent: (id: string) => void;
-}>((set) => ({
-  agents: [],
-  buildings: [],
-  selectedAgentId: null,
+}
 
-  setAgents: (agents) => set({ agents }),
-  setBuildings: (buildings) => set({ buildings }),
-  setSelectedAgentId: (id) => set({ selectedAgentId: id }),
+type WorldStoreListener = () => void;
+type WorldStorePatch = Partial<WorldStoreState> | ((state: WorldStoreState) => Partial<WorldStoreState>);
+type WorldStoreHook = {
+  <T>(selector: (state: WorldStoreState) => T): T;
+  getState: () => WorldStoreState;
+  setState: (patch: WorldStorePatch) => void;
+  subscribe: (listener: WorldStoreListener) => () => void;
+};
 
-  updateAgent: (id, data) =>
-    set((state) => ({
-      agents: state.agents.map((a) => (a.id === id ? { ...a, ...data } : a)),
+const listeners = new Set<WorldStoreListener>();
+
+let state: WorldStoreState = createState();
+
+function createState(): WorldStoreState {
+  return {
+    agents: [],
+    buildings: [],
+    selectedAgentId: null,
+
+    setAgents: (agents) => setState({ agents }),
+    setBuildings: (buildings) => setState({ buildings }),
+    setSelectedAgentId: (id) => setState({ selectedAgentId: id }),
+
+    updateAgent: (id, data) => setState((current) => ({
+      agents: current.agents.map((agent) => (agent.id === id ? { ...agent, ...data } : agent)),
     })),
 
-  removeAgent: (id) =>
-    set((state) => ({
-      agents: state.agents.filter((a) => a.id !== id),
+    removeAgent: (id) => setState((current) => ({
+      agents: current.agents.filter((agent) => agent.id !== id),
     })),
-}));
+  };
+}
+
+function subscribe(listener: WorldStoreListener) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getState() {
+  return state;
+}
+
+function setState(patch: WorldStorePatch) {
+  const partial = typeof patch === 'function' ? patch(state) : patch;
+  state = { ...state, ...partial };
+  listeners.forEach((listener) => listener());
+}
+
+export const useWorldStore: WorldStoreHook = Object.assign(
+  function useWorldStore<T>(selector: (state: WorldStoreState) => T) {
+    return useSyncExternalStore(
+      subscribe,
+      () => selector(state),
+      () => selector(state),
+    );
+  },
+  {
+    getState,
+    setState,
+    subscribe,
+  },
+);

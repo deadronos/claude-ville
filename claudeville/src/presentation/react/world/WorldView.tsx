@@ -8,7 +8,6 @@ import { MinimapOverlay } from './components/MinimapOverlay.js';
 import { WorldScene } from './components/WorldScene.js';
 import { BubbleDebugOverlay } from './components/BubbleDebugOverlay.js';
 import { PostProcessing } from './components/PostProcessing.js';
-import { ScreenSpaceCamera } from './components/ScreenSpaceCamera.js';
 import { useWorldSprites } from './hooks/useWorldSprites.js';
 import { useWorldStore } from './state/useWorldStore.js';
 import type { CameraModel, InteractionModel, ViewportSize, WorldViewProps } from './types.js';

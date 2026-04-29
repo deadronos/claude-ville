@@ -37,13 +37,12 @@ export function Sidebar({ agents, selectedAgentId, onFocus, isOpen = true }: { a
                 <button
                   key={agent.id}
                   type="button"
-                  role="listitem"
                   className={`sidebar__agent ${selectedAgentId === agent.id ? 'sidebar__agent--selected' : ''}`}
                   data-session-id={agent.id}
                   data-status={agent.status}
                   data-provider={agent.provider || 'unknown'}
                   onClick={() => onFocus(agent.id)}
-                  aria-label={i18n.t('focusAgent', { name: agent.name })}
+                  aria-label={`${i18n.t('focusAgent')}: ${agent.name}`}
                 >
                   <div style={{ position: 'relative' }}>
                     <GradientAvatar id={agent.id} size={28} />

@@ -1,4 +1,4 @@
-/* Miniplex v2 does not export a component() function, so we implement one */
+/* Small local component helper for the render-path ECS. */
 interface Component<T> {
   create(values?: Partial<T>): T;
   properties: T;
@@ -7,9 +7,10 @@ interface Component<T> {
 function component<T extends object>(defaults: T): Component<T> {
   return {
     create(values?: Partial<T>): T {
-      const merged = { ...defaults };
-      for (const key of Object.keys(values ?? {})) {
-        const v = values![key];
+      const merged: T = { ...defaults };
+      const source: Partial<T> = values ?? {};
+      for (const key of Object.keys(source) as Array<keyof T>) {
+        const v = source[key];
         const d = (merged as any)[key];
         if (d && typeof d === 'object' && !Array.isArray(d) && v && typeof v === 'object' && !Array.isArray(v)) {
           (merged as any)[key] = { ...d, ...v };

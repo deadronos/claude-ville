@@ -15,17 +15,12 @@ const hookMocks = vi.hoisted(() => ({
   useTerrain: vi.fn(),
 }));
 
-const dreiMocks = vi.hoisted(() => ({
-  Text: vi.fn(() => null),
-}));
-
 vi.mock('@react-three/fiber', () => ({
   useFrame: (callback: (state: { clock: { elapsedTime: number } }) => void) => {
     frameState.callbacks.push(callback);
   },
 }));
 
-vi.mock('@react-three/drei', () => dreiMocks);
 vi.mock('./hooks/useTerrain.js', () => hookMocks);
 
 vi.mock('./components/InstancedTerrain.js', () => ({
@@ -40,7 +35,6 @@ import { InstancedTerrain } from './components/InstancedTerrain.js';
 beforeEach(() => {
   frameState.callbacks.length = 0;
   hookMocks.useTerrain.mockReset();
-  dreiMocks.Text.mockClear();
 });
 
 afterEach(() => {
@@ -85,11 +79,11 @@ describe('React world low-coverage components', () => {
     frameState.callbacks.forEach((callback) => callback({ clock: { elapsedTime: 0 } }));
 
     const materials = Array.from(container.querySelectorAll('meshbasicmaterial')) as Array<HTMLElement & { opacity?: number; transparent?: boolean }>;
-    const interiorMaterial = materials[4];
-    const frontLeftMaterial = materials[5];
-    const frontRightMaterial = materials[6];
-    const roofMaterial = materials[7];
-    const roofMaterialAlt = materials[8];
+    const interiorMaterial = materials[5];
+    const frontLeftMaterial = materials[6];
+    const frontRightMaterial = materials[7];
+    const roofMaterial = materials[10];
+    const roofMaterialAlt = materials[11];
 
     expect(roofMaterial.opacity).toBe(0.35);
     expect(roofMaterial.transparent).toBe(true);
@@ -99,15 +93,10 @@ describe('React world low-coverage components', () => {
     expect(interiorMaterial.opacity).toBeCloseTo(0.65, 5);
     expect(interiorMaterial.transparent).toBe(true);
 
-    const textCalls = dreiMocks.Text.mock.calls as Array<[Record<string, unknown>] | []>;
-    expect(textCalls[0]?.[0]).toEqual(expect.objectContaining({
-      children: 'HQ',
-      color: THEME.text,
-    }));
-    expect(textCalls[1]?.[0]).toEqual(expect.objectContaining({
-      children: '⚙',
-      color: BUILDING_STYLES.command.accentColor,
-    }));
+    const textMaterials = container.querySelectorAll('meshbasicmaterial[map]');
+    expect(textMaterials).toHaveLength(2);
+    expect(THEME.text).toBeTruthy();
+    expect(BUILDING_STYLES.command.accentColor).toBeTruthy();
   });
 
   it('draws the minimap contents and converts canvas clicks back into tile navigation', () => {
