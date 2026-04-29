@@ -44,7 +44,7 @@ describe('React world components', () => {
       </WorldText>,
     );
 
-    expect(container.querySelector('sprite')).toBeTruthy();
-    expect(container.querySelector('spritematerial')).toBeTruthy();
+    expect(container.querySelector('group')).toBeTruthy();
+    expect(container.querySelector('meshbasicmaterial')).toBeTruthy();
   });
 });

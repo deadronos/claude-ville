@@ -27,7 +27,7 @@ The goal is not to hand-roll core rendering, test, or protocol infrastructure. T
 
 - `@react-three/postprocessing` and `postprocessing` were removed; `PostProcessing` is now a local no-op.
 - The Drei camera helper was replaced with a local `THREE.OrthographicCamera` installed via R3F `useThree().set`.
-- `WorldText` was replaced with a local canvas-text sprite helper, allowing `@react-three/drei` to be removed.
+- `WorldText` was replaced with a local canvas-text plane helper, allowing `@react-three/drei` to be removed.
 - `concurrently` was replaced with `scripts/dev.mjs`.
 - Direct app `zustand` usage was replaced with a tiny local `useSyncExternalStore` store.
 - `@types/three` was added explicitly because Drei had previously supplied Three types transitively.
@@ -115,7 +115,7 @@ Evidence:
 
 Implementation:
 
-- `WorldText` now uses Three `CanvasTexture` plus sprites.
+- `WorldText` now uses Three `CanvasTexture` plus transparent planes.
 - The helper preserves the `WorldText` call sites while moving text rendering into local code.
 - `@react-three/drei` was removed after the camera and text usages were replaced.
 

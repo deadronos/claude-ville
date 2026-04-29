@@ -22,13 +22,13 @@ vi.mock('three', async (importOriginal) => {
 import { WorldText } from './WorldText.js';
 
 describe('WorldText', () => {
-  it('renders local sprite text above meshes by default', () => {
+  it('renders local plane text above meshes by default', () => {
     const { container } = render(<WorldText fontSize={12}>Working…</WorldText>);
 
-    const sprite = container.querySelector('sprite');
-    expect(sprite).toBeTruthy();
-    expect(sprite?.getAttribute('renderorder')).toBe('1000');
-    expect(container.querySelector('spritematerial')).toBeTruthy();
+    const textGroup = container.querySelector('group');
+    expect(textGroup).toBeTruthy();
+    expect(textGroup?.getAttribute('renderorder')).toBe('1000');
+    expect(container.querySelector('meshbasicmaterial')).toBeTruthy();
   });
 
   it('allows callers to override the default text settings', () => {
@@ -38,6 +38,6 @@ describe('WorldText', () => {
       </WorldText>,
     );
 
-    expect(container.querySelector('sprite')?.getAttribute('renderorder')).toBe('7');
+    expect(container.querySelector('group')?.getAttribute('renderorder')).toBe('7');
   });
 });

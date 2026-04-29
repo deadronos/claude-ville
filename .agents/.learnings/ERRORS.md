@@ -6,6 +6,41 @@ Command failures, exceptions, and unexpected failures captured during developmen
 
 ---
 
+## [ERR-20260430-003] local-world-text-sprite-blank
+
+**Logged**: 2026-04-30T01:33:00+02:00
+**Priority**: medium
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+The local `WorldText` sprite implementation rendered blank speech bubble and world text in the real browser.
+
+### Error
+```
+World text and speech bubble text were blank while bubble panels, outlines, buildings, and agents still rendered.
+```
+
+### Context
+- Trigger: replacing `@react-three/drei` text with a local `CanvasTexture` + `Sprite` helper.
+- Unit tests only asserted JSX shape and did not catch real WebGL text visibility.
+- Browser screenshot showed geometry rendered but text textures were not visible, so this was not z-fighting.
+
+### Suggested Fix
+Prefer a transparent textured plane for this y-down manually ordered scene, and verify canvas-backed text changes with a browser screenshot.
+
+### Resolution
+- **Resolved**: 2026-04-30T01:33:00+02:00
+- **Commit/PR**: pending
+- **Notes**: Replaced the sprite-backed helper with a `CanvasTexture` mapped onto a transparent plane, then verified visible labels and bubble text in browser.
+
+### Metadata
+- Reproducible: yes
+- Related Files: claudeville/src/presentation/react/world/components/WorldText.tsx
+- See Also: ERR-20260430-002
+
+---
+
 ## [ERR-20260430-002] dependency-debloat-transitive-types
 
 **Logged**: 2026-04-30T01:25:30+02:00

@@ -77,7 +77,7 @@ The inverse helpers follow the same convention:
 - **Dynamic Shadows**: Elliptical gradient shadows that respond to agent height (scaling/fading during hops).
 - **Status Indicators**: Floating pixel-art emoji icons (⚙️, ⏳, 💬) rendered above agent bubbles.
 - Agent UI bubbles and labels scale with `inverseZoom = 1 / camera.zoom` so they remain readable at any zoom level.
-- `WorldText` is a local canvas-text sprite helper. It draws text into a `CanvasTexture`, flips the sprite scale on Y so text is upright in the y-down scene, and keeps text above meshes with render-order/depth defaults.
+- `WorldText` is a local canvas-text plane helper. It draws text into a `CanvasTexture`, maps it onto a transparent plane, flips scale on Y so text is upright in the y-down scene, and keeps text above meshes with render-order/depth defaults.
 
 ### Overlays
 

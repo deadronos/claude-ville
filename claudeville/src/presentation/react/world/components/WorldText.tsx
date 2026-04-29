@@ -1,6 +1,6 @@
 import { Children, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { CanvasTexture, LinearFilter, SRGBColorSpace } from 'three';
+import { CanvasTexture, DoubleSide, LinearFilter, SRGBColorSpace } from 'three';
 import type { ThreeElements } from '@react-three/fiber';
 
 function collectTextCharacters(children: ReactNode) {
@@ -14,7 +14,7 @@ function collectTextCharacters(children: ReactNode) {
     .join('');
 }
 
-type WorldTextProps = Omit<ThreeElements['sprite'], 'scale'> & {
+type WorldTextProps = Omit<ThreeElements['mesh'], 'scale'> & {
   anchorX?: 'left' | 'center' | 'right' | number;
   anchorY?: 'top' | 'middle' | 'bottom' | number;
   characters?: string;
@@ -24,7 +24,7 @@ type WorldTextProps = Omit<ThreeElements['sprite'], 'scale'> & {
   fontSize?: number;
   outlineColor?: string;
   outlineWidth?: number;
-  scale?: ThreeElements['sprite']['scale'];
+  scale?: ThreeElements['mesh']['scale'];
 };
 
 function anchorToUnit(anchor: WorldTextProps['anchorX'] | WorldTextProps['anchorY'], axis: 'x' | 'y') {
@@ -109,7 +109,7 @@ export function WorldText({
   outlineWidth = 0,
   renderOrder = 1000,
   scale: callerScale,
-  ...spriteProps
+  position: callerPosition,
 }: WorldTextProps) {
   void characters;
 
@@ -130,26 +130,30 @@ export function WorldText({
   }, [textureData.texture]);
 
   const zOffset = typeof depthOffset === 'number' ? depthOffset * 0.001 : 0;
-  const position: ThreeElements['sprite']['position'] = Array.isArray(spriteProps.position)
-    ? [spriteProps.position[0] ?? 0, spriteProps.position[1] ?? 0, (spriteProps.position[2] ?? 0) + zOffset]
-    : spriteProps.position;
-  const scale = callerScale ?? ([textureData.width, -textureData.height, 1] satisfies [number, number, number]);
+  const position: ThreeElements['mesh']['position'] = Array.isArray(callerPosition)
+    ? [callerPosition[0] ?? 0, callerPosition[1] ?? 0, (callerPosition[2] ?? 0) + zOffset]
+    : callerPosition;
+  const scale = callerScale ?? ([1, -1, 1] satisfies [number, number, number]);
+  const offsetX = (0.5 - anchorToUnit(anchorX, 'x')) * textureData.width;
+  const offsetY = (0.5 - anchorToUnit(anchorY, 'y')) * textureData.height;
 
   return (
-    <sprite
-      {...spriteProps}
+    <group
       position={position}
-      center={[anchorToUnit(anchorX, 'x'), anchorToUnit(anchorY, 'y')]}
       renderOrder={renderOrder}
-      scale={scale as ThreeElements['sprite']['scale']}
+      scale={scale as ThreeElements['mesh']['scale']}
     >
-      <spriteMaterial
-        map={textureData.texture}
-        transparent
-        depthTest={false}
-        depthWrite={false}
-        toneMapped={false}
-      />
-    </sprite>
+      <mesh position={[offsetX, offsetY, 0]} renderOrder={renderOrder}>
+        <planeGeometry args={[textureData.width, textureData.height]} />
+        <meshBasicMaterial
+          map={textureData.texture}
+          transparent
+          depthTest={false}
+          depthWrite={false}
+          toneMapped={false}
+          side={DoubleSide}
+        />
+      </mesh>
+    </group>
   );
 }
