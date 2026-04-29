@@ -102,6 +102,11 @@ describe('GeminiAdapter fixtures', () => {
         path: path.join(tmpHome, '.gemini', 'tmp', projectHash, 'chats'),
         filter: '.json',
       },
+      {
+        type: 'directory',
+        path: path.join(tmpHome, '.gemini', 'tmp', projectHash, 'chats'),
+        filter: '.jsonl',
+      },
     ]);
   });
 });

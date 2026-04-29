@@ -284,7 +284,7 @@ describe('ClaudeVilleApp browser selection flow', () => {
       await page.waitForFunction(() => document.querySelectorAll('#sidebar .sidebar__agent').length === 2);
         await page.waitForTimeout(500); // Adjusted settle delay before live-refresh update snapshot
 
-      await page.getByRole('button', { name: 'DASHBOARD' }).click();
+      await page.getByRole('tab', { name: 'DASHBOARD' }).click();
       await page.waitForFunction(() => document.getElementById('dashboardMode') !== null);
 
       const sidebarAgent = page.locator('#sidebar .sidebar__agent').filter({ hasText: 'Alpha' }).first();
@@ -298,7 +298,7 @@ describe('ClaudeVilleApp browser selection flow', () => {
 
       const activityPanel = page.locator('#activityPanel');
       await activityPanel.waitFor({ state: 'visible' });
-      expect(await page.locator('#btnModeCharacter').getAttribute('class')).toContain('topbar__mode-btn--active');
+      expect(await page.locator('#btnModeCharacter').getAttribute('class')).toContain('topbar__segmented-btn--active');
 
       const worldView = page.locator('.world-view');
       const canvas = page.locator('.content__canvas');

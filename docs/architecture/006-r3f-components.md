@@ -35,7 +35,7 @@ The inverse helpers follow the same convention:
 ## Scene graph and transforms
 
 - `WorldScene` renders `<ScreenSpaceCamera />`, the background color, and a root `<group ref={rootRef}>`.
-- `useEcsWorld()` mirrors domain agents and buildings into stable Miniplex entities for the world render path.
+- `useEcsWorld()` mirrors domain agents and buildings into stable local ECS entities for the world render path.
 - `rootRef.position` is derived from `getCameraFocusPosition(camera.targetX, camera.targetZ, viewport, camera.zoom)`.
 - `rootRef.scale` is set to `camera.zoom` on both x and y so the entire world pans and zooms together.
 - The scene avoids a traditional perspective camera; the root group does the pan and zoom work.

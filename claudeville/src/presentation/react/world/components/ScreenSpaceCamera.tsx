@@ -9,6 +9,7 @@ export function ScreenSpaceCamera({
   viewport: ViewportSize;
   cameraRef?: { current: CameraModel };
 }) {
+  void cameraRef;
   return (
     <OrthographicCamera
       makeDefault

@@ -85,11 +85,11 @@ describe('React world low-coverage components', () => {
     frameState.callbacks.forEach((callback) => callback({ clock: { elapsedTime: 0 } }));
 
     const materials = Array.from(container.querySelectorAll('meshbasicmaterial')) as Array<HTMLElement & { opacity?: number; transparent?: boolean }>;
-    const interiorMaterial = materials[4];
-    const frontLeftMaterial = materials[5];
-    const frontRightMaterial = materials[6];
-    const roofMaterial = materials[7];
-    const roofMaterialAlt = materials[8];
+    const interiorMaterial = materials[5];
+    const frontLeftMaterial = materials[6];
+    const frontRightMaterial = materials[7];
+    const roofMaterial = materials[10];
+    const roofMaterialAlt = materials[11];
 
     expect(roofMaterial.opacity).toBe(0.35);
     expect(roofMaterial.transparent).toBe(true);

@@ -1,4 +1,4 @@
-// Local ECS world implementation since miniplex v2 doesn't export createWorld
+// Local ECS world implementation for the render path.
 export type Entity = {
   id?: string;
   name?: string;

@@ -235,9 +235,7 @@ describe('DashboardView', () => {
     expect(waitingContextBar.style.width).toBe('0px');
     expect(waitingContextBar.style.opacity).toBe('0');
 
-    expect(container.querySelectorAll('canvas')).toHaveLength(3);
-    expect(mockCtx.clearRect).toHaveBeenCalledTimes(3);
-    expect(mockCtx.beginPath).toHaveBeenCalled();
+    expect(container.querySelectorAll('.gradient-avatar')).toHaveLength(3);
 
     fireEvent.click(namedCards[0] as HTMLElement);
     expect(onSelect).toHaveBeenCalledWith('agent-working');

@@ -203,8 +203,8 @@ describe('ClaudeVilleApp', () => {
     expect(agentButton).toHaveAttribute('data-status', 'working');
     expect(agentButton).toHaveAttribute('data-provider', 'claude');
 
-    fireEvent.click(screen.getByRole('button', { name: /dashboard/i }));
-    fireEvent.click(screen.getByTitle('Settings'));
+    fireEvent.click(screen.getByRole('tab', { name: /dashboard/i }));
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }));
     fireEvent.click(screen.getByRole('button', { name: /agent one/i }));
 
     await waitFor(() => expect(controllerMock.boot).toHaveBeenCalledTimes(1));
@@ -226,7 +226,7 @@ describe('ClaudeVilleApp', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Toast one' }));
-    fireEvent.click(screen.getByRole('button', { name: 'X' }));
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
 
     expect(controllerMock.dismissToast).toHaveBeenCalledWith('toast-1');
     expect(controllerMock.clearSelection).toHaveBeenCalledTimes(1);
