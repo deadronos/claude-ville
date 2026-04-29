@@ -26,8 +26,8 @@ The inverse helpers follow the same convention:
 ## Camera contract
 
 - `CameraModel` is not a Three.js camera; it is a logical pan/zoom state stored in a ref.
-- `ScreenSpaceCamera` configures the actual R3F camera as an orthographic screen-space camera with `left=0`, `right=viewport.width`, `top=0`, `bottom=viewport.height`, and `zoom={1}`.
-- The `<OrthographicCamera>` must receive `manual`; otherwise R3F's resize handler overwrites the frustum with a centered y-up projection and flips the scene.
+- `ScreenSpaceCamera` creates a local `THREE.OrthographicCamera`, installs it into R3F with `useThree().set`, and configures it as a screen-space camera with `left=0`, `right=viewport.width`, `top=0`, `bottom=viewport.height`, and `zoom={1}`.
+- The camera helper must preserve that manual frustum; otherwise R3F's resize defaults can overwrite the projection with a centered y-up camera and flip the scene.
 - `getCameraFocusPosition(targetX, targetZ, viewport, zoom)` is the single source of truth for centering.
 - `followAgentId` and `followSmoothing` are the only follow controls.
 - `WorldView` sets `followAgentId` when selection changes; `createCameraFollowSystem()` performs the follow easing in `useFrame`.
@@ -40,7 +40,7 @@ The inverse helpers follow the same convention:
 - `rootRef.scale` is set to `camera.zoom` on both x and y so the entire world pans and zooms together.
 - The scene avoids a traditional perspective camera; the root group does the pan and zoom work.
 - `createMovementSystem()`, `createProximitySystem()`, and `createCameraFollowSystem()` register focused `useFrame` loops for animation, roof fading, and follow behavior.
-- `PostProcessing` owns the post-processing surface; it currently mounts an empty `EffectComposer` placeholder.
+- `PostProcessing` is intentionally a local no-op while effects are deferred. Do not add a postprocessing dependency unless real effects ship with it.
 - All visible objects are built from flat meshes, shape geometries, or text; depth ordering is achieved with small z offsets.
 - `InstancedTerrain`, `Vegetation`, `BuildingActor`, and `AgentActor` all position themselves in the same isometric scene-space coordinate system.
 
@@ -77,7 +77,7 @@ The inverse helpers follow the same convention:
 - **Dynamic Shadows**: Elliptical gradient shadows that respond to agent height (scaling/fading during hops).
 - **Status Indicators**: Floating pixel-art emoji icons (⚙️, ⏳, 💬) rendered above agent bubbles.
 - Agent UI bubbles and labels scale with `inverseZoom = 1 / camera.zoom` so they remain readable at any zoom level.
-- `WorldText` flips Y back with `scale={[1, -1, 1]}` so text is upright in the y-down scene.
+- `WorldText` is a local canvas-text sprite helper. It draws text into a `CanvasTexture`, flips the sprite scale on Y so text is upright in the y-down scene, and keeps text above meshes with render-order/depth defaults.
 
 ### Overlays
 
@@ -117,6 +117,7 @@ If the React scene ever feels “wrong,” compare it against those files first;
 - Do not replace the instanced terrain path with ad-hoc per-tile meshes unless profiling justifies it.
 - Sibling panels (like the sidebar) may animate width if the world container uses `ResizeObserver` to trigger smooth updates.
 - Keep text and bubble scale corrections local so the rest of the scene can stay in screen-space units.
+- Keep the world text helper dependency-free unless a future visual pass proves a specialized text renderer is necessary.
 
 ## Reference files
 

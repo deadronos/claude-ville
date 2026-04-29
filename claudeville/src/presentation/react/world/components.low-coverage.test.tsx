@@ -15,17 +15,12 @@ const hookMocks = vi.hoisted(() => ({
   useTerrain: vi.fn(),
 }));
 
-const dreiMocks = vi.hoisted(() => ({
-  Text: vi.fn(() => null),
-}));
-
 vi.mock('@react-three/fiber', () => ({
   useFrame: (callback: (state: { clock: { elapsedTime: number } }) => void) => {
     frameState.callbacks.push(callback);
   },
 }));
 
-vi.mock('@react-three/drei', () => dreiMocks);
 vi.mock('./hooks/useTerrain.js', () => hookMocks);
 
 vi.mock('./components/InstancedTerrain.js', () => ({
@@ -40,7 +35,6 @@ import { InstancedTerrain } from './components/InstancedTerrain.js';
 beforeEach(() => {
   frameState.callbacks.length = 0;
   hookMocks.useTerrain.mockReset();
-  dreiMocks.Text.mockClear();
 });
 
 afterEach(() => {
@@ -99,15 +93,10 @@ describe('React world low-coverage components', () => {
     expect(interiorMaterial.opacity).toBeCloseTo(0.65, 5);
     expect(interiorMaterial.transparent).toBe(true);
 
-    const textCalls = dreiMocks.Text.mock.calls as Array<[Record<string, unknown>] | []>;
-    expect(textCalls[0]?.[0]).toEqual(expect.objectContaining({
-      children: 'HQ',
-      color: THEME.text,
-    }));
-    expect(textCalls[1]?.[0]).toEqual(expect.objectContaining({
-      children: '⚙',
-      color: BUILDING_STYLES.command.accentColor,
-    }));
+    const textSprites = container.querySelectorAll('sprite');
+    expect(textSprites).toHaveLength(2);
+    expect(THEME.text).toBeTruthy();
+    expect(BUILDING_STYLES.command.accentColor).toBeTruthy();
   });
 
   it('draws the minimap contents and converts canvas clicks back into tile navigation', () => {

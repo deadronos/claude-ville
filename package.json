@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npx concurrently --names \"server,vite\" --prefix-colors \"blue,green\" \"tsx claudeville/server.ts\" \"vite\"",
+    "dev": "node scripts/dev.mjs",
     "dev:server": "tsx claudeville/server.ts",
     "dev:collector": "tsx collector/start.ts",
     "dev:hubreceiver": "tsx hubreceiver/server.ts",
@@ -27,10 +27,10 @@
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.184.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react-swc": "^4.3.0",
     "@vitest/coverage-v8": "^4.1.4",
-    "concurrently": "^9.2.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -44,14 +44,10 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
-    "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
-    "@react-three/postprocessing": "^3.0.4",
-    "postprocessing": "^6.39.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "three": "^0.183.2",
-    "ws": "^8.20.0",
-    "zustand": "^5.0.12"
+    "ws": "^8.20.0"
   }
 }

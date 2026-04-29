@@ -6,6 +6,42 @@ Command failures, exceptions, and unexpected failures captured during developmen
 
 ---
 
+## [ERR-20260430-002] dependency-debloat-transitive-types
+
+**Logged**: 2026-04-30T01:25:30+02:00
+**Priority**: low
+**Status**: resolved
+**Area**: config
+
+### Summary
+Removing `@react-three/drei` exposed that Three.js type declarations had only been available transitively.
+
+### Error
+```
+Could not find a declaration file for module 'three'.
+Try `npm i --save-dev @types/three` if it exists or add a new declaration (.d.ts) file containing `declare module 'three';`
+```
+
+### Context
+- Command attempted: `npm run typecheck`
+- Trigger: debloat pass removed `@react-three/drei`, `@react-three/postprocessing`, `postprocessing`, `zustand`, and `concurrently`.
+- Several source files import `three` directly, so the repo needs an explicit `@types/three` dev dependency.
+
+### Suggested Fix
+Keep `@types/three` in `devDependencies` whenever `three` is a direct dependency and source imports it directly.
+
+### Resolution
+- **Resolved**: 2026-04-30T01:25:30+02:00
+- **Commit/PR**: pending
+- **Notes**: Added explicit `@types/three` dev dependency and reran `npm run typecheck`.
+
+### Metadata
+- Reproducible: yes
+- Related Files: package.json, package-lock.json
+- See Also: ERR-20260430-001
+
+---
+
 ## [ERR-20260430-001] npm-why-multiple-packages
 
 **Logged**: 2026-04-30T00:35:50+02:00

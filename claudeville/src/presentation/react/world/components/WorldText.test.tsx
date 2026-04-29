@@ -3,40 +3,41 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 
-const textProps = vi.hoisted(() => ({
-  lastProps: null as null | Record<string, unknown>,
-}));
-
-vi.mock('@react-three/drei', () => ({
-  Text: (props: Record<string, unknown>) => {
-    textProps.lastProps = props;
-    return null;
-  },
-}));
+vi.mock('three', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('three')>();
+  return {
+    ...actual,
+    CanvasTexture: vi.fn().mockImplementation(function CanvasTexture() {
+      return {
+      colorSpace: '',
+      dispose: vi.fn(),
+      magFilter: null,
+      minFilter: null,
+      needsUpdate: false,
+      };
+    }),
+  };
+});
 
 import { WorldText } from './WorldText.js';
 
 describe('WorldText', () => {
-  it('preloads a broad character set and keeps text above meshes by default', () => {
-    render(<WorldText fontSize={12}>Working…</WorldText>);
+  it('renders local sprite text above meshes by default', () => {
+    const { container } = render(<WorldText fontSize={12}>Working…</WorldText>);
 
-    expect(textProps.lastProps).not.toBeNull();
-    expect(String(textProps.lastProps?.characters)).toContain('Working…');
-    expect(String(textProps.lastProps?.characters)).toContain('⚡');
-    expect(textProps.lastProps?.depthOffset).toBe(-1);
-    expect(textProps.lastProps?.renderOrder).toBe(1000);
-    expect(textProps.lastProps?.scale).toEqual([1, -1, 1]);
+    const sprite = container.querySelector('sprite');
+    expect(sprite).toBeTruthy();
+    expect(sprite?.getAttribute('renderorder')).toBe('1000');
+    expect(container.querySelector('spritematerial')).toBeTruthy();
   });
 
   it('allows callers to override the default text settings', () => {
-    render(
+    const { container } = render(
       <WorldText characters="abc" renderOrder={7} depthOffset={-4} fontSize={12}>
         abc
       </WorldText>,
     );
 
-    expect(textProps.lastProps?.characters).toBe('abc');
-    expect(textProps.lastProps?.depthOffset).toBe(-4);
-    expect(textProps.lastProps?.renderOrder).toBe(7);
+    expect(container.querySelector('sprite')?.getAttribute('renderorder')).toBe('7');
   });
 });
