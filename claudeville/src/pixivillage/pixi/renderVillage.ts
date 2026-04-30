@@ -15,6 +15,8 @@ const statusColor: Record<VillageStatus, number> = {
   offline: 0x7f8a96,
 };
 
+// ─── Public API ─────────────────────────────────────────────────────────────
+
 export async function createPixiVillageApp(container: HTMLDivElement): Promise<Application> {
   const app = new Application();
   await app.init({
@@ -29,52 +31,222 @@ export async function createPixiVillageApp(container: HTMLDivElement): Promise<A
   return app;
 }
 
-export function renderVillage(
-  root: Container,
-  width: number,
-  height: number,
-  buildings: VillageBuilding[],
-  options: {
-    selectedBuildingId: string | null;
-    onSelectBuilding: (buildingId: string) => void;
-    tick: number;
-  },
-) {
-  root.removeChildren();
-  const scene = new Container();
-  scene.x = width < 720 ? 16 : 0;
-  scene.scale.set(width < 640 ? 0.5 : 1);
-  root.addChild(scene);
+/** Persistent renderer that updates PixiJS objects in-place instead of
+ *  recreating the scene every frame. Terrain is drawn once; buildings and
+ *  vegetation are mutated/relocated rather than destroyed and rebuilt. */
+export interface PixiVillageRenderer {
+  update(
+    buildings: VillageBuilding[],
+    selectedBuildingId: string | null,
+    onSelectBuilding: (buildingId: string) => void,
+    tick: number,
+  ): void;
+}
 
+export function createPixiVillageRenderer(
+  root: Container,
+  screenWidth: number,
+  screenHeight: number,
+): PixiVillageRenderer {
   const origin = {
-    x: width < 640 ? Math.round(width * 0.62) : Math.round(width / 2),
-    y: width < 640 ? 86 : 70,
+    x: screenWidth < 640 ? Math.round(screenWidth * 0.62) : Math.round(screenWidth / 2),
+    y: screenWidth < 640 ? 86 : 70,
   };
 
-  drawTerrain(scene, origin.x, origin.y);
+  // ── Terrain: drawn once and never touched again ──────────────────────────
+  drawTerrain(root, origin.x, origin.y);
 
-  for (const building of buildings) {
-    const point = isoToScreen(building.x, building.y, origin.x, origin.y);
-    const container = new Container();
-    container.x = point.x;
-    container.y = point.y;
-    container.eventMode = 'static';
-    container.cursor = 'pointer';
-    container.hitArea = new Polygon([-92, -110, 100, -110, 132, 52, -116, 52]);
-    container.on('pointertap', () => options.onSelectBuilding(building.id));
+  // ── Persistent scene container ───────────────────────────────────────────
+  const scene = new Container();
+  scene.x = screenWidth < 720 ? 16 : 0;
+  scene.scale.set(screenWidth < 640 ? 0.5 : 1);
+  root.addChild(scene);
 
-    const selected = options.selectedBuildingId === building.id;
-    if (selected || building.status === 'running' || building.status === 'error') {
-      drawStatusRing(container, building.status, selected, options.tick);
+  // ── Building view pool (pre-allocate; grows to cover all buildings) ────────
+  const buildingViews: BuildingView[] = [];
+
+  // ── Vegetation pool ──────────────────────────────────────────────────────
+  let vegetationContainer: Container | null = null;
+  const treePool: Graphics[] = [];
+
+  // ─────────────────────────────────────────────────────────────────────────
+  function update(
+    buildings: VillageBuilding[],
+    selectedBuildingId: string | null,
+    onSelectBuilding: (id: string) => void,
+    tick: number,
+  ) {
+    const sorted = depthSort(buildings);
+
+    // Grow / shrink view pool to match building count.
+    while (buildingViews.length < sorted.length) {
+      buildingViews.push(createBuildingView(scene));
     }
-    drawBuildingBody(container, building);
-    drawResidents(container, building, options.tick);
-    drawLabel(container, building);
-    scene.addChild(container);
+    while (buildingViews.length > sorted.length) {
+      const view = buildingViews.pop()!;
+      scene.removeChild(view.container);
+      view.container.destroy({ children: true });
+    }
+
+    // Sync each view to its building data — mutates existing PixiJS objects.
+    for (let i = 0; i < sorted.length; i++) {
+      syncBuildingView(buildingViews[i], sorted[i], origin, selectedBuildingId, onSelectBuilding, tick);
+    }
+
+    // Sync vegetation (pool grows cheaply; doesn't rebuild existing trees).
+    syncVegetation(screenWidth, screenHeight, tick);
   }
 
-  drawFrameVegetation(scene, width, height, options.tick);
+  function syncVegetation(width: number, height: number, tick: number) {
+    const treeCount = Math.max(20, Math.floor(width / 48));
+
+    if (!vegetationContainer) {
+      vegetationContainer = new Container();
+      // Vegetation goes behind buildings (insert at index 0, after terrain).
+      scene.addChildAt(vegetationContainer, 0);
+    }
+
+    // Grow tree pool.
+    while (treePool.length < treeCount) {
+      const t = new Graphics();
+      t.poly([0, -18, 15, 10, -15, 10]);
+      t.rect(-3, 8, 6, 12);
+      t.fill({ color: 0x173e2b });
+      t.fill({ color: 0x3c2a1d });
+      treePool.push(t);
+    }
+
+    // Sync visible trees.
+    for (let i = 0; i < treeCount; i++) {
+      const t = treePool[i];
+      if (!vegetationContainer.children.includes(t)) vegetationContainer.addChild(t);
+      t.x = (i * 137) % Math.max(width, 1);
+      t.y = i % 2 === 0 ? 20 + ((i * 23) % 74) : height - 90 + ((i * 11) % 58);
+      t.alpha = 0.52 + Math.sin(tick / 30 + i) * 0.05;
+    }
+
+    // Detach excess trees instead of destroying them (avoids create/destroy churn).
+    for (let i = treeCount; i < treePool.length; i++) {
+      vegetationContainer.removeChild(treePool[i]);
+    }
+  }
+
+  return { update };
 }
+
+// ─── Building view types ────────────────────────────────────────────────────
+
+interface BuildingView {
+  container: Container;
+  ringGraphics: Graphics;
+  bodyGraphics: Graphics;
+  residentsContainer: Container;
+  labelContainer: Container;
+  titleText: Text;
+  statusText: Text;
+  panelGraphics: Graphics;
+}
+
+// Pre-allocated Text styles (created once per view, reused on sync).
+const titleStyle = {
+  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+  fontSize: 12,
+  fontWeight: '700' as const,
+  fill: 0xf7f3df,
+};
+
+function createBuildingView(scene: Container): BuildingView {
+  const container = new Container();
+  scene.addChild(container);
+
+  const ringGraphics = new Graphics();
+  const bodyGraphics = new Graphics();
+  const residentsContainer = new Container();
+  const labelContainer = new Container();
+  const panelGraphics = new Graphics();
+
+  const titleText = new Text({ text: '', style: titleStyle });
+  titleText.anchor.set(0.5, 0);
+  titleText.y = -15;
+
+  const statusText = new Text({ text: '', style: { fontFamily: 'JetBrains Mono, ui-monospace, monospace', fontSize: 11, fill: statusColor.running } });
+  statusText.anchor.set(0.5, 0);
+  statusText.y = 9;
+
+  labelContainer.addChild(panelGraphics);
+  labelContainer.addChild(titleText);
+  labelContainer.addChild(statusText);
+
+  container.addChild(ringGraphics);
+  container.addChild(bodyGraphics);
+  container.addChild(residentsContainer);
+  container.addChild(labelContainer);
+
+  return { container, ringGraphics, bodyGraphics, residentsContainer, labelContainer, titleText, statusText, panelGraphics };
+}
+
+function syncBuildingView(
+  view: BuildingView,
+  building: VillageBuilding,
+  origin: { x: number; y: number },
+  selectedBuildingId: string | null,
+  onSelectBuilding: (id: string) => void,
+  tick: number,
+) {
+  const point = isoToScreen(building.x, building.y, origin.x, origin.y);
+  view.container.x = point.x;
+  view.container.y = point.y;
+  view.container.eventMode = 'static';
+  view.container.cursor = 'pointer';
+  view.container.hitArea = makeBuildingHitArea(building);
+  view.container.off('pointertap');
+  view.container.on('pointertap', () => onSelectBuilding(building.id));
+
+  // ── Status ring ─────────────────────────────────────────────────────────
+  view.ringGraphics.clear();
+  const selected = selectedBuildingId === building.id;
+  const showRing = selected || building.status === 'running' || building.status === 'error';
+  if (showRing) {
+    drawStatusRingGraphics(view.ringGraphics, building.status, selected, tick);
+  }
+
+  // ── Building body ───────────────────────────────────────────────────────
+  view.bodyGraphics.clear();
+  drawBuildingBodyGraphics(view.bodyGraphics, building);
+
+  // ── Residents ───────────────────────────────────────────────────────────
+  const visibleCount = Math.min(building.agentCount, 5);
+  const rc = view.residentsContainer;
+  while (rc.children.length > visibleCount) rc.removeChildAt(rc.children.length - 1);
+  while (rc.children.length < visibleCount) {
+    const dot = new Graphics();
+    dot.stroke({ color: 0x071018, width: 1, alpha: 0.9 });
+    rc.addChild(dot);
+  }
+  for (let i = 0; i < visibleCount; i++) {
+    const dot = rc.children[i] as Graphics;
+    dot.clear();
+    dot.circle(0, 0, 4);
+    dot.fill({ color: statusColor[building.status], alpha: 0.9 });
+    dot.stroke({ color: 0x071018, width: 1, alpha: 0.9 });
+    dot.x = -36 + i * 18;
+    dot.y = 58 + Math.sin(tick / 8 + i) * 3;
+  }
+
+  // ── Label ───────────────────────────────────────────────────────────────
+  view.labelContainer.y = -building.height - 78;
+  const panelWidth = Math.max(118, building.name.length * 8 + 28);
+  view.panelGraphics.clear();
+  view.panelGraphics.roundRect(-panelWidth / 2, -21, panelWidth, 58, 6);
+  view.panelGraphics.fill({ color: 0x101922, alpha: 0.92 });
+  view.panelGraphics.stroke({ color: 0x30404f, alpha: 0.95, width: 1 });
+
+  view.titleText.text = building.name.toUpperCase();
+  view.statusText.text = `${building.status}${building.agentCount > 0 ? ` · ${building.agentCount}` : ''}`;
+  view.statusText.style.fill = statusColor[building.status];
+}
+
+// ─── Geometry helpers ───────────────────────────────────────────────────────
 
 function isoToScreen(x: number, y: number, originX: number, originY: number) {
   return {
@@ -83,9 +255,26 @@ function isoToScreen(x: number, y: number, originX: number, originY: number) {
   };
 }
 
+function depthSort<T extends { x: number; y: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+}
+
 function isRoadTile(x: number, y: number) {
   return x === y || x + y === 10 || (y === 5 && x > 1 && x < 11);
 }
+
+function makeBuildingHitArea(building: VillageBuilding) {
+  const hw = (building.width * tileWidth) / 2;
+  const overhang = 18;
+  return new Polygon([
+    -hw - overhang, 52,
+    hw + overhang, 52,
+    hw + 28, -112,
+    -hw - 28, -112,
+  ]);
+}
+
+// ─── Drawing primitives (mutate a pre-existing Graphics object) ─────────────
 
 function drawTerrain(scene: Container, originX: number, originY: number) {
   for (let y = 0; y < mapHeight; y += 1) {
@@ -111,113 +300,40 @@ function drawTerrain(scene: Container, originX: number, originY: number) {
   }
 }
 
-function drawStatusRing(container: Container, status: VillageStatus, selected: boolean, tick: number) {
+function drawStatusRingGraphics(graphics: Graphics, status: VillageStatus, selected: boolean, tick: number) {
   const pulse = selected ? 1 : 0.45 + Math.sin(tick / 8) * 0.18;
-  const ring = new Graphics();
-  ring.ellipse(0, 20, 78 + pulse * 16, 30 + pulse * 5);
-  ring.stroke({ color: statusColor[status], alpha: selected ? 0.95 : 0.62, width: selected ? 3 : 2 });
-  container.addChild(ring);
+  graphics.ellipse(0, 20, 78 + pulse * 16, 30 + pulse * 5);
+  graphics.stroke({ color: statusColor[status], alpha: selected ? 0.95 : 0.62, width: selected ? 3 : 2 });
 }
 
-function drawBuildingBody(container: Container, building: VillageBuilding) {
+function drawBuildingBodyGraphics(graphics: Graphics, building: VillageBuilding) {
   const halfW = (building.width * tileWidth) / 2;
   const halfD = (building.depth * tileWidth) / 2;
   const baseY = 18;
 
-  const shadow = new Graphics();
-  shadow.ellipse(0, baseY + 16, halfW * 0.92, halfD * 0.24);
-  shadow.fill({ color: 0x02050a, alpha: 0.46 });
-  container.addChild(shadow);
+  // Shadow
+  graphics.ellipse(0, baseY + 16, halfW * 0.92, halfD * 0.24);
+  graphics.fill({ color: 0x02050a, alpha: 0.46 });
 
-  const leftWall = new Graphics();
-  leftWall.poly([-halfW / 2, baseY, 0, baseY + halfD / 4, 0, baseY + halfD / 4 - building.height, -halfW / 2, baseY - building.height]);
-  leftWall.fill({ color: building.color, alpha: 0.95 });
-  leftWall.stroke({ color: 0x111820, width: 2, alpha: 0.9 });
-  container.addChild(leftWall);
+  // Left wall
+  graphics.poly([-halfW / 2, baseY, 0, baseY + halfD / 4, 0, baseY + halfD / 4 - building.height, -halfW / 2, baseY - building.height]);
+  graphics.fill({ color: building.color, alpha: 0.95 });
+  graphics.stroke({ color: 0x111820, width: 2, alpha: 0.9 });
 
-  const rightWall = new Graphics();
-  rightWall.poly([halfW / 2, baseY, 0, baseY + halfD / 4, 0, baseY + halfD / 4 - building.height, halfW / 2, baseY - building.height]);
-  rightWall.fill({ color: shade(building.color, 0.76), alpha: 0.95 });
-  rightWall.stroke({ color: 0x111820, width: 2, alpha: 0.9 });
-  container.addChild(rightWall);
+  // Right wall
+  graphics.poly([halfW / 2, baseY, 0, baseY + halfD / 4, 0, baseY + halfD / 4 - building.height, halfW / 2, baseY - building.height]);
+  graphics.fill({ color: shade(building.color, 0.76), alpha: 0.95 });
+  graphics.stroke({ color: 0x111820, width: 2, alpha: 0.9 });
 
-  const roofShape = new Graphics();
-  roofShape.poly([0, baseY - building.height - 34, halfW / 1.75, baseY - building.height, 0, baseY - building.height + 26, -halfW / 1.75, baseY - building.height]);
-  roofShape.fill({ color: building.roofColor, alpha: building.status === 'offline' ? 0.5 : 1 });
-  roofShape.stroke({ color: building.status === 'error' ? 0xff5a68 : 0x15191f, width: building.status === 'error' ? 4 : 2, alpha: 0.95 });
-  container.addChild(roofShape);
+  // Roof
+  graphics.poly([0, baseY - building.height - 34, halfW / 1.75, baseY - building.height, 0, baseY - building.height + 26, -halfW / 1.75, baseY - building.height]);
+  graphics.fill({ color: building.roofColor, alpha: building.status === 'offline' ? 0.5 : 1 });
+  graphics.stroke({ color: building.status === 'error' ? 0xff5a68 : 0x15191f, width: building.status === 'error' ? 4 : 2, alpha: 0.95 });
 
-  const glow = new Graphics();
-  glow.roundRect(-18, baseY - building.height + 8, 12, 18, 2);
-  glow.roundRect(10, baseY - building.height + 2, 12, 18, 2);
-  glow.fill({ color: building.status === 'offline' ? 0x343b44 : statusColor[building.status], alpha: building.status === 'idle' ? 0.62 : 0.88 });
-  container.addChild(glow);
-}
-
-function drawResidents(container: Container, building: VillageBuilding, tick: number) {
-  const visibleCount = Math.min(building.agentCount, 5);
-  for (let index = 0; index < visibleCount; index += 1) {
-    const dot = new Graphics();
-    dot.circle(0, 0, 4);
-    dot.fill({ color: statusColor[building.status], alpha: 0.9 });
-    dot.stroke({ color: 0x071018, width: 1, alpha: 0.9 });
-    dot.x = -36 + index * 18;
-    dot.y = 58 + Math.sin(tick / 8 + index) * 3;
-    container.addChild(dot);
-  }
-}
-
-function drawLabel(container: Container, building: VillageBuilding) {
-  const label = new Container();
-  label.y = -building.height - 78;
-  const panelWidth = Math.max(118, building.name.length * 8 + 28);
-  const panel = new Graphics();
-  panel.roundRect(-panelWidth / 2, -21, panelWidth, 58, 6);
-  panel.fill({ color: 0x101922, alpha: 0.92 });
-  panel.stroke({ color: 0x30404f, alpha: 0.95, width: 1 });
-  label.addChild(panel);
-
-  const title = new Text({
-    text: building.name.toUpperCase(),
-    style: {
-      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-      fontSize: 12,
-      fontWeight: '700',
-      fill: 0xf7f3df,
-    },
-  });
-  title.anchor.set(0.5, 0);
-  title.y = -15;
-  label.addChild(title);
-
-  const status = new Text({
-    text: `${building.status}${building.agentCount > 0 ? ` · ${building.agentCount}` : ''}`,
-    style: {
-      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-      fontSize: 11,
-      fill: statusColor[building.status],
-    },
-  });
-  status.anchor.set(0.5, 0);
-  status.y = 9;
-  label.addChild(status);
-  container.addChild(label);
-}
-
-function drawFrameVegetation(scene: Container, width: number, height: number, tick: number) {
-  const count = Math.max(20, Math.floor(width / 48));
-  for (let index = 0; index < count; index += 1) {
-    const tree = new Graphics();
-    const x = (index * 137) % Math.max(width, 1);
-    const y = index % 2 === 0 ? 20 + ((index * 23) % 74) : height - 90 + ((index * 11) % 58);
-    tree.poly([0, -18, 15, 10, -15, 10]);
-    tree.fill({ color: 0x173e2b, alpha: 0.52 + Math.sin(tick / 30 + index) * 0.05 });
-    tree.rect(-3, 8, 6, 12);
-    tree.fill({ color: 0x3c2a1d, alpha: 0.7 });
-    tree.x = x;
-    tree.y = y;
-    scene.addChild(tree);
-  }
+  // Windows / glow
+  graphics.roundRect(-18, baseY - building.height + 8, 12, 18, 2);
+  graphics.roundRect(10, baseY - building.height + 2, 12, 18, 2);
+  graphics.fill({ color: building.status === 'offline' ? 0x343b44 : statusColor[building.status], alpha: building.status === 'idle' ? 0.62 : 0.88 });
 }
 
 function shade(color: number, factor: number) {

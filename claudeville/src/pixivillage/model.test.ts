@@ -92,7 +92,7 @@ describe('pixivillage model mapping', () => {
       offline: 0,
     });
     expect(snapshot.buildings.find((building) => building.id === 'code-forge')).toMatchObject({
-      status: 'waiting',
+      status: 'running',
       agentCount: 2,
     });
   });

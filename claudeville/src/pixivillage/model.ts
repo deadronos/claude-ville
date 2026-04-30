@@ -165,8 +165,8 @@ export const buildingDefinitions = [
 const statuses: VillageStatus[] = ['running', 'waiting', 'idle', 'error', 'offline'];
 const statusPriority: Record<VillageStatus, number> = {
   error: 5,
-  waiting: 4,
-  running: 3,
+  running: 4,
+  waiting: 3,
   idle: 2,
   offline: 1,
 };
