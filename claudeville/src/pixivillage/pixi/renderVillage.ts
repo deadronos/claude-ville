@@ -31,9 +31,6 @@ export async function createPixiVillageApp(container: HTMLDivElement): Promise<A
   return app;
 }
 
-/** Persistent renderer that updates PixiJS objects in-place instead of
- *  recreating the scene every frame. Terrain is drawn once; buildings and
- *  vegetation are mutated/relocated rather than destroyed and rebuilt. */
 export interface PixiVillageRenderer {
   update(
     buildings: VillageBuilding[],
@@ -41,6 +38,7 @@ export interface PixiVillageRenderer {
     onSelectBuilding: (buildingId: string) => void,
     tick: number,
   ): void;
+  resize(screenWidth: number, screenHeight: number): void;
 }
 
 export function createPixiVillageRenderer(
@@ -48,37 +46,53 @@ export function createPixiVillageRenderer(
   screenWidth: number,
   screenHeight: number,
 ): PixiVillageRenderer {
-  const origin = {
-    x: screenWidth < 640 ? Math.round(screenWidth * 0.62) : Math.round(screenWidth / 2),
-    y: screenWidth < 640 ? 86 : 70,
-  };
+  // ── Layout state — recalculated on each resize ───────────────────────────
+  const origin = { x: 0, y: 0 };
 
-  // ── Terrain: drawn once and never touched again ──────────────────────────
-  drawTerrain(root, origin.x, origin.y);
+  function recompute() {
+    origin.x = screenWidth < 640 ? Math.round(screenWidth * 0.62) : Math.round(screenWidth / 2);
+    origin.y = screenWidth < 640 ? 86 : 70;
+  }
 
-  // ── Persistent scene container ───────────────────────────────────────────
+  function applySceneLayout() {
+    scene.x = screenWidth < 720 ? 16 : 0;
+    scene.scale.set(screenWidth < 640 ? 0.5 : 1);
+  }
+
+  // ── Terrain: drawn once ─────────────────────────────────────────────────
   const scene = new Container();
-  scene.x = screenWidth < 720 ? 16 : 0;
-  scene.scale.set(screenWidth < 640 ? 0.5 : 1);
+  recompute();
+  applySceneLayout();
+  drawTerrain(scene, origin.x, origin.y);
   root.addChild(scene);
 
-  // ── Building view pool (pre-allocate; grows to cover all buildings) ────────
+  // ── Building view pool ──────────────────────────────────────────────────
   const buildingViews: BuildingView[] = [];
 
   // ── Vegetation pool ──────────────────────────────────────────────────────
   let vegetationContainer: Container | null = null;
   const treePool: Graphics[] = [];
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Sort memoisation ────────────────────────────────────────────────────
+  // Only re-sort when the set of building IDs or their x/y positions change.
+  let lastSortedKeys = '';
+
+  // ───────────────────────────────────────────────────────────────────────
   function update(
     buildings: VillageBuilding[],
     selectedBuildingId: string | null,
     onSelectBuilding: (id: string) => void,
     tick: number,
   ) {
-    const sorted = depthSort(buildings);
+    const keys = buildings.map((b) => `${b.id}:${b.x}:${b.y}`).join('|');
+    const needsSort = keys !== lastSortedKeys || buildingViews.length !== buildings.length;
+    lastSortedKeys = needsSort ? keys : lastSortedKeys;
 
-    // Grow / shrink view pool to match building count.
+    const sorted = needsSort
+      ? [...buildings].sort((a, b) => (a.x + a.y) - (b.x + b.y))
+      : buildings;
+
+    // Grow / shrink view pool.
     while (buildingViews.length < sorted.length) {
       buildingViews.push(createBuildingView(scene));
     }
@@ -88,13 +102,42 @@ export function createPixiVillageRenderer(
       view.container.destroy({ children: true });
     }
 
-    // Sync each view to its building data — mutates existing PixiJS objects.
+    // Sync each view — event handler set once at creation time.
     for (let i = 0; i < sorted.length; i++) {
       syncBuildingView(buildingViews[i], sorted[i], origin, selectedBuildingId, onSelectBuilding, tick);
     }
 
-    // Sync vegetation (pool grows cheaply; doesn't rebuild existing trees).
     syncVegetation(screenWidth, screenHeight, tick);
+  }
+
+  function resize(newWidth: number, newHeight: number) {
+    if (newWidth === screenWidth && newHeight === screenHeight) return;
+    screenWidth = newWidth;
+    screenHeight = newHeight;
+    recompute();
+    applySceneLayout();
+
+    // Reposition terrain tiles to the new origin (tile count is fixed).
+    for (let y = 0; y < mapHeight; y += 1) {
+      for (let x = 0; x < mapWidth; x += 1) {
+        const idx = y * mapWidth + x + 1; // +1 because scene child 0 is vegetation
+        const tile = scene.getChildAt(idx) as Graphics | undefined;
+        if (tile) {
+          const p = isoToScreen(x, y, origin.x, origin.y);
+          tile.x = p.x;
+          tile.y = p.y;
+          // Reposition sparkles too (one per tile at most).
+          const sparkle = scene.getChildAt(idx + mapWidth * mapHeight) as Graphics | undefined;
+          if (sparkle && (x * 7 + y * 3) % 5 === 0) {
+            const sx = x < 2 && y > 6 ? 0 : (x === y || x + y === 10 || (y === 5 && x > 1 && x < 11)) ? 0 : 1;
+            if (sx) {
+              sparkle.x = p.x + ((x % 2) - 0.5) * 22;
+              sparkle.y = p.y + ((y % 3) - 1) * 7;
+            }
+          }
+        }
+      }
+    }
   }
 
   function syncVegetation(width: number, height: number, tick: number) {
@@ -102,11 +145,9 @@ export function createPixiVillageRenderer(
 
     if (!vegetationContainer) {
       vegetationContainer = new Container();
-      // Vegetation goes behind buildings (insert at index 0, after terrain).
       scene.addChildAt(vegetationContainer, 0);
     }
 
-    // Grow tree pool.
     while (treePool.length < treeCount) {
       const t = new Graphics();
       t.poly([0, -18, 15, 10, -15, 10]);
@@ -116,7 +157,6 @@ export function createPixiVillageRenderer(
       treePool.push(t);
     }
 
-    // Sync visible trees.
     for (let i = 0; i < treeCount; i++) {
       const t = treePool[i];
       if (!vegetationContainer.children.includes(t)) vegetationContainer.addChild(t);
@@ -125,13 +165,12 @@ export function createPixiVillageRenderer(
       t.alpha = 0.52 + Math.sin(tick / 30 + i) * 0.05;
     }
 
-    // Detach excess trees instead of destroying them (avoids create/destroy churn).
     for (let i = treeCount; i < treePool.length; i++) {
       vegetationContainer.removeChild(treePool[i]);
     }
   }
 
-  return { update };
+  return { update, resize };
 }
 
 // ─── Building view types ────────────────────────────────────────────────────
@@ -145,10 +184,13 @@ interface BuildingView {
   titleText: Text;
   statusText: Text;
   panelGraphics: Graphics;
+  /** The latest onSelectBuilding callback — the event handler calls this without re-registering. */
+  onSelectBuilding: (id: string) => void;
+  /** Stable building ID captured at creation time for the event handler. */
+  buildingId: string;
 }
 
-// Pre-allocated Text styles (created once per view, reused on sync).
-const titleStyle = {
+const titleStyleDefaults = {
   fontFamily: 'JetBrains Mono, ui-monospace, monospace',
   fontSize: 12,
   fontWeight: '700' as const,
@@ -165,11 +207,14 @@ function createBuildingView(scene: Container): BuildingView {
   const labelContainer = new Container();
   const panelGraphics = new Graphics();
 
-  const titleText = new Text({ text: '', style: titleStyle });
+  const titleText = new Text({ text: '', style: { ...titleStyleDefaults } });
   titleText.anchor.set(0.5, 0);
   titleText.y = -15;
 
-  const statusText = new Text({ text: '', style: { fontFamily: 'JetBrains Mono, ui-monospace, monospace', fontSize: 11, fill: statusColor.running } });
+  const statusText = new Text({
+    text: '',
+    style: { fontFamily: 'JetBrains Mono, ui-monospace, monospace', fontSize: 11, fill: statusColor.running },
+  });
   statusText.anchor.set(0.5, 0);
   statusText.y = 9;
 
@@ -182,7 +227,26 @@ function createBuildingView(scene: Container): BuildingView {
   container.addChild(residentsContainer);
   container.addChild(labelContainer);
 
-  return { container, ringGraphics, bodyGraphics, residentsContainer, labelContainer, titleText, statusText, panelGraphics };
+  // Build the partial view object first so the click handler closure can reference it.
+  const view: BuildingView = {
+    container,
+    ringGraphics,
+    bodyGraphics,
+    residentsContainer,
+    labelContainer,
+    titleText,
+    statusText,
+    panelGraphics,
+    onSelectBuilding: () => {},
+    buildingId: '',
+  };
+
+  // Event handler registered once. It calls the latest callback from view.onSelectBuilding.
+  container.eventMode = 'static';
+  container.cursor = 'pointer';
+  container.on('pointertap', () => view.onSelectBuilding(view.buildingId));
+
+  return view;
 }
 
 function syncBuildingView(
@@ -196,17 +260,16 @@ function syncBuildingView(
   const point = isoToScreen(building.x, building.y, origin.x, origin.y);
   view.container.x = point.x;
   view.container.y = point.y;
-  view.container.eventMode = 'static';
-  view.container.cursor = 'pointer';
   view.container.hitArea = makeBuildingHitArea(building);
-  view.container.off('pointertap');
-  view.container.on('pointertap', () => onSelectBuilding(building.id));
+  view.buildingId = building.id;
+
+  // Update the callback without touching the event listener.
+  view.onSelectBuilding = onSelectBuilding;
 
   // ── Status ring ─────────────────────────────────────────────────────────
   view.ringGraphics.clear();
   const selected = selectedBuildingId === building.id;
-  const showRing = selected || building.status === 'running' || building.status === 'error';
-  if (showRing) {
+  if (selected || building.status === 'running' || building.status === 'error') {
     drawStatusRingGraphics(view.ringGraphics, building.status, selected, tick);
   }
 
@@ -242,8 +305,14 @@ function syncBuildingView(
   view.panelGraphics.stroke({ color: 0x30404f, alpha: 0.95, width: 1 });
 
   view.titleText.text = building.name.toUpperCase();
+
+  // Recreate the style object rather than mutating the shared reference.
   view.statusText.text = `${building.status}${building.agentCount > 0 ? ` · ${building.agentCount}` : ''}`;
-  view.statusText.style.fill = statusColor[building.status];
+  view.statusText.style = {
+    fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+    fontSize: 11,
+    fill: statusColor[building.status],
+  };
 }
 
 // ─── Geometry helpers ───────────────────────────────────────────────────────
@@ -253,10 +322,6 @@ function isoToScreen(x: number, y: number, originX: number, originY: number) {
     x: originX + (x - y) * (tileWidth / 2),
     y: originY + (x + y) * (tileHeight / 2),
   };
-}
-
-function depthSort<T extends { x: number; y: number }>(items: T[]): T[] {
-  return [...items].sort((a, b) => (a.x + a.y) - (b.x + b.y));
 }
 
 function isRoadTile(x: number, y: number) {
@@ -274,7 +339,7 @@ function makeBuildingHitArea(building: VillageBuilding) {
   ]);
 }
 
-// ─── Drawing primitives (mutate a pre-existing Graphics object) ─────────────
+// ─── Drawing primitives ─────────────────────────────────────────────────────
 
 function drawTerrain(scene: Container, originX: number, originY: number) {
   for (let y = 0; y < mapHeight; y += 1) {
@@ -311,26 +376,21 @@ function drawBuildingBodyGraphics(graphics: Graphics, building: VillageBuilding)
   const halfD = (building.depth * tileWidth) / 2;
   const baseY = 18;
 
-  // Shadow
   graphics.ellipse(0, baseY + 16, halfW * 0.92, halfD * 0.24);
   graphics.fill({ color: 0x02050a, alpha: 0.46 });
 
-  // Left wall
   graphics.poly([-halfW / 2, baseY, 0, baseY + halfD / 4, 0, baseY + halfD / 4 - building.height, -halfW / 2, baseY - building.height]);
   graphics.fill({ color: building.color, alpha: 0.95 });
   graphics.stroke({ color: 0x111820, width: 2, alpha: 0.9 });
 
-  // Right wall
   graphics.poly([halfW / 2, baseY, 0, baseY + halfD / 4, 0, baseY + halfD / 4 - building.height, halfW / 2, baseY - building.height]);
   graphics.fill({ color: shade(building.color, 0.76), alpha: 0.95 });
   graphics.stroke({ color: 0x111820, width: 2, alpha: 0.9 });
 
-  // Roof
   graphics.poly([0, baseY - building.height - 34, halfW / 1.75, baseY - building.height, 0, baseY - building.height + 26, -halfW / 1.75, baseY - building.height]);
   graphics.fill({ color: building.roofColor, alpha: building.status === 'offline' ? 0.5 : 1 });
   graphics.stroke({ color: building.status === 'error' ? 0xff5a68 : 0x15191f, width: building.status === 'error' ? 4 : 2, alpha: 0.95 });
 
-  // Windows / glow
   graphics.roundRect(-18, baseY - building.height + 8, 12, 18, 2);
   graphics.roundRect(10, baseY - building.height + 2, 12, 18, 2);
   graphics.fill({ color: building.status === 'offline' ? 0x343b44 : statusColor[building.status], alpha: building.status === 'idle' ? 0.62 : 0.88 });
