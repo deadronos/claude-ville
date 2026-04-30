@@ -82,7 +82,7 @@ export function MinimapOverlay({
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [buildings, cameraRef, spritesRef, viewport.height, viewport.width]);
+  }, [buildings, cameraRef, spritesRef, viewport]);
 
   return (
     <div className="world-view__minimap">

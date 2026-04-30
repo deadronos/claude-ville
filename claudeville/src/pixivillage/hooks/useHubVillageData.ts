@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { eventBus } from '../../domain/events/DomainEvent.js';
 import { HubDataSource } from '../../infrastructure/HubDataSource.js';
@@ -67,6 +67,8 @@ export function useHubVillageData() {
   }, [dataSource, wsClient]);
 
   const snapshot = useMemo(() => buildVillageSnapshot(sessions), [sessions]);
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
   const selectedAgent = selectedAgentId
     ? snapshot.agents.find((agent) => agent.id === selectedAgentId) || null
     : null;
@@ -82,14 +84,14 @@ export function useHubVillageData() {
     selectedBuildingId,
     connectionState,
     lastUpdatedAt,
-    selectAgent(agentId: string | null) {
+    selectAgent: useCallback((agentId: string | null) => {
       setSelectedAgentId(agentId);
-      const agent = agentId ? snapshot.agents.find((candidate) => candidate.id === agentId) : null;
+      const agent = agentId ? snapshotRef.current.agents.find((candidate) => candidate.id === agentId) : null;
       if (agent) setSelectedBuildingId(agent.buildingId);
-    },
-    selectBuilding(buildingId: string | null) {
+    }, []),
+    selectBuilding: useCallback((buildingId: string | null) => {
       setSelectedBuildingId(buildingId);
       setSelectedAgentId(null);
-    },
+    }, []),
   };
 }

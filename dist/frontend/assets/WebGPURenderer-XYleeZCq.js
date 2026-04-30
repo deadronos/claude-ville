@@ -1,1 +1,0 @@
-import{t as e}from"./pixijs-DthkVqNS.js";export{e as WebGPURenderer};

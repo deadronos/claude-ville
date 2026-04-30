@@ -4,7 +4,10 @@
 		{
 			"label": "run-targeted-test",
 			"type": "shell",
-			"command": "cd /Users/openclaw/Github/claude-ville && npx vitest run claudeville/src/pixivillage/pixi/renderVillage.test.ts",
+			"command": "npx vitest run claudeville/src/pixivillage/pixi/renderVillage.test.ts",
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
 			"isBackground": false,
 			"problemMatcher": [
 				"$vitest"
@@ -13,39 +16,14 @@
 		{
 			"label": "run-pixivillage-tests",
 			"type": "shell",
-			"command": "cd /Users/openclaw/Github/claude-ville && npx vitest run claudeville/src/pixivillage/PixiVillageApp.test.tsx claudeville/src/pixivillage/pixi/renderVillage.test.ts claudeville/src/pixivillage/model.test.ts",
+			"command": "npx vitest run claudeville/src/pixivillage/PixiVillageApp.test.tsx claudeville/src/pixivillage/pixi/renderVillage.test.ts claudeville/src/pixivillage/model.test.ts",
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
 			"isBackground": false,
 			"problemMatcher": [
 				"$vitest"
 			]
-		},
-		{
-			"label": "echo-test",
-			"type": "shell",
-			"command": "cd /Users/openclaw/Github/claude-ville && echo hello",
-			"isBackground": false,
-			"problemMatcher": []
-		},
-		{
-			"label": "capture-pixivillage-test-output",
-			"type": "shell",
-			"command": "cd /Users/openclaw/Github/claude-ville && npx vitest run claudeville/src/pixivillage/PixiVillageApp.test.tsx claudeville/src/pixivillage/pixi/renderVillage.test.ts claudeville/src/pixivillage/model.test.ts > /tmp/pixivillage_tests_output.txt 2>&1; echo $? > /tmp/pixivillage_tests_exitcode.txt",
-			"isBackground": false,
-			"problemMatcher": []
-		},
-		{
-			"label": "capture-pixivillage-test-output-repo",
-			"type": "shell",
-			"command": "cd /Users/openclaw/Github/claude-ville && npx vitest run claudeville/src/pixivillage/PixiVillageApp.test.tsx claudeville/src/pixivillage/pixi/renderVillage.test.ts claudeville/src/pixivillage/model.test.ts > .pixivillage_test_output.txt 2>&1; echo $? > .pixivillage_test_exitcode.txt",
-			"isBackground": false,
-			"problemMatcher": []
-		},
-		{
-			"label": "probe-create-file",
-			"type": "shell",
-			"command": "cd /Users/openclaw/Github/claude-ville && touch .pixivillage_probe_file && echo probe > .pixivillage_probe_file_content",
-			"isBackground": false,
-			"problemMatcher": []
 		}
 	]
 }
