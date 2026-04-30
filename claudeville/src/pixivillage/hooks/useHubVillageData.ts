@@ -17,7 +17,7 @@ export function useHubVillageData() {
   const wsClient = useMemo(() => new WebSocketClient(), []);
   const [sessions, setSessions] = useState<HubSession[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>('command-center');
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number>(Date.now());
 

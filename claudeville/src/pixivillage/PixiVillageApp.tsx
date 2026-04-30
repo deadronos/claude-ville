@@ -36,7 +36,13 @@ export function PixiVillageApp() {
       ].join(' ').toLowerCase().includes(normalized);
     });
   }, [snapshot.agents, query, statusFilter]);
-  const inspectorAgent = selectedAgent || selectedBuilding?.agents[0] || snapshot.agents[0] || null;
+  const inspectorAgent = selectedAgent
+    || (selectedBuilding ? selectedBuilding.agents[0] || null : snapshot.agents[0] || null);
+  const inspectorHeading = selectedAgent
+    ? 'Selected Session'
+    : selectedBuilding
+      ? 'Selected Building'
+      : 'Live Session';
 
   return (
     <div className="pixi-village">
@@ -101,7 +107,7 @@ export function PixiVillageApp() {
 
         <aside className="pixi-village__inspector">
           <div className="pixi-village__panel-head">
-            <h2>{selectedAgent ? 'Selected Session' : 'Selected Building'}</h2>
+            <h2>{inspectorHeading}</h2>
             <span>{new Date(lastUpdatedAt).toLocaleTimeString([], { hour12: false })}</span>
           </div>
 
@@ -126,6 +132,8 @@ export function PixiVillageApp() {
                 <Metric label="Building" value={selectedBuilding?.name || inspectorAgent.buildingId} />
               </section>
             </>
+          ) : selectedBuilding ? (
+            <p className="pixi-village__empty">{selectedBuilding.name} has no live sessions.</p>
           ) : (
             <p className="pixi-village__empty">Waiting for hub sessions.</p>
           )}

@@ -40,6 +40,12 @@ export interface PixiVillageRenderer {
   resize(screenWidth: number, screenHeight: number): void;
 }
 
+interface TerrainTileRef {
+  tile: Graphics;
+  x: number;
+  y: number;
+}
+
 export function createPixiVillageRenderer(
   root: Container,
   screenWidth: number,
@@ -62,7 +68,7 @@ export function createPixiVillageRenderer(
   const scene = new Container();
   recompute();
   applySceneLayout();
-  drawTerrain(scene, origin.x, origin.y);
+  const terrainTiles = drawTerrain(scene, origin.x, origin.y);
   root.addChild(scene);
 
   // ── Building view pool ──────────────────────────────────────────────────
@@ -72,10 +78,6 @@ export function createPixiVillageRenderer(
   let vegetationContainer: Container | null = null;
   const treePool: Graphics[] = [];
 
-  // ── Sort memoisation ────────────────────────────────────────────────────
-  // Only re-sort when the set of building IDs or their x/y positions change.
-  let lastSortedKeys = '';
-
   // ───────────────────────────────────────────────────────────────────────
   function update(
     buildings: VillageBuilding[],
@@ -83,13 +85,7 @@ export function createPixiVillageRenderer(
     onSelectBuilding: (id: string) => void,
     tick: number,
   ) {
-    const keys = buildings.map((b) => `${b.id}:${b.x}:${b.y}`).join('|');
-    const needsSort = keys !== lastSortedKeys || buildingViews.length !== buildings.length;
-    lastSortedKeys = needsSort ? keys : lastSortedKeys;
-
-    const sorted = needsSort
-      ? [...buildings].sort((a, b) => (a.x + a.y) - (b.x + b.y))
-      : buildings;
+    const sorted = [...buildings].sort((a, b) => (a.x + a.y) - (b.x + b.y));
 
     // Grow / shrink view pool.
     while (buildingViews.length < sorted.length) {
@@ -116,18 +112,10 @@ export function createPixiVillageRenderer(
     recompute();
     applySceneLayout();
 
-    // Reposition terrain tiles to the new origin.  Sparkles are children of
-    // their tile so they move automatically when the tile is repositioned.
-    for (let y = 0; y < mapHeight; y += 1) {
-      for (let x = 0; x < mapWidth; x += 1) {
-        const idx = y * mapWidth + x + 1;
-        const tile = scene.getChildAt(idx) as Graphics | undefined;
-        if (tile) {
-          const p = isoToScreen(x, y, origin.x, origin.y);
-          tile.x = p.x;
-          tile.y = p.y;
-        }
-      }
+    for (const terrainTile of terrainTiles) {
+      const p = isoToScreen(terrainTile.x, terrainTile.y, origin.x, origin.y);
+      terrainTile.tile.x = p.x;
+      terrainTile.tile.y = p.y;
     }
   }
 
@@ -332,7 +320,9 @@ function makeBuildingHitArea(building: VillageBuilding) {
 
 // ─── Drawing primitives ─────────────────────────────────────────────────────
 
-function drawTerrain(scene: Container, originX: number, originY: number) {
+function drawTerrain(scene: Container, originX: number, originY: number): TerrainTileRef[] {
+  const terrainTiles: TerrainTileRef[] = [];
+
   for (let y = 0; y < mapHeight; y += 1) {
     for (let x = 0; x < mapWidth; x += 1) {
       const point = isoToScreen(x, y, originX, originY);
@@ -345,15 +335,20 @@ function drawTerrain(scene: Container, originX: number, originY: number) {
       tile.x = point.x;
       tile.y = point.y;
       scene.addChild(tile);
+      terrainTiles.push({ tile, x, y });
 
       if (!road && !water && (x * 7 + y * 3) % 5 === 0) {
+        const sparkleX = ((x % 2) - 0.5) * 22;
+        const sparkleY = ((y % 3) - 1) * 7;
         const sparkle = new Graphics();
-        sparkle.circle(point.x + ((x % 2) - 0.5) * 22, point.y + ((y % 3) - 1) * 7, 2);
+        sparkle.circle(sparkleX, sparkleY, 2);
         sparkle.fill({ color: (x + y) % 2 === 0 ? 0xf4bd38 : 0x9c6cff, alpha: 0.82 });
-        scene.addChild(sparkle);
+        tile.addChild(sparkle);
       }
     }
   }
+
+  return terrainTiles;
 }
 
 function drawStatusRingGraphics(graphics: Graphics, status: VillageStatus, selected: boolean, tick: number) {
