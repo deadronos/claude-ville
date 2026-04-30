@@ -1,0 +1,1 @@
+import{r as e}from"./pixijs-DthkVqNS.js";export{e as CanvasRenderer};

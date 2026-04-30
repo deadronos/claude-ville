@@ -1,6 +1,8 @@
-import { Agent } from '../domain/entities/Agent.js';
+import { Agent, resolveTargetBuildingType } from '../domain/entities/Agent.js';
 import { World } from '../domain/entities/World.js';
 import { AgentStatus } from '../domain/value-objects/AgentStatus.js';
+import { Position } from '../domain/value-objects/Position.js';
+import { BUILDING_DEFS } from '../config/buildings.js';
 import { resolveAgentDisplayName } from '../config/agentNames.js';
 import { HubDataSource } from '../infrastructure/HubDataSource.js';
 
@@ -127,6 +129,7 @@ export class AgentManager {
             nameMode: resolvedName.nameMode,
             nameHint: resolvedName.nameHint,
         };
+        agentData.position = this._resolveActivityPosition(id, agentData.currentTool);
 
         if (this.world.agents.has(id)) {
             agentData.name = resolvedName.name;
@@ -151,8 +154,20 @@ export class AgentManager {
                 provider: session.provider || 'claude',
                 messages,
             });
+            agent.position = agentData.position;
             this.world.addAgent(agent);
         }
+    }
+
+    _resolveActivityPosition(agentId: string, currentTool: string | null) {
+        const buildingType = resolveTargetBuildingType(currentTool) || 'command';
+        const building = BUILDING_DEFS.find((candidate) => candidate.type === buildingType) || BUILDING_DEFS[0];
+        const xOffset = 0.25 + stableUnit(`${agentId}:x`) * 0.5;
+        const yOffset = 0.25 + stableUnit(`${agentId}:y`) * 0.5;
+        return new Position(
+            building.x + building.width * xOffset,
+            building.y + building.height * yOffset,
+        );
     }
 
     _resolveStatus(session: { status?: string; lastActivity?: number }) {
@@ -164,4 +179,13 @@ export class AgentManager {
         }
         return AgentStatus.IDLE;
     }
+}
+
+function stableUnit(value: string) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) / 0xffffffff;
 }

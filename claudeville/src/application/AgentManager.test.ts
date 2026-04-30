@@ -8,6 +8,16 @@ beforeEach(() => {
 
 import { AgentManager } from './AgentManager.js';
 import { AgentStatus } from '../domain/value-objects/AgentStatus.js';
+import { BUILDING_DEFS } from '../config/buildings.js';
+
+function expectInsideBuilding(position: { tileX: number; tileY: number }, buildingType: string) {
+  const building = BUILDING_DEFS.find((candidate) => candidate.type === buildingType);
+  expect(building).toBeTruthy();
+  expect(position.tileX).toBeGreaterThanOrEqual(building!.x);
+  expect(position.tileX).toBeLessThanOrEqual(building!.x + building!.width);
+  expect(position.tileY).toBeGreaterThanOrEqual(building!.y);
+  expect(position.tileY).toBeLessThanOrEqual(building!.y + building!.height);
+}
 
 describe('AgentManager', () => {
   let mockWorld: any;
@@ -266,6 +276,44 @@ describe('AgentManager', () => {
 
     const call = mockWorld.addAgent.mock.calls[0][0];
     expect(call.provider).toBe('codex');
+  });
+
+  it('places new live agents near the resolved activity building, including lower-case Pi tool names', async () => {
+    const session = makeSession({ provider: 'pi', lastTool: 'edit' });
+    mockDataSource.getSessions.mockResolvedValue([session]);
+    mockDataSource.getTeams.mockResolvedValue([]);
+
+    await manager.loadInitialData();
+
+    const agent = mockWorld.addAgent.mock.calls[0][0];
+    expect(agent.targetBuildingType).toBe('forge');
+    expectInsideBuilding(agent.position, 'forge');
+  });
+
+  it('moves an existing live agent when its active tool resolves to a new building', async () => {
+    const existingAgent = {
+      id: 's-x',
+      name: 'Existing Agent',
+      status: AgentStatus.WORKING,
+      currentTool: 'bash',
+      position: { tileX: 12, tileY: 24 },
+    };
+    mockWorld.agents.set('s-x', existingAgent);
+    mockDataSource.getSessions.mockResolvedValue([]);
+    mockDataSource.getTeams.mockResolvedValue([]);
+    await manager.loadInitialData();
+    mockWorld.updateAgent.mockClear();
+
+    manager.handleWebSocketMessage({
+      sessions: [makeSession({ sessionId: 's-x', lastTool: 'read_file', status: 'active', lastActivity: Date.now() })],
+    });
+
+    expect(mockWorld.updateAgent).toHaveBeenCalledWith('s-x', expect.objectContaining({
+      currentTool: 'read_file',
+      position: expect.any(Object),
+    }));
+    const update = mockWorld.updateAgent.mock.calls[0][1];
+    expectInsideBuilding(update.position, 'chathall');
   });
 
   it('handles session with null project', async () => {

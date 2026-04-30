@@ -30,6 +30,29 @@ When a learning is promoted to a skill, add these fields:
 
 ---
 
+## [LRN-20260501-001] best_practice
+
+**Logged**: 2026-04-30T23:04:08Z
+**Priority**: medium
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+Live world avatars should derive positions from resolved activity buildings, not from the Agent constructor's random fallback.
+
+### Details
+The sidebar can show a newly detected Pi/Codex session while the 3D world appears empty because `Agent.position` was initialized randomly and the R3F world path rebuilt ECS positions from that domain position. Lower-case tool names such as Pi's `edit` also failed the case-sensitive tool-to-building map, so the agent could be placed away from the expected activity building until refresh rerolled its random spawn.
+
+### Suggested Action
+For live-session rendering bugs, check whether adapter tool names are normalized before building routing and whether world actors are positioned from deterministic session/activity state.
+
+### Metadata
+- Source: conversation
+- Related Files: claudeville/src/application/AgentManager.ts, claudeville/src/domain/entities/Agent.ts
+- Tags: live-updates, avatars, r3f, pi-adapter, tool-normalization
+
+---
+
 ## Entry: UI/UX Enhancement - Scrollable Activity Panel
 
 **Date**: 2026-04-28

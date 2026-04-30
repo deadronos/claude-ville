@@ -5,6 +5,34 @@ import { generateAgentDisplayName, resolveAgentDisplayName } from '../../config/
 import { estimateClaudeCost } from '../../config/costs.js';
 import { formatToolLabel, normalizeBubbleSnippet, parseToolDetail } from '../../config/toolFormatting.js';
 
+const toolBuildingMap: Record<string, string> = {
+    read: 'chathall',
+    grep: 'chathall',
+    glob: 'chathall',
+    websearch: 'chathall',
+    webfetch: 'chathall',
+    read_file: 'chathall',
+    edit: 'forge',
+    write: 'forge',
+    notebookedit: 'forge',
+    multiedit: 'forge',
+    bash: 'mine',
+    run_in_terminal: 'mine',
+    mcp__playwright__browser_navigate: 'mine',
+    mcp__playwright__browser_take_screenshot: 'mine',
+    task: 'command',
+    taskcreate: 'taskboard',
+    taskupdate: 'taskboard',
+    tasklist: 'taskboard',
+    sendmessage: 'command',
+    teamcreate: 'command',
+};
+
+export function resolveTargetBuildingType(currentTool: string | null | undefined) {
+    if (!currentTool) return null;
+    return toolBuildingMap[currentTool.toLowerCase()] || null;
+}
+
 interface AgentParams {
     id: string;
     name?: string | null;
@@ -118,15 +146,7 @@ export class Agent {
      * Returns target building type based on current tool
      */
     get targetBuildingType() {
-        if (!this.currentTool) return null;
-        const toolMap: Record<string, string> = {
-            'Read': 'chathall', 'Grep': 'chathall', 'Glob': 'chathall', 'WebSearch': 'chathall', 'WebFetch': 'chathall',
-            'Edit': 'forge', 'Write': 'forge', 'NotebookEdit': 'forge',
-            'Bash': 'mine', 'mcp__playwright__browser_navigate': 'mine', 'mcp__playwright__browser_take_screenshot': 'mine',
-            'Task': 'command', 'TaskCreate': 'taskboard', 'TaskUpdate': 'taskboard', 'TaskList': 'taskboard',
-            'SendMessage': 'command', 'TeamCreate': 'command',
-        };
-        return toolMap[this.currentTool] || null;
+        return resolveTargetBuildingType(this.currentTool);
     }
 
     /**
