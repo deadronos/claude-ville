@@ -1,5 +1,4 @@
 import { Application, Container, Graphics, Polygon, Text } from 'pixi.js';
-
 import type { VillageBuilding, VillageStatus } from '../model.js';
 
 const tileWidth = 96;
@@ -117,24 +116,16 @@ export function createPixiVillageRenderer(
     recompute();
     applySceneLayout();
 
-    // Reposition terrain tiles to the new origin (tile count is fixed).
+    // Reposition terrain tiles to the new origin.  Sparkles are children of
+    // their tile so they move automatically when the tile is repositioned.
     for (let y = 0; y < mapHeight; y += 1) {
       for (let x = 0; x < mapWidth; x += 1) {
-        const idx = y * mapWidth + x + 1; // +1 because scene child 0 is vegetation
+        const idx = y * mapWidth + x + 1;
         const tile = scene.getChildAt(idx) as Graphics | undefined;
         if (tile) {
           const p = isoToScreen(x, y, origin.x, origin.y);
           tile.x = p.x;
           tile.y = p.y;
-          // Reposition sparkles too (one per tile at most).
-          const sparkle = scene.getChildAt(idx + mapWidth * mapHeight) as Graphics | undefined;
-          if (sparkle && (x * 7 + y * 3) % 5 === 0) {
-            const sx = x < 2 && y > 6 ? 0 : (x === y || x + y === 10 || (y === 5 && x > 1 && x < 11)) ? 0 : 1;
-            if (sx) {
-              sparkle.x = p.x + ((x % 2) - 0.5) * 22;
-              sparkle.y = p.y + ((y % 3) - 1) * 7;
-            }
-          }
         }
       }
     }
