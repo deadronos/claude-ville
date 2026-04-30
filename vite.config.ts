@@ -1,4 +1,5 @@
 import './load-local-env.js';
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { buildRuntimeConfig } from './runtime-config.shared.js';
@@ -45,5 +46,11 @@ export default defineConfig({
   build: {
     outDir: '../dist/frontend',
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'claudeville/index.html'),
+        pixijs: resolve(__dirname, 'claudeville/pixijs.html'),
+      },
+    },
   },
 });

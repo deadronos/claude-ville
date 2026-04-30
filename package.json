@@ -8,6 +8,7 @@
     "dev:collector": "tsx collector/start.ts",
     "dev:hubreceiver": "tsx hubreceiver/server.ts",
     "dev:frontend": "vite",
+    "dev:frontend-pixijs": "vite --host 127.0.0.1 --open /pixijs.html",
     "build:frontend": "vite build",
     "widget:build": "cd widget && bash build.sh",
     "widget": "open widget/ClaudeVilleWidget.app",
@@ -45,6 +46,7 @@
   },
   "dependencies": {
     "@react-three/fiber": "^9.6.0",
+    "pixi.js": "^8.18.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "three": "^0.183.2",

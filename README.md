@@ -67,6 +67,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 - **Project Grouping** — Agents grouped by project with color-coded sections
 - **English-only UI** — Consistent English labels across the app
 - **React + React Three Fiber frontend** — Same isometric village, now powered by Vite, React, and WebGL rendering
+- **PixiJS Village frontend** — Alternate dense observability view at `/pixijs.html` for crisp 2D session monitoring
 
 ## Quick Start
 
@@ -101,6 +102,14 @@ Each Node entrypoint auto-loads `.env.local` from the repo root if it exists.
 Set `HUB_HTTP_URL` and `HUB_WS_URL` for the frontend if the hubreceiver runs on another host.
 `HUB_URL` is also accepted by the frontend as a shortcut for `HUB_HTTP_URL`.
 The browser app uses the configured hub HTTP base for session, detail, usage, and history requests in split mode.
+
+To run the alternate PixiJS village frontend against the same hubreceiver and collector:
+
+```bash
+npm run dev:frontend-pixijs
+```
+
+Open http://localhost:3001/pixijs.html. This view reuses the existing collector → hubreceiver → frontend stream and maps sessions to fixed village buildings such as Command Center, Chat Hall, Code Forge, Token Mine, Task Board, Memory Archive, Research Lab, and Alert Tower.
 
 ### Manual live E2E
 
