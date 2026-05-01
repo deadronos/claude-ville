@@ -58,6 +58,15 @@ export class ClaudeVilleController {
   private knownAgents: Set<string>;
   private wsEverConnected: boolean;
 
+  /** Cached agent array to avoid repeated Array.from on every change */
+  private _cachedAgents: any[] = [];
+
+  /** Sync the cached agents array and world store */
+  private _syncAgentsCache() {
+    this._cachedAgents = Array.from(this.world.agents.values());
+    useWorldStore.getState().setAgents(this._cachedAgents);
+  }
+
   constructor() {
     this.world = new World();
     for (const def of BUILDING_DEFS) {
@@ -94,11 +103,11 @@ export class ClaudeVilleController {
           this.pushToast(i18n.t('agentJoined', agent.name), 'info');
         }
         this.knownAgents.add(agent.id);
-        useWorldStore.getState().setAgents(Array.from(this.world.agents.values()));
+        this._syncAgentsCache();
         this._emitChange();
       }),
       eventBus.on('agent:updated', () => {
-        useWorldStore.getState().setAgents(Array.from(this.world.agents.values()));
+        this._syncAgentsCache();
         this._emitChange();
       }),
       eventBus.on('agent:removed', (agent: any) => {
@@ -107,7 +116,7 @@ export class ClaudeVilleController {
           this.selectedAgentId = null;
         }
         this.pushToast(i18n.t('agentLeft', agent.name), 'warning');
-        useWorldStore.getState().setAgents(Array.from(this.world.agents.values()));
+        this._syncAgentsCache();
         this._emitChange();
       }),
       eventBus.on('usage:updated', (usage: any) => {
@@ -140,7 +149,7 @@ export class ClaudeVilleController {
       this.sessionWatcher.start();
       this.booted = true;
       this.bootError = null;
-      useWorldStore.getState().setAgents(Array.from(this.world.agents.values()));
+      this._syncAgentsCache();
       useWorldStore.getState().setBuildings(Array.from(this.world.buildings.values()));
       this._emitChange();
     } catch (error) {
@@ -171,7 +180,8 @@ export class ClaudeVilleController {
   }
 
   private _buildSnapshot(): ClaudeVilleSnapshot {
-    const agents = Array.from(this.world.agents.values());
+    // Use cached agents array to avoid creating new arrays on every snapshot
+    const agents = this._cachedAgents;
     const selectedAgent = this.selectedAgentId ? this.world.agents.get(this.selectedAgentId) || null : null;
 
     return {

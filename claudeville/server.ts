@@ -548,3 +548,17 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
+
+process.on('SIGTERM', () => {
+  console.log('\nreceived SIGTERM, shutting down gracefully...');
+  stopFileWatcher();
+  for (const socket of wsClients) {
+    try {
+      socket.close();
+    } catch { /* ignore */ }
+  }
+  server.close(() => {
+    console.log('server shut down');
+    process.exit(0);
+  });
+});

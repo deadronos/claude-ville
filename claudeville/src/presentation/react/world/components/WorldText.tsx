@@ -130,10 +130,17 @@ export function WorldText({
   }, [textureData.texture]);
 
   const zOffset = typeof depthOffset === 'number' ? depthOffset * 0.001 : 0;
-  const position: ThreeElements['mesh']['position'] = Array.isArray(callerPosition)
-    ? [callerPosition[0] ?? 0, callerPosition[1] ?? 0, (callerPosition[2] ?? 0) + zOffset]
-    : callerPosition;
-  const scale = callerScale ?? ([1, -1, 1] satisfies [number, number, number]);
+  const position = useMemo(
+    (): ThreeElements['mesh']['position'] =>
+      Array.isArray(callerPosition)
+        ? [callerPosition[0] ?? 0, callerPosition[1] ?? 0, (callerPosition[2] ?? 0) + zOffset]
+        : callerPosition,
+    [callerPosition, zOffset],
+  );
+  const scale = useMemo(
+    () => callerScale ?? ([1, -1, 1] satisfies [number, number, number]),
+    [callerScale],
+  );
   const offsetX = (0.5 - anchorToUnit(anchorX, 'x')) * textureData.width;
   const offsetY = (0.5 - anchorToUnit(anchorY, 'y')) * textureData.height;
 

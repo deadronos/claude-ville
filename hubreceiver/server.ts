@@ -33,3 +33,30 @@ server.on('upgrade', (req: http.IncomingMessage, socket: net.Socket) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`hubreceiver listening on http://0.0.0.0:${PORT}`);
 });
+
+// ─── Signal handling for graceful shutdown ────────────────────────
+
+function shutdown(signal: string) {
+  console.log(`\nreceived ${signal}, shutting down gracefully...`);
+  server.close(() => {
+    console.log('hubreceiver shut down');
+    process.exit(0);
+  });
+  // Force exit after 5 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    console.error('forced exit after timeout');
+    process.exit(1);
+  }, 5000);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+process.on('uncaughtException', (err: Error) => {
+  console.error('unhandled exception:', err.message);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('unhandled promise rejection:', reason);
+});

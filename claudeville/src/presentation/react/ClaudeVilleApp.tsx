@@ -13,7 +13,8 @@ export function ClaudeVilleApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const controller = useMemo(() => new ClaudeVilleController(), []);
   const snapshot = useClaudeVilleSnapshot(controller);
-  const agents = Array.from(snapshot.world.agents.values());
+  // Agents are already cached in the controller; snapshot.agents is stable
+  const agents = snapshot.agents;
   const selectedAgent = snapshot.selectedAgentId
     ? snapshot.world.agents.get(snapshot.selectedAgentId) || null
     : null;
@@ -62,7 +63,7 @@ export function ClaudeVilleApp() {
                 id="btnModeCharacter"
                 type="button"
                 role="tab"
-                aria-selected={snapshot.mode === 'character'}
+                aria-selected={snapshot.mode === 'character' ? 'true' : 'false'}
                 className={`topbar__segmented-btn ${snapshot.mode === 'character' ? 'topbar__segmented-btn--active' : ''}`}
                 onClick={() => controller.setMode('character')}
               >
@@ -72,7 +73,7 @@ export function ClaudeVilleApp() {
                 id="btnModeDashboard"
                 type="button"
                 role="tab"
-                aria-selected={snapshot.mode === 'dashboard'}
+                aria-selected={snapshot.mode === 'dashboard' ? 'true' : 'false'}
                 className={`topbar__segmented-btn ${snapshot.mode === 'dashboard' ? 'topbar__segmented-btn--active' : ''}`}
                 onClick={() => controller.setMode('dashboard')}
               >
