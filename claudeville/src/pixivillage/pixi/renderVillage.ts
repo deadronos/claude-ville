@@ -73,7 +73,7 @@ export function createPixiVillageRenderer(
 
   // ── Building container (separate from terrain for depth ordering) ─────────
   const buildingContainer = new Container();
-  root.addChild(buildingContainer);
+  scene.addChild(buildingContainer);
 
   // ── Building view pool ──────────────────────────────────────────────────
   const buildingViews: BuildingView[] = [];

@@ -42,10 +42,10 @@ describe('createPixiVillageRenderer', () => {
     const root = new Container();
     const renderer = createPixiVillageRenderer(root, 800, 600);
     const scene = root.children[0] as Container;
-    const buildingContainer = root.children[1] as Container;
+    const buildingContainer = scene.children[scene.children.length - 1] as Container;
 
-    // scene has 130 tiles + 1 sparkleContainer (added at index 0)
-    expect(scene.children).toHaveLength(mapWidth * mapHeight + 1);
+    // scene has 130 tiles + 1 sparkleContainer (added at index 0) + buildingContainer
+    expect(scene.children).toHaveLength(mapWidth * mapHeight + 2);
     // buildingContainer is empty initially
     expect(buildingContainer.children).toHaveLength(0);
 
@@ -53,7 +53,7 @@ describe('createPixiVillageRenderer', () => {
 
     // First child is sparkleContainer, then 130 tiles
     const firstTile = scene.children[1] as Container;
-    const lastTile = scene.children[scene.children.length - 1] as Container;
+    const lastTile = scene.children[mapWidth * mapHeight] as Container;
     const firstExpected = isoToScreen(0, 0, 600);
     const lastExpected = isoToScreen(mapWidth - 1, mapHeight - 1, 600);
 
@@ -67,7 +67,7 @@ describe('createPixiVillageRenderer', () => {
     const root = new Container();
     const renderer = createPixiVillageRenderer(root, 800, 600);
     const scene = root.children[0] as Container;
-    const buildingContainer = root.children[1] as Container;
+    const buildingContainer = scene.children[scene.children.length - 1] as Container;
     const onSelect = vi.fn();
 
     const near = makeBuilding('near', 1, 1);
@@ -88,5 +88,20 @@ describe('createPixiVillageRenderer', () => {
 
     expect(onSelect).toHaveBeenNthCalledWith(1, 'near');
     expect(onSelect).toHaveBeenNthCalledWith(2, 'near');
+  });
+
+  it('keeps buildings under the transformed scene container on mobile layouts', () => {
+    const root = new Container();
+    const renderer = createPixiVillageRenderer(root, 600, 480);
+    const scene = root.children[0] as Container;
+    const buildingContainer = scene.children[scene.children.length - 1] as Container;
+
+    renderer.update([makeBuilding('mobile', 3, 4)], null, vi.fn(), 0);
+
+    expect(root.children).toHaveLength(1);
+    expect(scene.scale.x).toBe(0.5);
+    expect(scene.x).toBe(16);
+    expect(buildingContainer.parent).toBe(scene);
+    expect(buildingContainer.children).toHaveLength(1);
   });
 });
