@@ -71,6 +71,10 @@ export function createPixiVillageRenderer(
   const terrainTiles = drawTerrain(scene, origin.x, origin.y);
   root.addChild(scene);
 
+  // ── Building container (separate from terrain for depth ordering) ─────────
+  const buildingContainer = new Container();
+  root.addChild(buildingContainer);
+
   // ── Building view pool ──────────────────────────────────────────────────
   const buildingViews: BuildingView[] = [];
 
@@ -89,17 +93,22 @@ export function createPixiVillageRenderer(
 
     // Grow / shrink view pool.
     while (buildingViews.length < sorted.length) {
-      buildingViews.push(createBuildingView(scene));
+      buildingViews.push(createBuildingView(buildingContainer));
     }
     while (buildingViews.length > sorted.length) {
       const view = buildingViews.pop()!;
-      scene.removeChild(view.container);
+      buildingContainer.removeChild(view.container);
       view.container.destroy({ children: true });
     }
 
     // Sync each view — event handler set once at creation time.
     for (let i = 0; i < sorted.length; i++) {
       syncBuildingView(buildingViews[i], sorted[i], origin, selectedBuildingId, onSelectBuilding, tick);
+    }
+
+    // Reorder building children to match depth-sorted order.
+    for (let i = 0; i < sorted.length; i++) {
+      buildingContainer.setChildIndex(buildingViews[i].container, i);
     }
 
     syncVegetation(screenWidth, screenHeight, tick);
@@ -322,6 +331,8 @@ function makeBuildingHitArea(building: VillageBuilding) {
 
 function drawTerrain(scene: Container, originX: number, originY: number): TerrainTileRef[] {
   const terrainTiles: TerrainTileRef[] = [];
+  const sparkleContainer = new Container();
+  scene.addChildAt(sparkleContainer, 0);
 
   for (let y = 0; y < mapHeight; y += 1) {
     for (let x = 0; x < mapWidth; x += 1) {
@@ -338,12 +349,14 @@ function drawTerrain(scene: Container, originX: number, originY: number): Terrai
       terrainTiles.push({ tile, x, y });
 
       if (!road && !water && (x * 7 + y * 3) % 5 === 0) {
-        const sparkleX = ((x % 2) - 0.5) * 22;
-        const sparkleY = ((y % 3) - 1) * 7;
+        const sparkleX = point.x + ((x % 2) - 0.5) * 22;
+        const sparkleY = point.y + ((y % 3) - 1) * 7;
         const sparkle = new Graphics();
-        sparkle.circle(sparkleX, sparkleY, 2);
+        sparkle.circle(0, 0, 2);
         sparkle.fill({ color: (x + y) % 2 === 0 ? 0xf4bd38 : 0x9c6cff, alpha: 0.82 });
-        tile.addChild(sparkle);
+        sparkle.x = sparkleX;
+        sparkle.y = sparkleY;
+        sparkleContainer.addChild(sparkle);
       }
     }
   }

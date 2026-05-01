@@ -53,25 +53,19 @@ export function PixiVillageCanvas({
     rendererRef.current?.update(buildings, selectedBuildingId, onSelectBuilding, tick);
   }, [buildings, selectedBuildingId, onSelectBuilding, tick]);
 
-  // Handle window resize — PixiJS auto-resizes the canvas; relay new dimensions to the renderer.
+  // Handle container resize — PixiJS auto-resizes the canvas; relay new dimensions to the renderer.
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
+    const host = hostRef.current;
+    if (typeof window === 'undefined' || !host) return undefined;
 
-    // Poll for resize since PixiJS doesn't expose a resize event API from here.
-    // Debounce by only calling resize when the window size actually changed.
-    let lastW = window.innerWidth;
-    let lastH = window.innerHeight;
-    const interval = window.setInterval(() => {
-      if (window.innerWidth !== lastW || window.innerHeight !== lastH) {
-        lastW = window.innerWidth;
-        lastH = window.innerHeight;
-        const app = appRef.current;
-        if (app) {
-          rendererRef.current?.resize(app.screen.width, app.screen.height);
-        }
+    const observer = new ResizeObserver(() => {
+      const app = appRef.current;
+      if (app) {
+        rendererRef.current?.resize(app.screen.width, app.screen.height);
       }
-    }, 250);
-    return () => window.clearInterval(interval);
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
   }, []);
 
   return (

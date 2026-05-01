@@ -26,11 +26,15 @@ export function useHubVillageData() {
     let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     async function poll() {
-      const nextSessions = await dataSource.getSessions();
-      if (disposed) return;
-      setSessions(nextSessions as HubSession[]);
-      setLastUpdatedAt(Date.now());
-      setConnectionState((state) => state === 'connected' ? state : 'polling');
+      try {
+        const nextSessions = await dataSource.getSessions();
+        if (disposed) return;
+        setSessions(nextSessions as HubSession[]);
+        setLastUpdatedAt(Date.now());
+        setConnectionState((state) => state === 'connected' ? state : 'polling');
+      } catch {
+        // Keep last known sessions; connectionState stays as-is on error.
+      }
     }
 
     function applyMessage(data: unknown) {
@@ -54,7 +58,11 @@ export function useHubVillageData() {
 
     void poll();
     pollTimer = setInterval(poll, 2500);
-    wsClient.connect();
+    try {
+      wsClient.connect();
+    } catch {
+      setConnectionState('polling');
+    }
 
     return () => {
       disposed = true;
