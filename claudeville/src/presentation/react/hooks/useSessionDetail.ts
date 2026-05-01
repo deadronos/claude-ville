@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { getHubApiUrl } from '../../../config/runtime.js';
+import { getHubApiUrl, getHubAuthHeaders } from '../../../config/runtime.js';
 
 type SessionDetailState = {
   toolHistory: any[];
@@ -31,7 +31,8 @@ export function useSessionDetail(agent: any | null, enabled: boolean, intervalMs
           project: agentProject,
           provider: agentProvider,
         });
-        const response = await fetch(url);
+        const headers = getHubAuthHeaders();
+        const response = headers ? await fetch(url, { headers }) : await fetch(url);
         if (!response.ok) {
           return;
         }

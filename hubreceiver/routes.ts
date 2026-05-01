@@ -8,6 +8,10 @@ export function maybeGetAuthToken(req: http.IncomingMessage) {
   return header.replace(/^Bearer /i, '');
 }
 
+function isAuthorized(req: http.IncomingMessage, authToken: string) {
+  return maybeGetAuthToken(req) === authToken;
+}
+
 interface HubreceiverDeps {
   applySnapshot: (snapshot: object) => object;
   getCurrentState: () => { sessions: unknown[]; teams: unknown[]; taskGroups: unknown[]; providers: unknown[]; usage: unknown; timestamp: number };
@@ -35,12 +39,12 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
       return;
     }
 
-    if (req.method === 'POST' && pathname === '/api/collector/snapshot') {
-      if (maybeGetAuthToken(req) !== deps.authToken) {
+      if (!isAuthorized(req, deps.authToken)) {
         sendError(res, 401, 'unauthorized');
         return;
       }
 
+    if (req.method === 'POST' && pathname === '/api/collector/snapshot') {
       readBoundedBody(req, deps.maxSnapshotBytes)
         .then(({ body }: { body: string }) => {
           try {

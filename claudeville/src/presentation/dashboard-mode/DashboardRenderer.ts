@@ -1,7 +1,7 @@
 import { World } from '../../domain/entities/World.js';
 import { Agent } from '../../domain/entities/Agent.js';
 import { eventBus } from '../../domain/events/DomainEvent.js';
-import { getHubApiUrl } from '../../config/runtime.js';
+import { getHubApiUrl, getHubAuthHeaders } from '../../config/runtime.js';
 import { i18n } from '../../config/i18n.js';
 import {
     PROJECT_COLORS as PROJECT_COLORS_BASE,
@@ -377,7 +377,9 @@ export class DashboardRenderer {
                 project: (agent as any).projectPath || '',
                 provider: agent.provider || 'claude',
             });
-            const resp = await fetch(getHubApiUrl('/api/session-detail', params));
+            const headers = getHubAuthHeaders();
+            const url = getHubApiUrl('/api/session-detail', params);
+            const resp = headers ? await fetch(url, { headers }) : await fetch(url);
             if (!resp.ok) return;
             const data = await resp.json();
             if (data.toolHistory) {

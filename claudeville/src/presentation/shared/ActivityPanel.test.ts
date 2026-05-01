@@ -9,6 +9,7 @@ vi.mock('../../config/runtime.js', () => ({
     const suffix = searchParams ? `?${searchParams.toString()}` : '';
     return `https://hub.test${pathname}${suffix}`;
   },
+  getHubAuthHeaders: () => undefined,
 }));
 
 import { ActivityPanel } from './ActivityPanel.js';

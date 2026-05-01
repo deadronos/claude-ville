@@ -75,5 +75,5 @@ export type WorldSceneProps = {
   hoveredBuildingId: string | null;
   onSelectAgent: (agentId: string) => void;
   onHoverBuilding: (buildingId: string | null) => void;
-  interactionRef: MutableRefObject<{ moved: boolean }>;
+  interactionRef: MutableRefObject<InteractionModel>;
 };

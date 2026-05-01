@@ -39,7 +39,7 @@ describe('hubreceiver websocket manager', () => {
     const manager = createHubWebSocketManager(() => state);
     const { socket } = makeSocket();
 
-    manager.handleUpgrade({ headers: { 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==' } }, socket);
+    manager.handleUpgrade({ headers: { 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', authorization: 'Bearer secret' } }, socket, 'secret');
 
     expect(socket.write).toHaveBeenCalledTimes(2);
     expect(String(socket.write.mock.calls[0][0])).toContain('101 Switching Protocols');
@@ -47,6 +47,24 @@ describe('hubreceiver websocket manager', () => {
     expect(manager.wsClients.has(socket)).toBe(true);
     expect(socket.on).toHaveBeenCalledWith('close', expect.any(Function));
     expect(socket.on).toHaveBeenCalledWith('error', expect.any(Function));
+  });
+
+  it('rejects websocket upgrades without a valid token', () => {
+    const manager = createHubWebSocketManager(() => ({
+      sessions: [],
+      teams: [],
+      taskGroups: [],
+      providers: [],
+      usage: {},
+      timestamp: 123,
+    }));
+    const { socket } = makeSocket();
+
+    manager.handleUpgrade({ headers: { 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==' } }, socket, 'secret');
+
+    expect(String(socket.write.mock.calls[0][0])).toContain('401 Unauthorized');
+    expect(socket.destroy).toHaveBeenCalled();
+    expect(manager.wsClients.has(socket)).toBe(false);
   });
 
   it('broadcasts payloads to connected clients', () => {

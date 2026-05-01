@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { getHubApiUrl } from '../../../config/runtime.js';
+import { getHubApiUrl, getHubAuthHeaders } from '../../../config/runtime.js';
 
 type DashboardDetailState = Record<string, { toolHistory: any[] }>;
 
@@ -30,7 +30,8 @@ export function useDashboardDetails(agents: any[], enabled: boolean) {
             project: agent.project,
             provider: agent.provider,
           });
-          const response = await fetch(url);
+          const headers = getHubAuthHeaders();
+          const response = headers ? await fetch(url, { headers }) : await fetch(url);
           if (!response.ok) {
             return [agent.id, { toolHistory: [] }] as const;
           }

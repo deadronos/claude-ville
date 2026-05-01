@@ -15,6 +15,14 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
 async function getFreePort() {
   return await new Promise<number>((resolve, reject) => {
     const server = net.createServer();
@@ -68,13 +76,13 @@ async function stopProcess(child: ReturnType<typeof spawn>) {
   }
 }
 
-async function waitForJson(url: string, predicate: (json: any) => boolean, timeoutMs = 20000) {
+async function waitForJson(url: string, predicate: (json: any) => boolean, timeoutMs = 20000, headers?: HeadersInit) {
   const deadline = Date.now() + timeoutMs;
   let lastError = 'no response yet';
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, headers ? { headers } : undefined);
       const text = await response.text();
       let json: any = null;
       try {
@@ -197,16 +205,34 @@ async function postSnapshot(hubPort: number, authToken: string, snapshot: Record
   return await response.json();
 }
 
-async function startFrontendServer() {
-  const server = await createServer({
-    configFile: viteConfigFile,
-    logLevel: 'error',
-    server: {
-      host: '127.0.0.1',
-      port: 0,
-      strictPort: false,
-    },
-  });
+async function startFrontendServer(hubPort: number, authToken: string) {
+  const previousHubHttpUrl = process.env.HUB_HTTP_URL;
+  const previousHubWsUrl = process.env.HUB_WS_URL;
+  const previousHubAuthToken = process.env.HUB_AUTH_TOKEN;
+  process.env.HUB_HTTP_URL = `http://127.0.0.1:${hubPort}`;
+  process.env.HUB_WS_URL = `ws://127.0.0.1:${hubPort}/ws`;
+  process.env.HUB_AUTH_TOKEN = authToken;
+
+  let server: Awaited<ReturnType<typeof createServer>> | null = null;
+  try {
+    server = await createServer({
+      configFile: viteConfigFile,
+      logLevel: 'error',
+      server: {
+        host: '127.0.0.1',
+        port: 0,
+        strictPort: false,
+      },
+    });
+  } finally {
+    restoreEnv('HUB_HTTP_URL', previousHubHttpUrl);
+    restoreEnv('HUB_WS_URL', previousHubWsUrl);
+    restoreEnv('HUB_AUTH_TOKEN', previousHubAuthToken);
+  }
+
+  if (!server) {
+    throw new Error('Failed to create the frontend dev server');
+  }
 
   await server.listen();
   const url = server.resolvedUrls?.local?.find((candidate) => candidate.includes('127.0.0.1')) || server.resolvedUrls?.local?.[0];
@@ -218,12 +244,12 @@ async function startFrontendServer() {
   return { server, url };
 }
 
-async function launchBrowser(url: string, hubPort: number) {
+async function launchBrowser(url: string, hubPort: number, authToken: string) {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
 
-  await context.addInitScript(({ hubHttpUrl, hubWsUrl, seed }) => {
-    const config = { hubHttpUrl, hubWsUrl };
+  await context.addInitScript(({ hubHttpUrl, hubWsUrl, hubAuthToken, seed }) => {
+    const config = { hubHttpUrl, hubWsUrl, hubAuthToken };
     Object.defineProperty(window, '__CLAUDEVILLE_CONFIG__', {
       configurable: true,
       get: () => config,
@@ -238,6 +264,7 @@ async function launchBrowser(url: string, hubPort: number) {
   }, {
     hubHttpUrl: `http://127.0.0.1:${hubPort}`,
     hubWsUrl: `ws://127.0.0.1:${hubPort}/ws`,
+    hubAuthToken: authToken,
     seed: 123456789,
   });
 
@@ -253,16 +280,21 @@ describe('ClaudeVilleApp browser selection flow', () => {
     const hubreceiver = startTsx(hubreceiverEntrypoint, {
       HUB_PORT: String(hubPort),
       HUB_AUTH_TOKEN: authToken,
+      ALLOWED_ORIGIN: '*',
     });
     const fixture = createBrowserFixtureSnapshot();
     let frontend: Awaited<ReturnType<typeof startFrontendServer>> | null = null;
     let browser: Browser | null = null;
     let page: Page | null = null;
+    let stage = 'starting';
+    const browserMessages: string[] = [];
 
     try {
+      stage = 'waiting for hub health';
       const health = await waitForJson(`http://127.0.0.1:${hubPort}/health`, (json) => json.ok === true);
       expect(health).toEqual({ ok: true, collectors: 0 });
 
+      stage = 'posting fixture snapshot';
       const response = await fetch(`http://127.0.0.1:${hubPort}/api/collector/snapshot`, {
         method: 'POST',
         headers: {
@@ -274,26 +306,41 @@ describe('ClaudeVilleApp browser selection flow', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ ok: true, sessions: 2 });
 
-      const sessions = await waitForJson(`http://127.0.0.1:${hubPort}/api/sessions`, (json) => json.count === 2);
+      stage = 'waiting for hub sessions';
+      const authHeaders = { authorization: `Bearer ${authToken}` };
+      const sessions = await waitForJson(`http://127.0.0.1:${hubPort}/api/sessions`, (json) => json.count === 2, undefined, authHeaders);
       expect(sessions.sessions.map((session: any) => session.sessionId).sort()).toEqual(['alpha-session', 'beta-session']);
 
-      frontend = await startFrontendServer();
-      ({ browser, page } = await launchBrowser(frontend.url, hubPort));
+      stage = 'starting frontend';
+      frontend = await startFrontendServer(hubPort, authToken);
+      stage = 'launching browser';
+      ({ browser, page } = await launchBrowser(frontend.url, hubPort, authToken));
+      page.on('console', (message) => browserMessages.push(`${message.type()}: ${message.text()}`));
+      page.on('pageerror', (error) => browserMessages.push(`pageerror: ${error.message}`));
 
+      stage = 'waiting for agent count';
       await page.waitForFunction(() => document.getElementById('agentCount')?.textContent === '2');
+      stage = 'waiting for sidebar agents';
       await page.waitForFunction(() => document.querySelectorAll('#sidebar .sidebar__agent').length === 2);
         await page.waitForTimeout(500); // Adjusted settle delay before live-refresh update snapshot
 
+      stage = 'switching to dashboard';
       await page.getByRole('tab', { name: 'DASHBOARD' }).click();
       await page.waitForFunction(() => document.getElementById('dashboardMode') !== null);
 
+      stage = 'clicking sidebar agent';
       const sidebarAgent = page.locator('#sidebar .sidebar__agent').filter({ hasText: 'Alpha' }).first();
       await sidebarAgent.click();
 
+      stage = 'waiting for panel name';
       await page.waitForFunction(() => document.getElementById('panelAgentName')?.textContent === 'Alpha');
+      stage = 'waiting for focus badge';
       await page.waitForFunction(() => document.querySelector('.world-view__focus-badge')?.textContent === 'Following Alpha');
+      stage = 'waiting for panel tool';
       await page.waitForFunction(() => document.getElementById('panelCurrentTool')?.textContent?.includes('Bash') === true);
+      stage = 'waiting for panel history';
       await page.waitForFunction(() => document.getElementById('panelToolHistory')?.textContent?.includes('npm test') === true);
+      stage = 'waiting for panel messages';
       await page.waitForFunction(() => document.getElementById('panelMessages')?.textContent?.includes('Alpha is compiling') === true);
 
       const activityPanel = page.locator('#activityPanel');
@@ -356,7 +403,7 @@ describe('ClaudeVilleApp browser selection flow', () => {
       await page.waitForFunction(() => document.querySelector('.world-view__selected-agent-ring') === null);
     } catch (error) {
       const hubOutput = hubreceiver.getOutput();
-      throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n[hubreceiver stdout]\n${hubOutput.stdout}\n[hubreceiver stderr]\n${hubOutput.stderr}`);
+      throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n[stage]\n${stage}\n\n[browser messages]\n${browserMessages.join('\n')}\n\n[hubreceiver stdout]\n${hubOutput.stdout}\n[hubreceiver stderr]\n${hubOutput.stderr}`);
     } finally {
       if (page) {
         await page.close();

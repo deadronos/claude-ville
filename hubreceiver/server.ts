@@ -8,8 +8,13 @@ import { createHubreceiverRequestHandler } from './routes.js';
 import { createHubWebSocketManager } from './ws.js';
 
 const PORT = Number(process.env.HUB_PORT || 3030);
+const HOST = process.env.HUB_HOST || '127.0.0.1';
 const AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
 const MAX_SNAPSHOT_BYTES = Number(process.env.MAX_SNAPSHOT_BYTES || 10 * 1024 * 1024); // 10 MB default
+
+if ((HOST === '0.0.0.0' || HOST === '::') && AUTH_TOKEN === 'dev-secret') {
+  throw new Error('Set HUB_AUTH_TOKEN before binding hubreceiver to a public interface');
+}
 
 const wsManager = createHubWebSocketManager(getCurrentState);
 const server = http.createServer(createHubreceiverRequestHandler({
@@ -24,14 +29,14 @@ const server = http.createServer(createHubreceiverRequestHandler({
 
 server.on('upgrade', (req: http.IncomingMessage, socket: net.Socket) => {
   if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
-    wsManager.handleUpgrade(req, socket);
+    wsManager.handleUpgrade(req, socket, AUTH_TOKEN);
     return;
   }
   socket.destroy();
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`hubreceiver listening on http://0.0.0.0:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`hubreceiver listening on http://${HOST}:${PORT}`);
 });
 
 // ─── Signal handling for graceful shutdown ────────────────────────

@@ -18,7 +18,9 @@ interface HubState {
  * Returns { opcode, payload, rest } where rest is any remaining data.
  * Throws on invalid frames.
  */
-function parseWebSocketFrame(data: Buffer): { opcode: number; payload: Buffer; rest: Buffer } | null {
+type WsBuffer = Buffer<ArrayBufferLike>;
+
+function parseWebSocketFrame(data: WsBuffer): { opcode: number; payload: WsBuffer; rest: WsBuffer } | null {
   if (data.length < 2) return null;
 
   const firstByte = data[0];
@@ -63,7 +65,7 @@ function wsSend(socket: net.Socket, data: unknown, clientSet?: Set<net.Socket>) 
       return;
     }
     const frame = createWebSocketFrame(JSON.stringify(data));
-    socket.write(frame, (err: Error | undefined) => {
+    socket.write(frame, (err?: NodeJS.ErrnoException | null) => {
       if (err && err.code !== 'EPIPE' && err.code !== 'ECONNRESET') {
         console.error(`[WebSocket] send failed: ${err.message}`);
       }
@@ -97,9 +99,19 @@ export function createHubWebSocketManager(getCurrentState: () => HubState) {
     wsBroadcast(buildWsPayload(type), wsClients);
   }
 
-  function handleUpgrade(req: http.IncomingMessage, socket: net.Socket) {
+  function handleUpgrade(req: http.IncomingMessage, socket: net.Socket, authToken: string) {
     const key = req.headers['sec-websocket-key'];
     if (!key) {
+      socket.destroy();
+      return;
+    }
+
+    const url = new URL(req.url || '/ws', `http://${req.headers.host || 'localhost'}`);
+    const header = req.headers.authorization || '';
+    const bearerToken = Array.isArray(header) ? '' : header.replace(/^Bearer /i, '');
+    const queryToken = url.searchParams.get('access_token') || '';
+    if (bearerToken !== authToken && queryToken !== authToken) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
@@ -113,7 +125,7 @@ export function createHubWebSocketManager(getCurrentState: () => HubState) {
       '\r\n';
 
     // Buffer to accumulate incomplete frames
-    let frameBuffer = Buffer.alloc(0);
+    let frameBuffer: WsBuffer = Buffer.alloc(0);
 
     socket.write(responseStr, () => {
       wsClients.add(socket);
@@ -133,7 +145,7 @@ export function createHubWebSocketManager(getCurrentState: () => HubState) {
       frameBuffer = Buffer.concat([frameBuffer, chunk]);
 
       // Process all complete frames in the buffer
-      let frame: { opcode: number; payload: Buffer; rest: Buffer } | null;
+      let frame: { opcode: number; payload: WsBuffer; rest: WsBuffer } | null;
       while ((frame = parseWebSocketFrame(frameBuffer)) !== null) {
         frameBuffer = frame.rest;
 
@@ -146,7 +158,7 @@ export function createHubWebSocketManager(getCurrentState: () => HubState) {
             socket.end(createWebSocketFrame('', 0x8));
             break;
           case 0x9: // Ping - respond with pong
-            wsSend(socket, '', 0xA);
+            socket.write(createWebSocketFrame('', 0xA));
             break;
           case 0xA: // Pong - no action needed
             break;

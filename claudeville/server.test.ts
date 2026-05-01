@@ -241,7 +241,7 @@ describe('legacy server entrypoint', () => {
 
       const optionsResponse = await fetch(`http://127.0.0.1:${port}/api/sessions`, { method: 'OPTIONS' });
       expect(optionsResponse.status).toBe(204);
-      expect(optionsResponse.headers.get('access-control-allow-origin')).toBe('*');
+      expect(optionsResponse.headers.get('access-control-allow-origin')).toBe('null');
 
       const sessions = await waitForJson(`http://127.0.0.1:${port}/api/sessions`, (json) => Array.isArray(json.sessions) && typeof json.count === 'number');
       expect(sessions).toMatchObject({

@@ -47,6 +47,7 @@ function buildHubApiUrl(path: string, searchParams?: URLSearchParams | string | 
 
 vi.mock('../config/runtime.js', () => ({
   getHubApiUrl: (path: string, searchParams?: URLSearchParams | string | Record<string, string | number | boolean | null | undefined>) => mockGetHubApiUrl(path, searchParams),
+  getHubAuthHeaders: () => undefined,
 }));
 
 describe('HubDataSource', () => {

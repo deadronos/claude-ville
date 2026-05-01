@@ -30,6 +30,33 @@ When a learning is promoted to a skill, add these fields:
 
 ---
 
+## [LRN-20260501-002] best_practice
+
+**Logged**: 2026-05-01T16:43:00Z
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+
+Hubreceiver auth changes must update browser runtime config, direct detail fetch hooks, CORS test origins, and integration fetch helpers together.
+
+### Details
+
+Protecting hubreceiver read APIs and WebSocket upgrades requires more than `HubDataSource`: React detail hooks (`useSessionDetail`, `useDashboardDetails`) and legacy detail surfaces (`ActivityPanel`, `DashboardRenderer`) also fetch `/api/session-detail` directly. Browser tests also need `HUB_AUTH_TOKEN` in the injected runtime config and an `ALLOWED_ORIGIN` that permits the Vite origin, otherwise Playwright failures show up as CORS/401 timeouts rather than obvious unit failures.
+
+### Suggested Action
+
+When changing hub API auth, search for all `fetch(` and `/api/session-detail` call sites, update runtime config mocks with `getHubAuthHeaders`, and run the browser flow plus backend integration tests before full-suite verification.
+
+### Metadata
+
+- Source: error
+- Related Files: hubreceiver/routes.ts, hubreceiver/ws.ts, claudeville/src/config/runtime.ts, claudeville/src/presentation/react/hooks/useSessionDetail.ts, claudeville/src/presentation/react/hooks/useDashboardDetails.ts
+- Tags: hubreceiver, auth, cors, playwright, runtime-config
+
+---
+
 ## [LRN-20260501-001] best_practice
 
 **Logged**: 2026-04-30T23:04:08Z

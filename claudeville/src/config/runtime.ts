@@ -1,6 +1,7 @@
 interface RuntimeConfig {
     hubHttpUrl?: string;
     hubWsUrl?: string;
+    hubAuthToken?: string;
     [key: string]: unknown;
 }
 
@@ -39,7 +40,21 @@ export function getHubApiUrl(pathname: string, searchParams?: URLSearchParams | 
 }
 
 export function getHubWsUrl(): string {
-    return getActiveConfig().hubWsUrl || fallbackWsUrl();
+    const config = getActiveConfig();
+    const baseUrl = config.hubWsUrl || fallbackWsUrl();
+    if (!config.hubAuthToken) {
+        return baseUrl;
+    }
+    const url = new URL(baseUrl, window.location.href);
+    if (config.hubAuthToken) {
+        url.searchParams.set('access_token', config.hubAuthToken);
+    }
+    return url.toString();
+}
+
+export function getHubAuthHeaders(): HeadersInit | undefined {
+    const token = getActiveConfig().hubAuthToken;
+    return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
 export function getRuntimeConfig(): RuntimeConfig {

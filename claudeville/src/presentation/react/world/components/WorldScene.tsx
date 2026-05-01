@@ -25,6 +25,7 @@ export function WorldScene({
   hoveredBuildingId,
   onSelectAgent,
   onHoverBuilding,
+  interactionRef,
 }: WorldSceneProps) {
   void onHoverBuilding;
   const rootRef = useRef<THREE.Group | null>(null);
@@ -77,6 +78,7 @@ export function WorldScene({
             cameraRef={cameraRef}
             bubbleConfig={bubbleConfig}
             onSelect={onSelectAgent}
+            interactionRef={interactionRef}
           />
         ))}
       </group>

@@ -101,7 +101,7 @@ describe('hubreceiver routes', () => {
 
     handler(req, res);
 
-    expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', '*');
+    expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'null');
     expect(res.writeHead).toHaveBeenCalledWith(204);
     expect(res.end).toHaveBeenCalledWith();
   });
@@ -112,6 +112,17 @@ describe('hubreceiver routes', () => {
       host: 'localhost',
       authorization: 'Bearer nope',
     });
+    const res = makeResponse();
+
+    handler(req, res);
+
+    expect(res.writeHead).toHaveBeenCalledWith(401, expect.any(Object));
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: 'unauthorized' }));
+  });
+
+  it('rejects unauthorized read APIs', () => {
+    const { handler } = createHandler();
+    const req = makeRequest('GET', '/api/sessions', { host: 'localhost' });
     const res = makeResponse();
 
     handler(req, res);
@@ -182,7 +193,8 @@ describe('hubreceiver routes', () => {
   it('serves the current state, detail routes, and history route', () => {
     const { handler, getCurrentState, getSessionDetail, getHistory } = createHandler();
 
-    const sessionReq = makeRequest('GET', '/api/sessions', { host: 'localhost' });
+    const authHeaders = { host: 'localhost', authorization: 'Bearer secret' };
+    const sessionReq = makeRequest('GET', '/api/sessions', authHeaders);
     const sessionRes = makeResponse();
     handler(sessionReq, sessionRes);
 
@@ -194,7 +206,7 @@ describe('hubreceiver routes', () => {
       timestamp: 123,
     }));
 
-    const detailReq = makeRequest('GET', '/api/session-detail?sessionId=s1', { host: 'localhost' });
+    const detailReq = makeRequest('GET', '/api/session-detail?sessionId=s1', authHeaders);
     const detailRes = makeResponse();
     handler(detailReq, detailRes);
 
@@ -207,7 +219,7 @@ describe('hubreceiver routes', () => {
       tokenUsage: { input: 10, output: 4 },
     }));
 
-    const historyReq = makeRequest('GET', '/api/history?lines=999', { host: 'localhost' });
+    const historyReq = makeRequest('GET', '/api/history?lines=999', authHeaders);
     const historyRes = makeResponse();
     handler(historyReq, historyRes);
 
@@ -218,13 +230,14 @@ describe('hubreceiver routes', () => {
   it('returns explicit error responses for missing session ids and unknown routes', () => {
     const { handler } = createHandler();
 
-    const missingReq = makeRequest('GET', '/api/session-detail', { host: 'localhost' });
+    const authHeaders = { host: 'localhost', authorization: 'Bearer secret' };
+    const missingReq = makeRequest('GET', '/api/session-detail', authHeaders);
     const missingRes = makeResponse();
     handler(missingReq, missingRes);
     expect(missingRes.writeHead).toHaveBeenCalledWith(400, expect.any(Object));
     expect(missingRes.end).toHaveBeenCalledWith(JSON.stringify({ error: 'sessionId is required' }));
 
-    const unknownReq = makeRequest('GET', '/api/does-not-exist', { host: 'localhost' });
+    const unknownReq = makeRequest('GET', '/api/does-not-exist', authHeaders);
     const unknownRes = makeResponse();
     handler(unknownReq, unknownRes);
     expect(unknownRes.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
@@ -235,20 +248,21 @@ describe('hubreceiver routes', () => {
     const { handler, getCurrentState } = createHandler();
 
     const teamsRes = makeResponse();
-    handler(makeRequest('GET', '/api/teams', { host: 'localhost' }), teamsRes);
+    const authHeaders = { host: 'localhost', authorization: 'Bearer secret' };
+    handler(makeRequest('GET', '/api/teams', authHeaders), teamsRes);
     expect(getCurrentState).toHaveBeenCalled();
     expect(teamsRes.end).toHaveBeenCalledWith(JSON.stringify({ teams: [{ teamName: 'alpha' }], count: 1 }));
 
     const tasksRes = makeResponse();
-    handler(makeRequest('GET', '/api/tasks', { host: 'localhost' }), tasksRes);
+    handler(makeRequest('GET', '/api/tasks', authHeaders), tasksRes);
     expect(tasksRes.end).toHaveBeenCalledWith(JSON.stringify({ taskGroups: [{ groupName: 'planning' }], totalGroups: 1 }));
 
     const providersRes = makeResponse();
-    handler(makeRequest('GET', '/api/providers', { host: 'localhost' }), providersRes);
+    handler(makeRequest('GET', '/api/providers', authHeaders), providersRes);
     expect(providersRes.end).toHaveBeenCalledWith(JSON.stringify({ providers: [{ provider: 'claude' }], count: 1 }));
 
     const usageRes = makeResponse();
-    handler(makeRequest('GET', '/api/usage', { host: 'localhost' }), usageRes);
+    handler(makeRequest('GET', '/api/usage', authHeaders), usageRes);
     expect(usageRes.end).toHaveBeenCalledWith(JSON.stringify({ totals: { sessions: 1, messages: 2 } }));
   });
 });
