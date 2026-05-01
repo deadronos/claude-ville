@@ -63,7 +63,7 @@ export function ClaudeVilleApp() {
                 id="btnModeCharacter"
                 type="button"
                 role="tab"
-                aria-selected={snapshot.mode === 'character' ? 'true' : 'false'}
+                aria-selected={snapshot.mode === 'character'}
                 className={`topbar__segmented-btn ${snapshot.mode === 'character' ? 'topbar__segmented-btn--active' : ''}`}
                 onClick={() => controller.setMode('character')}
               >
@@ -73,7 +73,7 @@ export function ClaudeVilleApp() {
                 id="btnModeDashboard"
                 type="button"
                 role="tab"
-                aria-selected={snapshot.mode === 'dashboard' ? 'true' : 'false'}
+                aria-selected={snapshot.mode === 'dashboard'}
                 className={`topbar__segmented-btn ${snapshot.mode === 'dashboard' ? 'topbar__segmented-btn--active' : ''}`}
                 onClick={() => controller.setMode('dashboard')}
               >
