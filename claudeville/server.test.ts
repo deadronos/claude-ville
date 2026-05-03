@@ -229,6 +229,8 @@ describe('legacy server entrypoint', () => {
     const port = await getFreePort();
     const server = startTsx(legacyServerEntrypoint, {
       PORT: String(port),
+      // Override any local ALLOWED_ORIGIN so CORS header is predictable in tests
+      ALLOWED_ORIGIN: '',
     });
 
     try {

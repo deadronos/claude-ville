@@ -34,15 +34,17 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
     const url = new URL(req.url!, `http://${req.headers.host}`);
     const pathname = url.pathname;
 
+    // Health check is always unauthenticated (for load balancers)
     if (req.method === 'GET' && pathname === '/health') {
       sendJson(res, 200, { ok: true, collectors: deps.getCurrentState().sessions.length });
       return;
     }
 
-      if (!isAuthorized(req, deps.authToken)) {
-        sendError(res, 401, 'unauthorized');
-        return;
-      }
+    // All other routes require authorization
+    if (!isAuthorized(req, deps.authToken)) {
+      sendError(res, 401, 'unauthorized');
+      return;
+    }
 
     if (req.method === 'POST' && pathname === '/api/collector/snapshot') {
       readBoundedBody(req, deps.maxSnapshotBytes)
