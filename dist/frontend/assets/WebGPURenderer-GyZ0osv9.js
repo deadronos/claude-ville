@@ -1,0 +1,1 @@
+import{t as e}from"./pixijs-CMXFMH9K.js";export{e as WebGPURenderer};

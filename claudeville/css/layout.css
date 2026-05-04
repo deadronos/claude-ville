@@ -47,6 +47,7 @@ body {
     flex: 1;
     min-height: 0;
     position: relative;
+    touch-action: none;
 }
 
 .content__canvas {

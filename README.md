@@ -67,6 +67,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 - **Project Grouping** — Agents grouped by project with color-coded sections
 - **English-only UI** — Consistent English labels across the app
 - **React + React Three Fiber frontend** — Same isometric village, now powered by Vite, React, and WebGL rendering
+- **PixiJS Village frontend** — Alternate dense observability view at `/pixijs.html` for crisp 2D session monitoring
 
 ## Quick Start
 
@@ -77,6 +78,13 @@ npm run dev
 ```
 
 Open http://localhost:3001 in your browser. The backend/API still listens on http://localhost:4000, and `npm run dev` now launches both the API server and the Vite frontend together.
+
+### Frontend variants
+
+ClaudeVille supports multiple frontend implementations:
+
+- **React + R3F (Default)**: `npm run dev:frontend` (serves the isometric React/Three.js world)
+- **PixiJS Village**: `npm run dev:frontend-pixijs` (serves an alternate 2D observability view at `/pixijs.html`). This view maps sessions to fixed village buildings such as Command Center, Chat Hall, Code Forge, Token Mine, Task Board, Memory Archive, Research Lab, and Alert Tower.
 
 ### Production-ish frontend build
 
@@ -100,6 +108,7 @@ npm run dev:frontend
 Each Node entrypoint auto-loads `.env.local` from the repo root if it exists.
 Set `HUB_HTTP_URL` and `HUB_WS_URL` for the frontend if the hubreceiver runs on another host.
 `HUB_URL` is also accepted by the frontend as a shortcut for `HUB_HTTP_URL`.
+Set the same `HUB_AUTH_TOKEN` for the hubreceiver, collector, and frontend; the local default is `dev-secret`, and `.env.example` includes a ready-to-copy split-mode setup.
 The browser app uses the configured hub HTTP base for session, detail, usage, and history requests in split mode.
 
 ### Manual live E2E

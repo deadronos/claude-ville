@@ -37,6 +37,17 @@ const bubbleConfig: BubbleConfig = {
   chatFontSize: 14,
 };
 
+const interactionRef = {
+  current: {
+    dragging: false,
+    moved: false,
+    startX: 0,
+    startY: 0,
+    camStartX: 0,
+    camStartZ: 0,
+  },
+};
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -139,6 +150,7 @@ describe('AgentActor geometry creation', () => {
         cameraRef={cameraRef as any}
         bubbleConfig={bubbleConfig}
         onSelect={() => {}}
+        interactionRef={interactionRef}
       />,
     );
 
@@ -154,10 +166,67 @@ describe('AgentActor geometry creation', () => {
         cameraRef={cameraRef as any}
         bubbleConfig={bubbleConfig}
         onSelect={() => {}}
+        interactionRef={interactionRef}
       />,
     );
 
     expect(document.body.textContent).toContain('...');
     expect(document.body.textContent).toContain('Agent One');
+  });
+
+  it('does not select the agent after the pointer moved during a drag', () => {
+    const onSelect = vi.fn();
+    const movedInteractionRef = {
+      current: {
+        ...interactionRef.current,
+        moved: true,
+      },
+    };
+    const entity = {
+      x: 12,
+      y: 18,
+      moving: false,
+      walkFrame: 0,
+      facingLeft: false,
+      chatting: false,
+      id: 'agent-1',
+      name: 'Agent One',
+      status: AgentStatus.IDLE,
+      bubbleText: null,
+      appearance: {
+        pants: '#111111',
+        shirt: '#222222',
+        skin: '#f5d0a0',
+        hairStyle: 'bald',
+        hair: '#333333',
+        eyeStyle: 'default',
+        accessory: 'none',
+      },
+    } as any;
+    const cameraRef = {
+      current: {
+        zoom: 1,
+        minZoom: 0.5,
+        maxZoom: 4,
+        followAgentId: null,
+        followSmoothing: 0,
+      },
+    };
+
+    const { container } = render(
+      <AgentActor
+        entity={entity}
+        selected={false}
+        showUi={true}
+        cameraRef={cameraRef as any}
+        bubbleConfig={bubbleConfig}
+        onSelect={onSelect}
+        interactionRef={movedInteractionRef}
+      />,
+    );
+
+    container.querySelector('group')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

@@ -22,6 +22,8 @@ Use `runtime-config.shared.ts` and `buildRuntimeConfig()` to generate a consiste
 
 Support `HUB_URL` as a convenience alias for `HUB_HTTP_URL` so existing setups can migrate without friction.
 
+Split-stack auth uses `HUB_AUTH_TOKEN` as a shared bearer token for collector snapshot uploads, browser HTTP reads, and browser WebSocket connections. Local development defaults to `dev-secret`; public or remote deployments should set an explicit value in `.env.local` or the process environment for every split-stack process.
+
 ## Consequences
 
 - ClaudeVille can be used locally or remotely with the same UI code.

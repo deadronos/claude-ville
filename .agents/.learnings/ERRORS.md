@@ -6,6 +6,41 @@ Command failures, exceptions, and unexpected failures captured during developmen
 
 ---
 
+## [ERR-20260501-001] terminal-tools-disposed-during-review
+
+**Logged**: 2026-05-01T00:00:00Z
+**Priority**: medium
+**Status**: pending
+**Area**: infra
+
+### Summary (Terminal Review)
+
+`execution_subagent` and `run_in_terminal` both failed immediately with disposed terminal errors during a read-only code review workflow.
+
+### Error (Terminal Review)
+
+```text
+Terminal with ID 10 does not exist (has it already been disposed?)
+Terminal with ID 11 does not exist (has it already been disposed?)
+```
+
+### Context (Terminal Review)
+
+- Commands attempted: git status/diff inspection in `/Users/openclaw/Github/claude-ville`
+- Impact: review had to fall back to subagents and direct file reads instead of shell/git commands
+- Environment: VS Code agent session on macOS
+
+### Suggested Fix (Terminal Review)
+
+If terminal-backed tools fail with disposed terminal IDs, fall back sooner to subagents or workspace file tools and avoid retry loops on the same path.
+
+### Metadata (Terminal Review)
+
+- Reproducible: unknown
+- Related Files: .agents/.learnings/ERRORS.md
+
+---
+
 ## [ERR-20260430-003] local-world-text-sprite-blank
 
 **Logged**: 2026-04-30T01:33:00+02:00

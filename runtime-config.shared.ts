@@ -35,10 +35,12 @@ export function readProviderNameModes(env = process.env) {
 export function buildRuntimeConfig(env = process.env) {
   const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:4000';
   const hubWsUrl = env.HUB_WS_URL || `${hubHttpUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws`;
+  const hubAuthToken = env.HUB_AUTH_TOKEN || '';
 
   return {
     hubHttpUrl,
     hubWsUrl,
+    hubAuthToken,
     nameMode: normalizeNameMode(env.CLAUDEVILLE_NAME_MODE),
     providerNameModes: readProviderNameModes(env),
     agentNamePool: normalizeAgentNamePool(env.CLAUDEVILLE_AGENT_NAME_POOL),

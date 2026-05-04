@@ -10,11 +10,29 @@ import * as http from 'http';
 type ServerResponse = http.ServerResponse;
 type IncomingMessage = http.IncomingMessage;
 
-/** Set permissive CORS headers (mirrors hubreceiver's version). */
+/**
+ * CORS origin is restricted by default to prevent unauthorized cross-origin requests.
+ * Set ALLOWED_ORIGIN env var to permit specific origins (e.g., http://localhost:3000).
+ * In development without ALLOWED_ORIGIN, defaults to restrictive 'null' origin handling.
+ */
+function getAllowedOrigin(): string {
+  // Explicitly configured origin takes priority
+  if (process.env.ALLOWED_ORIGIN) {
+    return process.env.ALLOWED_ORIGIN;
+  }
+  // In development without explicit config, restrict to same-origin
+  // The '*' wildcard is only appropriate for public APIs without auth
+  return 'null';
+}
+
+/** Set CORS headers with configurable origin restriction. */
 function setCorsHeaders(res: ServerResponse) {
-  res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods',  'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers',  'Content-Type, Authorization');
+  const origin = getAllowedOrigin();
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // Do not expose credentials in cross-origin requests without explicit auth
+  res.setHeader('Access-Control-Allow-Credentials', 'false');
 }
 
 /** Write a JSON response and end the request. */

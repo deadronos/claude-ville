@@ -24,11 +24,13 @@ const testState = vi.hoisted(() => ({
     return url.toString();
   }),
   fetch: vi.fn(),
+  getHubAuthHeaders: vi.fn(() => undefined),
   getContext: vi.fn(),
 }));
 
 vi.mock('../../../config/runtime.js', () => ({
   getHubApiUrl: testState.getHubApiUrl,
+  getHubAuthHeaders: testState.getHubAuthHeaders,
 }));
 
 import { DashboardView } from './DashboardView.js';
@@ -92,6 +94,7 @@ beforeEach(() => {
   cleanup();
   testState.fetch.mockReset();
   testState.getHubApiUrl.mockClear();
+  testState.getHubAuthHeaders.mockClear();
   testState.getContext.mockClear();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => mockCtx as any);
   vi.stubGlobal('fetch', testState.fetch);

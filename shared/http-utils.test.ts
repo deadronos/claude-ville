@@ -25,7 +25,7 @@ describe('shared HTTP utilities', () => {
     const res = makeResponse();
 
     httpUtils.setCorsHeaders(res);
-    expect(res.setHeader).toHaveBeenNthCalledWith(1, 'Access-Control-Allow-Origin', '*');
+    expect(res.setHeader).toHaveBeenNthCalledWith(1, 'Access-Control-Allow-Origin', 'null');
     expect(res.setHeader).toHaveBeenNthCalledWith(2, 'Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     expect(res.setHeader).toHaveBeenNthCalledWith(3, 'Access-Control-Allow-Headers', 'Content-Type, Authorization');
 

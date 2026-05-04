@@ -1,6 +1,7 @@
 interface RuntimeConfig {
     hubHttpUrl?: string;
     hubWsUrl?: string;
+    hubAuthToken?: string;
     [key: string]: unknown;
 }
 
@@ -38,8 +39,26 @@ export function getHubApiUrl(pathname: string, searchParams?: URLSearchParams | 
     return url.toString();
 }
 
+// Note: Passing the token as a query parameter leaks it into browser history,
+// server logs, and proxies. This is acceptable for local development but
+// a cookie-based or WebSocket subprotocol auth mechanism should be used
+// when crossing trust boundaries.
 export function getHubWsUrl(): string {
-    return getActiveConfig().hubWsUrl || fallbackWsUrl();
+    const config = getActiveConfig();
+    const baseUrl = config.hubWsUrl || fallbackWsUrl();
+    if (!config.hubAuthToken) {
+        return baseUrl;
+    }
+    const url = new URL(baseUrl, window.location.href);
+    if (config.hubAuthToken) {
+        url.searchParams.set('access_token', config.hubAuthToken);
+    }
+    return url.toString();
+}
+
+export function getHubAuthHeaders(): HeadersInit | undefined {
+    const token = getActiveConfig().hubAuthToken;
+    return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
 export function getRuntimeConfig(): RuntimeConfig {

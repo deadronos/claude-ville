@@ -1,0 +1,29 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "run-targeted-test",
+			"type": "shell",
+			"command": "npx vitest run claudeville/src/pixivillage/pixi/renderVillage.test.ts",
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"isBackground": false,
+			"problemMatcher": [
+				"$vitest"
+			]
+		},
+		{
+			"label": "run-pixivillage-tests",
+			"type": "shell",
+			"command": "npx vitest run claudeville/src/pixivillage/PixiVillageApp.test.tsx claudeville/src/pixivillage/pixi/renderVillage.test.ts claudeville/src/pixivillage/model.test.ts",
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"isBackground": false,
+			"problemMatcher": [
+				"$vitest"
+			]
+		}
+	]
+}

@@ -1,5 +1,5 @@
 import { eventBus } from '../../domain/events/DomainEvent.js';
-import { getHubApiUrl } from '../../config/runtime.js';
+import { getHubApiUrl, getHubAuthHeaders } from '../../config/runtime.js';
 import { Agent } from '../../domain/entities/Agent.js';
 
 const TOOL_ICONS: Record<string, string> = {
@@ -136,7 +136,9 @@ export class ActivityPanel {
                 project: (agent as any).projectPath || '',
                 provider: agent.provider || 'claude',
             });
-            const resp = await fetch(getHubApiUrl('/api/session-detail', params));
+            const headers = getHubAuthHeaders();
+            const url = getHubApiUrl('/api/session-detail', params);
+            const resp = headers ? await fetch(url, { headers }) : await fetch(url);
             if (!resp.ok) return;
             const data = await resp.json();
             if (this.currentAgent && this.currentAgent.id === agent.id) {

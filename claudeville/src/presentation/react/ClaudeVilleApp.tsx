@@ -13,7 +13,8 @@ export function ClaudeVilleApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const controller = useMemo(() => new ClaudeVilleController(), []);
   const snapshot = useClaudeVilleSnapshot(controller);
-  const agents = Array.from(snapshot.world.agents.values());
+  // Agents are already cached in the controller; snapshot.agents is stable
+  const agents = snapshot.agents;
   const selectedAgent = snapshot.selectedAgentId
     ? snapshot.world.agents.get(snapshot.selectedAgentId) || null
     : null;

@@ -30,6 +30,120 @@ When a learning is promoted to a skill, add these fields:
 
 ---
 
+## [LRN-20260504-001] best_practice
+
+**Logged**: 2026-05-04T23:18:00Z
+**Priority**: medium
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+
+PixiJS child elements with positions derived from an `origin` coordinate must both be stored for repositioning and updated together on resize.
+
+### Details
+
+In `renderVillage.ts`, sparkles were added to a separate `sparkleContainer` for z-ordering, but only `terrainTiles` were stored and updated in `resize()`. Sparkles had positions calculated from `isoToScreen(x, y, origin.x, origin.y)` plus an offset, but these were never recomputed after resize, causing sparkle drift.
+
+### Suggested Action
+
+When using PixiJS containers with positioned children:
+1. Store references to all positioned children (not just primary tiles)
+2. In `resize()`, recompute all positions using the new origin
+3. Group related elements (sparkles with their parent tiles) to ensure consistent repositioning
+
+### Metadata
+- Source: code_review
+- Related Files: claudeville/src/pixivillage/pixi/renderVillage.ts
+- Tags: pixi, resize, position, render
+
+---
+
+## [LRN-20260504-002] best_practice
+
+**Logged**: 2026-05-04T23:18:00Z
+**Priority**: medium
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+
+The `moved` flag pattern for suppressing post-drag clicks must reset after a suppressed click, not just on `onPointerMissed`.
+
+### Details
+
+In `WorldView`/`AgentActor`, `interactionRef.current.moved` was set to `true` when the user drags more than 3px. Click handlers in `AgentActor` would suppress clicks when `moved` was true, but the flag was only cleared in `WorldView.onPointerMissed` (when clicking empty canvas). Clicking an agent would suppress the click but leave `moved` true, causing subsequent clicks on agents to also be suppressed until the user clicked empty space.
+
+### Suggested Action
+
+When suppressing a click due to drag detection, reset the flag immediately after suppression:
+
+```typescript
+onClick={(event) => {
+  event.stopPropagation();
+  if (interactionRef.current.moved) {
+    interactionRef.current.moved = false; // Reset to allow next click
+    return;
+  }
+  onSelect(entity.id);
+}}
+```
+
+### Metadata
+- Source: code_review
+- Related Files: claudeville/src/presentation/react/world/WorldView.tsx, claudeville/src/presentation/react/world/components/AgentActor.tsx
+- Tags: interaction, drag, click, selection
+
+## [LRN-20260501-002] best_practice
+
+**Logged**: 2026-05-01T16:43:00Z
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+
+Hubreceiver auth changes must update browser runtime config, direct detail fetch hooks, CORS test origins, and integration fetch helpers together.
+
+### Details
+
+Protecting hubreceiver read APIs and WebSocket upgrades requires more than `HubDataSource`: React detail hooks (`useSessionDetail`, `useDashboardDetails`) and legacy detail surfaces (`ActivityPanel`, `DashboardRenderer`) also fetch `/api/session-detail` directly. Browser tests also need `HUB_AUTH_TOKEN` in the injected runtime config and an `ALLOWED_ORIGIN` that permits the Vite origin, otherwise Playwright failures show up as CORS/401 timeouts rather than obvious unit failures.
+
+### Suggested Action
+
+When changing hub API auth, search for all `fetch(` and `/api/session-detail` call sites, update runtime config mocks with `getHubAuthHeaders`, and run the browser flow plus backend integration tests before full-suite verification.
+
+### Metadata
+
+- Source: error
+- Related Files: hubreceiver/routes.ts, hubreceiver/ws.ts, claudeville/src/config/runtime.ts, claudeville/src/presentation/react/hooks/useSessionDetail.ts, claudeville/src/presentation/react/hooks/useDashboardDetails.ts
+- Tags: hubreceiver, auth, cors, playwright, runtime-config
+
+---
+
+## [LRN-20260501-001] best_practice
+
+**Logged**: 2026-04-30T23:04:08Z
+**Priority**: medium
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+Live world avatars should derive positions from resolved activity buildings, not from the Agent constructor's random fallback.
+
+### Details
+The sidebar can show a newly detected Pi/Codex session while the 3D world appears empty because `Agent.position` was initialized randomly and the R3F world path rebuilt ECS positions from that domain position. Lower-case tool names such as Pi's `edit` also failed the case-sensitive tool-to-building map, so the agent could be placed away from the expected activity building until refresh rerolled its random spawn.
+
+### Suggested Action
+For live-session rendering bugs, check whether adapter tool names are normalized before building routing and whether world actors are positioned from deterministic session/activity state.
+
+### Metadata
+- Source: conversation
+- Related Files: claudeville/src/application/AgentManager.ts, claudeville/src/domain/entities/Agent.ts
+- Tags: live-updates, avatars, r3f, pi-adapter, tool-normalization
+
+---
+
 ## Entry: UI/UX Enhancement - Scrollable Activity Panel
 
 **Date**: 2026-04-28

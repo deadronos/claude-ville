@@ -4,7 +4,7 @@ import * as THREE from 'three';
 
 import { THEME } from '../../../../config/theme.js';
 import { AgentStatus } from '../../../../domain/value-objects/AgentStatus.js';
-import type { BubbleConfig, CameraModel } from '../types.js';
+import type { BubbleConfig, CameraModel, InteractionModel } from '../types.js';
 import { useInverseZoom } from '../hooks/useInverseZoom.js';
 import { createPolygonGeometry, createRoundedRectGeometry } from '../utils.js';
 import { WorldText } from './WorldText.js';
@@ -244,6 +244,7 @@ export function AgentActor({
   cameraRef,
   bubbleConfig,
   onSelect,
+  interactionRef,
 }: {
   entity: {
     id: string;
@@ -264,6 +265,7 @@ export function AgentActor({
   cameraRef: MutableRefObject<CameraModel>;
   bubbleConfig: BubbleConfig;
   onSelect: (agentId: string) => void;
+  interactionRef: MutableRefObject<InteractionModel>;
 }) {
   const groupRef = useRef<THREE.Group | null>(null);
 
@@ -295,6 +297,10 @@ export function AgentActor({
       position={[Math.round(entity.x), Math.round(entity.y), depth]}
       onClick={(event) => {
         event.stopPropagation();
+        if (interactionRef.current.moved) {
+          interactionRef.current.moved = false;
+          return;
+        }
         onSelect(entity.id);
       }}
     >

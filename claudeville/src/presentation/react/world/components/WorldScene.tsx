@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -25,6 +25,7 @@ export function WorldScene({
   hoveredBuildingId,
   onSelectAgent,
   onHoverBuilding,
+  interactionRef,
 }: WorldSceneProps) {
   void onHoverBuilding;
   const rootRef = useRef<THREE.Group | null>(null);
@@ -32,9 +33,10 @@ export function WorldScene({
   const { world } = useEcsWorld(agents, buildings);
   const { waterTiles } = useTerrain(buildings);
 
-  const movementSystem = createMovementSystem(world);
-  const proximitySystem = createProximitySystem(world, roofAlphaRef);
-  const cameraFollowSystem = createCameraFollowSystem(world, cameraRef);
+  // Memoize systems to avoid recreating them on every render
+  const movementSystem = useMemo(() => createMovementSystem(world), [world]);
+  const proximitySystem = useMemo(() => createProximitySystem(world, roofAlphaRef), [world, roofAlphaRef]);
+  const cameraFollowSystem = useMemo(() => createCameraFollowSystem(world, cameraRef), [world, cameraRef]);
 
   // Scene transform: offset content so camera target is at screen center
   // We need to flip the Y axis because isometric Y increases up but Three.js Y increases down
@@ -76,6 +78,7 @@ export function WorldScene({
             cameraRef={cameraRef}
             bubbleConfig={bubbleConfig}
             onSelect={onSelectAgent}
+            interactionRef={interactionRef}
           />
         ))}
       </group>

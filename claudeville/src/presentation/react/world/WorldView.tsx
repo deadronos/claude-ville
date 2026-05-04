@@ -196,6 +196,7 @@ export function WorldView({
         if (!active || event.button !== 0) {
           return;
         }
+        event.currentTarget.setPointerCapture?.(event.pointerId);
         interactionRef.current.dragging = true;
         interactionRef.current.moved = false;
         interactionRef.current.startX = event.clientX;
@@ -218,16 +219,22 @@ export function WorldView({
         cameraRef.current.targetX = interactionRef.current.camStartX - dx / cameraRef.current.zoom;
         cameraRef.current.targetZ = interactionRef.current.camStartZ - dy / cameraRef.current.zoom;
       }}
-      onPointerUp={() => {
+      onPointerUp={(event) => {
         if (!active) {
           return;
+        }
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
         }
         interactionRef.current.dragging = false;
         setDragging(false);
       }}
-      onPointerLeave={() => {
+      onPointerCancel={(event) => {
         if (!active) {
           return;
+        }
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
         }
         interactionRef.current.dragging = false;
         setDragging(false);

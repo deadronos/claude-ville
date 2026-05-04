@@ -84,13 +84,13 @@ async function stopProcess(child: ReturnType<typeof spawn>) {
   }
 }
 
-async function waitForJson(url: string, predicate: (json: any) => boolean, timeoutMs = 20000) {
+async function waitForJson(url: string, predicate: (json: any) => boolean, timeoutMs = 20000, headers?: HeadersInit) {
   const deadline = Date.now() + timeoutMs;
   let lastError = 'no response yet';
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, headers ? { headers } : undefined);
       const text = await response.text();
       let json: any = null;
       try {
@@ -228,7 +228,8 @@ describe('hubreceiver entrypoint', () => {
       expect(accepted.status).toBe(200);
       expect(await accepted.json()).toEqual({ ok: true, sessions: 1 });
 
-      const sessions = await waitForJson(`http://127.0.0.1:${port}/api/sessions`, (json) => json.count === 1);
+      const authHeaders = { authorization: `Bearer ${authToken}` };
+      const sessions = await waitForJson(`http://127.0.0.1:${port}/api/sessions`, (json) => json.count === 1, undefined, authHeaders);
       expect(sessions.sessions).toEqual([
         expect.objectContaining({
           sessionId: 'manual-session',
@@ -237,10 +238,10 @@ describe('hubreceiver entrypoint', () => {
         }),
       ]);
 
-      const missingSessionId = await fetch(`http://127.0.0.1:${port}/api/session-detail?provider=claude`);
+      const missingSessionId = await fetch(`http://127.0.0.1:${port}/api/session-detail?provider=claude`, { headers: authHeaders });
       expect(missingSessionId.status).toBe(400);
 
-      const detailResponse = await fetch(`http://127.0.0.1:${port}/api/session-detail?sessionId=manual-session&provider=claude`);
+      const detailResponse = await fetch(`http://127.0.0.1:${port}/api/session-detail?sessionId=manual-session&provider=claude`, { headers: authHeaders });
       expect(detailResponse.status).toBe(200);
       expect(await detailResponse.json()).toEqual({
         sessionId: 'manual-session',
@@ -249,7 +250,7 @@ describe('hubreceiver entrypoint', () => {
         tokenUsage: { totalInput: 8, totalOutput: 16 },
       });
 
-      expect(await (await fetch(`http://127.0.0.1:${port}/api/history?lines=1`)).json()).toEqual({
+      expect(await (await fetch(`http://127.0.0.1:${port}/api/history?lines=1`, { headers: authHeaders })).json()).toEqual({
         entries: [
           expect.objectContaining({
             provider: 'claude',
@@ -259,7 +260,7 @@ describe('hubreceiver entrypoint', () => {
         ],
       });
 
-      expect(await (await fetch(`http://127.0.0.1:${port}/api/usage`)).json()).toEqual(snapshot.usage);
+      expect(await (await fetch(`http://127.0.0.1:${port}/api/usage`, { headers: authHeaders })).json()).toEqual(snapshot.usage);
     } catch (error) {
       const { stdout, stderr } = server.getOutput();
       throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n[hubreceiver stdout]\n${stdout}\n[hubreceiver stderr]\n${stderr}`);
@@ -288,18 +289,19 @@ describe('collector and legacy server entrypoints', () => {
     });
 
     try {
-      const sessions = await waitForJson(`http://127.0.0.1:${port}/api/sessions`, (json) => json.count >= 2);
+      const authHeaders = { authorization: `Bearer ${authToken}` };
+      const sessions = await waitForJson(`http://127.0.0.1:${port}/api/sessions`, (json) => json.count >= 2, undefined, authHeaders);
       expect(sessions.sessions.map((session: any) => session.provider).sort()).toEqual(['gemini', 'openclaw']);
 
-      const providers = await (await fetch(`http://127.0.0.1:${port}/api/providers`)).json();
+      const providers = await (await fetch(`http://127.0.0.1:${port}/api/providers`, { headers: authHeaders })).json();
       expect(providers.providers.map((provider: any) => provider.provider).sort()).toEqual(['gemini', 'openclaw']);
 
       const firstSession = sessions.sessions[0];
-      const detail = await (await fetch(`http://127.0.0.1:${port}/api/session-detail?sessionId=${encodeURIComponent(firstSession.sessionId)}&provider=${encodeURIComponent(firstSession.provider)}`)).json();
+      const detail = await (await fetch(`http://127.0.0.1:${port}/api/session-detail?sessionId=${encodeURIComponent(firstSession.sessionId)}&provider=${encodeURIComponent(firstSession.provider)}`, { headers: authHeaders })).json();
       expect(detail.toolHistory.length).toBeGreaterThan(0);
       expect(detail.messages.length).toBeGreaterThan(0);
 
-      const history = await (await fetch(`http://127.0.0.1:${port}/api/history?lines=5`)).json();
+      const history = await (await fetch(`http://127.0.0.1:${port}/api/history?lines=5`, { headers: authHeaders })).json();
       expect(history.entries.length).toBeGreaterThan(0);
     } catch (error) {
       const hubOutput = hubreceiver.getOutput();

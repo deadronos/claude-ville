@@ -1,9 +1,14 @@
-import { getHubApiUrl } from '../config/runtime.js';
+import { getHubApiUrl, getHubAuthHeaders } from '../config/runtime.js';
+
+const noStoreRequest = () => {
+    const headers = getHubAuthHeaders();
+    return headers ? { cache: 'no-store' as RequestCache, headers } : { cache: 'no-store' as RequestCache };
+};
 
 export class HubDataSource {
     async getSessions() {
         try {
-            const res = await fetch(getHubApiUrl('/api/sessions'), { cache: 'no-store' });
+            const res = await fetch(getHubApiUrl('/api/sessions'), noStoreRequest());
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             return data.sessions || [];
@@ -15,7 +20,7 @@ export class HubDataSource {
 
     async getTeams() {
         try {
-            const res = await fetch(getHubApiUrl('/api/teams'), { cache: 'no-store' });
+            const res = await fetch(getHubApiUrl('/api/teams'), noStoreRequest());
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             return data.teams || [];
@@ -27,7 +32,7 @@ export class HubDataSource {
 
     async getTasks() {
         try {
-            const res = await fetch(getHubApiUrl('/api/tasks'), { cache: 'no-store' });
+            const res = await fetch(getHubApiUrl('/api/tasks'), noStoreRequest());
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             return data.taskGroups || [];
@@ -39,7 +44,7 @@ export class HubDataSource {
 
     async getUsage() {
         try {
-            const res = await fetch(getHubApiUrl('/api/usage'), { cache: 'no-store' });
+            const res = await fetch(getHubApiUrl('/api/usage'), noStoreRequest());
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return await res.json();
         } catch (err: unknown) {
@@ -50,7 +55,7 @@ export class HubDataSource {
 
     async getHistory(lines = 100) {
         try {
-            const res = await fetch(getHubApiUrl('/api/history', { lines }), { cache: 'no-store' });
+            const res = await fetch(getHubApiUrl('/api/history', { lines }), noStoreRequest());
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             return data.entries || [];

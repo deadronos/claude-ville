@@ -29,6 +29,7 @@ describe('runtime config helpers', () => {
     const { getHubHttpUrl, getHubApiUrl, getRuntimeConfig } = await loadRuntime({
       hubHttpUrl: 'https://hub.example',
       hubWsUrl: 'wss://hub.example/ws',
+      hubAuthToken: 'secret',
       featureFlag: true,
     });
 
@@ -36,8 +37,17 @@ describe('runtime config helpers', () => {
     expect(getRuntimeConfig()).toMatchObject({
       hubHttpUrl: 'https://hub.example',
       hubWsUrl: 'wss://hub.example/ws',
+      hubAuthToken: 'secret',
       featureFlag: true,
     });
+
+    const { getHubWsUrl, getHubAuthHeaders } = await loadRuntime({
+      hubHttpUrl: 'https://hub.example',
+      hubWsUrl: 'wss://hub.example/ws',
+      hubAuthToken: 'secret',
+    });
+    expect(getHubWsUrl()).toBe('wss://hub.example/ws?access_token=secret');
+    expect(getHubAuthHeaders()).toEqual({ Authorization: 'Bearer secret' });
 
     const withObject = getHubApiUrl('/api/sessions', {
       q: 'alpha',
