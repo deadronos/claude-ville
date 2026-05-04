@@ -30,6 +30,70 @@ When a learning is promoted to a skill, add these fields:
 
 ---
 
+## [LRN-20260504-001] best_practice
+
+**Logged**: 2026-05-04T23:18:00Z
+**Priority**: medium
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+
+PixiJS child elements with positions derived from an `origin` coordinate must both be stored for repositioning and updated together on resize.
+
+### Details
+
+In `renderVillage.ts`, sparkles were added to a separate `sparkleContainer` for z-ordering, but only `terrainTiles` were stored and updated in `resize()`. Sparkles had positions calculated from `isoToScreen(x, y, origin.x, origin.y)` plus an offset, but these were never recomputed after resize, causing sparkle drift.
+
+### Suggested Action
+
+When using PixiJS containers with positioned children:
+1. Store references to all positioned children (not just primary tiles)
+2. In `resize()`, recompute all positions using the new origin
+3. Group related elements (sparkles with their parent tiles) to ensure consistent repositioning
+
+### Metadata
+- Source: code_review
+- Related Files: claudeville/src/pixivillage/pixi/renderVillage.ts
+- Tags: pixi, resize, position, render
+
+---
+
+## [LRN-20260504-002] best_practice
+
+**Logged**: 2026-05-04T23:18:00Z
+**Priority**: medium
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+
+The `moved` flag pattern for suppressing post-drag clicks must reset after a suppressed click, not just on `onPointerMissed`.
+
+### Details
+
+In `WorldView`/`AgentActor`, `interactionRef.current.moved` was set to `true` when the user drags more than 3px. Click handlers in `AgentActor` would suppress clicks when `moved` was true, but the flag was only cleared in `WorldView.onPointerMissed` (when clicking empty canvas). Clicking an agent would suppress the click but leave `moved` true, causing subsequent clicks on agents to also be suppressed until the user clicked empty space.
+
+### Suggested Action
+
+When suppressing a click due to drag detection, reset the flag immediately after suppression:
+
+```typescript
+onClick={(event) => {
+  event.stopPropagation();
+  if (interactionRef.current.moved) {
+    interactionRef.current.moved = false; // Reset to allow next click
+    return;
+  }
+  onSelect(entity.id);
+}}
+```
+
+### Metadata
+- Source: code_review
+- Related Files: claudeville/src/presentation/react/world/WorldView.tsx, claudeville/src/presentation/react/world/components/AgentActor.tsx
+- Tags: interaction, drag, click, selection
+
 ## [LRN-20260501-002] best_practice
 
 **Logged**: 2026-05-01T16:43:00Z

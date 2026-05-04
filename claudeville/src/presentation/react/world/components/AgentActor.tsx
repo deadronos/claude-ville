@@ -298,6 +298,7 @@ export function AgentActor({
       onClick={(event) => {
         event.stopPropagation();
         if (interactionRef.current.moved) {
+          interactionRef.current.moved = false;
           return;
         }
         onSelect(entity.id);

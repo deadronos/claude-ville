@@ -46,6 +46,12 @@ interface TerrainTileRef {
   y: number;
 }
 
+interface SparkleRef {
+  sparkle: Graphics;
+  x: number;
+  y: number;
+}
+
 export function createPixiVillageRenderer(
   root: Container,
   screenWidth: number,
@@ -68,7 +74,7 @@ export function createPixiVillageRenderer(
   const scene = new Container();
   recompute();
   applySceneLayout();
-  const terrainTiles = drawTerrain(scene, origin.x, origin.y);
+  const { terrainTiles, sparkleRefs } = drawTerrain(scene, origin.x, origin.y);
   root.addChild(scene);
 
   // ── Building container (separate from terrain for depth ordering) ─────────
@@ -125,6 +131,12 @@ export function createPixiVillageRenderer(
       const p = isoToScreen(terrainTile.x, terrainTile.y, origin.x, origin.y);
       terrainTile.tile.x = p.x;
       terrainTile.tile.y = p.y;
+    }
+
+    for (const sparkleRef of sparkleRefs) {
+      const p = isoToScreen(sparkleRef.x, sparkleRef.y, origin.x, origin.y);
+      sparkleRef.sparkle.x = p.x + ((sparkleRef.x % 2) - 0.5) * 22;
+      sparkleRef.sparkle.y = p.y + ((sparkleRef.y % 3) - 1) * 7;
     }
   }
 
@@ -329,8 +341,9 @@ function makeBuildingHitArea(building: VillageBuilding) {
 
 // ─── Drawing primitives ─────────────────────────────────────────────────────
 
-function drawTerrain(scene: Container, originX: number, originY: number): TerrainTileRef[] {
+function drawTerrain(scene: Container, originX: number, originY: number): { terrainTiles: TerrainTileRef[]; sparkleRefs: SparkleRef[] } {
   const terrainTiles: TerrainTileRef[] = [];
+  const sparkleRefs: SparkleRef[] = [];
   const sparkleContainer = new Container();
   scene.addChildAt(sparkleContainer, 0);
 
@@ -357,11 +370,12 @@ function drawTerrain(scene: Container, originX: number, originY: number): Terrai
         sparkle.x = sparkleX;
         sparkle.y = sparkleY;
         sparkleContainer.addChild(sparkle);
+        sparkleRefs.push({ sparkle, x, y });
       }
     }
   }
 
-  return terrainTiles;
+  return { terrainTiles, sparkleRefs };
 }
 
 function drawStatusRingGraphics(graphics: Graphics, status: VillageStatus, selected: boolean, tick: number) {

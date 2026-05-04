@@ -39,6 +39,10 @@ export function getHubApiUrl(pathname: string, searchParams?: URLSearchParams | 
     return url.toString();
 }
 
+// Note: Passing the token as a query parameter leaks it into browser history,
+// server logs, and proxies. This is acceptable for local development but
+// a cookie-based or WebSocket subprotocol auth mechanism should be used
+// when crossing trust boundaries.
 export function getHubWsUrl(): string {
     const config = getActiveConfig();
     const baseUrl = config.hubWsUrl || fallbackWsUrl();
