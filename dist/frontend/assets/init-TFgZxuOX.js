@@ -1,1 +1,0 @@
-import{n as e,r as t,t as n,u as r}from"./pixijs-C0aS9I9n.js";r.add(n,t),r.add(e);

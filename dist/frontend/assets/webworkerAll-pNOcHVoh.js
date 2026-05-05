@@ -1,1 +1,0 @@
-import"./pixijs-C0aS9I9n.js";import"./init-TFgZxuOX.js";
