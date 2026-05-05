@@ -137,6 +137,7 @@ function VoxelBuilding({
     [footprint.height, voxelPosition.x, voxelPosition.z],
   );
   const cameraOffset = useMemo(() => new Vector3(), []);
+  const targetOffset = useMemo(() => new Vector3(), []);
   const cameraForward = useMemo(() => new Vector3(), []);
   const cameraRight = useMemo(() => new Vector3(), []);
   const cameraUp = useMemo(() => new Vector3(), []);
@@ -194,7 +195,7 @@ function VoxelBuilding({
         targetPosition.set(target.voxelPosition.x, 0, target.voxelPosition.z);
       }
 
-      return sampleOffsets.some((baseOffset, index) => {
+      const rayOccluded = sampleOffsets.some((baseOffset, index) => {
         samplePoint.copy(targetPosition).add(baseOffset);
 
         if (index >= 4) {
@@ -222,6 +223,16 @@ function VoxelBuilding({
         const intersection = ray.intersectBox(expandedOcclusionBox, hitPoint);
         return Boolean(intersection) && camera.position.distanceTo(hitPoint) < targetDistance - 0.05;
       });
+
+      if (rayOccluded) {
+        return true;
+      }
+
+      targetOffset.copy(targetPosition).sub(buildingCenter);
+      const nearBuilding = Math.abs(targetOffset.x) <= footprint.width * 0.95 && Math.abs(targetOffset.z) <= footprint.depth * 0.95;
+      const insideVerticalBand = targetPosition.y <= footprint.height + roofHeight + 1.2;
+      const onFarSide = cameraOffset.dot(targetOffset) < 0.75;
+      return nearBuilding && insideVerticalBand && onFarSide;
     });
 
     if (targetIsOccluded) {
