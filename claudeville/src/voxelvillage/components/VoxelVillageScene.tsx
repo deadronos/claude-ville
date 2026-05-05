@@ -21,6 +21,7 @@ export function VoxelVillageScene({
   onSelectAgent,
   onSelectBuilding,
 }: VoxelVillageSceneProps) {
+  const animatedAgentPositionsRef = useRef(new Map<string, Vector3>());
   const occlusionTargets = snapshot.agents;
 
   return (
@@ -40,6 +41,7 @@ export function VoxelVillageScene({
             building={building}
             selected={selectedBuildingId === building.id}
             occlusionTargets={occlusionTargets}
+            animatedAgentPositionsRef={animatedAgentPositionsRef}
             onSelect={() => onSelectBuilding(building.id)}
           />
         ))}
@@ -48,6 +50,7 @@ export function VoxelVillageScene({
             key={agent.id}
             agent={agent}
             selected={selectedAgentId === agent.id}
+            animatedAgentPositionsRef={animatedAgentPositionsRef}
             onSelect={() => onSelectAgent(agent.id)}
           />
         ))}
@@ -107,11 +110,13 @@ function VoxelBuilding({
   building,
   selected,
   occlusionTargets,
+  animatedAgentPositionsRef,
   onSelect,
 }: {
   building: VoxelVillageBuilding;
   selected: boolean;
   occlusionTargets: VoxelVillageAgent[];
+  animatedAgentPositionsRef: React.MutableRefObject<Map<string, Vector3>>;
   onSelect: () => void;
 }) {
   const { camera } = useThree();
@@ -182,7 +187,12 @@ function VoxelBuilding({
     cameraUp.copy(camera.up).normalize();
 
     const targetIsOccluded = occlusionTargets.some((target) => {
-      targetPosition.set(target.voxelPosition.x, 0, target.voxelPosition.z);
+      const animatedPosition = animatedAgentPositionsRef.current.get(target.id);
+      if (animatedPosition) {
+        targetPosition.copy(animatedPosition);
+      } else {
+        targetPosition.set(target.voxelPosition.x, 0, target.voxelPosition.z);
+      }
 
       return sampleOffsets.some((baseOffset, index) => {
         samplePoint.copy(targetPosition).add(baseOffset);
@@ -285,9 +295,25 @@ function setMaterialOpacity(material: MeshStandardMaterial | null, targetOpacity
   material.depthWrite = material.opacity >= 0.35;
 }
 
-function VoxelAgent({ agent, selected, onSelect }: { agent: VoxelVillageAgent; selected: boolean; onSelect: () => void }) {
+function VoxelAgent({
+  agent,
+  selected,
+  animatedAgentPositionsRef,
+  onSelect,
+}: {
+  agent: VoxelVillageAgent;
+  selected: boolean;
+  animatedAgentPositionsRef: React.MutableRefObject<Map<string, Vector3>>;
+  onSelect: () => void;
+}) {
   const groupRef = useRef<Group>(null);
   const phase = useMemo(() => hashAgent(agent.id) * Math.PI * 2, [agent.id]);
+  const animatedPosition = useMemo(() => new Vector3(agent.voxelPosition.x, agent.voxelPosition.y, agent.voxelPosition.z), [agent.voxelPosition.x, agent.voxelPosition.y, agent.voxelPosition.z]);
+
+  useMemo(() => {
+    animatedAgentPositionsRef.current.set(agent.id, animatedPosition);
+    return undefined;
+  }, [agent.id, animatedAgentPositionsRef, animatedPosition]);
 
   useFrame(({ clock }) => {
     const group = groupRef.current;
@@ -298,6 +324,7 @@ function VoxelAgent({ agent, selected, onSelect }: { agent: VoxelVillageAgent; s
     group.position.z = agent.voxelPosition.z + (agent.pathTarget.z - agent.voxelPosition.z) * walk;
     group.position.y = Math.abs(Math.sin(t * 2)) * 0.06;
     group.rotation.y = Math.atan2(agent.pathTarget.x - agent.voxelPosition.x, agent.pathTarget.z - agent.voxelPosition.z);
+    animatedPosition.copy(group.position);
   });
 
   return (

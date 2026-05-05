@@ -1,3 +1,31 @@
+## [ERR-20260506-001] execution_subagent_zsh_status_var
+
+**Logged**: 2026-05-06T00:05:00Z
+**Priority**: low
+**Status**: pending
+**Area**: infra
+
+### Summary
+Using `status` as a shell variable in zsh caused a validation command to fail before the actual build result was known.
+
+### Error
+```text
+zsh: read-only variable: status
+```
+
+### Context
+- Command/operation attempted: wrap `npm run build:frontend` and inspect exit code in zsh
+- Input or parameters used: assigned shell exit code to a variable named `status`
+- Environment details if relevant: workspace terminal uses zsh on macOS
+
+### Suggested Fix
+Avoid zsh reserved variable names such as `status` in validation snippets; use direct commands or a different variable name.
+
+### Metadata
+- Reproducible: yes
+- Related Files: none
+
+---
 # Errors
 
 Command failures, exceptions, and unexpected failures captured during development.
