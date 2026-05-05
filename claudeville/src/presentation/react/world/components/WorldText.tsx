@@ -1,6 +1,6 @@
 import { Children, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { CanvasTexture, DoubleSide, LinearFilter, SRGBColorSpace } from 'three';
+import { CanvasTexture, FrontSide, LinearFilter, SRGBColorSpace } from 'three';
 import type { ThreeElements } from '@react-three/fiber';
 
 function collectTextCharacters(children: ReactNode) {
@@ -158,7 +158,18 @@ export function WorldText({
           depthTest={false}
           depthWrite={false}
           toneMapped={false}
-          side={DoubleSide}
+          side={FrontSide}
+        />
+      </mesh>
+      <mesh position={[offsetX, offsetY, -0.001]} rotation={[0, Math.PI, 0]} scale={[-1, 1, 1]} renderOrder={renderOrder}>
+        <planeGeometry args={[textureData.width, textureData.height]} />
+        <meshBasicMaterial
+          map={textureData.texture}
+          transparent
+          depthTest={false}
+          depthWrite={false}
+          toneMapped={false}
+          side={FrontSide}
         />
       </mesh>
     </group>

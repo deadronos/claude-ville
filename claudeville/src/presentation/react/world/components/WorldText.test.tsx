@@ -28,7 +28,8 @@ describe('WorldText', () => {
     const textGroup = container.querySelector('group');
     expect(textGroup).toBeTruthy();
     expect(textGroup?.getAttribute('renderorder')).toBe('1000');
-    expect(container.querySelector('meshbasicmaterial')).toBeTruthy();
+    expect(container.querySelectorAll('mesh')).toHaveLength(2);
+    expect(container.querySelectorAll('meshbasicmaterial[side="0"]')).toHaveLength(2);
   });
 
   it('allows callers to override the default text settings', () => {

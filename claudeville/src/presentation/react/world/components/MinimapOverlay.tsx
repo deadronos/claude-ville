@@ -6,7 +6,7 @@ import { THEME } from '../../../../config/theme.js';
 import type { AgentSprite } from '../../../character-mode/AgentSprite.js';
 import { MINIMAP_SIZE, BUILDING_STYLES } from '../styles.js';
 import type { CameraModel, ViewportSize } from '../types.js';
-import { screenToTile } from '../utils.js';
+import { screenToTile, isoToWorld } from '../utils.js';
 
 export function MinimapOverlay({
   buildings,
@@ -53,10 +53,10 @@ export function MinimapOverlay({
       }
 
       for (const sprite of spritesRef.current.values()) {
-        const tile = screenToTile(sprite.x, sprite.y, { ...cameraRef.current, targetX: 0, targetZ: 0, zoom: 1, followAgentId: null, followSmoothing: 0, minZoom: 0.5, maxZoom: 3 }, viewport);
+        const tile = isoToWorld(sprite.x, sprite.y);
         context.fillStyle = sprite.agent.status === 'working' ? THEME.working : sprite.agent.status === 'waiting' ? THEME.waiting : THEME.idle;
         context.beginPath();
-        context.arc(tile.tileX * scale, tile.tileZ * scale, 2, 0, Math.PI * 2);
+        context.arc(tile.x * scale, tile.z * scale, 2, 0, Math.PI * 2);
         context.fill();
       }
 

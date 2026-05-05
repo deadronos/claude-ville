@@ -79,9 +79,9 @@ const utilsMocks = vi.hoisted(() => ({
     followSmoothing: 0.08,
   })),
   isoToScreen: vi.fn((tileX: number, tileY: number) => ({ x: tileX * 10, y: tileY * 20 })),
-  screenToWorld: vi.fn((screenX: number, screenY: number, camera: { targetX: number; targetZ: number; zoom: number }, viewport: { width: number; height: number }) => ({
-    x: screenX / camera.zoom - camera.targetX,
-    z: screenY / camera.zoom - camera.targetZ,
+  screenToIso: vi.fn((screenX: number, screenY: number, camera: { targetX: number; targetZ: number; zoom: number }, viewport: { width: number; height: number }) => ({
+    x: (screenX - viewport.width / 2) / camera.zoom + camera.targetX,
+    y: (screenY - viewport.height / 2) / camera.zoom + camera.targetZ,
   })),
   getCameraFocusPosition: vi.fn((targetX: number, targetZ: number, viewport: { width: number; height: number }, zoom: number) => ({
     x: Math.round(viewport.width / 2 - targetX * zoom),
@@ -102,7 +102,7 @@ const utilsMocks = vi.hoisted(() => ({
 vi.mock('./utils.js', () => utilsMocks);
 
 import { WorldView } from './WorldView.js';
-import { createCenteredCamera, isoToScreen, screenToWorld, worldToScreen, worldToIso, isoToWorld, screenToTile } from './utils.js';
+import { createCenteredCamera, isoToScreen, screenToIso, worldToScreen, worldToIso, isoToWorld, screenToTile } from './utils.js';
 
 beforeEach(() => {
   worldViewMocks.canvasProps = null;
@@ -115,7 +115,7 @@ beforeEach(() => {
   worldViewMocks.observerDisconnect.mockReset();
   utilsMocks.createCenteredCamera.mockClear();
   utilsMocks.isoToScreen.mockClear();
-  utilsMocks.screenToWorld.mockClear();
+  utilsMocks.screenToIso.mockClear();
   utilsMocks.worldToScreen.mockClear();
 
   // Reset store state for each test
@@ -232,8 +232,8 @@ describe('WorldView', () => {
 
     const zoomBefore = worldViewMocks.worldSceneProps?.cameraRef.current.zoom;
     fireEvent.wheel(worldRoot, { clientX: 110, clientY: 80, deltaY: 20, deltaMode: 0 });
-    const latestScreenToWorldCall = (screenToWorld as ReturnType<typeof vi.fn>).mock.calls.at(-1);
-    expect(latestScreenToWorldCall?.slice(0, 2)).toEqual([100, 60]);
+    const latestScreenToIsoCall = (screenToIso as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(latestScreenToIsoCall?.slice(0, 2)).toEqual([100, 60]);
     expect(worldViewMocks.worldSceneProps?.cameraRef.current.zoom).toBeLessThan(zoomBefore);
 
     worldViewMocks.worldSceneProps!.interactionRef.current.moved = false;

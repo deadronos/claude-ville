@@ -50,6 +50,19 @@ export function screenToWorld(
   return isoToWorld(isoX, isoY);
 }
 
+// Convert screen coordinates to isometric coordinates using camera
+export function screenToIso(
+  screenX: number,
+  screenY: number,
+  camera: CameraModel,
+  viewport: ViewportSize,
+): { x: number; y: number } {
+  return {
+    x: (screenX - viewport.width / 2) / camera.zoom + camera.targetX,
+    y: (screenY - viewport.height / 2) / camera.zoom + camera.targetZ,
+  };
+}
+
 // Convert world coordinates to screen coordinates using camera
 export function worldToScreen(
   worldX: number,

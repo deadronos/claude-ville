@@ -289,8 +289,11 @@ async function waitForText(url: string, predicate: (body: string) => boolean, ti
   throw new Error(`Timed out waiting for ${url}: ${lastError}`);
 }
 
-async function fetchSessions(hubUrl: string): Promise<SessionSummary[]> {
-  const response = await fetch(`${hubUrl}/api/sessions`, { cache: 'no-store' });
+async function fetchSessions(hubUrl: string, authToken: string): Promise<SessionSummary[]> {
+  const response = await fetch(`${hubUrl}/api/sessions`, {
+    cache: 'no-store',
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch sessions: HTTP ${response.status}`);
   }
@@ -299,12 +302,12 @@ async function fetchSessions(hubUrl: string): Promise<SessionSummary[]> {
   return Array.isArray(json.sessions) ? json.sessions : [];
 }
 
-async function waitForHubSession(hubUrl: string, sessionId: string, provider = 'claude', timeoutMs = 90_000) {
+async function waitForHubSession(hubUrl: string, authToken: string, sessionId: string, provider = 'claude', timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;
   let lastSnapshot = '[]';
 
   while (Date.now() < deadline) {
-    const sessions = await fetchSessions(hubUrl);
+    const sessions = await fetchSessions(hubUrl, authToken);
     const match = sessions.find((session) => session.provider === provider && session.sessionId === sessionId);
     if (match) {
       return match;
@@ -326,12 +329,12 @@ async function waitForHubSession(hubUrl: string, sessionId: string, provider = '
   throw new Error(`Timed out waiting for ${provider} session ${sessionId} to reach hubreceiver. Last sessions snapshot:\n${lastSnapshot}`);
 }
 
-async function waitForHubSessionGone(hubUrl: string, sessionId: string, provider = 'claude', timeoutMs = 180_000) {
+async function waitForHubSessionGone(hubUrl: string, authToken: string, sessionId: string, provider = 'claude', timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
   let lastSnapshot = '[]';
 
   while (Date.now() < deadline) {
-    const sessions = await fetchSessions(hubUrl);
+    const sessions = await fetchSessions(hubUrl, authToken);
     const match = sessions.find((session) => session.provider === provider && session.sessionId === sessionId);
     if (!match) {
       return;
@@ -503,6 +506,7 @@ describe('manual live session E2E', () => {
       const hubreceiver = startNpmScript('hubreceiver', 'dev:hubreceiver', {
         HUB_PORT: String(hubPort),
         HUB_AUTH_TOKEN: hubAuthToken,
+        ALLOWED_ORIGIN: frontendUrl,
       });
       startedProcesses.push(hubreceiver);
       await waitForJson(`${hubUrl}/health`, (json) => json?.ok === true, 30_000);
@@ -525,6 +529,7 @@ describe('manual live session E2E', () => {
         {
           HUB_HTTP_URL: hubUrl,
           HUB_WS_URL: `${hubUrl.replace(/^http/, 'ws')}/ws`,
+          HUB_AUTH_TOKEN: hubAuthToken,
           VITE_CLAUDEVILLE_REFRESH_INTERVAL_MS: '250',
         },
         ['--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'],
@@ -552,13 +557,13 @@ describe('manual live session E2E', () => {
 
       await waitForProcessExit(firstPrompt, 10_000);
 
-      const firstSession = await waitForHubSession(hubUrl, `openclaw:${firstAgentId}:${firstSessionId}`, 'openclaw', 90_000);
+      const firstSession = await waitForHubSession(hubUrl, hubAuthToken, `openclaw:${firstAgentId}:${firstSessionId}`, 'openclaw', 90_000);
       await waitForSidebarSession(page, firstSession.sessionId, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
       await waitForSidebarSessionStatus(page, firstSession.sessionId, ['waiting', 'idle'], 120_000);
       expireOpenClawSession(firstSessionFile);
-      await waitForHubSessionGone(hubUrl, firstSession.sessionId, 'openclaw', 60_000);
+      await waitForHubSessionGone(hubUrl, hubAuthToken, firstSession.sessionId, 'openclaw', 60_000);
       await waitForSidebarSessionGone(page, firstSession.sessionId, 60_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
@@ -578,7 +583,7 @@ describe('manual live session E2E', () => {
 
       await waitForProcessExit(secondPrompt, 10_000);
 
-      const secondSession = await waitForHubSession(hubUrl, `openclaw:${secondAgentId}:${secondSessionId}`, 'openclaw', 90_000);
+      const secondSession = await waitForHubSession(hubUrl, hubAuthToken, `openclaw:${secondAgentId}:${secondSessionId}`, 'openclaw', 90_000);
       await waitForSidebarSession(page, secondSession.sessionId, 90_000);
       expect(await getNavigationCount(page)).toBe(initialNavigationCount);
 
