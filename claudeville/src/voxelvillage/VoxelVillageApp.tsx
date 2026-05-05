@@ -48,7 +48,7 @@ export function VoxelVillageApp() {
           <span className="voxel-village__mark" aria-hidden="true" />
           <span>
             <strong>ClaudeVille Voxel Village</strong>
-            <small>Minecraft-style live session world</small>
+            <small>live session world</small>
           </span>
         </div>
         <div className="voxel-village__status-strip">
