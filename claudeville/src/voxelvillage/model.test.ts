@@ -47,4 +47,44 @@ describe('voxel village model mapping', () => {
     expect(snapshot.roads.some((road) => road.x === 8 && road.z === 0)).toBe(true);
     expect(snapshot.roads.some((road) => road.x === 0 && road.z === 8)).toBe(true);
   });
+
+  it('derives doorway and road anchors plus faster motion for busier agents', () => {
+    const now = Date.now();
+    const snapshot = buildVoxelVillageSnapshot([
+      {
+        sessionId: 'busy-agent',
+        provider: 'codex',
+        status: 'active',
+        lastActivity: now - 5_000,
+        lastTool: 'Edit',
+        messageCount: 12,
+        detail: {
+          toolHistory: [
+            { tool: 'Read', ts: now - 50_000 },
+            { tool: 'Grep', ts: now - 35_000 },
+            { tool: 'Edit', ts: now - 8_000 },
+            { tool: 'Write', ts: now - 1_500 },
+          ],
+        },
+      },
+      {
+        sessionId: 'slow-agent',
+        provider: 'codex',
+        status: 'inactive',
+        lastActivity: now - 420_000,
+        messageCount: 1,
+      },
+    ], now);
+
+    const busyAgent = snapshot.agents.find((agent) => agent.id === 'busy-agent');
+    const slowAgent = snapshot.agents.find((agent) => agent.id === 'slow-agent');
+
+    expect(busyAgent).toBeTruthy();
+    expect(slowAgent).toBeTruthy();
+    expect(busyAgent!.roadAnchorPosition.y).toBe(0);
+    expect(busyAgent!.doorwayPosition.z).toBeGreaterThan(busyAgent!.homePosition.z - 0.5);
+    expect(snapshot.roads).toContainEqual({ x: busyAgent!.roadAnchorPosition.x, z: busyAgent!.roadAnchorPosition.z });
+    expect(busyAgent!.walkSpeed).toBeGreaterThan(slowAgent!.walkSpeed);
+    expect(busyAgent!.dwellDurationMs).toBeLessThan(slowAgent!.dwellDurationMs);
+  });
 });

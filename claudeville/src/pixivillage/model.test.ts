@@ -33,6 +33,7 @@ describe('pixivillage model mapping', () => {
       currentTask: 'Editing the Pixi village frontend',
       tokensTotal: 1320,
       messageCount: 8,
+      movementIntensity: expect.any(Number),
     });
   });
 
@@ -102,5 +103,41 @@ describe('pixivillage model mapping', () => {
     expect(resolveBuildingId({ sessionId: '2', provider: 'claude', lastTool: 'WebFetch' })).toBe('research-lab');
     expect(resolveBuildingId({ sessionId: '3', provider: 'copilot' })).toBe('chat-hall');
     expect(resolveBuildingId({ sessionId: '4', provider: 'hermes' })).toBe('memory-archive');
+  });
+
+  it('derives higher movement intensity for recent tool-heavy sessions', () => {
+    vi.setSystemTime(new Date('2026-04-30T12:00:00.000Z'));
+
+    const highActivity = mapSessionToVillageAgent({
+      sessionId: 'high-activity',
+      provider: 'codex',
+      status: 'active',
+      lastActivity: Date.now() - 4_000,
+      lastTool: 'Edit',
+      messageCount: 11,
+      detail: {
+        toolHistory: [
+          { tool: 'Read', ts: Date.now() - 35_000 },
+          { tool: 'Grep', ts: Date.now() - 25_000 },
+          { tool: 'Edit', ts: Date.now() - 10_000 },
+          { tool: 'Write', ts: Date.now() - 2_000 },
+        ],
+      },
+    });
+
+    const lowActivity = mapSessionToVillageAgent({
+      sessionId: 'low-activity',
+      provider: 'codex',
+      status: 'inactive',
+      lastActivity: Date.now() - 420_000,
+      messageCount: 1,
+      detail: {
+        toolHistory: [{ tool: 'Read', ts: Date.now() - 240_000 }],
+      },
+    });
+
+    expect(highActivity.movementIntensity).toBeGreaterThan(lowActivity.movementIntensity);
+    expect(highActivity.movementIntensity).toBeGreaterThan(0.8);
+    expect(lowActivity.movementIntensity).toBeLessThan(0.2);
   });
 });

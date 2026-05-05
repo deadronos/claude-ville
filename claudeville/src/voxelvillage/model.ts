@@ -15,7 +15,11 @@ export interface VoxelPosition {
 
 export interface VoxelVillageAgent extends VillageAgent {
   voxelPosition: VoxelPosition;
-  pathTarget: VoxelPosition;
+  homePosition: VoxelPosition;
+  doorwayPosition: VoxelPosition;
+  roadAnchorPosition: VoxelPosition;
+  walkSpeed: number;
+  dwellDurationMs: number;
   color: string;
 }
 
@@ -46,6 +50,7 @@ export function buildVoxelVillageSnapshot(sessions: HubSession[], now = Date.now
 }
 
 export function buildVoxelVillageSnapshotFromVillage(base: VillageSnapshot): VoxelVillageSnapshot {
+  const roads = buildRoadGrid();
   const buildings = base.buildings.map(toVoxelBuilding);
   const buildingById = new Map(buildings.map((building) => [building.id, building]));
   const agentIndexesByBuilding = new Map<string, number>();
@@ -53,14 +58,14 @@ export function buildVoxelVillageSnapshotFromVillage(base: VillageSnapshot): Vox
     const index = agentIndexesByBuilding.get(agent.buildingId) ?? 0;
     agentIndexesByBuilding.set(agent.buildingId, index + 1);
     const building = buildingById.get(agent.buildingId) ?? buildings[0];
-    return toVoxelAgent(agent, building, index);
+    return toVoxelAgent(agent, building, index, roads);
   });
 
   return {
     ...base,
     agents,
     buildings,
-    roads: buildRoadGrid(),
+    roads,
   };
 }
 
@@ -82,26 +87,45 @@ function toVoxelBuilding(building: VillageBuilding): VoxelVillageBuilding {
   };
 }
 
-function toVoxelAgent(agent: VillageAgent, building: VoxelVillageBuilding, index: number): VoxelVillageAgent {
+function toVoxelAgent(
+  agent: VillageAgent,
+  building: VoxelVillageBuilding,
+  index: number,
+  roads: Array<{ x: number; z: number }>,
+): VoxelVillageAgent {
   const ring = Math.floor(index / 6);
   const slot = index % 6;
   const angle = (slot / 6) * Math.PI * 2;
   const radius = 1.55 + ring * 0.45;
   const offsetX = Number((Math.cos(angle) * radius).toFixed(2));
   const offsetZ = Number((Math.sin(angle) * radius).toFixed(2));
+  const homePosition = {
+    x: Number((building.voxelPosition.x + offsetX).toFixed(2)),
+    y: 0,
+    z: Number((building.voxelPosition.z + offsetZ).toFixed(2)),
+  };
+  const doorwayPosition = {
+    x: Number(building.voxelPosition.x.toFixed(2)),
+    y: 0,
+    z: Number((building.voxelPosition.z + building.footprint.depth / 2 + 0.95).toFixed(2)),
+  };
+  const nearestRoad = findNearestRoad(doorwayPosition, roads);
+  const roadAnchorPosition = {
+    x: nearestRoad.x,
+    y: 0,
+    z: nearestRoad.z,
+  };
+  const walkSpeed = Number((0.9 + agent.movementIntensity * 0.75).toFixed(2));
+  const dwellDurationMs = Math.round(3600 - agent.movementIntensity * 2400);
 
   return {
     ...agent,
-    voxelPosition: {
-      x: Number((building.voxelPosition.x + offsetX).toFixed(2)),
-      y: 0,
-      z: Number((building.voxelPosition.z + offsetZ).toFixed(2)),
-    },
-    pathTarget: {
-      x: Number((building.voxelPosition.x + offsetZ * 0.35).toFixed(2)),
-      y: 0,
-      z: Number((building.voxelPosition.z - offsetX * 0.35).toFixed(2)),
-    },
+    voxelPosition: homePosition,
+    homePosition,
+    doorwayPosition,
+    roadAnchorPosition,
+    walkSpeed,
+    dwellDurationMs,
     color: statusColors[agent.status],
   };
 }
@@ -129,6 +153,21 @@ function dedupeRoads(roads: Array<{ x: number; z: number }>) {
     seen.add(key);
     return true;
   });
+}
+
+function findNearestRoad(target: { x: number; z: number }, roads: Array<{ x: number; z: number }>) {
+  let nearest = roads[0] ?? { x: 0, z: 0 };
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const road of roads) {
+    const distance = (road.x - target.x) ** 2 + (road.z - target.z) ** 2;
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = road;
+    }
+  }
+
+  return nearest;
 }
 
 function toHex(value: number) {

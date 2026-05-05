@@ -38,6 +38,7 @@ export interface VillageAgent {
   estimatedCost: number;
   lastActivity: number;
   lastTool: string | null;
+  movementIntensity: number;
 }
 
 export interface VillageBuilding {
@@ -198,6 +199,7 @@ export function mapSessionToVillageAgent(session: HubSession, now = Date.now()):
   const provider = session.provider || 'unknown';
   const latestMessage = session.lastMessage || session.detail?.messages?.at(-1)?.text || null;
   const latestTool = session.lastTool || session.detail?.toolHistory?.at(-1)?.tool || null;
+  const latestToolTs = session.detail?.toolHistory?.at(-1)?.ts;
   const currentTask = session.currentTask || latestMessage || (latestTool ? `Using ${latestTool}` : 'Monitoring session activity');
   const tokenInput = session.tokens?.input ?? session.tokenUsage?.totalInput ?? session.tokenUsage?.input ?? 0;
   const tokenOutput = session.tokens?.output ?? session.tokenUsage?.totalOutput ?? session.tokenUsage?.output ?? 0;
@@ -216,6 +218,7 @@ export function mapSessionToVillageAgent(session: HubSession, now = Date.now()):
     estimatedCost: session.estimatedCost ?? 0,
     lastActivity: session.lastActivity ?? 0,
     lastTool: latestTool,
+    movementIntensity: resolveMovementIntensity(session, now),
   };
 }
 
@@ -261,4 +264,46 @@ function resolveVillageStatus(session: HubSession, now: number): VillageStatus {
   if (age < 30_000) return 'running';
   if (age < 120_000) return 'waiting';
   return 'idle';
+}
+
+function resolveMovementIntensity(session: HubSession, now: number) {
+  const age = Math.max(0, now - (session.lastActivity ?? 0));
+  const rawStatus = (session.status || '').toLowerCase();
+  const latestTool = session.lastTool || session.detail?.toolHistory?.at(-1)?.tool || null;
+  const latestToolTs = session.detail?.toolHistory?.at(-1)?.ts;
+  const messageCount = session.messageCount ?? session.detail?.messages?.length ?? 0;
+  const recentTools = session.detail?.toolHistory?.filter((entry) => {
+    if (!entry?.tool) return false;
+    if (typeof entry.ts !== 'number') return true;
+    return now - entry.ts <= 90_000;
+  }).length ?? 0;
+
+  const freshnessScore = age < 15_000
+    ? 1
+    : age < 45_000
+      ? 0.8
+      : age < 120_000
+        ? 0.56
+        : age < 300_000
+          ? 0.28
+          : 0.1;
+  const toolBurstScore = Math.min(recentTools / 4, 1);
+  const messageScore = Math.min(messageCount / 12, 1);
+  const statusScore = rawStatus === 'active'
+    ? 0.18
+    : rawStatus === 'offline'
+      ? 0
+      : 0.04;
+  const liveToolBonus = latestTool && (typeof latestToolTs !== 'number' || now - latestToolTs <= 90_000) ? 0.08 : 0;
+
+  return Number(
+    Math.min(
+      1,
+      0.52 * freshnessScore
+      + 0.28 * toolBurstScore
+      + 0.12 * messageScore
+      + statusScore
+      + liveToolBonus,
+    ).toFixed(3),
+  );
 }
