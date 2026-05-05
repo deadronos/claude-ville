@@ -94,7 +94,7 @@ describe('React world low-coverage components', () => {
     expect(interiorMaterial.transparent).toBe(true);
 
     const textMaterials = container.querySelectorAll('meshbasicmaterial[map]');
-    expect(textMaterials).toHaveLength(2);
+    expect(textMaterials).toHaveLength(4);
     expect(THEME.text).toBeTruthy();
     expect(BUILDING_STYLES.command.accentColor).toBeTruthy();
   });
