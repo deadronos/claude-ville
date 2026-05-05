@@ -5,18 +5,19 @@ import { render } from '@testing-library/react';
 
 const fiberMocks = vi.hoisted(() => ({
   set: vi.fn(),
+  setState: vi.fn((nextState: { camera?: unknown }) => {
+    fiberMocks.set(nextState);
+    if (nextState.camera) {
+      fiberMocks.camera = nextState.camera;
+    }
+  }),
   camera: { previous: true } as any,
 }));
 
 vi.mock('@react-three/fiber', () => ({
   useThree: (selector: (state: unknown) => unknown) => selector({
     camera: fiberMocks.camera,
-    set: (nextState: { camera?: unknown }) => {
-      fiberMocks.set(nextState);
-      if (nextState.camera) {
-        fiberMocks.camera = nextState.camera;
-      }
-    },
+    set: fiberMocks.setState,
   }),
 }));
 
@@ -26,6 +27,7 @@ import { WorldText } from './components/WorldText.js';
 describe('React world components', () => {
   beforeEach(() => {
     fiberMocks.set.mockClear();
+    fiberMocks.setState.mockClear();
     fiberMocks.camera = { previous: true };
   });
 
@@ -51,10 +53,12 @@ describe('React world components', () => {
     const { rerender, unmount } = render(<ScreenSpaceCamera viewport={{ width: 960, height: 540 }} />);
     const firstCamera = fiberMocks.camera;
 
+    fiberMocks.set.mockClear();
     rerender(<ScreenSpaceCamera viewport={{ width: 720, height: 540 }} />);
     const secondCamera = fiberMocks.camera;
 
     expect(secondCamera).toBe(firstCamera);
+    expect(fiberMocks.set).not.toHaveBeenCalled();
     expect(secondCamera).toEqual(expect.objectContaining({
       left: 0,
       right: 720,

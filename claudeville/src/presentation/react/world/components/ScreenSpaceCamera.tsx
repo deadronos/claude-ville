@@ -32,11 +32,14 @@ export function ScreenSpaceCamera({
     camera.far = 1000;
     camera.zoom = 1;
     camera.updateProjectionMatrix();
+  }, [camera, viewport.height, viewport.width]);
+
+  useLayoutEffect(() => {
     set({ camera });
     return () => {
       set({ camera: restoreCameraRef.current });
     };
-  }, [camera, set, viewport.height, viewport.width]);
+  }, [camera, set]);
 
   return <primitive object={camera} />;
 }
