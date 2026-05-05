@@ -134,6 +134,7 @@ The content area switches between:
 - world mode: React Three Fiber isometric rendering inside the React shell, with a manual screen-space orthographic camera, ECS-backed world entities, instanced terrain, and DOM overlays for focus and selection markers
 - dashboard mode: card-based project grouping with per-agent detail hooks
 - PixiJS village: an alternate 2D observability view (served at `/pixijs.html`) that maps sessions to fixed buildings for dense monitoring
+- voxel village: an alternate Minecraft-like 3D observability view (served at `/voxel.html`) with orbit controls, walking voxel agents, and 3D billboards for readable world text
 
 The optional right activity panel is a flex sibling; it should animate with transforms and opacity rather than width so the world viewport stays stable.
 

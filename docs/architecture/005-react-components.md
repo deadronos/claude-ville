@@ -22,6 +22,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 | `claudeville/src/presentation/react/components/ActivityPanel.tsx` | Selection detail surface | Renders the selected agent’s metadata, tool history, token usage, and messages. |
 | `claudeville/src/presentation/react/components/Sidebar.tsx` | Agent list sidebar | Renders the collapsible agent list with project grouping and focus controls. |
 | `claudeville/src/pixivillage/PixiVillageApp.tsx` | PixiJS alternate frontend | Root component for the alternate 2D observability view. |
+| `claudeville/src/voxelvillage/VoxelVillageApp.tsx` | Voxel alternate frontend | Root component for the Minecraft-like R3F village view served at `/voxel.html`. |
 | `claudeville/src/presentation/react/components/GradientAvatar.tsx` | Generative visualizer | Generates unique circular gradient avatars based on agent IDs. |
 | `claudeville/src/presentation/character-mode/*` | Legacy reference renderer | Provides the older imperative canvas implementation and the canonical coordinate math that the React scene mirrors. |
 

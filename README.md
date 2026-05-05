@@ -68,6 +68,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 - **English-only UI** — Consistent English labels across the app
 - **React + React Three Fiber frontend** — Same isometric village, now powered by Vite, React, and WebGL rendering
 - **PixiJS Village frontend** — Alternate dense observability view at `/pixijs.html` for crisp 2D session monitoring
+- **Voxel Village frontend** — Alternate Minecraft-like 3D village at `/voxel.html` with orbit camera controls and readable world billboards
 
 ## Quick Start
 
@@ -85,6 +86,7 @@ ClaudeVille supports multiple frontend implementations:
 
 - **React + R3F (Default)**: `npm run dev:frontend` (serves the isometric React/Three.js world)
 - **PixiJS Village**: `npm run dev:frontend-pixijs` (serves an alternate 2D observability view at `/pixijs.html`). This view maps sessions to fixed village buildings such as Command Center, Chat Hall, Code Forge, Token Mine, Task Board, Memory Archive, Research Lab, and Alert Tower.
+- **Voxel Village**: `npm run dev:frontend-voxel` (serves a Minecraft-like 3D observability view at `/voxel.html`). This view keeps the same live hub data, maps agents to voxel buildings, lets agents walk around their building, and uses orbit controls plus 3D billboards for readable world text.
 
 ### Production-ish frontend build
 

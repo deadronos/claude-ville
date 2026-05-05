@@ -1,1 +1,0 @@
-import{n as e}from"./pixijs-CMXFMH9K.js";export{e as WebGLRenderer};
