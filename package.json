@@ -9,6 +9,7 @@
     "dev:hubreceiver": "tsx hubreceiver/server.ts",
     "dev:frontend": "vite",
     "dev:frontend-pixijs": "vite --host 127.0.0.1 --open /pixijs.html",
+    "dev:frontend-voxel": "vite --open /voxel.html",
     "build:frontend": "vite build",
     "widget:build": "cd widget && bash build.sh",
     "widget": "open widget/ClaudeVilleWidget.app",
@@ -45,6 +46,7 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
     "pixi.js": "^8.18.1",
     "react": "^19.2.5",

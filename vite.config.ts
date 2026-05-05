@@ -50,6 +50,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'claudeville/index.html'),
         pixijs: resolve(__dirname, 'claudeville/pixijs.html'),
+        voxel: resolve(__dirname, 'claudeville/voxel.html'),
       },
     },
   },

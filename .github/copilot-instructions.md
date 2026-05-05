@@ -18,6 +18,7 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 - `npm run dev:hubreceiver` — hub API/WebSocket on port `3030`
 - `npm run dev:collector` — snapshot watcher/publisher
 - `npm run dev:frontend` — Vite browser UI on port `3001`
+- `npm run dev:frontend-voxel` — alternate Minecraft-like voxel village UI at `/voxel.html`
 
 ### Build the widget
 

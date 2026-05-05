@@ -1,0 +1,308 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #d9ecf2;
+  color: #132237;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.voxel-village {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: linear-gradient(180deg, #d5ecf4 0%, #eaf4ed 58%, #d1e2c7 100%);
+}
+
+.voxel-village__topbar,
+.voxel-village__main,
+.voxel-village__selected,
+.voxel-village__agent,
+.voxel-village__status-strip,
+.voxel-village__connection {
+  display: flex;
+}
+
+.voxel-village__topbar {
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 68px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgb(38 66 49 / 0.18);
+  background: rgb(247 252 246 / 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.voxel-village__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 238px;
+}
+
+.voxel-village__mark {
+  width: 34px;
+  height: 34px;
+  image-rendering: pixelated;
+  background:
+    linear-gradient(90deg, transparent 0 28%, #245a36 28% 72%, transparent 72%),
+    linear-gradient(0deg, #6db66b 0 36%, #4a914f 36% 68%, #2d6b42 68%);
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.15), 0 5px 14px rgb(42 81 46 / 0.26);
+}
+
+.voxel-village__brand strong,
+.voxel-village__selected strong,
+.voxel-village__agent strong,
+.voxel-village__metric strong,
+.voxel-village__connection strong {
+  display: block;
+  color: #132237;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.voxel-village__brand small,
+.voxel-village__selected small,
+.voxel-village__agent small,
+.voxel-village__metric small,
+.voxel-village__connection small,
+.voxel-village__detail h3 {
+  display: block;
+  color: #5b6b7e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.voxel-village__status-strip {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.voxel-village__status {
+  min-width: 84px;
+  padding: 7px 10px;
+  border: 1px solid rgb(25 42 62 / 0.13);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.76);
+  color: #24344a;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.voxel-village__status--running { border-color: rgb(45 172 92 / 0.35); }
+.voxel-village__status--waiting { border-color: rgb(201 139 33 / 0.4); }
+.voxel-village__status--idle { border-color: rgb(85 104 130 / 0.28); }
+.voxel-village__status--error { border-color: rgb(222 58 75 / 0.4); }
+
+.voxel-village__connection {
+  align-items: flex-end;
+  flex-direction: column;
+  min-width: 146px;
+}
+
+.voxel-village__main {
+  flex: 1;
+  min-height: 0;
+}
+
+.voxel-village__sidebar,
+.voxel-village__inspector {
+  width: 286px;
+  min-width: 240px;
+  padding: 16px;
+  overflow: auto;
+  border-color: rgb(38 66 49 / 0.16);
+  background: rgb(249 252 247 / 0.76);
+  backdrop-filter: blur(12px);
+}
+
+.voxel-village__sidebar {
+  border-right: 1px solid rgb(38 66 49 / 0.16);
+}
+
+.voxel-village__inspector {
+  border-left: 1px solid rgb(38 66 49 / 0.16);
+}
+
+.voxel-village__panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.voxel-village__panel-head h1,
+.voxel-village__panel-head h2 {
+  margin: 0;
+  color: #122238;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.voxel-village__panel-head span {
+  color: #66758a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.voxel-village__search {
+  width: 100%;
+  height: 36px;
+  margin-bottom: 12px;
+  padding: 0 11px;
+  border: 1px solid rgb(28 44 67 / 0.16);
+  border-radius: 6px;
+  outline: none;
+  background: rgb(255 255 255 / 0.82);
+  color: #16243a;
+  font-size: 13px;
+}
+
+.voxel-village__agent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.voxel-village__agent,
+.voxel-village__selected {
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid rgb(28 44 67 / 0.12);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.74);
+}
+
+.voxel-village__agent {
+  padding: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.voxel-village__agent.is-selected,
+.voxel-village__agent:hover {
+  border-color: rgb(64 123 68 / 0.38);
+  background: #ffffff;
+}
+
+.voxel-village__agent > span:nth-child(2),
+.voxel-village__selected > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.voxel-village__agent small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voxel-village__avatar {
+  width: 16px;
+  height: 22px;
+  flex: 0 0 auto;
+  background: #8ca0ba;
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.18);
+}
+
+.voxel-village__avatar--running { background: #45d483; }
+.voxel-village__avatar--waiting { background: #f2b84b; }
+.voxel-village__avatar--idle { background: #8ca0ba; }
+.voxel-village__avatar--error { background: #ff5f6d; }
+.voxel-village__avatar--offline { background: #667085; }
+
+.voxel-village__stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.voxel-village__stage canvas {
+  display: block;
+  cursor: grab;
+}
+
+.voxel-village__stage canvas:active {
+  cursor: grabbing;
+}
+
+.voxel-village__selected,
+.voxel-village__detail,
+.voxel-village__metrics {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid rgb(28 44 67 / 0.12);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.76);
+}
+
+.voxel-village__detail h3 {
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.voxel-village__detail p,
+.voxel-village__empty {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.voxel-village__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.voxel-village__metric {
+  min-width: 0;
+}
+
+.voxel-village__metric strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .voxel-village__topbar {
+    flex-wrap: wrap;
+  }
+
+  .voxel-village__main {
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .voxel-village__sidebar,
+  .voxel-village__inspector {
+    width: 100%;
+    min-height: 180px;
+    border: 0;
+  }
+
+  .voxel-village__stage {
+    min-height: 460px;
+  }
+}
