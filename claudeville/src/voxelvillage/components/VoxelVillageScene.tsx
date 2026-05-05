@@ -21,13 +21,7 @@ export function VoxelVillageScene({
   onSelectAgent,
   onSelectBuilding,
 }: VoxelVillageSceneProps) {
-  const occlusionTargets = useMemo(
-    () => snapshot.agents.flatMap((agent) => ([
-      { id: `${agent.id}:body`, x: agent.voxelPosition.x, y: 0.95, z: agent.voxelPosition.z },
-      { id: `${agent.id}:label`, x: agent.voxelPosition.x, y: 1.95, z: agent.voxelPosition.z },
-    ])),
-    [snapshot.agents],
-  );
+  const occlusionTargets = snapshot.agents;
 
   return (
     <section className="voxel-village__stage" aria-label="3D voxel village scene">
@@ -117,7 +111,7 @@ function VoxelBuilding({
 }: {
   building: VoxelVillageBuilding;
   selected: boolean;
-  occlusionTargets: Array<{ id: string; x: number; y: number; z: number }>;
+  occlusionTargets: VoxelVillageAgent[];
   onSelect: () => void;
 }) {
   const { camera } = useThree();
@@ -130,6 +124,7 @@ function VoxelBuilding({
   const rightWallRef = useRef<MeshStandardMaterial | null>(null);
   const roofRef = useRef<MeshStandardMaterial | null>(null);
   const occlusionBox = useMemo(() => new Box3(), []);
+  const expandedOcclusionBox = useMemo(() => new Box3(), []);
   const ray = useMemo(() => new Ray(), []);
   const hitPoint = useMemo(() => new Vector3(), []);
   const buildingCenter = useMemo(
@@ -137,8 +132,21 @@ function VoxelBuilding({
     [footprint.height, voxelPosition.x, voxelPosition.z],
   );
   const cameraOffset = useMemo(() => new Vector3(), []);
+  const cameraForward = useMemo(() => new Vector3(), []);
+  const cameraRight = useMemo(() => new Vector3(), []);
+  const cameraUp = useMemo(() => new Vector3(), []);
   const targetPosition = useMemo(() => new Vector3(), []);
   const rayDirection = useMemo(() => new Vector3(), []);
+  const sampleOffsets = useMemo(
+    () => [
+      new Vector3(0, 0.95, 0),
+      new Vector3(0, 1.2, 0),
+      new Vector3(0, 1.95, 0),
+      new Vector3(0, 2.15, 0),
+    ],
+    [],
+  );
+  const samplePoint = useMemo(() => new Vector3(), []);
 
   useFrame(() => {
     const wallMaterials = [frontWallRef.current, backWallRef.current, leftWallRef.current, rightWallRef.current];
@@ -164,19 +172,42 @@ function VoxelBuilding({
         voxelPosition.z + footprint.depth / 2,
       ),
     );
+    expandedOcclusionBox.copy(occlusionBox).expandByScalar(0.55);
+
+    camera.getWorldDirection(cameraForward);
+    cameraRight.copy(cameraForward).cross(camera.up).normalize();
+    cameraUp.copy(camera.up).normalize();
 
     const targetIsOccluded = occlusionTargets.some((target) => {
-      targetPosition.set(target.x, target.y, target.z);
-      rayDirection.copy(targetPosition).sub(camera.position);
-      const targetDistance = rayDirection.length();
-      if (targetDistance <= 0.001) {
-        return false;
-      }
+      targetPosition.set(target.voxelPosition.x, 0, target.voxelPosition.z);
 
-      rayDirection.divideScalar(targetDistance);
-      ray.set(camera.position, rayDirection);
-      const intersection = ray.intersectBox(occlusionBox, hitPoint);
-      return Boolean(intersection) && camera.position.distanceTo(hitPoint) < targetDistance - 0.08;
+      return sampleOffsets.some((baseOffset, index) => {
+        samplePoint.copy(targetPosition).add(baseOffset);
+
+        if (index >= 2) {
+          const labelHalfWidth = 1.18;
+          const labelLift = index === 2 ? 0 : 0.18;
+          samplePoint.addScaledVector(cameraUp, labelLift);
+          if (index === 2) {
+            samplePoint.addScaledVector(cameraRight, -labelHalfWidth);
+          } else {
+            samplePoint.addScaledVector(cameraRight, labelHalfWidth);
+          }
+        } else {
+          samplePoint.addScaledVector(cameraRight, index === 0 ? -0.18 : 0.18);
+        }
+
+        rayDirection.copy(samplePoint).sub(camera.position);
+        const targetDistance = rayDirection.length();
+        if (targetDistance <= 0.001) {
+          return false;
+        }
+
+        rayDirection.divideScalar(targetDistance);
+        ray.set(camera.position, rayDirection);
+        const intersection = ray.intersectBox(expandedOcclusionBox, hitPoint);
+        return Boolean(intersection) && camera.position.distanceTo(hitPoint) < targetDistance - 0.05;
+      });
     });
 
     if (targetIsOccluded) {

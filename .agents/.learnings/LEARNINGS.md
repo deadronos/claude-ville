@@ -30,6 +30,32 @@ When a learning is promoted to a skill, add these fields:
 
 ---
 
+## [LRN-20260505-002] correction
+
+**Logged**: 2026-05-05T23:10:00Z
+**Priority**: medium
+**Status**: pending
+**Area**: frontend
+
+### Summary
+
+Voxel building occlusion cannot rely on a single target anchor when billboards and avatars extend past that point on screen.
+
+### Details
+
+The first voxel occlusion pass tested the ray from the camera to one body point and one label anchor. In angled views, the anchor could remain visible while the avatar mesh or the left/right edge of the billboard was still hidden behind a wall or roof, so buildings stayed opaque even though the visible content was blocked.
+
+### Suggested Action
+
+For voxel or 3D overlay occlusion, sample multiple points across the visible shape: avatar body edges plus billboard left/right extents. If the route uses simplified building boxes, expand the occlusion bounds slightly to account for roof overhang and wall thickness.
+
+### Metadata
+- Source: user_feedback
+- Related Files: claudeville/src/voxelvillage/components/VoxelVillageScene.tsx
+- Tags: voxel, r3f, occlusion, billboard, camera
+
+---
+
 ## [LRN-20260504-001] best_practice
 
 **Logged**: 2026-05-04T23:18:00Z
