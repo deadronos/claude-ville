@@ -10,6 +10,7 @@ import {
   isoToScreen,
   isoToWorld,
   lighten,
+  screenToIso,
   screenToTile,
   screenToWorld,
   worldToIso,
@@ -74,6 +75,27 @@ describe('world utils camera helpers', () => {
     const tile = screenToTile(screenX, screenY, camera, viewport);
     expect(tile.tileX).toBe(10);
     expect(tile.tileZ).toBe(14);
+  });
+
+  it('converts screen to iso coordinates correctly', () => {
+    const viewport = { width: 960, height: 540 };
+    const camera = {
+      targetX: 120,
+      targetZ: 80,
+      zoom: 2,
+      minZoom: 0.5,
+      maxZoom: 3,
+      followAgentId: null,
+      followSmoothing: 0.08,
+    };
+
+    const iso = screenToIso(480, 270, camera, viewport);
+    expect(iso.x).toBe(camera.targetX);
+    expect(iso.y).toBe(camera.targetZ);
+
+    const iso2 = screenToIso(480 + 32, 270 + 16, camera, viewport);
+    expect(iso2.x).toBe(camera.targetX + 16);
+    expect(iso2.y).toBe(camera.targetZ + 8);
   });
 });
 

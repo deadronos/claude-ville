@@ -11,7 +11,7 @@ import { PostProcessing } from './components/PostProcessing.js';
 import { useWorldSprites } from './hooks/useWorldSprites.js';
 import { useWorldStore } from './state/useWorldStore.js';
 import type { CameraModel, InteractionModel, ViewportSize, WorldViewProps } from './types.js';
-import { createCenteredCamera, getCameraFocusPosition, screenToWorld, worldToIso } from './utils.js';
+import { createCenteredCamera, getCameraFocusPosition, screenToIso, worldToIso } from './utils.js';
 
 export function WorldView({
   active,
@@ -41,8 +41,8 @@ export function WorldView({
   const touchStateRef = useRef({
     initialDistance: 0,
     initialZoom: 0,
-    centerTargetX: 0,
-    centerTargetZ: 0,
+    centerIsoX: 0,
+    centerIsoY: 0,
   });
   const [viewport, setViewport] = useState<ViewportSize>({ width: 1, height: 1 });
   const [dragging, setDragging] = useState(false);
@@ -155,8 +155,8 @@ export function WorldView({
       const mouseX = event.clientX - rect.left;
       const mouseY = event.clientY - rect.top;
 
-      // Get world point under cursor before zoom
-      const worldBefore = screenToWorld(mouseX, mouseY, cameraRef.current, viewportRef.current);
+      // Get iso point under cursor before zoom
+      const isoBefore = screenToIso(mouseX, mouseY, cameraRef.current, viewportRef.current);
 
       // Calculate new zoom
       let rawDelta = event.deltaY;
@@ -166,13 +166,13 @@ export function WorldView({
       const factor = 1 - clamped * 0.003;
       const newZoom = Math.max(cameraRef.current.minZoom, Math.min(cameraRef.current.maxZoom, cameraRef.current.zoom * factor));
 
-      // Temporarily set new zoom to get world point after
+      // Temporarily set new zoom to get iso point after
       cameraRef.current.zoom = newZoom;
-      const worldAfter = screenToWorld(mouseX, mouseY, cameraRef.current, viewportRef.current);
+      const isoAfter = screenToIso(mouseX, mouseY, cameraRef.current, viewportRef.current);
 
-      // Adjust target to keep the world point under cursor stationary
-      cameraRef.current.targetX += worldBefore.x - worldAfter.x;
-      cameraRef.current.targetZ += worldBefore.z - worldAfter.z;
+      // Adjust target to keep the iso point under cursor stationary
+      cameraRef.current.targetX += isoBefore.x - isoAfter.x;
+      cameraRef.current.targetZ += isoBefore.y - isoAfter.y;
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
@@ -250,13 +250,13 @@ export function WorldView({
 
           const centerX = (t1.clientX + t2.clientX) / 2 - rect.left;
           const centerY = (t1.clientY + t2.clientY) / 2 - rect.top;
-          const worldBefore = screenToWorld(centerX, centerY, cameraRef.current, viewportRef.current);
+          const isoBefore = screenToIso(centerX, centerY, cameraRef.current, viewportRef.current);
 
           touchStateRef.current = {
             initialDistance: dist,
             initialZoom: cameraRef.current.zoom,
-            centerTargetX: worldBefore.x,
-            centerTargetZ: worldBefore.z,
+            centerIsoX: isoBefore.x,
+            centerIsoY: isoBefore.y,
           };
         }
       }}
@@ -278,9 +278,9 @@ export function WorldView({
             Math.min(cameraRef.current.maxZoom, touchStateRef.current.initialZoom * ratio)
           );
 
-          const worldAfter = screenToWorld(centerX, centerY, cameraRef.current, viewportRef.current);
-          cameraRef.current.targetX += touchStateRef.current.centerTargetX - worldAfter.x;
-          cameraRef.current.targetZ += touchStateRef.current.centerTargetZ - worldAfter.z;
+          const isoAfter = screenToIso(centerX, centerY, cameraRef.current, viewportRef.current);
+          cameraRef.current.targetX += touchStateRef.current.centerIsoX - isoAfter.x;
+          cameraRef.current.targetZ += touchStateRef.current.centerIsoY - isoAfter.y;
         }
       }}
       onTouchEnd={() => {
