@@ -139,10 +139,13 @@ function VoxelBuilding({
   const rayDirection = useMemo(() => new Vector3(), []);
   const sampleOffsets = useMemo(
     () => [
+      new Vector3(0, 0.72, 0),
       new Vector3(0, 0.95, 0),
       new Vector3(0, 1.2, 0),
+      new Vector3(0, 1.45, 0),
       new Vector3(0, 1.95, 0),
       new Vector3(0, 2.15, 0),
+      new Vector3(0, 2.28, 0),
     ],
     [],
   );
@@ -172,7 +175,7 @@ function VoxelBuilding({
         voxelPosition.z + footprint.depth / 2,
       ),
     );
-    expandedOcclusionBox.copy(occlusionBox).expandByScalar(0.55);
+    expandedOcclusionBox.copy(occlusionBox).expandByVector(new Vector3(0.95, 0.45, 0.95));
 
     camera.getWorldDirection(cameraForward);
     cameraRight.copy(cameraForward).cross(camera.up).normalize();
@@ -184,17 +187,18 @@ function VoxelBuilding({
       return sampleOffsets.some((baseOffset, index) => {
         samplePoint.copy(targetPosition).add(baseOffset);
 
-        if (index >= 2) {
-          const labelHalfWidth = 1.18;
-          const labelLift = index === 2 ? 0 : 0.18;
+        if (index >= 4) {
+          const labelHalfWidth = index === 4 ? 1.35 : index === 5 ? 1.35 : 0;
+          const labelLift = index === 6 ? 0.24 : index === 5 ? 0.12 : 0;
           samplePoint.addScaledVector(cameraUp, labelLift);
-          if (index === 2) {
+          if (index === 4) {
             samplePoint.addScaledVector(cameraRight, -labelHalfWidth);
-          } else {
+          } else if (index === 5) {
             samplePoint.addScaledVector(cameraRight, labelHalfWidth);
           }
         } else {
-          samplePoint.addScaledVector(cameraRight, index === 0 ? -0.18 : 0.18);
+          const bodyHalfWidth = index === 0 ? 0 : index === 1 ? 0.24 : index === 2 ? -0.24 : index === 3 ? 0.34 : -0.34;
+          samplePoint.addScaledVector(cameraRight, bodyHalfWidth);
         }
 
         rayDirection.copy(samplePoint).sub(camera.position);
@@ -212,21 +216,11 @@ function VoxelBuilding({
 
     if (targetIsOccluded) {
       cameraOffset.copy(camera.position).sub(buildingCenter);
-      if (Math.abs(cameraOffset.z) >= Math.abs(cameraOffset.x)) {
-        if (cameraOffset.z >= 0) {
-          frontOpacity = 0.1;
-        } else {
-          backOpacity = 0.1;
-        }
-      } else if (cameraOffset.x >= 0) {
-        rightOpacity = 0.1;
-      } else {
-        leftOpacity = 0.1;
-      }
-
-      if (cameraOffset.y > footprint.height * 0.15) {
-        roofOpacity = 0.12;
-      }
+      frontOpacity = 0.08;
+      backOpacity = 0.08;
+      leftOpacity = 0.08;
+      rightOpacity = 0.08;
+      roofOpacity = cameraOffset.y > -0.4 ? 0.1 : 0.16;
     }
 
     setMaterialOpacity(frontWallRef.current, frontOpacity);
