@@ -1,8 +1,5 @@
 :root {
-  color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #d9ecf2;
-  color: #132237;
+  color-scheme: dark;
 }
 
 * {
@@ -24,7 +21,9 @@ input {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: linear-gradient(180deg, #d5ecf4 0%, #eaf4ed 58%, #d1e2c7 100%);
+  background:
+    radial-gradient(circle at top, rgb(16 163 127 / 0.12), transparent 34%),
+    linear-gradient(180deg, #121417 0%, #171717 42%, #111315 100%);
 }
 
 .voxel-village__topbar,
@@ -42,9 +41,10 @@ input {
   gap: 18px;
   min-height: 68px;
   padding: 12px 18px;
-  border-bottom: 1px solid rgb(38 66 49 / 0.18);
-  background: rgb(247 252 246 / 0.82);
-  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--border-main);
+  background: var(--bg-glass);
+  -webkit-backdrop-filter: blur(var(--blur));
+  backdrop-filter: blur(var(--blur));
 }
 
 .voxel-village__brand {
@@ -59,9 +59,9 @@ input {
   height: 34px;
   image-rendering: pixelated;
   background:
-    linear-gradient(90deg, transparent 0 28%, #245a36 28% 72%, transparent 72%),
-    linear-gradient(0deg, #6db66b 0 36%, #4a914f 36% 68%, #2d6b42 68%);
-  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.15), 0 5px 14px rgb(42 81 46 / 0.26);
+    linear-gradient(90deg, transparent 0 28%, #0f3b2c 28% 72%, transparent 72%),
+    linear-gradient(0deg, #10a37f 0 36%, #1c755f 36% 68%, #12483a 68%);
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.24), 0 8px 18px rgb(0 0 0 / 0.28);
 }
 
 .voxel-village__brand strong,
@@ -70,8 +70,8 @@ input {
 .voxel-village__metric strong,
 .voxel-village__connection strong {
   display: block;
-  color: #132237;
-  font-size: 14px;
+  color: var(--text-main);
+  font-size: var(--font-size-md);
   line-height: 1.2;
 }
 
@@ -82,10 +82,10 @@ input {
 .voxel-village__connection small,
 .voxel-village__detail h3 {
   display: block;
-  color: #5b6b7e;
-  font-size: 11px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.03em;
   line-height: 1.35;
 }
 
@@ -98,19 +98,35 @@ input {
 .voxel-village__status {
   min-width: 84px;
   padding: 7px 10px;
-  border: 1px solid rgb(25 42 62 / 0.13);
+  border: 1px solid var(--border-bright);
   border-radius: 6px;
-  background: rgb(255 255 255 / 0.76);
-  color: #24344a;
+  background: var(--border-main);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-main);
   font-size: 12px;
   font-weight: 800;
   text-align: center;
 }
 
-.voxel-village__status--running { border-color: rgb(45 172 92 / 0.35); }
-.voxel-village__status--waiting { border-color: rgb(201 139 33 / 0.4); }
-.voxel-village__status--idle { border-color: rgb(85 104 130 / 0.28); }
-.voxel-village__status--error { border-color: rgb(222 58 75 / 0.4); }
+.voxel-village__status--running {
+  border-color: rgb(16 163 127 / 0.45);
+  color: var(--status-working);
+}
+
+.voxel-village__status--waiting {
+  border-color: rgb(245 158 11 / 0.45);
+  color: var(--status-waiting);
+}
+
+.voxel-village__status--idle {
+  border-color: rgb(142 142 160 / 0.45);
+  color: var(--status-idle);
+}
+
+.voxel-village__status--error {
+  border-color: rgb(239 68 68 / 0.45);
+  color: var(--status-error);
+}
 
 .voxel-village__connection {
   align-items: flex-end;
@@ -129,17 +145,18 @@ input {
   min-width: 240px;
   padding: 16px;
   overflow: auto;
-  border-color: rgb(38 66 49 / 0.16);
-  background: rgb(249 252 247 / 0.76);
-  backdrop-filter: blur(12px);
+  background: var(--bg-glass-sidebar);
+  box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: blur(var(--blur));
+  backdrop-filter: blur(var(--blur));
 }
 
 .voxel-village__sidebar {
-  border-right: 1px solid rgb(38 66 49 / 0.16);
+  border-right: 1px solid var(--border-main);
 }
 
 .voxel-village__inspector {
-  border-left: 1px solid rgb(38 66 49 / 0.16);
+  border-left: 1px solid var(--border-main);
 }
 
 .voxel-village__panel-head {
@@ -153,13 +170,13 @@ input {
 .voxel-village__panel-head h1,
 .voxel-village__panel-head h2 {
   margin: 0;
-  color: #122238;
-  font-size: 18px;
+  color: var(--text-main);
+  font-size: var(--font-size-xl);
   line-height: 1.1;
 }
 
 .voxel-village__panel-head span {
-  color: #66758a;
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 800;
 }
@@ -169,12 +186,22 @@ input {
   height: 36px;
   margin-bottom: 12px;
   padding: 0 11px;
-  border: 1px solid rgb(28 44 67 / 0.16);
+  border: 1px solid var(--border-bright);
   border-radius: 6px;
   outline: none;
-  background: rgb(255 255 255 / 0.82);
-  color: #16243a;
-  font-size: 13px;
+  background: var(--border-main);
+  color: var(--text-main);
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.voxel-village__search::placeholder {
+  color: var(--text-muted);
+}
+
+.voxel-village__search:focus {
+  border-color: rgb(16 163 127 / 0.55);
+  box-shadow: 0 0 0 3px rgb(16 163 127 / 0.15);
 }
 
 .voxel-village__agent-list {
@@ -187,21 +214,28 @@ input {
   align-items: center;
   gap: 10px;
   width: 100%;
-  border: 1px solid rgb(28 44 67 / 0.12);
+  border: 1px solid var(--border-main);
   border-radius: 7px;
-  background: rgb(255 255 255 / 0.74);
+  background: rgb(255 255 255 / 0.03);
+  box-shadow: var(--shadow-sm);
 }
 
 .voxel-village__agent {
   padding: 9px;
   text-align: left;
   cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-md), box-shadow var(--transition-md);
 }
 
 .voxel-village__agent.is-selected,
 .voxel-village__agent:hover {
-  border-color: rgb(64 123 68 / 0.38);
-  background: #ffffff;
+  border-color: var(--border-bright);
+  background: rgb(255 255 255 / 0.07);
+  transform: translateX(3px);
+}
+
+.voxel-village__agent.is-selected {
+  box-shadow: inset 2px 0 0 var(--accent), var(--shadow-sm);
 }
 
 .voxel-village__agent > span:nth-child(2),
@@ -220,15 +254,15 @@ input {
   width: 16px;
   height: 22px;
   flex: 0 0 auto;
-  background: #8ca0ba;
-  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.18);
+  background: var(--status-idle);
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.28);
 }
 
-.voxel-village__avatar--running { background: #45d483; }
-.voxel-village__avatar--waiting { background: #f2b84b; }
-.voxel-village__avatar--idle { background: #8ca0ba; }
-.voxel-village__avatar--error { background: #ff5f6d; }
-.voxel-village__avatar--offline { background: #667085; }
+.voxel-village__avatar--running { background: var(--status-working); }
+.voxel-village__avatar--waiting { background: var(--status-waiting); }
+.voxel-village__avatar--idle { background: var(--status-idle); }
+.voxel-village__avatar--error { background: var(--status-error); }
+.voxel-village__avatar--offline { background: var(--text-muted); }
 
 .voxel-village__stage {
   position: relative;
@@ -251,9 +285,10 @@ input {
 .voxel-village__metrics {
   margin-bottom: 12px;
   padding: 12px;
-  border: 1px solid rgb(28 44 67 / 0.12);
+  border: 1px solid var(--border-main);
   border-radius: 7px;
-  background: rgb(255 255 255 / 0.76);
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: var(--shadow-sm);
 }
 
 .voxel-village__detail h3 {
@@ -264,8 +299,8 @@ input {
 .voxel-village__detail p,
 .voxel-village__empty {
   margin: 0;
-  color: #334155;
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
   line-height: 1.45;
 }
 
