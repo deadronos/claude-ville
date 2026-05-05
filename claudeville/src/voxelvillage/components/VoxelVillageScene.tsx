@@ -2,7 +2,7 @@ import { Billboard, OrbitControls, Text } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import type { Group, MeshStandardMaterial } from 'three';
-import { MathUtils, Vector3 } from 'three';
+import { Box3, MathUtils, Ray, Vector3 } from 'three';
 
 import type { VoxelVillageAgent, VoxelVillageBuilding, VoxelVillageSnapshot } from '../model.js';
 
@@ -21,7 +21,13 @@ export function VoxelVillageScene({
   onSelectAgent,
   onSelectBuilding,
 }: VoxelVillageSceneProps) {
-  const selectedAgent = snapshot.agents.find((agent) => agent.id === selectedAgentId) || null;
+  const occlusionTargets = useMemo(
+    () => snapshot.agents.flatMap((agent) => ([
+      { id: `${agent.id}:body`, x: agent.voxelPosition.x, y: 0.95, z: agent.voxelPosition.z },
+      { id: `${agent.id}:label`, x: agent.voxelPosition.x, y: 1.95, z: agent.voxelPosition.z },
+    ])),
+    [snapshot.agents],
+  );
 
   return (
     <section className="voxel-village__stage" aria-label="3D voxel village scene">
@@ -39,7 +45,7 @@ export function VoxelVillageScene({
             key={building.id}
             building={building}
             selected={selectedBuildingId === building.id}
-            occludedAgent={selectedAgent?.buildingId === building.id ? selectedAgent : null}
+            occlusionTargets={occlusionTargets}
             onSelect={() => onSelectBuilding(building.id)}
           />
         ))}
@@ -106,12 +112,12 @@ function VoxelTree({ x, z }: { x: number; z: number }) {
 function VoxelBuilding({
   building,
   selected,
-  occludedAgent,
+  occlusionTargets,
   onSelect,
 }: {
   building: VoxelVillageBuilding;
   selected: boolean;
-  occludedAgent: VoxelVillageAgent | null;
+  occlusionTargets: Array<{ id: string; x: number; y: number; z: number }>;
   onSelect: () => void;
 }) {
   const { camera } = useThree();
@@ -123,12 +129,16 @@ function VoxelBuilding({
   const leftWallRef = useRef<MeshStandardMaterial | null>(null);
   const rightWallRef = useRef<MeshStandardMaterial | null>(null);
   const roofRef = useRef<MeshStandardMaterial | null>(null);
+  const occlusionBox = useMemo(() => new Box3(), []);
+  const ray = useMemo(() => new Ray(), []);
+  const hitPoint = useMemo(() => new Vector3(), []);
   const buildingCenter = useMemo(
     () => new Vector3(voxelPosition.x, footprint.height / 2, voxelPosition.z),
     [footprint.height, voxelPosition.x, voxelPosition.z],
   );
   const cameraOffset = useMemo(() => new Vector3(), []);
-  const agentOffset = useMemo(() => new Vector3(), []);
+  const targetPosition = useMemo(() => new Vector3(), []);
+  const rayDirection = useMemo(() => new Vector3(), []);
 
   useFrame(() => {
     const wallMaterials = [frontWallRef.current, backWallRef.current, leftWallRef.current, rightWallRef.current];
@@ -142,32 +152,49 @@ function VoxelBuilding({
     let rightOpacity = 1;
     let roofOpacity = 1;
 
-    if (occludedAgent) {
+    occlusionBox.set(
+      new Vector3(
+        voxelPosition.x - footprint.width / 2,
+        0,
+        voxelPosition.z - footprint.depth / 2,
+      ),
+      new Vector3(
+        voxelPosition.x + footprint.width / 2,
+        footprint.height + roofHeight,
+        voxelPosition.z + footprint.depth / 2,
+      ),
+    );
+
+    const targetIsOccluded = occlusionTargets.some((target) => {
+      targetPosition.set(target.x, target.y, target.z);
+      rayDirection.copy(targetPosition).sub(camera.position);
+      const targetDistance = rayDirection.length();
+      if (targetDistance <= 0.001) {
+        return false;
+      }
+
+      rayDirection.divideScalar(targetDistance);
+      ray.set(camera.position, rayDirection);
+      const intersection = ray.intersectBox(occlusionBox, hitPoint);
+      return Boolean(intersection) && camera.position.distanceTo(hitPoint) < targetDistance - 0.08;
+    });
+
+    if (targetIsOccluded) {
       cameraOffset.copy(camera.position).sub(buildingCenter);
-      agentOffset.set(
-        occludedAgent.voxelPosition.x - voxelPosition.x,
-        occludedAgent.voxelPosition.y,
-        occludedAgent.voxelPosition.z - voxelPosition.z,
-      );
-
-      const insideFootprint = Math.abs(agentOffset.x) <= footprint.width * 0.58 && Math.abs(agentOffset.z) <= footprint.depth * 0.58;
-      const hiddenBehindBuilding = cameraOffset.dot(agentOffset) < -0.15;
-      if (insideFootprint || hiddenBehindBuilding) {
-        if (Math.abs(cameraOffset.z) >= Math.abs(cameraOffset.x)) {
-          if (cameraOffset.z >= 0) {
-            frontOpacity = 0.14;
-          } else {
-            backOpacity = 0.14;
-          }
-        } else if (cameraOffset.x >= 0) {
-          rightOpacity = 0.14;
+      if (Math.abs(cameraOffset.z) >= Math.abs(cameraOffset.x)) {
+        if (cameraOffset.z >= 0) {
+          frontOpacity = 0.1;
         } else {
-          leftOpacity = 0.14;
+          backOpacity = 0.1;
         }
+      } else if (cameraOffset.x >= 0) {
+        rightOpacity = 0.1;
+      } else {
+        leftOpacity = 0.1;
+      }
 
-        if (cameraOffset.y > footprint.height * 0.55 || insideFootprint) {
-          roofOpacity = 0.18;
-        }
+      if (cameraOffset.y > footprint.height * 0.15) {
+        roofOpacity = 0.12;
       }
     }
 
