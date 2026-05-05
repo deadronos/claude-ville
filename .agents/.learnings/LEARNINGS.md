@@ -196,3 +196,26 @@ Instead of `max-height` transitions, use CSS grid technique:
 - `docs/superpowers/plans/2026-04-28-ui-ux-enhancements.md`
 
 ---
+
+## [LRN-20260505-001] best_practice
+
+**Logged**: 2026-05-05T17:55:00Z
+**Priority**: high
+**Status**: pending
+**Area**: frontend
+
+### Summary
+Keep the R3F screen-space orthographic camera stable across selection-driven layout resizes.
+
+### Details
+Selecting an agent opens the activity panel and can resize the world viewport. If `ScreenSpaceCamera` replaces its `OrthographicCamera` on each viewport change, old cleanup paths can reinstall a stale camera and leave the whole world rendered with the wrong projection; symptoms include upside-down terrain/buildings, flipped text, missing-looking avatars, broken follow, and broken drag until reload.
+
+### Suggested Action
+For world flip or hit-testing bugs after selection, inspect `ScreenSpaceCamera` lifecycle first. Prefer mutating the existing orthographic camera's frustum and restoring only the original R3F camera on final unmount.
+
+### Metadata
+- Source: conversation
+- Related Files: claudeville/src/presentation/react/world/components/ScreenSpaceCamera.tsx, claudeville/src/presentation/react/world/components.test.tsx
+- Tags: r3f, camera, selection, resize, world-view
+
+---
