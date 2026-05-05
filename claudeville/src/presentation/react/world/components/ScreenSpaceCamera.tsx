@@ -16,7 +16,8 @@ export function ScreenSpaceCamera({
   const previousCamera = useThree((state) => state.camera);
   const restoreCameraRef = useRef(previousCamera);
   const camera = useMemo(() => {
-    const nextCamera = new THREE.OrthographicCamera(0, viewport.width, 0, viewport.height, -1000, 1000);
+    const nextCamera = new THREE.OrthographicCamera(0, viewport.width, 0, viewport.height, -1000, 1000) as THREE.OrthographicCamera & { manual?: boolean };
+    nextCamera.manual = true;
     nextCamera.position.set(0, 0, 100);
     nextCamera.zoom = 1;
     nextCamera.updateProjectionMatrix();

@@ -208,10 +208,10 @@ Instead of `max-height` transitions, use CSS grid technique:
 Keep the R3F screen-space orthographic camera stable across selection-driven layout resizes.
 
 ### Details
-Selecting an agent opens the activity panel and can resize the world viewport. Keeping one `OrthographicCamera` instance is not enough if the install effect still depends on viewport size: resize cleanup can restore the previous camera and then reinstall the screen-space camera, causing projection churn that may leave the whole world rendered with the wrong projection. Symptoms include upside-down terrain/buildings, flipped text, missing-looking avatars, broken follow, and broken drag until reload.
+Selecting an agent opens the activity panel and can resize the world viewport. Keeping one `OrthographicCamera` instance is not enough if the install effect still depends on viewport size, and it is still not enough unless the camera is marked `manual`. R3F's resize path rewrites non-manual orthographic cameras to a centered y-up frustum, which can override ClaudeVille's y-down screen-space projection. Symptoms include upside-down terrain/buildings, flipped text, missing-looking avatars, broken follow, and broken drag until reload.
 
 ### Suggested Action
-For world flip or hit-testing bugs after selection, inspect `ScreenSpaceCamera` lifecycle first. Prefer mutating the existing orthographic camera's frustum in a viewport-dependent effect, while installing/restoring the R3F camera only in a separate mount/unmount effect.
+For world flip or hit-testing bugs after selection, inspect `ScreenSpaceCamera` lifecycle first. Prefer mutating the existing orthographic camera's frustum in a viewport-dependent effect, installing/restoring the R3F camera only in a separate mount/unmount effect, and setting `camera.manual = true` so R3F resize handling cannot rewrite `top`/`bottom`.
 
 ### Metadata
 - Source: conversation

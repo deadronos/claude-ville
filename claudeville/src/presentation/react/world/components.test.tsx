@@ -45,6 +45,7 @@ describe('React world components', () => {
         near: -1000,
         far: 1000,
         zoom: 1,
+        manual: true,
       }),
     }));
   });
@@ -65,6 +66,7 @@ describe('React world components', () => {
       top: 0,
       bottom: 540,
       zoom: 1,
+      manual: true,
     }));
 
     unmount();
