@@ -503,6 +503,7 @@ describe('manual live session E2E', () => {
       const hubreceiver = startNpmScript('hubreceiver', 'dev:hubreceiver', {
         HUB_PORT: String(hubPort),
         HUB_AUTH_TOKEN: hubAuthToken,
+        ALLOWED_ORIGIN: frontendUrl,
       });
       startedProcesses.push(hubreceiver);
       await waitForJson(`${hubUrl}/health`, (json) => json?.ok === true, 30_000);
@@ -525,6 +526,7 @@ describe('manual live session E2E', () => {
         {
           HUB_HTTP_URL: hubUrl,
           HUB_WS_URL: `${hubUrl.replace(/^http/, 'ws')}/ws`,
+          HUB_AUTH_TOKEN: hubAuthToken,
           VITE_CLAUDEVILLE_REFRESH_INTERVAL_MS: '250',
         },
         ['--host', '127.0.0.1', '--port', String(frontendPort), '--strictPort'],
