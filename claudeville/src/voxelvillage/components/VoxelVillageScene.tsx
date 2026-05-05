@@ -1,7 +1,8 @@
 import { Billboard, OrbitControls, Text } from '@react-three/drei';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
-import type { Group } from 'three';
+import type { Group, MeshStandardMaterial } from 'three';
+import { MathUtils, Vector3 } from 'three';
 
 import type { VoxelVillageAgent, VoxelVillageBuilding, VoxelVillageSnapshot } from '../model.js';
 
@@ -20,6 +21,8 @@ export function VoxelVillageScene({
   onSelectAgent,
   onSelectBuilding,
 }: VoxelVillageSceneProps) {
+  const selectedAgent = snapshot.agents.find((agent) => agent.id === selectedAgentId) || null;
+
   return (
     <section className="voxel-village__stage" aria-label="3D voxel village scene">
       <Canvas camera={{ position: [11, 10, 13], fov: 46, near: 0.1, far: 160 }} dpr={[1, 2]}>
@@ -36,6 +39,7 @@ export function VoxelVillageScene({
             key={building.id}
             building={building}
             selected={selectedBuildingId === building.id}
+            occludedAgent={selectedAgent?.buildingId === building.id ? selectedAgent : null}
             onSelect={() => onSelectBuilding(building.id)}
           />
         ))}
@@ -99,21 +103,105 @@ function VoxelTree({ x, z }: { x: number; z: number }) {
   );
 }
 
-function VoxelBuilding({ building, selected, onSelect }: { building: VoxelVillageBuilding; selected: boolean; onSelect: () => void }) {
+function VoxelBuilding({
+  building,
+  selected,
+  occludedAgent,
+  onSelect,
+}: {
+  building: VoxelVillageBuilding;
+  selected: boolean;
+  occludedAgent: VoxelVillageAgent | null;
+  onSelect: () => void;
+}) {
+  const { camera } = useThree();
   const { voxelPosition, footprint } = building;
   const roofHeight = 0.45;
+  const wallThickness = 0.14;
+  const frontWallRef = useRef<MeshStandardMaterial | null>(null);
+  const backWallRef = useRef<MeshStandardMaterial | null>(null);
+  const leftWallRef = useRef<MeshStandardMaterial | null>(null);
+  const rightWallRef = useRef<MeshStandardMaterial | null>(null);
+  const roofRef = useRef<MeshStandardMaterial | null>(null);
+  const buildingCenter = useMemo(
+    () => new Vector3(voxelPosition.x, footprint.height / 2, voxelPosition.z),
+    [footprint.height, voxelPosition.x, voxelPosition.z],
+  );
+  const cameraOffset = useMemo(() => new Vector3(), []);
+  const agentOffset = useMemo(() => new Vector3(), []);
+
+  useFrame(() => {
+    const wallMaterials = [frontWallRef.current, backWallRef.current, leftWallRef.current, rightWallRef.current];
+    if (!wallMaterials.every(Boolean) || !roofRef.current) {
+      return;
+    }
+
+    let frontOpacity = 1;
+    let backOpacity = 1;
+    let leftOpacity = 1;
+    let rightOpacity = 1;
+    let roofOpacity = 1;
+
+    if (occludedAgent) {
+      cameraOffset.copy(camera.position).sub(buildingCenter);
+      agentOffset.set(
+        occludedAgent.voxelPosition.x - voxelPosition.x,
+        occludedAgent.voxelPosition.y,
+        occludedAgent.voxelPosition.z - voxelPosition.z,
+      );
+
+      const insideFootprint = Math.abs(agentOffset.x) <= footprint.width * 0.58 && Math.abs(agentOffset.z) <= footprint.depth * 0.58;
+      const hiddenBehindBuilding = cameraOffset.dot(agentOffset) < -0.15;
+      if (insideFootprint || hiddenBehindBuilding) {
+        if (Math.abs(cameraOffset.z) >= Math.abs(cameraOffset.x)) {
+          if (cameraOffset.z >= 0) {
+            frontOpacity = 0.14;
+          } else {
+            backOpacity = 0.14;
+          }
+        } else if (cameraOffset.x >= 0) {
+          rightOpacity = 0.14;
+        } else {
+          leftOpacity = 0.14;
+        }
+
+        if (cameraOffset.y > footprint.height * 0.55 || insideFootprint) {
+          roofOpacity = 0.18;
+        }
+      }
+    }
+
+    setMaterialOpacity(frontWallRef.current, frontOpacity);
+    setMaterialOpacity(backWallRef.current, backOpacity);
+    setMaterialOpacity(leftWallRef.current, leftOpacity);
+    setMaterialOpacity(rightWallRef.current, rightOpacity);
+    setMaterialOpacity(roofRef.current, roofOpacity);
+  });
+
   return (
     <group position={[voxelPosition.x, 0, voxelPosition.z]} onClick={(event) => {
       event.stopPropagation();
       onSelect();
     }}>
-      <mesh position={[0, footprint.height / 2, 0]}>
-        <boxGeometry args={[footprint.width, footprint.height, footprint.depth]} />
-        <meshStandardMaterial color={building.colorHex} roughness={0.82} />
+      <mesh position={[0, footprint.height / 2, footprint.depth / 2 - wallThickness / 2]}>
+        <boxGeometry args={[footprint.width, footprint.height, wallThickness]} />
+        <meshStandardMaterial ref={frontWallRef} color={building.colorHex} roughness={0.82} transparent opacity={1} />
+      </mesh>
+      <mesh position={[0, footprint.height / 2, -footprint.depth / 2 + wallThickness / 2]}>
+        <boxGeometry args={[footprint.width, footprint.height, wallThickness]} />
+        <meshStandardMaterial ref={backWallRef} color={building.colorHex} roughness={0.82} transparent opacity={1} />
+      </mesh>
+      <mesh position={[-footprint.width / 2 + wallThickness / 2, footprint.height / 2, 0]}>
+        <boxGeometry args={[wallThickness, footprint.height, footprint.depth - wallThickness * 2]} />
+        <meshStandardMaterial ref={leftWallRef} color={building.colorHex} roughness={0.82} transparent opacity={1} />
+      </mesh>
+      <mesh position={[footprint.width / 2 - wallThickness / 2, footprint.height / 2, 0]}>
+        <boxGeometry args={[wallThickness, footprint.height, footprint.depth - wallThickness * 2]} />
+        <meshStandardMaterial ref={rightWallRef} color={building.colorHex} roughness={0.82} transparent opacity={1} />
       </mesh>
       <mesh position={[0, footprint.height + roofHeight / 2, 0]}>
         <boxGeometry args={[footprint.width + 0.35, roofHeight, footprint.depth + 0.35]} />
-        <meshStandardMaterial color={selected ? '#ffe16f' : building.roofHex} roughness={0.74} />
+        <meshStandardMaterial ref={roofRef} color={selected ? '#ffe16f' : building.roofHex} roughness={0.74} transparent opacity={1} />
       </mesh>
       <mesh position={[0, 0.04, footprint.depth / 2 + 0.08]}>
         <boxGeometry args={[0.58, 0.08, 0.18]} />
@@ -134,6 +222,15 @@ function VoxelBuilding({ building, selected, onSelect }: { building: VoxelVillag
       </Billboard>
     </group>
   );
+}
+
+function setMaterialOpacity(material: MeshStandardMaterial | null, targetOpacity: number) {
+  if (!material) {
+    return;
+  }
+  material.opacity = MathUtils.lerp(material.opacity, targetOpacity, 0.18);
+  material.transparent = material.opacity < 0.995;
+  material.depthWrite = material.opacity >= 0.35;
 }
 
 function VoxelAgent({ agent, selected, onSelect }: { agent: VoxelVillageAgent; selected: boolean; onSelect: () => void }) {

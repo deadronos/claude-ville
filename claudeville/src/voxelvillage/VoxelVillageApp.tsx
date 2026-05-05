@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 
+import { i18n } from '../config/i18n.js';
+import { getBubbleConfig, updateBubbleConfig } from '../config/bubbleConfig.js';
 import { useHubVillageData } from '../pixivillage/hooks/useHubVillageData.js';
+import { TEXT_SIZE_PRESETS, getTextSizePresetKey } from '../presentation/shared/textSizePresets.js';
 import type { VillageAgent, VillageStatus } from '../pixivillage/model.js';
 import { VoxelVillageScene } from './components/VoxelVillageScene.js';
 import { buildVoxelVillageSnapshotFromVillage } from './model.js';
@@ -9,6 +12,7 @@ import '../../css/voxelvillage.css';
 const statusOrder: VillageStatus[] = ['running', 'waiting', 'idle', 'error'];
 
 export function VoxelVillageApp() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const {
     snapshot: hubSnapshot,
     selectedAgent,
@@ -21,6 +25,7 @@ export function VoxelVillageApp() {
     selectBuilding,
   } = useHubVillageData();
   const [query, setQuery] = useState('');
+  const [textSizeKey, setTextSizeKey] = useState(() => getTextSizePresetKey(getBubbleConfig().textScale));
   const snapshot = useMemo(() => buildVoxelVillageSnapshotFromVillage(hubSnapshot), [hubSnapshot]);
   const filteredAgents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -40,6 +45,25 @@ export function VoxelVillageApp() {
   const inspectorBuilding = snapshot.buildings.find((building) => building.id === selectedBuildingId)
     || snapshot.buildings.find((building) => building.id === selectedBuilding?.id)
     || null;
+  const textSizePreset = TEXT_SIZE_PRESETS.find((preset) => preset.key === textSizeKey) || TEXT_SIZE_PRESETS[1];
+
+  function openSettings() {
+    setTextSizeKey(getTextSizePresetKey(getBubbleConfig().textScale));
+    setSettingsOpen(true);
+  }
+
+  function applySettings() {
+    updateBubbleConfig({
+      textScale: textSizePreset.textScale,
+      statusFontSize: textSizePreset.statusFontSize,
+      statusMaxWidth: textSizePreset.maxWidth,
+      statusBubbleH: textSizePreset.bubbleH,
+      statusPaddingH: textSizePreset.paddingH,
+      chatFontSize: textSizePreset.statusFontSize,
+      chatMaxWidth: textSizePreset.maxWidth,
+    });
+    setSettingsOpen(false);
+  }
 
   return (
     <div className="voxel-village">
@@ -62,6 +86,15 @@ export function VoxelVillageApp() {
           <small>Data stream</small>
           <strong>{connectionState === 'connected' ? 'WebSocket live' : 'Polling fallback'}</strong>
         </div>
+        <button
+          type="button"
+          className="voxel-village__settings-btn"
+          aria-label={i18n.t('settings')}
+          title={i18n.t('settings')}
+          onClick={openSettings}
+        >
+          ⚙
+        </button>
       </header>
 
       <main className="voxel-village__main">
@@ -127,6 +160,38 @@ export function VoxelVillageApp() {
           )}
         </aside>
       </main>
+
+      {settingsOpen ? (
+        <div className="voxel-village__modal-overlay" onClick={() => setSettingsOpen(false)}>
+          <div className="voxel-village__modal" onClick={(event) => event.stopPropagation()}>
+            <div className="voxel-village__modal-header">
+              <strong>{i18n.t('settingsTitle')}</strong>
+              <button type="button" className="voxel-village__modal-close" onClick={() => setSettingsOpen(false)}>X</button>
+            </div>
+            <div className="voxel-village__modal-body">
+              <div className="voxel-village__settings-row">
+                <span>{i18n.t('textSize')}</span>
+                <div className="voxel-village__settings-options">
+                  {TEXT_SIZE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      className={`voxel-village__settings-option ${textSizeKey === preset.key ? 'is-active' : ''}`}
+                      onClick={() => setTextSizeKey(preset.key)}
+                    >
+                      {i18n.t(preset.labelKey)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="voxel-village__settings-actions">
+                <button type="button" className="voxel-village__settings-option" onClick={() => setSettingsOpen(false)}>Cancel</button>
+                <button type="button" className="voxel-village__settings-option is-active" onClick={applySettings}>Apply</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
