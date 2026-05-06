@@ -32,14 +32,17 @@ export function createHubClient({
       return;
     }
 
-    ws = new WebSocket(getHubWsUrl(config));
+    const socket = new WebSocket(getHubWsUrl(config));
+    ws = socket;
 
-    ws.onopen = () => {
+    socket.onopen = () => {
+      if (socket !== ws) return;
       clearReconnect();
       onConnection?.(true);
     };
 
-    ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (socket !== ws) return;
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'init' || message.type === 'update') {
@@ -50,17 +53,23 @@ export function createHubClient({
       }
     };
 
-    ws.onclose = () => {
+    socket.onclose = () => {
+      if (socket !== ws) return;
+      ws = null;
       onConnection?.(false);
       scheduleReconnect();
     };
 
-    ws.onerror = () => {
+    socket.onerror = () => {
+      if (socket !== ws) return;
       onConnection?.(false);
       try {
-        ws.close();
+        socket.close();
       } catch {
         // The reconnect path below still runs if closing the socket fails.
+      }
+      if (socket === ws) {
+        ws = null;
       }
       scheduleReconnect();
     };
