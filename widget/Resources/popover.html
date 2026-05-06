@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClaudeVille Controls</title>
+  <link rel="stylesheet" href="./popover.css">
+</head>
+<body>
+  <main class="panel">
+    <header class="header">
+      <div>
+        <h1>ClaudeVille</h1>
+        <p id="connection">Connecting</p>
+      </div>
+      <strong id="working-count">0</strong>
+    </header>
+
+    <section class="line" id="pet-line">ready</section>
+
+    <section class="counts" aria-label="Session counts">
+      <div><span id="count-working">0</span><small>working</small></div>
+      <div><span id="count-waiting">0</span><small>waiting</small></div>
+      <div><span id="count-idle">0</span><small>idle</small></div>
+      <div><span id="count-total">0</span><small>total</small></div>
+    </section>
+
+    <section class="actions">
+      <button id="toggle-pet" type="button">Hide Pet</button>
+      <button id="open-dashboard" type="button">Open Dashboard</button>
+      <button id="quit" type="button">Quit</button>
+    </section>
+  </main>
+  <script type="module" src="./popover.js"></script>
+</body>
+</html>
