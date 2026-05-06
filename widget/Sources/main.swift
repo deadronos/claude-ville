@@ -1,404 +1,36 @@
 import Cocoa
 import WebKit
 
-// MARK: - App Delegate
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let defaultHubHTTPURL = "http://localhost:3030"
+    private let petWindowWidth: CGFloat = 224
+    private let petWindowHeight: CGFloat = 256
 
-class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var popover: NSPopover!
-    var webView: WKWebView!
-    var serverProcess: Process?
+    var popoverWebView: WKWebView!
+    var petWindow: NSPanel!
+    var petWebView: WKWebView!
     var dashboardWindow: NSWindow?
     var dashboardWebView: WKWebView?
-    var pollTimer: Timer?
-    var lastHTML: String = ""
-    var hubBaseURL: String = "http://localhost:3030"
+    var runtimeConfig: [String: String] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        runtimeConfig = resolveRuntimeConfig()
         setupStatusItem()
         setupPopover()
-        if let projectPath = readProjectPath() {
-            hubBaseURL = readHubBaseURL(from: projectPath)
-        }
-        DispatchQueue.global(qos: .utility).async {
-            self.startServerIfNeeded()
-            Thread.sleep(forTimeInterval: 2.0)
-            DispatchQueue.main.async { self.startPolling() }
-        }
+        setupPetWindow()
+        showPetWindow()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        pollTimer?.invalidate()
-        stopServer()
+        savePetFrame()
     }
-
-    // MARK: - REST API 폴링 → 뱃지 + 팝오버 HTML 갱신
-
-    func startPolling() {
-        fetchAndRender()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            self?.fetchAndRender()
-        }
-    }
-
-    func fetchAndRender() {
-        let sessionsURLStr = hubBaseURL + "/api/sessions"
-        let usageURLStr = hubBaseURL + "/api/usage"
-        guard let sessionsURL = URL(string: sessionsURLStr),
-              let usageURL = URL(string: usageURLStr) else {
-            renderOffline(); return
-        }
-
-        let group = DispatchGroup()
-        var sessionsResult: [[String: Any]]?
-        var usageResult: [String: Any]?
-
-        group.enter()
-        URLSession.shared.dataTask(with: sessionsURL) { data, _, error in
-            defer { group.leave() }
-            guard let data = data, error == nil,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let sessions = json["sessions"] as? [[String: Any]] else { return }
-            sessionsResult = sessions
-        }.resume()
-
-        group.enter()
-        URLSession.shared.dataTask(with: usageURL) { data, _, error in
-            defer { group.leave() }
-            guard let data = data, error == nil,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            usageResult = json
-        }.resume()
-
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-            guard let sessions = sessionsResult else {
-                self.renderOffline(); return
-            }
-            self.renderSessions(sessions, usage: usageResult)
-        }
-    }
-
-    func renderOffline() {
-        updateBadge(working: 0)
-        let html = Self.buildHTML(agents: [], working: 0, idle: 0, tokens: "0", cost: "$0.00", offline: true)
-        if html != lastHTML { lastHTML = html; webView.loadHTMLString(html, baseURL: nil) }
-    }
-
-    func renderSessions(_ sessions: [[String: Any]], usage: [String: Any]? = nil) {
-        var agents: [(name: String, model: String, status: String)] = []
-        var working = 0, idle = 0, totalTokens = 0, totalCost: Double = 0
-
-        for s in sessions {
-            let status = (s["status"] as? String) ?? "idle"
-            let name = (s["name"] as? String)
-                ?? (s["sessionId"] as? String)?.prefix(8).description
-                ?? "Unknown"
-            let model = (s["model"] as? String ?? "?")
-                .replacingOccurrences(of: "claude-", with: "")
-                .components(separatedBy: "-").first ?? "?"
-            if status == "active" { working += 1 } else { idle += 1 }
-            if let tu = s["tokenUsage"] as? [String: Any] {
-                totalTokens += (tu["input"] as? Int ?? 0) + (tu["output"] as? Int ?? 0)
-            }
-            totalCost += (s["estimatedCost"] as? Double) ?? 0
-            agents.append((name: name, model: model, status: status))
-        }
-
-        updateBadge(working: working)
-        let tokStr = totalTokens >= 1_000_000 ? String(format: "%.1fM", Double(totalTokens)/1_000_000)
-                   : totalTokens >= 1000 ? String(format: "%.1fK", Double(totalTokens)/1000)
-                   : "\(totalTokens)"
-        let costStr = String(format: "$%.2f", totalCost)
-        // Usage/Quota 파싱
-        var tierStr = ""
-        var activityStr = ""
-        var quotaAvailable = false
-        var fiveHourPct = 0
-        var sevenDayPct = 0
-
-        if let usage = usage {
-            if let account = usage["account"] as? [String: Any] {
-                tierStr = Self.formatTier(
-                    rateLimitTier: account["rateLimitTier"] as? String,
-                    subscriptionType: account["subscriptionType"] as? String
-                )
-            }
-            if let activity = usage["activity"] as? [String: Any],
-               let today = activity["today"] as? [String: Any] {
-                let msgs = today["messages"] as? Int ?? 0
-                let sess = today["sessions"] as? Int ?? 0
-                let msgsStr = msgs >= 1000 ? String(format: "%.1fK", Double(msgs)/1000) : "\(msgs)"
-                activityStr = "\(msgsStr) msgs / \(sess) sessions"
-            }
-            if let qa = usage["quotaAvailable"] as? Bool, qa,
-               let quota = usage["quota"] as? [String: Any] {
-                quotaAvailable = true
-                fiveHourPct = Int((quota["fiveHour"] as? Double ?? 0) * 100)
-                sevenDayPct = Int((quota["sevenDay"] as? Double ?? 0) * 100)
-            }
-        }
-
-        let html = Self.buildHTML(agents: agents, working: working, idle: idle,
-                                  tokens: tokStr, cost: costStr, offline: false,
-                                  tier: tierStr, activity: activityStr,
-                                  quotaAvailable: quotaAvailable,
-                                  fiveHourPct: fiveHourPct, sevenDayPct: sevenDayPct)
-        if html != lastHTML { lastHTML = html; webView.loadHTMLString(html, baseURL: nil) }
-    }
-
-    static func formatTier(rateLimitTier: String?, subscriptionType: String?) -> String {
-        if let tier = rateLimitTier {
-            if let range = tier.range(of: #"max_(\d+x)"#, options: .regularExpression) {
-                let matched = String(tier[range])
-                let suffix = matched.replacingOccurrences(of: "max_", with: "")
-                return "Max \(suffix)"
-            }
-        }
-        if let sub = subscriptionType, !sub.isEmpty {
-            return sub.prefix(1).uppercased() + sub.dropFirst()
-        }
-        return "Free"
-    }
-
-    static func buildHTML(agents: [(name: String, model: String, status: String)],
-                          working: Int, idle: Int, tokens: String, cost: String, offline: Bool,
-                          tier: String = "", activity: String = "",
-                          quotaAvailable: Bool = false,
-                          fiveHourPct: Int = 0, sevenDayPct: Int = 0) -> String {
-        let sorted = agents.sorted { a, b in
-            let order: [String: Int] = ["active": 0, "working": 0, "waiting": 1, "idle": 2]
-            return (order[a.status] ?? 9) < (order[b.status] ?? 9)
-        }
-
-        var rows = ""
-        if offline {
-            rows = """
-            <div style="text-align:center;padding:40px 0;color:#f97316">
-              <div style="font-size:24px;margin-bottom:8px">⚡</div>
-              <div style="font-family:'Press Start 2P',monospace;font-size:10px">SERVER OFFLINE</div>
-              <div style="font-size:11px;color:#64748b;margin-top:8px">Reconnecting...</div>
-            </div>
-            """
-        } else if sorted.isEmpty {
-            rows = """
-            <div style="text-align:center;padding:40px 0;color:#64748b">
-              <div style="font-size:11px">에이전트 없음</div>
-            </div>
-            """
-        } else {
-            for a in sorted {
-                let isActive = a.status == "active"
-                let dotColor = isActive ? "#4ade80" : "#60a5fa"
-                let statusText = isActive ? "Working..." : "Idle"
-                let opacity = isActive ? "1" : "0.6"
-                rows += """
-                <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;opacity:\(opacity)">
-                  <span style="color:\(dotColor);font-size:8px">●</span>
-                  <span style="flex:1;font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\(escHTML(a.name))</span>
-                  <span style="font-size:9px;color:#64748b;font-family:monospace">\(escHTML(a.model))</span>
-                  <span style="font-size:10px;color:\(dotColor)">\(statusText)</span>
-                </div>
-                """
-            }
-        }
-
-        return """
-        <!DOCTYPE html>
-        <html><head>
-        <meta charset="UTF-8">
-        <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-        <style>
-          * { margin:0; padding:0; box-sizing:border-box; }
-          body { background:#0a0a0f; color:#e2e8f0; font-family:-apple-system,sans-serif;
-                 width:320px; height:420px; overflow:hidden; }
-          .header { padding:16px; border-bottom:1px solid #1e293b; }
-          .title { font-family:'Press Start 2P',monospace; font-size:12px; color:#a78bfa;
-                   margin-bottom:12px; }
-          .badges { display:flex; gap:16px; margin-bottom:8px; }
-          .badge { display:flex; align-items:center; gap:4px; font-size:12px; }
-          .meta { display:flex; justify-content:space-between; font-size:11px; color:#64748b; }
-          .quota-sec { padding:8px 16px; border-bottom:1px solid #1e293b; display:flex;
-                       justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px; }
-          .q-tier { font-size:9px; padding:2px 6px; border-radius:3px;
-                    background:rgba(167,139,250,0.15); color:#a78bfa; font-weight:600; }
-          .q-act { font-size:10px; color:#64748b; }
-          .q-bars { display:flex; gap:8px; width:100%; margin-top:4px; }
-          .q-bar { display:flex; align-items:center; gap:3px; flex:1; }
-          .q-lbl { font-size:8px; color:#64748b; width:16px; }
-          .q-track { flex:1; height:5px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden; }
-          .q-fill { height:100%; border-radius:3px; transition:width 0.3s; }
-          .q-pct { font-size:8px; color:#64748b; width:22px; text-align:right; }
-          .list { flex:1; overflow-y:auto; }
-          .list::-webkit-scrollbar { width:4px; }
-          .list::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
-          .footer { padding:12px; border-top:1px solid #1e293b; text-align:center; }
-          .btn { background:none; border:1px solid #334155; color:#a78bfa; padding:8px 16px;
-                 border-radius:6px; cursor:pointer; font-size:11px; width:100%; }
-          .btn:hover { background:#1e1e2e; border-color:#a78bfa; }
-          .wrap { display:flex; flex-direction:column; height:100%; }
-        </style>
-        </head><body>
-        <div class="wrap">
-          <div class="header">
-            <div class="title">ClaudeVille</div>
-            <div class="badges">
-              <div class="badge"><span style="color:#4ade80">●</span> \(working) working</div>
-              <div class="badge"><span style="color:#60a5fa">●</span> \(idle) idle</div>
-            </div>
-            <div class="meta">
-              <span>\(tokens) tokens</span>
-              <span>\(cost)</span>
-            </div>
-          </div>
-          \(Self.buildQuotaSection(tier: tier, activity: activity, quotaAvailable: quotaAvailable, fiveHourPct: fiveHourPct, sevenDayPct: sevenDayPct))
-          <div class="list">\(rows)</div>
-          <div class="footer">
-            <button class="btn" onclick="try{webkit.messageHandlers.openDashboard.postMessage({})}catch(e){}">
-              Open Dashboard ↗
-            </button>
-          </div>
-        </div>
-        </body></html>
-        """
-    }
-
-    static func buildQuotaSection(tier: String, activity: String,
-                                      quotaAvailable: Bool,
-                                      fiveHourPct: Int, sevenDayPct: Int) -> String {
-        if tier.isEmpty && activity.isEmpty { return "" }
-
-        func barColor(_ pct: Int) -> String {
-            if pct >= 80 { return "#ef4444" }
-            if pct >= 50 { return "#eab308" }
-            return "#4ade80"
-        }
-
-        var quotaBars = ""
-        if quotaAvailable {
-            quotaBars = """
-            <div class="q-bars">
-              <div class="q-bar">
-                <span class="q-lbl">5H</span>
-                <div class="q-track"><div class="q-fill" style="width:\(fiveHourPct)%;background:\(barColor(fiveHourPct))"></div></div>
-                <span class="q-pct">\(fiveHourPct)%</span>
-              </div>
-              <div class="q-bar">
-                <span class="q-lbl">7D</span>
-                <div class="q-track"><div class="q-fill" style="width:\(sevenDayPct)%;background:\(barColor(sevenDayPct))"></div></div>
-                <span class="q-pct">\(sevenDayPct)%</span>
-              </div>
-            </div>
-            """
-        }
-
-        return """
-        <div class="quota-sec">
-          <span class="q-tier">\(escHTML(tier))</span>
-          <span class="q-act">\(escHTML(activity))</span>
-          \(quotaBars)
-        </div>
-        """
-    }
-
-    static func escHTML(_ s: String) -> String {
-        s.replacingOccurrences(of: "&", with: "&amp;")
-         .replacingOccurrences(of: "<", with: "&lt;")
-         .replacingOccurrences(of: ">", with: "&gt;")
-    }
-
-    // MARK: - Server Management
-
-    func startServerIfNeeded() {
-        guard let projectPath = readProjectPath() else { return }
-        let serverScript = projectPath + "/claudeville/server.js"
-        guard FileManager.default.fileExists(atPath: serverScript) else { return }
-        guard let nodePath = readNodePath() ?? findNode() else { return }
-
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: nodePath)
-        proc.arguments = [serverScript]
-        proc.currentDirectoryURL = URL(fileURLWithPath: projectPath)
-        proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
-        try? proc.run()
-        serverProcess = proc
-    }
-
-    func stopServer() {
-        if let proc = serverProcess, proc.isRunning { proc.terminate(); serverProcess = nil }
-    }
-
-    func findNode() -> String? {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let fnmBase = "\(home)/.local/share/fnm/node-versions"
-        if let versions = try? FileManager.default.contentsOfDirectory(atPath: fnmBase) {
-            for v in versions.sorted().reversed() {
-                let p = "\(fnmBase)/\(v)/installation/bin/node"
-                if FileManager.default.fileExists(atPath: p) { return p }
-            }
-        }
-        for c in ["\(home)/.nvm/current/bin/node", "/opt/homebrew/bin/node", "/usr/local/bin/node"] {
-            if FileManager.default.fileExists(atPath: c) { return c }
-        }
-        return nil
-    }
-
-    func readNodePath() -> String? {
-        guard let resURL = Bundle.main.resourceURL else { return nil }
-        let f = resURL.appendingPathComponent("node_path")
-        guard let p = try? String(contentsOf: f, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        return FileManager.default.fileExists(atPath: p) ? p : nil
-    }
-
-    func readProjectPath() -> String? {
-        guard let resURL = Bundle.main.resourceURL else { return nil }
-        let f = resURL.appendingPathComponent("project_path")
-        guard let p = try? String(contentsOf: f, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        if p.isEmpty { return nil }
-        return FileManager.default.fileExists(atPath: p) ? p : nil
-    }
-
-    // MARK: - Hub URL Resolution
-
-    func readHubBaseURL(from projectPath: String) -> String {
-        let envFile = (projectPath as NSString).appendingPathComponent(".env.local")
-        guard let content = try? String(contentsOfFile: envFile, encoding: .utf8) else {
-            return "http://localhost:3030"
-        }
-
-        var hubHttpUrl: String?
-        var hubPort: Int?
-
-        for line in content.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
-            guard let sepRange = trimmed.range(of: "=") else { continue }
-            let key = String(trimmed[..<sepRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-            let val = String(trimmed[sepRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if key == "HUB_HTTP_URL", !val.isEmpty {
-                hubHttpUrl = val
-            } else if key == "HUB_PORT", !val.isEmpty, let port = Int(val) {
-                hubPort = port
-            }
-        }
-
-        if let url = hubHttpUrl, !url.isEmpty {
-            return url
-        }
-        if let port = hubPort {
-            return "http://localhost:\(port)"
-        }
-        return "http://localhost:3030"
-    }
-
-    // MARK: - Status Item
 
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else { return }
-        button.title = "● 0"
+        button.title = "* 0"
         button.font = NSFont.systemFont(ofSize: 13)
         button.action = #selector(statusItemClicked(_:))
         button.target = self
@@ -407,91 +39,372 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func statusItemClicked(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { return }
-        if event.type == .rightMouseUp { showMenu() } else { togglePopover() }
+        if event.type == .rightMouseUp {
+            showMenu()
+        } else {
+            togglePopover()
+        }
+    }
+
+    func setupPopover() {
+        popoverWebView = makeWebView(handlerNames: [
+            "badge",
+            "petState",
+            "openDashboard",
+            "togglePet",
+            "quit",
+        ])
+        popoverWebView.frame = NSRect(x: 0, y: 0, width: 320, height: 360)
+        loadResource("popover", extensionName: "html", into: popoverWebView)
+
+        let viewController = NSViewController()
+        viewController.view = popoverWebView
+
+        popover = NSPopover()
+        popover.contentSize = NSSize(width: 320, height: 360)
+        popover.behavior = .transient
+        popover.contentViewController = viewController
+        popover.animates = true
+    }
+
+    func setupPetWindow() {
+        let frame = loadPetFrame()
+        petWindow = NSPanel(
+            contentRect: frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        petWindow.isOpaque = false
+        petWindow.backgroundColor = .clear
+        petWindow.hasShadow = false
+        petWindow.level = .floating
+        petWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        petWindow.isMovableByWindowBackground = true
+        petWindow.isReleasedWhenClosed = false
+
+        petWebView = makeWebView(handlerNames: [
+            "badge",
+            "petState",
+            "openDashboard",
+            "togglePet",
+            "quit",
+            "openPopover",
+        ])
+        petWebView.frame = NSRect(x: 0, y: 0, width: frame.width, height: frame.height)
+        petWebView.autoresizingMask = [.width, .height]
+
+        let contentView = DraggableContentView(frame: petWebView.frame) { [weak self] in
+            self?.savePetFrame()
+        }
+        contentView.autoresizingMask = [.width, .height]
+        contentView.addSubview(petWebView)
+        petWindow.contentView = contentView
+
+        loadResource("pet", extensionName: "html", into: petWebView)
+    }
+
+    func makeWebView(handlerNames: [String]) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let controller = WKUserContentController()
+        for name in handlerNames {
+            controller.add(MessageHandler(delegate: self, name: name), name: name)
+        }
+        controller.addUserScript(WKUserScript(
+            source: injectedConfigScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        config.userContentController = controller
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
+
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.allowsBackForwardNavigationGestures = false
+        return webView
+    }
+
+    func injectedConfigScript() -> String {
+        let data = try? JSONSerialization.data(withJSONObject: runtimeConfig, options: [])
+        let json = data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return "window.__CLAUDEVILLE_WIDGET_CONFIG__ = \(json);"
+    }
+
+    func loadResource(_ name: String, extensionName: String, into webView: WKWebView) {
+        guard let url = Bundle.main.url(forResource: name, withExtension: extensionName) else {
+            NSLog("ClaudeVilleWidget: missing resource \(name).\(extensionName)")
+            return
+        }
+        let readAccessURL = Bundle.main.resourceURL ?? url.deletingLastPathComponent()
+        webView.loadFileURL(url, allowingReadAccessTo: readAccessURL)
     }
 
     func togglePopover() {
-        guard let button = statusItem.button else { return }
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
+            openPopover()
         }
+    }
+
+    @objc func openPopover() {
+        guard let button = statusItem.button else { return }
+        if popover.isShown {
+            popover.contentViewController?.view.window?.makeKey()
+            return
+        }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func showMenu() {
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Open Dashboard", action: #selector(openDashboard), keyEquivalent: "d"))
+        let petTitle = petWindow?.isVisible == true ? "Hide Pet" : "Show Pet"
+        menu.addItem(makeMenuItem(title: petTitle, action: #selector(togglePetFromMenu), keyEquivalent: "p"))
+        menu.addItem(makeMenuItem(title: "Open Dashboard", action: #selector(openDashboard), keyEquivalent: "d"))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(makeMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
     }
 
+    func makeMenuItem(title: String, action: Selector, keyEquivalent: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        item.target = self
+        return item
+    }
+
+    @objc func showPetWindow() {
+        petWindow.orderFrontRegardless()
+    }
+
+    func hidePetWindow() {
+        savePetFrame()
+        petWindow.orderOut(nil)
+    }
+
+    @objc func togglePetFromMenu() {
+        setPetVisible(!(petWindow?.isVisible ?? false))
+    }
+
+    func setPetVisible(_ visible: Bool) {
+        if visible {
+            showPetWindow()
+        } else {
+            hidePetWindow()
+        }
+    }
+
+    func updateBadge(_ payload: Any) {
+        guard let dict = payload as? [String: Any] else { return }
+        let working = intValue(dict["working"])
+        let waiting = intValue(dict["waiting"])
+        if waiting > 0 {
+            statusItem.button?.title = "* \(working) !"
+        } else {
+            statusItem.button?.title = "* \(working)"
+        }
+    }
+
+    func receivePetState(_ payload: Any) {
+        guard let dict = payload as? [String: Any], let line = dict["line"] as? String, !line.isEmpty else {
+            return
+        }
+        petWindow?.setAccessibilityLabel("ClaudeVille pet: \(line)")
+    }
+
     @objc func openDashboard() {
+        let dashboardURL = runtimeConfig["HUB_HTTP_URL"] ?? runtimeConfig["HUB_URL"] ?? defaultHubHTTPURL
+        guard let url = URL(string: dashboardURL) else { return }
+
         if let window = dashboardWindow, window.isVisible {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
+
         let screen = NSScreen.main ?? NSScreen.screens[0]
-        let w: CGFloat = 1200, h: CGFloat = 800
+        let width: CGFloat = 1200
+        let height: CGFloat = 800
+        let frame = NSRect(
+            x: screen.visibleFrame.midX - width / 2,
+            y: screen.visibleFrame.midY - height / 2,
+            width: width,
+            height: height
+        )
         let window = NSWindow(
-            contentRect: NSRect(x: (screen.frame.width-w)/2, y: (screen.frame.height-h)/2, width: w, height: h),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false
+            contentRect: frame,
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
         )
         window.title = "ClaudeVille Dashboard"
         window.minSize = NSSize(width: 800, height: 600)
         window.isReleasedWhenClosed = false
-        let wv = WKWebView(frame: window.contentView!.bounds)
-        wv.autoresizingMask = [.width, .height]
-        wv.load(URLRequest(url: URL(string: hubBaseURL)!))
-        window.contentView?.addSubview(wv)
-        dashboardWebView = wv; dashboardWindow = window
+
+        let webView = WKWebView(frame: window.contentView?.bounds ?? .zero)
+        webView.autoresizingMask = [.width, .height]
+        webView.load(URLRequest(url: url))
+        window.contentView?.addSubview(webView)
+
+        dashboardWebView = webView
+        dashboardWindow = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc func quitApp() { NSApp.terminate(nil) }
-
-    // MARK: - Popover
-
-    func setupPopover() {
-        let config = WKWebViewConfiguration()
-        let handler = MessageHandler(delegate: self)
-        config.userContentController.add(handler, name: "openDashboard")
-
-        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 320, height: 420), configuration: config)
-        webView.setValue(false, forKey: "drawsBackground")
-
-        let vc = NSViewController()
-        vc.view = webView
-
-        popover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 420)
-        popover.behavior = .transient
-        popover.contentViewController = vc
-        popover.animates = true
+    @objc func quitApp() {
+        savePetFrame()
+        NSApp.terminate(nil)
     }
 
-    func updateBadge(working: Int) {
-        statusItem.button?.title = "● \(working)"
+    func loadPetFrame() -> NSRect {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "petWindowX") != nil && defaults.object(forKey: "petWindowY") != nil {
+            return NSRect(
+                x: defaults.double(forKey: "petWindowX"),
+                y: defaults.double(forKey: "petWindowY"),
+                width: petWindowWidth,
+                height: petWindowHeight
+            )
+        }
+
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        return NSRect(
+            x: screen.visibleFrame.maxX - petWindowWidth - 32,
+            y: screen.visibleFrame.minY + 64,
+            width: petWindowWidth,
+            height: petWindowHeight
+        )
+    }
+
+    func savePetFrame() {
+        guard let frame = petWindow?.frame else { return }
+        UserDefaults.standard.set(frame.origin.x, forKey: "petWindowX")
+        UserDefaults.standard.set(frame.origin.y, forKey: "petWindowY")
+    }
+
+    func resolveRuntimeConfig() -> [String: String] {
+        guard let projectPath = readProjectPath() else {
+            return ["HUB_HTTP_URL": defaultHubHTTPURL]
+        }
+
+        var env = readEnvFile(projectPath: projectPath)
+        if env["HUB_HTTP_URL"] == nil {
+            env["HUB_HTTP_URL"] = env["HUB_URL"] ?? defaultHubHTTPURL
+        }
+        return env
+    }
+
+    func readProjectPath() -> String? {
+        guard let resourceURL = Bundle.main.resourceURL else { return nil }
+        let fileURL = resourceURL.appendingPathComponent("project_path")
+        guard let path = try? String(contentsOf: fileURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return nil
+        }
+        return path.isEmpty ? nil : path
+    }
+
+    func readEnvFile(projectPath: String) -> [String: String] {
+        let envPath = (projectPath as NSString).appendingPathComponent(".env.local")
+        guard let content = try? String(contentsOfFile: envPath, encoding: .utf8) else { return [:] }
+
+        var env: [String: String] = [:]
+        for line in content.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), let separator = trimmed.firstIndex(of: "=") else {
+                continue
+            }
+
+            var key = String(trimmed[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if key.hasPrefix("export ") {
+                key = String(key.dropFirst("export ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let rawValue = String(trimmed[trimmed.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !key.isEmpty {
+                env[key] = unquote(rawValue)
+            }
+        }
+        return env
+    }
+
+    func unquote(_ value: String) -> String {
+        guard value.count >= 2 else { return value }
+        let first = value.first
+        let last = value.last
+        if (first == "\"" && last == "\"") || (first == "'" && last == "'") {
+            return String(value.dropFirst().dropLast())
+        }
+        return value
+    }
+
+    func intValue(_ value: Any?) -> Int {
+        if let int = value as? Int { return int }
+        if let double = value as? Double { return Int(double) }
+        if let string = value as? String, let int = Int(string) { return int }
+        return 0
     }
 }
 
-// MARK: - WKScriptMessageHandler
+final class DraggableContentView: NSView {
+    private let onMoveEnded: () -> Void
 
-class MessageHandler: NSObject, WKScriptMessageHandler {
+    init(frame frameRect: NSRect, onMoveEnded: @escaping () -> Void) {
+        self.onMoveEnded = onMoveEnded
+        super.init(frame: frameRect)
+    }
+
+    required init?(coder: NSCoder) {
+        self.onMoveEnded = {}
+        super.init(coder: coder)
+    }
+
+    override var isFlipped: Bool {
+        true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window = self.window else { return }
+        let origin = window.frame.origin
+        window.setFrameOrigin(NSPoint(x: origin.x + event.deltaX, y: origin.y - event.deltaY))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onMoveEnded()
+    }
+}
+
+final class MessageHandler: NSObject, WKScriptMessageHandler {
     weak var delegate: AppDelegate?
-    init(delegate: AppDelegate) { self.delegate = delegate }
-    func userContentController(_ uc: WKUserContentController, didReceive msg: WKScriptMessage) {
-        if msg.name == "openDashboard" { delegate?.openDashboard() }
+    let name: String
+
+    init(delegate: AppDelegate, name: String) {
+        self.delegate = delegate
+        self.name = name
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        switch name {
+        case "badge":
+            delegate?.updateBadge(message.body)
+        case "petState":
+            delegate?.receivePetState(message.body)
+        case "openDashboard":
+            delegate?.openDashboard()
+        case "togglePet":
+            let visible = (message.body as? [String: Any])?["visible"] as? Bool ?? true
+            delegate?.setPetVisible(visible)
+        case "quit":
+            delegate?.quitApp()
+        case "openPopover":
+            delegate?.openPopover()
+        default:
+            break
+        }
     }
 }
-
-// MARK: - Entry Point
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
