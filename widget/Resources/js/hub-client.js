@@ -60,8 +60,9 @@ export function createHubClient({
       try {
         ws.close();
       } catch {
-        scheduleReconnect();
+        // The reconnect path below still runs if closing the socket fails.
       }
+      scheduleReconnect();
     };
   }
 
