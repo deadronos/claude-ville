@@ -43,6 +43,10 @@ p {
   margin: 4px 0 0;
   color: #64748b;
   font-size: 12px;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #working-count {
@@ -64,6 +68,9 @@ p {
   background: #ffffff;
   font-size: 13px;
   font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .counts {

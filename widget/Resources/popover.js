@@ -1,7 +1,7 @@
 import { createHubClient } from './js/hub-client.js';
-import { getDashboardUrl, getInjectedRuntimeConfig } from './js/runtime-config.js';
+import { getInjectedRuntimeConfig } from './js/runtime-config.js';
 import { createPetStateReducer } from './js/pet-state.js';
-import { postBadge, postPetState, requestOpenDashboard, requestQuit, requestTogglePet } from './js/native-bridge.js';
+import { requestOpenDashboard, requestQuit, requestTogglePet } from './js/native-bridge.js';
 
 const config = getInjectedRuntimeConfig();
 const reducer = createPetStateReducer();
@@ -24,16 +24,14 @@ let sessions = [];
 let petVisible = true;
 
 function render(state) {
-  els.connection.textContent = connected ? `Connected to ${getDashboardUrl(config)}` : 'Reconnecting';
+  els.connection.textContent = connected ? 'Connected' : 'Reconnecting';
   els.petLine.textContent = state.line;
   els.workingCount.textContent = String(state.counts.working);
   els.countWorking.textContent = String(state.counts.working);
   els.countWaiting.textContent = String(state.counts.waiting);
   els.countIdle.textContent = String(state.counts.idle);
   els.countTotal.textContent = String(state.counts.total);
-  els.togglePet.textContent = petVisible ? 'Hide Pet' : 'Show Pet';
-  postBadge(state.counts);
-  postPetState(state);
+  els.togglePet.textContent = 'Toggle Pet';
 }
 
 function update() {

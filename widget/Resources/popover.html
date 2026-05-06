@@ -11,12 +11,12 @@
     <header class="header">
       <div>
         <h1>ClaudeVille</h1>
-        <p id="connection">Connecting</p>
+        <p id="connection" aria-live="polite">Connecting</p>
       </div>
       <strong id="working-count">0</strong>
     </header>
 
-    <section class="line" id="pet-line">ready</section>
+    <section class="line" id="pet-line" aria-live="polite">ready</section>
 
     <section class="counts" aria-label="Session counts">
       <div><span id="count-working">0</span><small>working</small></div>
@@ -26,7 +26,7 @@
     </section>
 
     <section class="actions">
-      <button id="toggle-pet" type="button">Hide Pet</button>
+      <button id="toggle-pet" type="button">Toggle Pet</button>
       <button id="open-dashboard" type="button">Open Dashboard</button>
       <button id="quit" type="button">Quit</button>
     </section>
