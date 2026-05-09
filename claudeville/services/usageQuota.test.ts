@@ -1,4 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { logger } from '../../shared/logger.js';
+
+// Mock the logger
+vi.mock('../../shared/logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    log: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // Test the usageQuota module interface
 describe('usageQuota', () => {
@@ -73,9 +84,14 @@ describe('usageQuota', () => {
   });
 
   describe('init behavior', () => {
-    it('init is callable without throwing', async () => {
+    it('init is callable and calls the logger', async () => {
       const { init } = await import('./usageQuota.js');
-      expect(() => init()).not.toThrow();
+      init();
+
+      // Wait for the async fetchEmail in init
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      expect(logger.info).toHaveBeenCalled();
     });
   });
 });

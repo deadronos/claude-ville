@@ -14,6 +14,7 @@ import { execFile } from 'child_process';
 import os from 'os';
 import * as http from 'http';
 import * as https from 'https';
+import { logger } from '../../shared/logger.js';
 
 const CLAUDE_HOME = path.join(os.homedir(), '.claude');
 const CREDENTIALS_PATH = path.join(CLAUDE_HOME, '.credentials.json');
@@ -267,8 +268,8 @@ export async function fetchUsage() {
 export function init() {
   // Fetch email at server start (async)
   fetchEmail().then(email => {
-    if (email) console.log(`[Usage] account: ${email}`);
-    else console.log('[Usage] failed to fetch email (claude auth status)');
+    if (email) logger.info(`[Usage] account: ${email}`);
+    else logger.info('[Usage] failed to fetch email (claude auth status)');
   });
 
   // Initial quota API attempt
