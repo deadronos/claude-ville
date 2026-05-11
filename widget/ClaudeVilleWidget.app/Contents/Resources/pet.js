@@ -25,12 +25,7 @@ let manifestLoadFailed = false;
 
 async function loadManifest() {
   try {
-    const response = await fetch('./pets/prism/manifest.json');
-    if (!response.ok) {
-      throw new Error(`manifest request failed: ${response.status}`);
-    }
-
-    const manifest = await response.json();
+    const manifest = await loadJsonResource('./pets/prism/manifest.json');
     if (!manifest?.atlas || !manifest?.states) {
       throw new Error('manifest is missing atlas or states');
     }
@@ -45,6 +40,39 @@ async function loadManifest() {
   }
 }
 
+async function loadJsonResource(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`manifest request failed: ${response.status}`);
+    }
+    return await response.json();
+  } catch (fetchError) {
+    return await loadJsonResourceWithXHR(url, fetchError);
+  }
+}
+
+function loadJsonResourceWithXHR(url, fetchError) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('GET', url, true);
+    request.onload = () => {
+      if (request.status !== 0 && (request.status < 200 || request.status >= 300)) {
+        reject(new Error(`manifest request failed: ${request.status}`));
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(request.responseText));
+      } catch (parseError) {
+        reject(parseError);
+      }
+    };
+    request.onerror = () => reject(fetchError);
+    request.send();
+  });
+}
+
 const manifest = await loadManifest();
 const animator = createSpriteAnimator({
   element: sprite,
@@ -54,6 +82,7 @@ const animator = createSpriteAnimator({
 
 let connected = false;
 let sessions = [];
+let dragState = null;
 
 function render(state) {
   line.textContent = manifestLoadFailed && state.mood === 'offline' ? 'offline' : state.line;
@@ -72,12 +101,56 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-stage.addEventListener('click', () => {
+function openControls() {
   if (globalThis.webkit?.messageHandlers?.openPopover) {
     postNativeMessage('openPopover', { type: 'openPopover' });
   } else {
     postNativeMessage('openDashboard', { type: 'openDashboard' });
   }
+}
+
+stage.addEventListener('pointerdown', (event) => {
+  event.preventDefault();
+  stage.setPointerCapture?.(event.pointerId);
+  dragState = {
+    pointerId: event.pointerId,
+    lastX: event.screenX,
+    lastY: event.screenY,
+    moved: false,
+  };
+});
+
+stage.addEventListener('pointermove', (event) => {
+  if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+  const dx = event.screenX - dragState.lastX;
+  const dy = event.screenY - dragState.lastY;
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+  dragState.lastX = event.screenX;
+  dragState.lastY = event.screenY;
+  dragState.moved = true;
+  postNativeMessage('petDrag', { type: 'petDrag', phase: 'move', dx, dy });
+});
+
+stage.addEventListener('pointerup', (event) => {
+  if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+  const wasDragged = dragState.moved;
+  dragState = null;
+  stage.releasePointerCapture?.(event.pointerId);
+  postNativeMessage('petDrag', { type: 'petDrag', phase: 'end' });
+  if (!wasDragged) {
+    openControls();
+  }
+});
+
+stage.addEventListener('pointercancel', (event) => {
+  if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+  dragState = null;
+  stage.releasePointerCapture?.(event.pointerId);
+  postNativeMessage('petDrag', { type: 'petDrag', phase: 'end' });
 });
 
 createHubClient({

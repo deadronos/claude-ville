@@ -32,11 +32,14 @@ export function createHubClient({
       return;
     }
 
-    const socket = new WebSocket(getHubWsUrl(config));
+    const hubWsUrl = getHubWsUrl(config);
+    console.log('[widget hub] connecting', hubWsUrl);
+    const socket = new WebSocket(hubWsUrl);
     ws = socket;
 
     socket.onopen = () => {
       if (socket !== ws) return;
+      console.log('[widget hub] connected');
       clearReconnect();
       onConnection?.(true);
     };
@@ -55,13 +58,15 @@ export function createHubClient({
 
     socket.onclose = () => {
       if (socket !== ws) return;
+      console.warn('[widget hub] disconnected');
       ws = null;
       onConnection?.(false);
       scheduleReconnect();
     };
 
-    socket.onerror = () => {
+    socket.onerror = (event) => {
       if (socket !== ws) return;
+      console.error('[widget hub] socket error', event);
       onConnection?.(false);
       try {
         socket.close();

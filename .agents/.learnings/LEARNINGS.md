@@ -28,6 +28,27 @@ When a learning is promoted to a skill, add these fields:
 
 ---
 
+## [LRN-20260511-001] best_practice
+
+**Logged**: 2026-05-11T08:47:47Z
+**Priority**: high
+**Status**: pending
+**Area**: frontend
+
+### Summary
+WKWebView file-loaded widget resources need explicit file-access flags for module scripts and local resources.
+
+### Details
+The ClaudeVille macOS widget loaded `pet.html` and `popover.html` from the app bundle, but their `<script type="module">` entrypoints did not execute, so no WebSocket connection attempt reached the hub. The repo-root `.env.local` and hub auth were correct; the break was inside the file-loaded WKWebView. Setting `allowFileAccessFromFileURLs` on `WKPreferences` and `allowUniversalAccessFromFileURLs` on `WKWebViewConfiguration` allowed bundled module scripts to run. `fetch(file://...)` can still fail for bundled JSON resources, so use an XHR fallback for local manifest loads.
+
+### Suggested Action
+For future macOS widget connection issues, first check whether the WebView entrypoint script is executing before debugging hub auth. Keep native JS diagnostics available so WebKit script/load failures are visible in macOS logs.
+
+### Metadata
+- Source: conversation
+- Related Files: widget/Sources/main.swift, widget/Resources/pet.js, widget/Resources/js/hub-client.js
+- Tags: widget, wkwebview, file-url, websocket, diagnostics
+
 ---
 
 ## [LRN-20260505-002] correction

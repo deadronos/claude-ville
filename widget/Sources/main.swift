@@ -1,7 +1,7 @@
 import Cocoa
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private let defaultHubHTTPURL = "http://localhost:3030"
     private let petWindowWidth: CGFloat = 224
     private let petWindowHeight: CGFloat = 256
@@ -86,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         petWebView = makeWebView(handlerNames: [
             "badge",
             "petState",
+            "petDrag",
             "openDashboard",
             "togglePet",
             "quit",
@@ -107,27 +108,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func makeWebView(handlerNames: [String]) -> WKWebView {
         let config = WKWebViewConfiguration()
         let controller = WKUserContentController()
-        for name in handlerNames {
+        for name in handlerNames + ["diagnostic"] {
             controller.add(MessageHandler(delegate: self, name: name), name: name)
         }
         controller.addUserScript(WKUserScript(
-            source: injectedConfigScript(),
+            source: injectedBootstrapScript(),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
         config.userContentController = controller
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
+        config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
+        config.setValue(true, forKey: "allowUniversalAccessFromFileURLs")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         webView.allowsBackForwardNavigationGestures = false
+        webView.navigationDelegate = self
         return webView
     }
 
-    func injectedConfigScript() -> String {
+    func injectedBootstrapScript() -> String {
         let data = try? JSONSerialization.data(withJSONObject: runtimeConfig, options: [])
         let json = data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        return "window.__CLAUDEVILLE_WIDGET_CONFIG__ = \(json);"
+        return """
+        window.__CLAUDEVILLE_WIDGET_CONFIG__ = \(json);
+        (function () {
+          function send(level, args) {
+            try {
+              var text = Array.prototype.map.call(args, function (value) {
+                if (value instanceof Error) return value.stack || value.message;
+                if (typeof value === 'string') return value;
+                try { return JSON.stringify(value); } catch (_) { return String(value); }
+              }).join(' ');
+              window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.diagnostic &&
+                window.webkit.messageHandlers.diagnostic.postMessage({ level: level, text: text });
+            } catch (_) {}
+          }
+          ['log', 'warn', 'error'].forEach(function (level) {
+            var original = console[level];
+            console[level] = function () {
+              send(level, arguments);
+              if (original) original.apply(console, arguments);
+            };
+          });
+          window.addEventListener('error', function (event) {
+            send('error', [event.message || 'script error', event.filename || '', event.lineno || 0]);
+          });
+          window.addEventListener('unhandledrejection', function (event) {
+            send('error', ['unhandled rejection', event.reason]);
+          });
+        }());
+        """
+    }
+
+    func receiveDiagnostic(_ payload: Any) {
+        guard let dict = payload as? [String: Any] else { return }
+        let level = dict["level"] as? String ?? "log"
+        let text = dict["text"] as? String ?? String(describing: payload)
+        NSLog("ClaudeVilleWidget JS [\(level)]: \(text)")
     }
 
     func loadResource(_ name: String, extensionName: String, into webView: WKWebView) {
@@ -137,6 +176,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let readAccessURL = Bundle.main.resourceURL ?? url.deletingLastPathComponent()
         webView.loadFileURL(url, allowingReadAccessTo: readAccessURL)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let script = """
+        JSON.stringify({
+          href: location.href,
+          readyState: document.readyState,
+          bodyText: document.body ? document.body.innerText : '',
+          scripts: Array.prototype.map.call(document.scripts, function (script) { return { type: script.type, src: script.src }; }),
+          hasConfig: !!window.__CLAUDEVILLE_WIDGET_CONFIG__,
+          hasWebSocket: typeof WebSocket
+        })
+        """
+        webView.evaluateJavaScript(script) { result, error in
+            if let error = error {
+                NSLog("ClaudeVilleWidget: webview diagnostic failed: \(error)")
+                return
+            }
+            NSLog("ClaudeVilleWidget: webview loaded \(String(describing: result))")
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        NSLog("ClaudeVilleWidget: webview navigation failed: \(error)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        NSLog("ClaudeVilleWidget: webview provisional navigation failed: \(error)")
     }
 
     func togglePopover() {
@@ -213,6 +280,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         petWindow?.setAccessibilityLabel("ClaudeVille pet: \(line)")
+    }
+
+    func receivePetDrag(_ payload: Any) {
+        guard let dict = payload as? [String: Any], let phase = dict["phase"] as? String else {
+            return
+        }
+
+        if phase == "move" {
+            let dx = CGFloat(doubleValue(dict["dx"]))
+            let dy = CGFloat(doubleValue(dict["dy"]))
+            guard let window = petWindow, dx != 0 || dy != 0 else { return }
+            let origin = window.frame.origin
+            window.setFrameOrigin(NSPoint(x: origin.x + dx, y: origin.y - dy))
+        } else if phase == "end" {
+            savePetFrame()
+        }
     }
 
     @objc func openDashboard() {
@@ -346,6 +429,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let string = value as? String, let int = Int(string) { return int }
         return 0
     }
+
+    func doubleValue(_ value: Any?) -> Double {
+        if let double = value as? Double { return double }
+        if let int = value as? Int { return Double(int) }
+        if let string = value as? String, let double = Double(string) { return double }
+        return 0
+    }
 }
 
 final class DraggableContentView: NSView {
@@ -391,6 +481,8 @@ final class MessageHandler: NSObject, WKScriptMessageHandler {
             delegate?.updateBadge(message.body)
         case "petState":
             delegate?.receivePetState(message.body)
+        case "petDrag":
+            delegate?.receivePetDrag(message.body)
         case "openDashboard":
             delegate?.openDashboard()
         case "togglePet":
@@ -400,6 +492,8 @@ final class MessageHandler: NSObject, WKScriptMessageHandler {
             delegate?.quitApp()
         case "openPopover":
             delegate?.openPopover()
+        case "diagnostic":
+            delegate?.receiveDiagnostic(message.body)
         default:
             break
         }
