@@ -26,6 +26,13 @@ button {
   justify-content: flex-end;
   gap: 4px;
   background: transparent;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pet-shell:active {
+  cursor: grabbing;
 }
 
 .pet-line {
@@ -56,14 +63,8 @@ button {
   padding: 0;
   border: 0;
   background: transparent;
-  cursor: grab;
+  cursor: inherit;
   touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.pet-stage:active {
-  cursor: grabbing;
 }
 
 .pet-sprite {

@@ -16,6 +16,7 @@ const FALLBACK_MANIFEST = {
 };
 
 const line = document.getElementById('pet-line');
+const shell = document.getElementById('pet-shell');
 const stage = document.getElementById('pet-stage');
 const sprite = document.getElementById('pet-sprite');
 
@@ -109,48 +110,82 @@ function openControls() {
   }
 }
 
-stage.addEventListener('pointerdown', (event) => {
-  event.preventDefault();
-  stage.setPointerCapture?.(event.pointerId);
+function startDrag(id, screenX, screenY) {
   dragState = {
-    pointerId: event.pointerId,
-    lastX: event.screenX,
-    lastY: event.screenY,
+    pointerId: id,
+    lastX: screenX,
+    lastY: screenY,
     moved: false,
   };
-});
+}
 
-stage.addEventListener('pointermove', (event) => {
-  if (!dragState || dragState.pointerId !== event.pointerId) return;
+function moveDrag(id, screenX, screenY) {
+  if (!dragState || dragState.pointerId !== id) return;
 
-  const dx = event.screenX - dragState.lastX;
-  const dy = event.screenY - dragState.lastY;
+  const dx = screenX - dragState.lastX;
+  const dy = screenY - dragState.lastY;
   if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
 
-  dragState.lastX = event.screenX;
-  dragState.lastY = event.screenY;
+  dragState.lastX = screenX;
+  dragState.lastY = screenY;
   dragState.moved = true;
   postNativeMessage('petDrag', { type: 'petDrag', phase: 'move', dx, dy });
-});
+}
 
-stage.addEventListener('pointerup', (event) => {
-  if (!dragState || dragState.pointerId !== event.pointerId) return;
+function endDrag(id) {
+  if (!dragState || dragState.pointerId !== id) return false;
 
   const wasDragged = dragState.moved;
   dragState = null;
-  stage.releasePointerCapture?.(event.pointerId);
   postNativeMessage('petDrag', { type: 'petDrag', phase: 'end' });
-  if (!wasDragged) {
-    openControls();
-  }
-});
+  return wasDragged;
+}
 
-stage.addEventListener('pointercancel', (event) => {
-  if (!dragState || dragState.pointerId !== event.pointerId) return;
+if (globalThis.PointerEvent) {
+  shell.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    shell.setPointerCapture?.(event.pointerId);
+    startDrag(event.pointerId, event.screenX, event.screenY);
+  });
 
-  dragState = null;
-  stage.releasePointerCapture?.(event.pointerId);
-  postNativeMessage('petDrag', { type: 'petDrag', phase: 'end' });
+  shell.addEventListener('pointermove', (event) => {
+    moveDrag(event.pointerId, event.screenX, event.screenY);
+  });
+
+  shell.addEventListener('pointerup', (event) => {
+    const wasDragged = endDrag(event.pointerId);
+    shell.releasePointerCapture?.(event.pointerId);
+    if (!wasDragged) {
+      openControls();
+    }
+  });
+
+  shell.addEventListener('pointercancel', (event) => {
+    endDrag(event.pointerId);
+    shell.releasePointerCapture?.(event.pointerId);
+  });
+} else {
+  shell.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    startDrag('mouse', event.screenX, event.screenY);
+  });
+
+  globalThis.addEventListener('mousemove', (event) => {
+    moveDrag('mouse', event.screenX, event.screenY);
+  });
+
+  globalThis.addEventListener('mouseup', (event) => {
+    if (event.button !== 0) return;
+    const wasDragged = endDrag('mouse');
+    if (!wasDragged) {
+      openControls();
+    }
+  });
+}
+
+stage.addEventListener('dragstart', (event) => {
+  event.preventDefault();
 });
 
 createHubClient({
