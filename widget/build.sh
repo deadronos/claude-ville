@@ -4,28 +4,28 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 cd "$SCRIPT_DIR"
 
-echo "ClaudeVille Widget 빌드 시작..."
+echo "Starting ClaudeVille Widget build..."
 
-# Swift 컴파일
+# Compile Swift
 swiftc Sources/main.swift \
   -framework Cocoa -framework WebKit \
   -o ClaudeVilleWidget
 
-# 기존 .app 제거
+# Remove existing app bundle
 rm -rf ClaudeVilleWidget.app
 
-# .app 번들 생성
+# Create app bundle
 mkdir -p ClaudeVilleWidget.app/Contents/MacOS
 mkdir -p ClaudeVilleWidget.app/Contents/Resources
 cp ClaudeVilleWidget ClaudeVilleWidget.app/Contents/MacOS/
 cp Info.plist ClaudeVilleWidget.app/Contents/
 cp -R Resources/. ClaudeVilleWidget.app/Contents/Resources/
 
-# 프로젝트 경로 기록 (.env.local 런타임 설정용)
+# Record project path for .env.local runtime settings
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 echo "$PROJECT_ROOT" > ClaudeVilleWidget.app/Contents/Resources/project_path
-echo "  프로젝트: $PROJECT_ROOT"
+echo "  Project: $PROJECT_ROOT"
 
 rm ClaudeVilleWidget
 
-echo "빌드 완료: ClaudeVilleWidget.app"
+echo "Build complete: ClaudeVilleWidget.app"

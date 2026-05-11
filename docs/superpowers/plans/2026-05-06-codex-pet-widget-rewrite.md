@@ -1606,7 +1606,7 @@ Keep:
 ```bash
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 echo "$PROJECT_ROOT" > ClaudeVilleWidget.app/Contents/Resources/project_path
-echo "  프로젝트: $PROJECT_ROOT"
+echo "  Project: $PROJECT_ROOT"
 ```
 
 - [ ] **Step 2: Remove old widget resources if unused**

@@ -63,7 +63,7 @@ Both the legacy server (`claudeville/server.ts`) and the hubreceiver (`hubreceiv
 
 | Issue | Detail |
 | ------ | ------ |
-| `hubreceiver/routes.ts` | Missing `sessionId` error message is in Korean (`"sessionId 필수"`) while the rest of the API uses English |
+| `hubreceiver/routes.ts` | Missing `sessionId` error message was not in English while the rest of the API uses English |
 | `hubreceiver/state.ts` | Snapshot validation is minimal — only shape coercion, no structural validation |
 | `claudeville/server.ts` | `new URL(req.url, "http://${req.headers.host}")` — missing/malformed `Host` header causes URL errors |
 | Adapter layer | `codex.ts` and `copilot.ts` re-scan files to resolve session details with a hardcoded window — sessions outside that window get empty details |
