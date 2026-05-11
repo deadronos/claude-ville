@@ -3,6 +3,7 @@ import WebKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private let defaultHubHTTPURL = "http://localhost:3030"
+    private let defaultDashboardURL = "http://localhost:3001"
     private let petWindowWidth: CGFloat = 224
     private let petWindowHeight: CGFloat = 256
 
@@ -11,8 +12,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     var popoverWebView: WKWebView!
     var petWindow: NSPanel!
     var petWebView: WKWebView!
-    var dashboardWindow: NSWindow?
-    var dashboardWebView: WKWebView?
     var runtimeConfig: [String: String] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -299,43 +298,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     @objc func openDashboard() {
-        let dashboardURL = runtimeConfig["HUB_HTTP_URL"] ?? runtimeConfig["HUB_URL"] ?? defaultHubHTTPURL
-        guard let url = URL(string: dashboardURL) else { return }
-
-        if let window = dashboardWindow, window.isVisible {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let screen = NSScreen.main ?? NSScreen.screens[0]
-        let width: CGFloat = 1200
-        let height: CGFloat = 800
-        let frame = NSRect(
-            x: screen.visibleFrame.midX - width / 2,
-            y: screen.visibleFrame.midY - height / 2,
-            width: width,
-            height: height
-        )
-        let window = NSWindow(
-            contentRect: frame,
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "ClaudeVille Dashboard"
-        window.minSize = NSSize(width: 800, height: 600)
-        window.isReleasedWhenClosed = false
-
-        let webView = WKWebView(frame: window.contentView?.bounds ?? .zero)
-        webView.autoresizingMask = [.width, .height]
-        webView.load(URLRequest(url: url))
-        window.contentView?.addSubview(webView)
-
-        dashboardWebView = webView
-        dashboardWindow = window
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        guard let url = URL(string: defaultDashboardURL) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     @objc func quitApp() {
