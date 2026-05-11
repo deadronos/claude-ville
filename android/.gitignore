@@ -16,3 +16,4 @@
 kernel-qemu
 *.hprof
 .idea/
+.idea/caches/
