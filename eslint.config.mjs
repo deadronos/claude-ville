@@ -36,6 +36,8 @@ export default tseslint.config(
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'no-useless-assignment': 'off',
+      'preserve-caught-error': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'off',
     },
@@ -79,6 +81,13 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-unused-vars': 'off',
       'no-prototype-builtins': 'off',
+    },
+  },
+  {
+    files: ['widget/Resources/**/*.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: globals.browser,
     },
   },
 );
