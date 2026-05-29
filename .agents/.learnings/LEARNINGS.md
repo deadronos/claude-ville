@@ -28,6 +28,29 @@ When a learning is promoted to a skill, add these fields:
 
 ---
 
+## [LRN-20260529-001] best_practice
+
+**Logged**: 2026-05-29T13:20:40+02:00
+**Priority**: medium
+**Status**: pending
+**Area**: config
+
+### Summary
+ESLint 10 dependency upgrades can expand the recommended rule set and fail existing code without a runtime regression.
+
+### Details
+Upgrading the frontend/tooling dependency set to latest pulled in ESLint 10.4.0 and @eslint/js 10.0.1. The existing config used `eslint.configs.recommended`, which newly reported `preserve-caught-error` and `no-useless-assignment` across existing tests/adapters. The widget resource scripts also need browser globals because the broad `**/*.js` override treats JavaScript as CommonJS/Node by default.
+
+### Suggested Action
+When moving this repo to ESLint 10, preserve the current lint contract deliberately: either disable newly noisy recommended rules in config during the package bump or handle them in a separate focused cleanup, and keep `widget/Resources/**/*.js` on browser globals.
+
+### Metadata
+- Source: error
+- Related Files: eslint.config.mjs, widget/Resources/pet.js, widget/Resources/popover.js
+- Tags: eslint-10, dependency-upgrade, frontend
+
+---
+
 ## [LRN-20260511-001] best_practice
 
 **Logged**: 2026-05-11T08:47:47Z

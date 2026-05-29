@@ -199,7 +199,6 @@ export function mapSessionToVillageAgent(session: HubSession, now = Date.now()):
   const provider = session.provider || 'unknown';
   const latestMessage = session.lastMessage || session.detail?.messages?.at(-1)?.text || null;
   const latestTool = session.lastTool || session.detail?.toolHistory?.at(-1)?.tool || null;
-  const latestToolTs = session.detail?.toolHistory?.at(-1)?.ts;
   const currentTask = session.currentTask || latestMessage || (latestTool ? `Using ${latestTool}` : 'Monitoring session activity');
   const tokenInput = session.tokens?.input ?? session.tokenUsage?.totalInput ?? session.tokenUsage?.input ?? 0;
   const tokenOutput = session.tokens?.output ?? session.tokenUsage?.totalOutput ?? session.tokenUsage?.output ?? 0;
