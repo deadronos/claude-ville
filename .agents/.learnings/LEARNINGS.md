@@ -289,3 +289,24 @@ For world flip or hit-testing bugs after selection, inspect `ScreenSpaceCamera` 
 - Tags: r3f, camera, selection, resize, world-view
 
 ---
+
+## [LRN-20260610-001] best_practice
+
+**Logged**: 2026-06-10T02:40:00Z
+**Priority**: low
+**Status**: pending
+**Area**: tests
+
+### Summary
+`load-local-env.ts` re-applies `.env.local` on every Node entrypoint, so `env -u HUB_HTTP_URL npx tsx server.ts` does NOT actually clear the env var in the child process — `loadLocalEnv()` reads `.env.local` and sets it back if undefined. To test the "no env override" path, write a small script that imports the shared builder directly and calls it with a synthetic empty env instead of trying to suppress the env in a subprocess.
+
+### Details
+While verifying the `handleRuntimeConfig` change in `claudeville/server.ts` I tried `env -u HUB_HTTP_URL npx tsx claudeville/server.ts` and got the `.env.local` value back, because `loadLocalEnv()` re-reads the file at module load and assigns anything not yet in `process.env`. The cleanest workaround is to test the merge logic in isolation (import `buildRuntimeConfig`, build a fake env object, call it) rather than starting a real server.
+
+### Suggested Action
+When verifying "what does the server do with no env set", prefer a unit-level call to the shared builder over a subprocess-based smoke test, unless you also remove the offending line from `.env.local` first.
+
+### Metadata
+- Source: conversation
+- Related Files: claudeville/server.ts, load-local-env.ts, runtime-config.shared.ts
+- Tags: env, tests, smoke-test, gotcha
