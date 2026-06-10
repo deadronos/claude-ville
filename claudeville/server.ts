@@ -228,7 +228,16 @@ function handleStaticFile(req: HttpRequest, res: HttpResponse) {
 }
 
 function handleRuntimeConfig(req: HttpRequest, res: HttpResponse) {
-  const runtimeConfig = buildRuntimeConfig(process.env);
+  // The legacy server is itself the hub, so when no HUB_HTTP_URL env override
+  // is set, expose this server's own origin. This keeps `/runtime-config.js`
+  // working out of the box even after the shared default moved to the
+  // split-stack hubreceiver port (3030).
+  const legacyBase = `http://localhost:${PORT}`;
+  const env = {
+    ...process.env,
+    HUB_HTTP_URL: process.env.HUB_HTTP_URL || process.env.HUB_URL || legacyBase,
+  };
+  const runtimeConfig = buildRuntimeConfig(env);
   setCorsHeaders(res);
   res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
   res.end(`window.__CLAUDEVILLE_CONFIG__ = ${JSON.stringify(runtimeConfig)};\n`);
@@ -442,18 +451,6 @@ const server = http.createServer((req: HttpRequest, res: HttpResponse) => {
         return handleGetUsage(req, res);
       case '/api/history':
         return handleGetHistory(req, res);
-    }
-  }
-
-  // Widget file serving (/widget.html, /widget.css)
-  if (pathname === '/widget.html' || pathname === '/widget.css') {
-    const widgetFile = path.join(__dirname, '..', 'widget', 'Resources', pathname);
-    if (fs.existsSync(widgetFile)) {
-      const ext = path.extname(widgetFile).toLowerCase();
-      setCorsHeaders(res);
-      res.writeHead(200, { 'Content-Type': MIME_TYPES[ext as keyof typeof MIME_TYPES], 'Cache-Control': 'no-cache' });
-      fs.createReadStream(widgetFile, { encoding: 'utf-8' }).pipe(res);
-      return;
     }
   }
 

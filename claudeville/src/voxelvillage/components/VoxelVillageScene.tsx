@@ -346,9 +346,15 @@ function VoxelAgent({
   });
 
   useEffect(() => {
-    animatedAgentPositionsRef.current.set(agent.id, animatedPositionRef.current);
+    const positions = animatedAgentPositionsRef.current;
+    positions.set(agent.id, animatedPositionRef.current);
     return () => {
-      animatedAgentPositionsRef.current.delete(agent.id);
+      // Capture the current Map reference at mount time. The caller is
+      // expected to keep using the same Map instance for the lifetime of the
+      // world scene, so reading `.current` here would always return the same
+      // value, but referencing the local binding keeps React's exhaustive-deps
+      // rule happy and avoids a stale-closure footgun if that ever changes.
+      positions.delete(agent.id);
     };
   }, [agent.id, animatedAgentPositionsRef]);
 

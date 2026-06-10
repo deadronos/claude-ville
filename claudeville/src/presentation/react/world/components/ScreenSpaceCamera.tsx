@@ -22,6 +22,11 @@ export function ScreenSpaceCamera({
     nextCamera.zoom = 1;
     nextCamera.updateProjectionMatrix();
     return nextCamera;
+    // The orthographic camera is created once and its frustum is updated in
+    // the layout effect below when the viewport changes. Recreating the
+    // camera on every resize would re-trigger the R3F camera swap effect and
+    // churn the render loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useLayoutEffect(() => {
@@ -37,8 +42,11 @@ export function ScreenSpaceCamera({
 
   useLayoutEffect(() => {
     set({ camera });
+    // Capture the previous camera at mount time so the cleanup can restore
+    // it even after the `useThree` selector swaps cameras on later renders.
+    const restoreCamera = restoreCameraRef.current;
     return () => {
-      set({ camera: restoreCameraRef.current });
+      set({ camera: restoreCamera });
     };
   }, [camera, set]);
 

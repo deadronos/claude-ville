@@ -1,6 +1,6 @@
 ---
 name: verify-widget-build
-description: Verify macOS menu bar widget builds correctly and app bundle structure is valid. Trigger after any changes to widget/ directory files (main.swift, build.sh, Info.plist, widget.html, widget.css).
+description: Verify macOS menu bar widget builds correctly and app bundle structure is valid. Trigger after any changes to widget/ directory files (main.swift, build.sh, Info.plist, popover.html, popover.css, pet.html, pet.css).
 ---
 
 # Widget Build Verification
@@ -22,7 +22,7 @@ Run the widget build script and verify it compiles without errors:
 cd widget && bash build.sh
 ```
 
-- **PASS**: Exit code 0, "빌드 완료" message printed
+- **PASS**: Exit code 0, build-complete message printed
 - **FAIL**: Compilation errors or non-zero exit code
 
 ### 2. App Bundle Structure
@@ -35,15 +35,21 @@ widget/ClaudeVilleWidget.app/
 │   ├── MacOS/ClaudeVilleWidget    (executable, must be executable)
 │   ├── Info.plist                  (must contain LSUIElement=true)
 │   └── Resources/
-│       ├── widget.html
-│       ├── widget.css
+│       ├── popover.html / popover.css / popover.js
+│       ├── pet.html / pet.css / pet.js
+│       ├── pets/
 │       ├── project_path           (must contain valid path)
 │       └── node_path              (must contain valid node binary path)
 ```
 
 - **PASS**: All files exist with correct content
 - **WARN**: project_path or node_path points to non-existent location
-- **FAIL**: Missing executable, Info.plist, or HTML/CSS resources
+- **FAIL**: Missing executable, Info.plist, or popover/pet resources
+
+> The legacy `widget.html` and `widget.css` files were removed when the
+> widget was rewritten as a popover + desktop pet (see
+> `docs/superpowers/plans/2026-05-06-codex-pet-widget-rewrite.md`). They are
+> no longer expected to be present in the bundle.
 
 ### 3. Info.plist Validity
 
@@ -71,11 +77,15 @@ cat widget/ClaudeVilleWidget.app/Contents/Resources/node_path
 
 ### 5. Port Configuration Consistency
 
-Verify port 4000 is used consistently across all files:
+Verify the hub port stays consistent across the widget and runtime:
 
-- `claudeville/server.js`: `const PORT = 4000`
-- `widget/Sources/main.swift`: all localhost references use port 4000
-- `widget/Resources/widget.html`: WS_URL uses port 4000
+- `widget/Sources/main.swift` defaults: hub HTTP `http://localhost:3030`,
+  dashboard `http://localhost:3001`
+- `claudeville/server.ts`: legacy server on port `4000`
+- `hubreceiver/server.ts`: split-stack hub on port `3030`
 
-- **PASS**: All files use port 4000
-- **FAIL**: Any file uses a different port (e.g., 3000)
+- **PASS**: Each port matches its documented role (widget talks to the
+  hubreceiver at `3030` and the dashboard at `3001`; the legacy server keeps
+  its own `4000`)
+- **FAIL**: A documented port is wrong (e.g., the widget points at the
+  legacy server instead of the hubreceiver)

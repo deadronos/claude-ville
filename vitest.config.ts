@@ -11,6 +11,17 @@ export default defineConfig({
   },
   test: {
     include: ['**/*.test.ts', '**/*.test.tsx', '**/*.test.js'],
+    // Browser-driven Playwright tests are kept out of the default unit/integration
+    // suite. They require a working Playwright Chromium install and a running
+    // hub/frontend, so they are gated behind `npm run test:e2e`.
+    exclude: [
+      '**/*.browser.test.ts',
+      '**/*.browser.test.tsx',
+      'e2e/**',
+      'node_modules/**',
+      'dist/**',
+      '.worktrees/**',
+    ],
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
     coverage: {

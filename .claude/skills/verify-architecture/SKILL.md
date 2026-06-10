@@ -112,12 +112,18 @@ Verify the widget directory still matches the documented bundle structure:
 widget/
 ├── Sources/main.swift
 ├── Resources/
-│   ├── widget.html
-│   └── widget.css
+│   ├── popover.html / popover.css / popover.js
+│   ├── pet.html / pet.css / pet.js
+│   └── pets/
 ├── Info.plist
 └── build.sh          (must be executable)
 ```
 
-- **PASS**: all files are present and `build.sh` is executable
+- **PASS**: `Sources/main.swift`, `Info.plist`, and `build.sh` are present, the `Resources/` directory ships both the popover and pet surfaces, and `build.sh` is executable
 - **WARN**: widget resources exist but need a refresh
 - **FAIL**: missing `main.swift`, `Info.plist`, or `build.sh`
+
+> The legacy `widget.html` / `widget.css` files were removed when the widget
+> was rewritten as a popover + desktop pet (see
+> `docs/superpowers/plans/2026-05-06-codex-pet-widget-rewrite.md`). They are
+> no longer expected to be present.

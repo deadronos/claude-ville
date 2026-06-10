@@ -75,13 +75,13 @@ curl -s "http://localhost:4000/api/history?lines=100"
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/
-curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/widget.html
-curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/widget.css
 ```
 
-- **PASS**: `/` returns the app shell (built frontend if present, otherwise the `claudeville/` fallback), and widget assets return 200
-- **WARN**: widget routes return 404 when the widget resources are intentionally missing
+- **PASS**: `/` returns the app shell (built frontend if present, otherwise the `claudeville/` fallback)
+- **WARN**: a 404 is observed for a known static asset
 - **FAIL**: the root route returns a non-200 status
+
+The macOS menu bar widget is a separate `widget/ClaudeVilleWidget.app` bundle that loads `popover.html` / `pet.html` from its own Resources directory, so the legacy server no longer serves widget HTML or CSS. The widget only needs the HTTP and WebSocket endpoints exposed by the server (or hubreceiver) to function.
 
 ### 7. WebSocket Connections
 

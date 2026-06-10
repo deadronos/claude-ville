@@ -33,7 +33,10 @@ export function readProviderNameModes(env = process.env) {
 }
 
 export function buildRuntimeConfig(env = process.env) {
-  const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:4000';
+  // Default to the split-stack hubreceiver port (3030). The legacy single-process
+  // app injects its own URL via the HUB_HTTP_URL env var (or by passing a custom
+  // value) so the same default works for both runtimes.
+  const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:3030';
   const hubWsUrl = env.HUB_WS_URL || `${hubHttpUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws`;
   const hubAuthToken = env.HUB_AUTH_TOKEN || '';
 
