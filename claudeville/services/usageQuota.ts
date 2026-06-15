@@ -44,13 +44,13 @@ const cache: {
 
 // ─── Credentials (subscription info only) ────────────────────────────
 
-function readCredentials() {
+async function readCredentials() {
   const now = Date.now();
   if (cache.credentials.data && now - cache.credentials.ts < CREDENTIALS_TTL) {
     return cache.credentials.data;
   }
   try {
-    const raw = fs.readFileSync(CREDENTIALS_PATH, 'utf-8');
+    const raw = await fs.promises.readFile(CREDENTIALS_PATH, 'utf-8');
     const json = JSON.parse(raw);
     const oauth = json.claudeAiOauth || {};
     const result = {
@@ -81,19 +81,19 @@ function fetchEmail() {
 
 // ─── history.jsonl real-time parsing + stats-cache.json merge ────────
 
-function readStats() {
+async function readStats() {
   const now = Date.now();
   if (cache.stats.data && now - cache.stats.ts < STATS_TTL) {
     return cache.stats.data;
   }
 
   // Calculate today's/this week's activity directly from history.jsonl (real-time)
-  const live = readHistoryLive();
+  const live = await readHistoryLive();
 
   // Read cumulative totals from stats-cache.json
   let totalSessions = 0, totalMessages = 0;
   try {
-    const raw = fs.readFileSync(STATS_CACHE_PATH, 'utf-8');
+    const raw = await fs.promises.readFile(STATS_CACHE_PATH, 'utf-8');
     const json = JSON.parse(raw);
     totalSessions = json.totalSessions || 0;
     totalMessages = json.totalMessages || 0;
@@ -114,14 +114,18 @@ function readStats() {
  * Calculate today's and this week's message/session counts directly from history.jsonl.
  * Read from the end of the file backward and stop early when outside the date range (performance optimization).
  */
-function readHistoryLive() {
+async function readHistoryLive() {
   const empty = {
     today: { messages: 0, sessions: 0 },
     thisWeek: { messages: 0, sessions: 0 },
   };
 
   try {
-    if (!fs.existsSync(HISTORY_PATH)) return empty;
+    try {
+      await fs.promises.access(HISTORY_PATH);
+    } catch {
+      return empty;
+    }
 
     const nowDate = new Date();
     const todayStr = nowDate.toISOString().slice(0, 10);
@@ -136,7 +140,7 @@ function readHistoryLive() {
     const weekStart = monday.getTime();
 
     // Read file backward (latest data is at the end)
-    const content = fs.readFileSync(HISTORY_PATH, 'utf-8');
+    const content = await fs.promises.readFile(HISTORY_PATH, 'utf-8');
     const lines = content.trim().split('\n');
 
     let todayMsgs = 0, weekMsgs = 0;
@@ -159,6 +163,9 @@ function readHistoryLive() {
           todayMsgs++;
           if (entry.sessionId) todaySessions.add(entry.sessionId);
         }
+
+        // Yield to event loop every 500 lines to keep the app responsive
+        if (i % 500 === 0) await new Promise(resolve => setImmediate(resolve));
       } catch { /* skip parse failures */ }
     }
 
@@ -173,18 +180,18 @@ function readHistoryLive() {
 
 // ─── Quota API (currently unavailable, activate later) ────────────────────
 
-function tryFetchQuota() {
+async function tryFetchQuota() {
   const now = Date.now();
   if (now - cache.quota.ts < QUOTA_API_TTL) return;
   cache.quota.ts = now;
 
-  const creds = readCredentials();
+  const creds = await readCredentials();
   if (!creds.subscriptionType) return;
 
   // Read accessToken from credentials
   let accessToken;
   try {
-    const raw = fs.readFileSync(CREDENTIALS_PATH, 'utf-8');
+    const raw = await fs.promises.readFile(CREDENTIALS_PATH, 'utf-8');
     const json = JSON.parse(raw);
     accessToken = json.claudeAiOauth?.accessToken;
   } catch { return; }
@@ -227,12 +234,14 @@ function tryFetchQuota() {
 
 // ─── Public API ────────────────────────────────────────────────
 
-export function fetchUsage() {
-  const credentials = readCredentials();
-  const stats = readStats();
+export async function fetchUsage() {
+  const [credentials, stats] = await Promise.all([
+    readCredentials(),
+    readStats(),
+  ]);
 
   // Asynchronously try quota API (result stored in cache)
-  tryFetchQuota();
+  void tryFetchQuota();
 
   return {
     account: {
