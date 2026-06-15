@@ -36,7 +36,6 @@ export class WebSocketClient {
             this.ws.onopen = () => {
                 this.connected = true;
                 this.reconnectAttempts = 0;
-                console.log('[WS] Connected');
                 eventBus.emit('ws:connected');
                 this._clearReconnect();
             };
@@ -52,7 +51,6 @@ export class WebSocketClient {
 
             this.ws.onclose = () => {
                 this.connected = false;
-                console.log('[WS] Disconnected');
                 eventBus.emit('ws:disconnected');
                 this._scheduleReconnect();
             };
@@ -111,9 +109,6 @@ export class WebSocketClient {
             30000
         );
         this.reconnectTimer = setTimeout(() => {
-            if (this.reconnectAttempts > 3) {
-                console.log(`[WS] Reconnecting... (retry in ${Math.round(delay / 1000)}s)`);
-            }
             this.connect();
         }, delay);
     }
