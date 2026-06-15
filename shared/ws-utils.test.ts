@@ -26,4 +26,16 @@ describe('shared WebSocket utilities', () => {
     expect(frame.readUInt16BE(2)).toBe(126);
     expect(frame.subarray(4).toString('utf8')).toBe(payload);
   });
+
+  it('builds 64-bit length frames for very large payloads', () => {
+    const length = 65536;
+    const payload = Buffer.alloc(length, 'x');
+    const frame = wsUtils.createWebSocketFrame(payload, 0x1);
+
+    expect(frame[0]).toBe(0x81);
+    expect(frame[1]).toBe(127);
+    expect(frame.readBigUInt64BE(2)).toBe(BigInt(length));
+    expect(frame.length).toBe(10 + length);
+    expect(frame.subarray(10).equals(payload)).toBe(true);
+  });
 });
