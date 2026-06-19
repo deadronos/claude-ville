@@ -32,6 +32,17 @@ describe('dashboardViewModel', () => {
     expect(shortProjectName('/Users/alex/work/app', 'Unknown project')).toBe('app');
     expect(shortProjectName('/Users/alex', 'Unknown project')).toBe('~');
     expect(shortProjectName(undefined, 'Unknown project')).toBe('Unknown project');
+
+    // Edge cases for shortProjectName
+    expect(shortProjectName('/repo/app/', 'Unknown project')).toBe('app');
+    expect(shortProjectName('/repo/app///', 'Unknown project')).toBe('app');
+    expect(shortProjectName('my-project', 'Unknown project')).toBe('my-project');
+    expect(shortProjectName('_unknown', 'Unknown project')).toBe('Unknown project');
+    expect(shortProjectName(null, 'Unknown project')).toBe('Unknown project');
+    expect(shortProjectName('', 'Unknown project')).toBe('Unknown project');
+    expect(shortProjectName('/repo//app', 'Unknown project')).toBe('app');
+    expect(shortProjectName('/', 'Unknown project')).toBe('/');
+
     expect(truncateProjectPath('/Users/alex/work/app')).toBe('~/work/app');
   });
 
