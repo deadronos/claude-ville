@@ -13,22 +13,23 @@ type IncomingMessage = http.IncomingMessage;
 /**
  * CORS origin is restricted by default to prevent unauthorized cross-origin requests.
  * Set ALLOWED_ORIGIN env var to permit specific origins (e.g., http://localhost:3000).
- * In development without ALLOWED_ORIGIN, defaults to restrictive 'null' origin handling.
+ * In development without ALLOWED_ORIGIN, we do not send the header to restrict to same-origin.
  */
-function getAllowedOrigin(): string {
+function getAllowedOrigin(): string | undefined {
   // Explicitly configured origin takes priority
   if (process.env.ALLOWED_ORIGIN) {
     return process.env.ALLOWED_ORIGIN;
   }
-  // In development without explicit config, restrict to same-origin
-  // The '*' wildcard is only appropriate for public APIs without auth
-  return 'null';
+  // If not configured, we do not permit cross-origin access by default.
+  return undefined;
 }
 
 /** Set CORS headers with configurable origin restriction. */
 function setCorsHeaders(res: ServerResponse) {
   const origin = getAllowedOrigin();
-  res.setHeader('Access-Control-Allow-Origin', origin);
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   // Do not expose credentials in cross-origin requests without explicit auth

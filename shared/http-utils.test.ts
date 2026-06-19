@@ -25,9 +25,10 @@ describe('shared HTTP utilities', () => {
     const res = makeResponse();
 
     httpUtils.setCorsHeaders(res);
-    expect(res.setHeader).toHaveBeenNthCalledWith(1, 'Access-Control-Allow-Origin', 'null');
-    expect(res.setHeader).toHaveBeenNthCalledWith(2, 'Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    expect(res.setHeader).toHaveBeenNthCalledWith(3, 'Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // When no ALLOWED_ORIGIN is set, Access-Control-Allow-Origin should NOT be set
+    expect(res.setHeader).not.toHaveBeenCalledWith('Access-Control-Allow-Origin', expect.any(String));
+    expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     httpUtils.sendJson(res, 201, { ok: true });
     expect(res.writeHead).toHaveBeenCalledWith(201, { 'Content-Type': 'application/json; charset=utf-8' });
