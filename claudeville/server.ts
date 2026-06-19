@@ -128,9 +128,9 @@ function handleGetProviders(req: HttpRequest, res: HttpResponse) {
  * GET /api/usage
  * Claude usage / subscription info
  */
-function handleGetUsage(req: HttpRequest, res: HttpResponse) {
+async function handleGetUsage(req: HttpRequest, res: HttpResponse) {
   try {
-    const usage = usageQuota.fetchUsage();
+    const usage = await usageQuota.fetchUsage();
     sendJson(res, 200, usage);
   } catch (err: unknown) {
     console.error('usage query failed:', err instanceof Error ? err.message : String(err));
@@ -335,15 +335,16 @@ function wsBroadcast(data: unknown) {
 
 async function sendInitialData(socket: WebSocket) {
   try {
-    const [sessions, teams] = await Promise.all([
+    const [sessions, teams, usage] = await Promise.all([
       getAllSessions(ACTIVE_THRESHOLD_MS),
       claudeAdapter?.getTeams ? claudeAdapter.getTeams() : [],
+      usageQuota.fetchUsage(),
     ]);
     wsSend(socket, {
       type: 'init',
       sessions,
       teams,
-      usage: usageQuota.fetchUsage(),
+      usage,
       timestamp: Date.now(),
     });
   } catch (err: unknown) {
@@ -365,15 +366,16 @@ async function broadcastUpdate() {
   }
   broadcastInFlight = true;
   try {
-    const [sessions, teams] = await Promise.all([
+    const [sessions, teams, usage] = await Promise.all([
       getAllSessions(ACTIVE_THRESHOLD_MS),
       claudeAdapter?.getTeams ? claudeAdapter.getTeams() : [],
+      usageQuota.fetchUsage(),
     ]);
     wsBroadcast({
       type: 'update',
       sessions,
       teams,
-      usage: usageQuota.fetchUsage(),
+      usage,
       timestamp: Date.now(),
     });
   } catch (err: unknown) {

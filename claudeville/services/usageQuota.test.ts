@@ -15,7 +15,7 @@ describe('usageQuota', () => {
 
     it('fetchUsage returns expected structure', async () => {
       const { fetchUsage } = await import('./usageQuota.js');
-      const usage = fetchUsage();
+      const usage = await fetchUsage();
 
       // Verify all expected properties exist
       expect(usage).toHaveProperty('account');
@@ -27,7 +27,7 @@ describe('usageQuota', () => {
 
     it('account has subscription properties', async () => {
       const { fetchUsage } = await import('./usageQuota.js');
-      const usage = fetchUsage();
+      const usage = await fetchUsage();
 
       expect(usage.account).toHaveProperty('subscriptionType');
       expect(usage.account).toHaveProperty('rateLimitTier');
@@ -36,7 +36,7 @@ describe('usageQuota', () => {
 
     it('quota has fiveHour and sevenDay properties', async () => {
       const { fetchUsage } = await import('./usageQuota.js');
-      const usage = fetchUsage();
+      const usage = await fetchUsage();
 
       expect(usage.quota).toHaveProperty('fiveHour');
       expect(usage.quota).toHaveProperty('sevenDay');
@@ -44,7 +44,7 @@ describe('usageQuota', () => {
 
     it('activity has today and thisWeek with messages/sessions', async () => {
       const { fetchUsage } = await import('./usageQuota.js');
-      const usage = fetchUsage();
+      const usage = await fetchUsage();
 
       expect(usage.activity).toHaveProperty('today');
       expect(usage.activity).toHaveProperty('thisWeek');
@@ -56,7 +56,7 @@ describe('usageQuota', () => {
 
     it('totals has sessions and messages counts', async () => {
       const { fetchUsage } = await import('./usageQuota.js');
-      const usage = fetchUsage();
+      const usage = await fetchUsage();
 
       expect(usage.totals).toHaveProperty('sessions');
       expect(usage.totals).toHaveProperty('messages');
@@ -66,7 +66,7 @@ describe('usageQuota', () => {
 
     it('quotaAvailable is a boolean', async () => {
       const { fetchUsage } = await import('./usageQuota.js');
-      const usage = fetchUsage();
+      const usage = await fetchUsage();
 
       expect(typeof usage.quotaAvailable).toBe('boolean');
     });
