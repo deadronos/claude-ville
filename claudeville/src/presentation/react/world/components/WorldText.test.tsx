@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
+import { Vector3 } from 'three';
 
 vi.mock('three', async (importOriginal) => {
   const actual = await importOriginal<typeof import('three')>();
@@ -43,7 +44,6 @@ describe('WorldText', () => {
   });
 
   it('handles Vector3 positions and applies z-offset', () => {
-    const { Vector3 } = require('three');
     const pos = new Vector3(5, 10, 15);
     const { container } = render(
       <WorldText position={pos} depthOffset={-4} fontSize={12}>
