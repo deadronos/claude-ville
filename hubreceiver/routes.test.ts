@@ -101,7 +101,7 @@ describe('hubreceiver routes', () => {
 
     handler(req, res);
 
-    expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'null');
+    expect(res.setHeader).not.toHaveBeenCalledWith('Access-Control-Allow-Origin', expect.any(String));
     expect(res.writeHead).toHaveBeenCalledWith(204);
     expect(res.end).toHaveBeenCalledWith();
   });

@@ -1,15 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { logger } from '../../shared/logger.js';
 
-// Mock the logger
-vi.mock('../../shared/logger.js', () => ({
-  logger: {
-    info: vi.fn(),
-    log: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+// Spy on logger methods to prevent console logs during tests and track calls
+vi.spyOn(logger, 'info').mockImplementation(() => {});
+vi.spyOn(logger, 'log').mockImplementation(() => {});
+vi.spyOn(logger, 'warn').mockImplementation(() => {});
+vi.spyOn(logger, 'error').mockImplementation(() => {});
 
 // Test the usageQuota module interface
 describe('usageQuota', () => {
