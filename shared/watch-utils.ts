@@ -1,20 +1,32 @@
 import fs from 'fs';
 
+export interface WatchPath {
+  path: string;
+  type: 'file' | 'directory';
+  filter?: string;
+  recursive?: boolean;
+}
+
+export interface FileWatchersResult {
+  watchCount: number;
+  watchers: fs.FSWatcher[];
+  close: () => void;
+}
+
 /**
  * Watch an array of watch-path objects and call onChange whenever any of them change.
  * Handles both file and directory watch paths. Directories support recursive watching
  * and optional filename filtering (e.g. only .jsonl files).
- *
- * @param {Array<{path: string, type: 'file'|'directory', filter?: string, recursive?: boolean}>} watchPaths
- * @param {Function} onChange  - Called with no arguments when a watched path changes
- * @param {number} [debounceMs=200]  - Debounce delay
- * @returns {{ watchCount: number, watchers: fs.FSWatcher[], close: () => void }}
  */
-export function createFileWatchers(watchPaths, onChange, debounceMs = 200) {
+export function createFileWatchers(
+  watchPaths: WatchPath[],
+  onChange: () => void,
+  debounceMs = 200,
+): FileWatchersResult {
   let watchCount = 0;
-  let timer = null;
+  let timer: NodeJS.Timeout | null = null;
   let closed = false;
-  const watchers = [];
+  const watchers: fs.FSWatcher[] = [];
 
   function scheduleChange() {
     if (closed) return;

@@ -41,4 +41,22 @@ describe('WorldText', () => {
 
     expect(container.querySelector('group')?.getAttribute('renderorder')).toBe('7');
   });
+
+  it('handles Vector3 positions and applies z-offset', () => {
+    const { Vector3 } = require('three');
+    const pos = new Vector3(5, 10, 15);
+    const { container } = render(
+      <WorldText position={pos} depthOffset={-4} fontSize={12}>
+        Vector3 test
+      </WorldText>
+    );
+
+    // The group position should receive the z-offset: 15 + (-4 * 0.001) = 14.996
+    const group = container.querySelector('group');
+    expect(group).toBeTruthy();
+    const positionProp = (group as any).position;
+    if (positionProp) {
+      expect(positionProp.z).toBeCloseTo(14.996, 4);
+    }
+  });
 });

@@ -7,6 +7,21 @@ vi.spyOn(logger, 'log').mockImplementation(() => {});
 vi.spyOn(logger, 'warn').mockImplementation(() => {});
 vi.spyOn(logger, 'error').mockImplementation(() => {});
 
+// Mock execFile to prevent spawning child processes during tests and make it instant
+vi.mock('child_process', async (importOriginal) => {
+  const original = await importOriginal<typeof import('child_process')>();
+  return {
+    ...original,
+    execFile: (file: string, args: any[], options: any, callback: any) => {
+      const cb = typeof options === 'function' ? options : callback;
+      if (cb) {
+        process.nextTick(() => cb(null, 'Logged in as test@example.com', ''));
+      }
+      return {} as any;
+    }
+  };
+});
+
 // Test the usageQuota module interface
 describe('usageQuota', () => {
   describe('module interface', () => {
@@ -85,7 +100,7 @@ describe('usageQuota', () => {
       init();
 
       // Wait for the async fetchEmail in init
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       expect(logger.info).toHaveBeenCalled();
     });

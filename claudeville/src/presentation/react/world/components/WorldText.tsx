@@ -1,6 +1,6 @@
 import { Children, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { CanvasTexture, FrontSide, LinearFilter, SRGBColorSpace } from 'three';
+import { CanvasTexture, FrontSide, LinearFilter, SRGBColorSpace, Vector3 } from 'three';
 import type { ThreeElements } from '@react-three/fiber';
 
 function collectTextCharacters(children: ReactNode) {
@@ -131,10 +131,18 @@ export function WorldText({
 
   const zOffset = typeof depthOffset === 'number' ? depthOffset * 0.001 : 0;
   const position = useMemo(
-    (): ThreeElements['mesh']['position'] =>
-      Array.isArray(callerPosition)
-        ? [callerPosition[0] ?? 0, callerPosition[1] ?? 0, (callerPosition[2] ?? 0) + zOffset]
-        : callerPosition,
+    (): ThreeElements['mesh']['position'] => {
+      if (Array.isArray(callerPosition)) {
+        return [callerPosition[0] ?? 0, callerPosition[1] ?? 0, (callerPosition[2] ?? 0) + zOffset];
+      } else if (callerPosition && typeof callerPosition === 'object' && 'isVector3' in callerPosition) {
+        return new Vector3(
+          (callerPosition as any).x,
+          (callerPosition as any).y,
+          (callerPosition as any).z + zOffset
+        );
+      }
+      return callerPosition;
+    },
     [callerPosition, zOffset],
   );
   const scale = useMemo(

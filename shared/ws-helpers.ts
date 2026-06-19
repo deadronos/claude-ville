@@ -6,21 +6,22 @@
  * and claudeville servers.
  *
  * The frame-building utilities (createWebSocketFrame, computeAcceptKey)
- * live in shared/ws-utils.js — this file only handles send/broadcast.
+ * live in shared/ws-utils.ts — this file only handles send/broadcast.
  */
+import type { Socket } from 'net';
 import { createWebSocketFrame } from './ws-utils.js';
 
-export const DISCONNECTED_CODES = new Set(['EPIPE', 'ECONNRESET', 'EBADF', 'ENOTCONN']);
+export const DISCONNECTED_CODES = new Set<string>(['EPIPE', 'ECONNRESET', 'EBADF', 'ENOTCONN']);
 
 /**
  * Send a JSON payload over a WebSocket socket.
  * Guards against destroyed sockets, handles write errors, cleans up dead sockets.
- *
- * @param {import('net').Socket} socket
- * @param {object} data
- * @param {Set} clientSet - the Set tracking all active clients (for cleanup)
  */
-export function wsSend(socket, data, clientSet = null) {
+export function wsSend(
+  socket: Socket,
+  data: any,
+  clientSet: Set<Socket> | null = null,
+): void {
   try {
     if (socket.destroyed || !socket.writable) {
       if (clientSet) clientSet.delete(socket);
@@ -29,8 +30,11 @@ export function wsSend(socket, data, clientSet = null) {
 
     const frame = createWebSocketFrame(JSON.stringify(data));
     socket.write(frame, (err) => {
-      if (err && !DISCONNECTED_CODES.has(err.code)) {
-        console.error(`[WebSocket] send failed (${err.code}): ${err.message}`);
+      if (err) {
+        const socketError = err as Error & { code?: string };
+        if (socketError.code && !DISCONNECTED_CODES.has(socketError.code)) {
+          console.error(`[WebSocket] send failed (${socketError.code}): ${err.message}`);
+        }
       }
       if (clientSet && (socket.destroyed || !socket.writable)) {
         clientSet.delete(socket);
@@ -38,7 +42,7 @@ export function wsSend(socket, data, clientSet = null) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[WebSocket] send error: ${msg}`);
+    console.error(`[WebSocket] send error: msg=${msg}`);
     if (clientSet) clientSet.delete(socket);
   }
 }
@@ -46,12 +50,9 @@ export function wsSend(socket, data, clientSet = null) {
 /**
  * Broadcast a JSON payload to all connected WebSocket clients.
  * Collects dead sockets and removes them after iteration (avoids mutating Set during forEach).
- *
- * @param {object} data
- * @param {Set<import('net').Socket>} wsClients
  */
-export function wsBroadcast(data, wsClients) {
-  let frame;
+export function wsBroadcast(data: any, wsClients: Set<Socket>): void {
+  let frame: Buffer;
   try {
     frame = createWebSocketFrame(JSON.stringify(data));
   } catch (err) {
@@ -60,15 +61,18 @@ export function wsBroadcast(data, wsClients) {
     return;
   }
 
-  const dead = [];
+  const dead: Socket[] = [];
   for (const socket of wsClients) {
     try {
       if (socket.destroyed || !socket.writable) {
         dead.push(socket);
       } else {
         socket.write(frame, (err) => {
-          if (err && !DISCONNECTED_CODES.has(err.code)) {
-            console.error(`[WebSocket] broadcast send failed (${err.code}): ${err.message}`);
+          if (err) {
+            const socketError = err as Error & { code?: string };
+            if (socketError.code && !DISCONNECTED_CODES.has(socketError.code)) {
+              console.error(`[WebSocket] broadcast send failed (${socketError.code}): ${err.message}`);
+            }
           }
         });
       }
