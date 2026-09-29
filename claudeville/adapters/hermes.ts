@@ -1,5 +1,16 @@
 /**
  * Hermes Agent adapter
+ *
+ * Current Hermes stores all sessions (CLI, TUI, gateway, cron) in SQLite:
+ *   ~/.hermes/state.db
+ *     - sessions : one row per session (id, source, model, cwd, origin_json, tokens, ...)
+ *     - messages : ordered message log (role, content, tool_calls, tool_name, timestamp)
+ *
+ * Older installs wrote one JSON metadata file per session plus optional JSONL
+ * transcripts to ~/.hermes/sessions/. `sessions.json` is only a legacy mirror
+ * of the gateway routing index, not a session list. We keep the file readers as
+ * a fallback for older installs and fixtures.
+ *
  * Data source: HERMES_DIR or ~/.hermes/
  */
 import fs from 'fs';
@@ -8,11 +19,40 @@ import path from 'path';
 
 import type { AdapterSessionDetail, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, parseJsonLines, readLines } from './jsonl-utils.js';
+import { hasTable, queryAll, safeJsonParse, withReadonlySqlite } from './sqlite-utils.js';
 
 const HERMES_DIR = process.env.HERMES_DIR || path.join(os.homedir(), '.hermes');
 const SESSIONS_DIR = path.join(HERMES_DIR, 'sessions');
+const DB_PATH = path.join(HERMES_DIR, 'state.db');
 
 type SessionFile = { filePath: string; sessionId: string; mtime: number };
+
+type DbSessionRow = {
+  id: string;
+  source: string | null;
+  model: string | null;
+  title: string | null;
+  cwd: string | null;
+  display_name: string | null;
+  origin_json: string | null;
+  billing_provider: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  estimated_cost_usd: number | null;
+  message_count: number | null;
+  started_at: number | null;
+  last_activity_at: number | null;
+  ended_at: number | null;
+  parent_session_id: string | null;
+};
+
+type DbMessageRow = {
+  role: string | null;
+  content: string | null;
+  tool_calls: string | null;
+  tool_name: string | null;
+  timestamp: number | null;
+};
 
 async function readJson(filePath: string): Promise<any | null> {
   try {
@@ -234,6 +274,156 @@ function projectName(metadata: any) {
   return metadata?.platform || null;
 }
 
+// ─── SQLite (current Hermes) ──────────────────────────────
+
+const DB_SESSIONS_SQL = `
+  SELECT id, source, model, title, cwd, display_name, origin_json, billing_provider,
+         input_tokens, output_tokens, estimated_cost_usd, message_count,
+         started_at, last_activity_at, ended_at, parent_session_id
+  FROM sessions
+  WHERE COALESCE(archived, 0) = 0
+    AND COALESCE(hidden, 0) = 0
+    AND COALESCE(last_activity_at, started_at) >= ?
+  ORDER BY COALESCE(last_activity_at, started_at) DESC
+`;
+
+const DB_MESSAGES_SQL = `
+  SELECT role, content, tool_calls, tool_name, timestamp
+  FROM messages
+  WHERE session_id = ? AND COALESCE(active, 1) = 1
+  ORDER BY timestamp DESC
+  LIMIT ?
+`;
+
+function dbModelName(row: DbSessionRow): string {
+  if (row.billing_provider && row.model) return `${row.billing_provider}/${row.model}`;
+  return row.model || row.billing_provider || 'hermes';
+}
+
+function dbProjectName(row: DbSessionRow): string | null {
+  const origin = safeJsonParse<any>(row.origin_json);
+  if (origin?.platform && (origin.chat_name || origin.chat_id)) {
+    return `${origin.platform}:${origin.chat_name || origin.chat_id}`;
+  }
+  if (row.cwd) return row.cwd;
+  if (row.source) return row.source;
+  return null;
+}
+
+function dbRowToEntry(row: DbMessageRow): any {
+  return {
+    role: row.role || undefined,
+    content: row.content ?? undefined,
+    tool_calls: safeJsonParse(row.tool_calls) ?? undefined,
+    name: row.tool_name || undefined,
+    timestamp: row.timestamp ?? undefined,
+  };
+}
+
+function summarizeDbMessages(rows: DbMessageRow[], limit: number) {
+  // rows are newest-first; aggregate newest-first then trim
+  const toolHistory: Array<{ tool: string; detail: string; ts: number }> = [];
+  const messages: Array<{ role: string; text: string; ts: number }> = [];
+
+  for (const row of rows) {
+    const entry = dbRowToEntry(row);
+    const tool = summarizeTool(entry);
+    if (tool) {
+      toolHistory.push(tool);
+      continue;
+    }
+    const message = summarizeMessage(entry);
+    if (message) messages.push(message);
+  }
+
+  const lastTool = toolHistory[0] || null;
+  const lastMessage = messages.find((message) => message.role === 'assistant') || messages[0] || null;
+
+  return {
+    toolHistory: toolHistory.slice(0, limit),
+    messages: messages.slice(0, limit),
+    lastTool: lastTool?.tool || null,
+    lastToolInput: lastTool?.detail || null,
+    lastMessage: lastMessage?.text?.substring(0, 80) || null,
+  };
+}
+
+function dbSessionTokenUsage(row: DbSessionRow): AdapterSessionDetail['tokenUsage'] {
+  const input = Number(row.input_tokens || 0);
+  const output = Number(row.output_tokens || 0);
+  if (!input && !output) return null;
+  return { input, output, totalInput: input, totalOutput: output };
+}
+
+async function getDbSessions(activeThresholdMs: number): Promise<AgentSessionSummary[]> {
+  const thresholdSeconds = (Date.now() - activeThresholdMs) / 1000;
+
+  const sessions = withReadonlySqlite(DB_PATH, 'hermes', (db) => {
+    if (!hasTable(db, 'sessions')) return null;
+    const rows = queryAll<DbSessionRow>(db, DB_SESSIONS_SQL, [thresholdSeconds]);
+
+    return rows.map((row) => {
+      const messageRows = queryAll<DbMessageRow>(db, DB_MESSAGES_SQL, [row.id, 120]);
+      const detail = summarizeDbMessages(messageRows, 15);
+      const updated = (row.last_activity_at ?? row.started_at ?? 0) * 1000;
+      const input = Number(row.input_tokens || 0);
+      const output = Number(row.output_tokens || 0);
+
+      return {
+        sessionId: `hermes-${row.id}`,
+        provider: 'hermes',
+        agentId: null,
+        agentType: 'main',
+        model: dbModelName(row),
+        status: 'active',
+        lastActivity: updated,
+        project: dbProjectName(row),
+        lastMessage: detail.lastMessage,
+        lastTool: detail.lastTool,
+        lastToolInput: detail.lastToolInput,
+        parentSessionId: row.parent_session_id,
+        filePath: DB_PATH,
+        tokens: input || output ? { input, output } : undefined,
+      } satisfies AgentSessionSummary;
+    });
+  });
+
+  return sessions || [];
+}
+
+function readDbSessionDetail(rawId: string, sessionId: string): AdapterSessionDetail {
+  const detail = withReadonlySqlite(DB_PATH, 'hermes', (db) => {
+    if (!hasTable(db, 'messages')) return null;
+    const rows = queryAll<DbMessageRow>(db, DB_MESSAGES_SQL, [rawId, 200]);
+    const summary = summarizeDbMessages(rows, 200);
+
+    let tokenUsage: AdapterSessionDetail['tokenUsage'] = null;
+    if (hasTable(db, 'sessions')) {
+      const sessionRow = queryAll<DbSessionRow>(
+        db,
+        `SELECT id, source, model, title, cwd, display_name, origin_json, billing_provider,
+                input_tokens, output_tokens, estimated_cost_usd, message_count,
+                started_at, last_activity_at, ended_at, parent_session_id
+         FROM sessions WHERE id = ? LIMIT 1`,
+        [rawId],
+      )[0];
+      if (sessionRow) tokenUsage = dbSessionTokenUsage(sessionRow);
+    }
+
+    return {
+      // newest-first -> reverse back to chronological for display
+      toolHistory: summary.toolHistory.slice(0, 15).reverse(),
+      messages: summary.messages.slice(0, 5).reverse(),
+      tokenUsage,
+      sessionId,
+    };
+  });
+
+  return detail || { toolHistory: [], messages: [] };
+}
+
+// ─── Adapter class ────────────────────────────────────────
+
 export class HermesAdapter implements AgentAdapter {
   get name() { return 'Hermes Agent'; }
   get provider() { return 'hermes'; }
@@ -244,6 +434,13 @@ export class HermesAdapter implements AgentAdapter {
   }
 
   async getActiveSessions(activeThresholdMs: number): Promise<AgentSessionSummary[]> {
+    if (fs.existsSync(DB_PATH)) {
+      const dbSessions = await getDbSessions(activeThresholdMs);
+      if (dbSessions.length > 0) {
+        return dbSessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
+      }
+    }
+
     const files = await getSessionFiles(activeThresholdMs);
     const sessions = await Promise.all(files.map(async ({ filePath, sessionId, mtime }) => {
       const metadata = await readJson(filePath);
@@ -268,10 +465,10 @@ export class HermesAdapter implements AgentAdapter {
         lastToolInput: detail.lastToolInput,
         parentSessionId: null,
         filePath: hasTranscript ? transcript : filePath,
-      };
+      } satisfies AgentSessionSummary;
     }));
 
-    return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+    return sessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterSessionDetail> {
@@ -281,6 +478,13 @@ export class HermesAdapter implements AgentAdapter {
     }
 
     const cleanId = sessionId.replace(/^hermes-/, '');
+
+    // SQLite-backed session (current Hermes)
+    if (fs.existsSync(DB_PATH)) {
+      const dbDetail = readDbSessionDetail(cleanId, sessionId);
+      if (dbDetail.toolHistory.length || dbDetail.messages.length) return dbDetail;
+    }
+
     const transcript = transcriptPath(cleanId);
     if (fs.existsSync(transcript)) {
       const detail = await parseTranscript(transcript);
@@ -301,8 +505,13 @@ export class HermesAdapter implements AgentAdapter {
   }
 
   getWatchPaths(): WatchPath[] {
-    return fs.existsSync(SESSIONS_DIR)
-      ? [{ type: 'directory', path: SESSIONS_DIR, recursive: false, filter: '.json' }]
-      : [];
+    const paths: WatchPath[] = [];
+    if (fs.existsSync(DB_PATH)) {
+      paths.push({ type: 'file', path: DB_PATH });
+    }
+    if (fs.existsSync(SESSIONS_DIR)) {
+      paths.push({ type: 'directory', path: SESSIONS_DIR, recursive: false, filter: '.json' });
+    }
+    return paths;
   }
 }

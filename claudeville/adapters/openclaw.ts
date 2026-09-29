@@ -1,21 +1,34 @@
 /**
  * OpenClaw adapter
- * Data source: ~/.openclaw/agents/{agentId}/sessions/
  *
- * Session format (JSONL):
+ * Current OpenClaw (>= 2026) stores live sessions per agent in SQLite:
+ *   ~/.openclaw/agents/{agentId}/agent/openclaw-agent.sqlite
+ *     - session_windows    : one row per session window (id, session_key, model, timestamps)
+ *     - transcript_events  : ordered event log (event_json OR zstd-compressed event_zstd)
+ *     - conversations      : channel/conversation metadata
+ *
+ * Older installs wrote JSONL transcripts to
+ *   ~/.openclaw/agents/{agentId}/sessions/*.jsonl
+ * which are now only used for archived/deleted sessions
+ * (`*.jsonl.deleted.*.zst`). We keep the JSONL reader as a fallback.
+ *
+ * Legacy JSONL session format:
  *   {"type":"session","version":3,"id":"...","timestamp":"...","cwd":"..."}
  *   {"type":"model_change","provider":"github-copilot","modelId":"gpt-5-mini",...}
- *   {"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"..."}],"model":"...","usage":{...}},...}
+ *   {"type":"message","message":{"role":"assistant","content":[...],"model":"...","usage":{...}},...}
  */
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionDetail, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { decodeZstdText, hasTable, queryAll, safeJsonParse, withReadonlySqlite } from './sqlite-utils.js';
+import type { SqliteDb } from './sqlite-utils.js';
 
 const OPENCLAW_DIR = path.join(os.homedir(), '.openclaw');
 const AGENTS_DIR = path.join(OPENCLAW_DIR, 'agents');
+const AGENT_DB_FILENAME = 'openclaw-agent.sqlite';
 
 // Type for directory entries from readdirSync with withFileTypes: true
 type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
@@ -26,16 +39,45 @@ function isPrimarySessionFile(fileName: string) {
   return fileName.endsWith('.jsonl') && !fileName.endsWith('.trajectory.jsonl');
 }
 
-// ─── Session parsing ──────────────────────────────────────
+function extractText(content: unknown) {
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return '';
+  for (const block of content) {
+    if (block.type === 'text' && block.text) return block.text.trim();
+    if (block.type === 'output_text' && block.text) return block.text.trim();
+  }
+  return '';
+}
+
+function toolBlockInfo(block: any): { name: string; input: unknown } | null {
+  if (!block || typeof block !== 'object') return null;
+  if (block.type === 'tool_use' || block.type === 'toolCall' || block.type === 'function_call' || block.name) {
+    return {
+      name: String(block.name || 'tool_use'),
+      input: block.arguments ?? block.input ?? block.args,
+    };
+  }
+  return null;
+}
+
+function normalizeTokenUsage(usage: any): AdapterSessionDetail['tokenUsage'] {
+  if (!usage || typeof usage !== 'object') return null;
+  const input = Number(usage.input ?? usage.promptTokens ?? usage.prompt_tokens ?? 0);
+  const output = Number(usage.output ?? usage.completionTokens ?? usage.completion_tokens ?? 0);
+  if (!input && !output) return null;
+  return { input, output, totalInput: input, totalOutput: output };
+}
+
+// ─── Legacy JSONL session parsing ─────────────────────────
 
 async function parseSession(filePath: string) {
   const detail = {
-    model: null,
-    provider: null,
-    project: null,
-    lastTool: null,
-    lastToolInput: null,
-    lastMessage: null,
+    model: null as string | null,
+    provider: null as string | null,
+    project: null as string | null,
+    lastTool: null as string | null,
+    lastToolInput: null as string | null,
+    lastMessage: null as string | null,
   };
 
   const lines = await readLines(filePath, { from: 'end', count: 80, scope: 'openclaw' });
@@ -76,14 +118,15 @@ async function parseSession(filePath: string) {
         }
       }
 
-      // Tool usage (tool_use block in content)
-      if (!detail.lastTool && msg.content) {
+      // Tool usage (tool call block in content)
+      if (!detail.lastTool && msg.content && Array.isArray(msg.content)) {
         for (const block of msg.content) {
-          if (block.type === 'tool_use' || block.name) {
-            detail.lastTool = block.name || 'tool_use';
-            if (block.input) {
-              detail.lastToolInput = (typeof block.input === 'string'
-                ? block.input : JSON.stringify(block.input)
+          const info = toolBlockInfo(block);
+          if (info) {
+            detail.lastTool = info.name;
+            if (info.input !== undefined) {
+              detail.lastToolInput = (typeof info.input === 'string'
+                ? info.input : JSON.stringify(info.input)
               ).substring(0, 60);
             }
             break;
@@ -98,20 +141,10 @@ async function parseSession(filePath: string) {
   return detail;
 }
 
-function extractText(content: unknown) {
-  if (typeof content === 'string') return content.trim();
-  if (!Array.isArray(content)) return '';
-  for (const block of content) {
-    if (block.type === 'text' && block.text) return block.text.trim();
-    if (block.type === 'output_text' && block.text) return block.text.trim();
-  }
-  return '';
-}
-
-// ─── Tool history ────────────────────────────────────
+// ─── Legacy tool history / recent messages ────────────────
 
 async function getToolHistory(filePath: string, maxItems = 15) {
-  const tools = [];
+  const tools: Array<{ tool: string; detail: string; ts: number }> = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 100, scope: 'openclaw' });
     const entries = parseJsonLines(lines, 'openclaw');
@@ -119,18 +152,19 @@ async function getToolHistory(filePath: string, maxItems = 15) {
     for (const entry of entries) {
       if (entry.type !== 'message' || !entry.message) continue;
       const msg = entry.message;
-      if (!msg.content) continue;
+      if (!msg.content || !Array.isArray(msg.content)) continue;
 
       for (const block of msg.content) {
-        if (block.type !== 'tool_use' && !block.name) continue;
+        const info = toolBlockInfo(block);
+        if (!info) continue;
         let detail = '';
-        if (block.input) {
-          detail = (typeof block.input === 'string'
-            ? block.input : JSON.stringify(block.input)
+        if (info.input !== undefined) {
+          detail = (typeof info.input === 'string'
+            ? info.input : JSON.stringify(info.input)
           ).substring(0, 80);
         }
         tools.push({
-          tool: block.name || 'tool_use',
+          tool: info.name,
           detail,
           ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
         });
@@ -142,10 +176,8 @@ async function getToolHistory(filePath: string, maxItems = 15) {
   return tools.slice(-maxItems);
 }
 
-// ─── Recent messages ──────────────────────────────────────
-
 async function getRecentMessages(filePath: string, maxItems = 5) {
-  const messages = [];
+  const messages: Array<{ role: string; text: string; ts: number }> = [];
   try {
     const lines = await readLines(filePath, { from: 'end', count: 60, scope: 'openclaw' });
     const entries = parseJsonLines(lines, 'openclaw');
@@ -154,6 +186,7 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
       if (entry.type !== 'message' || !entry.message) continue;
       const msg = entry.message;
       if (!msg.content) continue;
+      if (msg.role === 'tool' || msg.role === 'toolResult') continue;
 
       const text = extractText(msg.content);
       if (!text) continue;
@@ -170,6 +203,8 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
+// ─── Session ID utilities ─────────────────────────────────
+
 function encodeSessionKey(value: string) {
   return encodeURIComponent(value || '');
 }
@@ -178,8 +213,8 @@ function decodeSessionKey(value: string) {
   return decodeURIComponent(value || '');
 }
 
-function buildSessionId(agentId: string, fileName: string) {
-  const sessionId = fileName.replace('.jsonl', '');
+function buildSessionId(agentId: string, rawId: string) {
+  const sessionId = rawId.replace('.jsonl', '');
   return `openclaw:${encodeSessionKey(agentId)}:${encodeSessionKey(sessionId)}`;
 }
 
@@ -193,7 +228,7 @@ function buildProjectKey(agentId: string | null, projectPath: string | null) {
 function parseSessionId(sessionId: string) {
   if (!sessionId.startsWith('openclaw:')) {
     return {
-      agentId: null,
+      agentId: null as string | null,
       fileId: sessionId.replace('openclaw-', ''),
     };
   }
@@ -205,63 +240,215 @@ function parseSessionId(sessionId: string) {
   };
 }
 
-// ─── Session scan ────────────────────────────────────────
+// ─── Legacy session scan ──────────────────────────────────
 
-type OpenClawScanResult = { filePath: string; mtime: number; fileName: string; agentId: string };
+type OpenClawFileSession = { filePath: string; mtime: number; fileName: string; agentId: string };
 
-async function scanAllSessionFiles(activeThresholdMs: number): Promise<OpenClawScanResult[]> {
-  const results: OpenClawScanResult[] = [];
-  if (!fs.existsSync(AGENTS_DIR)) return results;
-
+async function scanAgentSessionFiles(agentId: string, sessionsDir: string, activeThresholdMs: number): Promise<OpenClawFileSession[]> {
+  const results: OpenClawFileSession[] = [];
+  if (!fs.existsSync(sessionsDir)) return results;
   const now = Date.now();
 
   try {
-    const agentDirs = (await fs.promises.readdir(AGENTS_DIR, { withFileTypes: true }))
-      .filter((d: Dirent) => d.isDirectory());
-    const agentResults = await Promise.all(
-      agentDirs.map(async (agentDir: Dirent) => {
-        const sessionsDir = path.join(AGENTS_DIR, agentDir.name, 'sessions');
-        if (!fs.existsSync(sessionsDir)) return [];
-
+    const sessionFiles = await fs.promises.readdir(sessionsDir);
+    const jsonlFiles = sessionFiles.filter((f: string) => isPrimarySessionFile(f));
+    const fileResults = await Promise.all(
+      jsonlFiles.map(async (file: string) => {
+        const filePath = path.join(sessionsDir, file);
         try {
-          const sessionFiles = await fs.promises.readdir(sessionsDir);
-          const jsonlFiles = sessionFiles.filter((f: string) => isPrimarySessionFile(f));
-          const fileResults = await Promise.all(
-            jsonlFiles.map(async (file: string) => {
-              const filePath = path.join(sessionsDir, file);
-              try {
-                const stat = await fs.promises.stat(filePath);
-                if (now - stat.mtimeMs > activeThresholdMs) return null;
-                return {
-                  filePath,
-                  mtime: stat.mtimeMs,
-                  fileName: file,
-                  agentId: agentDir.name,
-                };
-              } catch (err) {
-                debugAdapterError('openclaw', 'scanAllSessionFiles stat', err, filePath);
-                return null;
-              }
-            })
-          );
-          return fileResults.filter((r: OpenClawScanResult | null): r is OpenClawScanResult => r !== null);
+          const stat = await fs.promises.stat(filePath);
+          if (now - stat.mtimeMs > activeThresholdMs) return null;
+          return { filePath, mtime: stat.mtimeMs, fileName: file, agentId };
         } catch (err) {
-          debugAdapterError('openclaw', 'scanAllSessionFiles readdir sessions', err, sessionsDir);
-          return [];
+          debugAdapterError('openclaw', 'scanAgentSessionFiles stat', err, filePath);
+          return null;
         }
       })
     );
-    for (const group of agentResults) {
-      results.push(...group);
-    }
+    for (const r of fileResults) if (r) results.push(r);
   } catch (err) {
-    debugAdapterError('openclaw', 'scanAllSessionFiles', err, AGENTS_DIR);
+    debugAdapterError('openclaw', 'scanAgentSessionFiles readdir', err, sessionsDir);
   }
 
   return results;
 }
 
-// ─── Adapter class ─────────────────────────────────────
+// ─── SQLite discovery ─────────────────────────────────────
+
+type AgentDatabase = { agentId: string; dbPath: string };
+
+function findAgentDatabases(): AgentDatabase[] {
+  const databases: AgentDatabase[] = [];
+  if (!fs.existsSync(AGENTS_DIR)) return databases;
+
+  try {
+    const agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
+      .filter((d: Dirent) => d.isDirectory());
+
+    for (const dir of agentDirs) {
+      const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
+      if (fs.existsSync(dbPath)) databases.push({ agentId: dir.name, dbPath });
+    }
+  } catch (err) {
+    debugAdapterError('openclaw', 'findAgentDatabases', err, AGENTS_DIR);
+  }
+
+  return databases;
+}
+
+function findAgentDatabase(agentId: string | null): AgentDatabase | null {
+  const databases = findAgentDatabases();
+  if (!agentId) return databases[0] || null;
+  return databases.find((entry) => entry.agentId === agentId) || null;
+}
+
+function decodeEventRows(rows: Array<{ event_json: string | null; event_zstd: Buffer | null }>): any[] {
+  const entries: any[] = [];
+  for (const row of rows) {
+    const json = row.event_json ?? decodeZstdText(row.event_zstd);
+    if (!json) continue;
+    const entry = safeJsonParse<any>(json);
+    if (entry) entries.push(entry);
+  }
+  return entries;
+}
+
+type SessionWindowRow = {
+  session_id: string;
+  session_key: string | null;
+  model: string | null;
+  model_provider: string | null;
+  status: string | null;
+  updated_at: number | null;
+  transcript_updated_at: number | null;
+  display_name: string | null;
+};
+
+type DbDetail = {
+  model: string | null;
+  provider: string | null;
+  project: string | null;
+  lastTool: string | null;
+  lastToolInput: string | null;
+  lastMessage: string | null;
+  tokenUsage: AdapterSessionDetail['tokenUsage'];
+};
+
+function emptyDetail(): DbDetail {
+  return { model: null, provider: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null, tokenUsage: null };
+}
+
+/**
+ * Fill detail fields from an ordered (newest-first) list of transcript events.
+ */
+function applyEventsToDetail(entries: any[], detail: DbDetail) {
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue;
+
+    if (!detail.project && entry.type === 'session' && entry.cwd) {
+      detail.project = entry.cwd;
+    }
+    if (!detail.model && entry.type === 'model_change') {
+      detail.model = entry.modelId || null;
+      detail.provider = entry.provider || null;
+    }
+
+    if (entry.type === 'message' && entry.message) {
+      const msg = entry.message;
+      if (!detail.model && msg.model) detail.model = msg.model;
+      if (!detail.provider && msg.provider) detail.provider = msg.provider;
+      if (!detail.tokenUsage) detail.tokenUsage = normalizeTokenUsage(msg.usage);
+
+      const role = msg.role || 'assistant';
+      if (!detail.lastMessage && role !== 'tool' && role !== 'toolResult' && msg.content) {
+        const text = extractText(msg.content);
+        if (text) detail.lastMessage = text.substring(0, 80);
+      }
+
+      if (!detail.lastTool && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          const info = toolBlockInfo(block);
+          if (!info) continue;
+          detail.lastTool = info.name;
+          if (info.input !== undefined) {
+            detail.lastToolInput = (typeof info.input === 'string'
+              ? info.input : JSON.stringify(info.input)
+            ).substring(0, 60);
+          }
+          break;
+        }
+      }
+    }
+
+    if (detail.lastMessage && detail.lastTool && detail.model) break;
+  }
+}
+
+function readDbDetail(db: SqliteDb, sessionId: string, limit = 60): DbDetail {
+  const rows = queryAll<{ event_json: string | null; event_zstd: Buffer | null }>(
+    db,
+    'SELECT event_json, event_zstd FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?',
+    [sessionId, limit],
+  );
+  const detail = emptyDetail();
+  applyEventsToDetail(decodeEventRows(rows), detail);
+  return detail;
+}
+
+const SESSION_WINDOW_SQL = `
+  SELECT session_id, session_key, model, model_provider, status, updated_at, transcript_updated_at, display_name
+  FROM session_windows
+  WHERE COALESCE(transcript_updated_at, updated_at) >= ?
+  ORDER BY COALESCE(transcript_updated_at, updated_at) DESC
+`;
+
+async function getDbSessions(activeThresholdMs: number) {
+  const databases = findAgentDatabases();
+  const sessions: any[] = [];
+  const threshold = Date.now() - activeThresholdMs;
+
+  for (const { agentId, dbPath } of databases) {
+    const agentSessions = withReadonlySqlite(dbPath, 'openclaw', (db) => {
+      if (!hasTable(db, 'session_windows') || !hasTable(db, 'transcript_events')) return [];
+      const rows = queryAll<SessionWindowRow>(db, SESSION_WINDOW_SQL, [threshold]);
+
+      const seen = new Set<string>();
+      const results: any[] = [];
+      for (const row of rows) {
+        const key = row.session_key || row.session_id;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const detail = readDbDetail(db, row.session_id);
+        const model = row.model || detail.model || 'unknown';
+
+        results.push({
+          sessionId: buildSessionId(agentId, row.session_id),
+          provider: 'openclaw',
+          agentId,
+          displayName: row.display_name || agentId || null,
+          agentType: 'main',
+          model,
+          status: 'active',
+          lastActivity: row.transcript_updated_at || row.updated_at || 0,
+          project: buildProjectKey(agentId, detail.project),
+          lastMessage: detail.lastMessage,
+          lastTool: detail.lastTool,
+          lastToolInput: detail.lastToolInput,
+          parentSessionId: null,
+          filePath: dbPath,
+        });
+      }
+      return results;
+    });
+
+    if (agentSessions) sessions.push(...agentSessions);
+  }
+
+  return sessions;
+}
+
+// ─── Adapter class ────────────────────────────────────────
 
 export class OpenClawAdapter implements AgentAdapter {
   get name() { return 'OpenClaw'; }
@@ -273,58 +460,144 @@ export class OpenClawAdapter implements AgentAdapter {
   }
 
   async getActiveSessions(activeThresholdMs: number) {
-    const sessionFiles = await scanAllSessionFiles(activeThresholdMs);
-    const sessions = await Promise.all(sessionFiles.map(async ({ filePath, mtime, fileName, agentId }) => {
-      const detail = await parseSession(filePath);
+    const databases = findAgentDatabases();
+    const agentsWithDb = new Set(databases.map((entry) => entry.agentId));
 
-      return {
-        sessionId: buildSessionId(agentId, fileName),
-        provider: 'openclaw',
-        agentId,
-        displayName: agentId || null,
-        agentType: 'main',
-        model: detail.model || 'unknown',
-        status: 'active',
-        lastActivity: mtime,
-        project: buildProjectKey(agentId, detail.project),
-        lastMessage: detail.lastMessage,
-        lastTool: detail.lastTool,
-        lastToolInput: detail.lastToolInput,
-        parentSessionId: null,
-        filePath,
-      };
-    }));
+    // SQLite-backed sessions (current OpenClaw)
+    const dbSessions = await getDbSessions(activeThresholdMs);
 
-    return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+    // Legacy JSONL sessions for agents that have no SQLite database
+    const legacySessions: any[] = [];
+    if (fs.existsSync(AGENTS_DIR)) {
+      let agentDirs: Dirent[] = [];
+      try {
+        agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
+          .filter((d: Dirent) => d.isDirectory());
+      } catch (err) {
+        debugAdapterError('openclaw', 'getActiveSessions readdir agents', err, AGENTS_DIR);
+      }
+
+      for (const dir of agentDirs) {
+        if (agentsWithDb.has(dir.name)) continue;
+        const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
+        const fileSessions = await scanAgentSessionFiles(dir.name, sessionsDir, activeThresholdMs);
+        for (const { filePath, mtime, fileName, agentId } of fileSessions) {
+          const detail = await parseSession(filePath);
+          legacySessions.push({
+            sessionId: buildSessionId(agentId, fileName),
+            provider: 'openclaw',
+            agentId,
+            displayName: agentId || null,
+            agentType: 'main',
+            model: detail.model || 'unknown',
+            status: 'active',
+            lastActivity: mtime,
+            project: buildProjectKey(agentId, detail.project),
+            lastMessage: detail.lastMessage,
+            lastTool: detail.lastTool,
+            lastToolInput: detail.lastToolInput,
+            parentSessionId: null,
+            filePath,
+          });
+        }
+      }
+    }
+
+    return [...dbSessions, ...legacySessions].sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
-    if (filePath) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterSessionDetail> {
+    const parsed = parseSessionId(sessionId);
+
+    // SQLite-backed session (current OpenClaw)
+    if (filePath && filePath.endsWith('.sqlite')) {
+      return this.readDbSessionDetail(filePath, parsed.fileId, sessionId);
+    }
+
+    if (!filePath || !filePath.endsWith('.jsonl')) {
+      const database = findAgentDatabase(parsed.agentId);
+      if (database) {
+        const detail = this.readDbSessionDetail(database.dbPath, parsed.fileId, sessionId);
+        if (detail.toolHistory.length || detail.messages.length) return detail;
+      }
+    }
+
+    // Legacy JSONL
+    let target = filePath;
+    if (!target && fs.existsSync(AGENTS_DIR)) {
+      const agents = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
+        .filter((d: Dirent) => d.isDirectory());
+      for (const dir of agents) {
+        if (parsed.agentId && dir.name !== parsed.agentId) continue;
+        const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
+        const candidate = path.join(sessionsDir, `${parsed.fileId}.jsonl`);
+        if (fs.existsSync(candidate)) { target = candidate; break; }
+      }
+    }
+
+    if (target && fs.existsSync(target)) {
       return {
-        toolHistory: await getToolHistory(filePath),
-        messages: await getRecentMessages(filePath),
+        toolHistory: await getToolHistory(target),
+        messages: await getRecentMessages(target),
         sessionId,
       };
     }
 
-    const sessionFiles = await scanAllSessionFiles(30 * 60 * 1000);
-    const parsed = parseSessionId(sessionId);
-
-    for (const { filePath, fileName, agentId } of sessionFiles) {
-      const fileId = fileName.replace('.jsonl', '');
-      if (
-        fileId === parsed.fileId
-        && (!parsed.agentId || parsed.agentId === agentId)
-      ) {
-        return {
-          toolHistory: await getToolHistory(filePath),
-          messages: await getRecentMessages(filePath),
-          sessionId,
-        };
-      }
-    }
-
     return { toolHistory: [], messages: [] };
+  }
+
+  private readDbSessionDetail(dbPath: string, rawSessionId: string, sessionId: string): AdapterSessionDetail {
+    const detail = withReadonlySqlite(dbPath, 'openclaw', (db) => {
+      if (!hasTable(db, 'transcript_events')) return null;
+      const rows = queryAll<{ event_json: string | null; event_zstd: Buffer | null }>(
+        db,
+        'SELECT event_json, event_zstd FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?',
+        [rawSessionId, 200],
+      );
+      // rows are newest-first; reverse to chronological so `slice(-N)` keeps the latest
+      const entries = decodeEventRows(rows).reverse();
+      const toolHistory: Array<{ tool: string; detail: string; ts: number }> = [];
+      const messages: Array<{ role: string; text: string; ts: number }> = [];
+      let tokenUsage: AdapterSessionDetail['tokenUsage'] = null;
+
+      for (const entry of entries) {
+        if (!entry || typeof entry !== 'object' || entry.type !== 'message' || !entry.message) continue;
+        const msg = entry.message;
+        const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0;
+        const role = msg.role || 'assistant';
+        const usage = normalizeTokenUsage(msg.usage);
+        if (usage) tokenUsage = usage;
+        if (!Array.isArray(msg.content)) continue;
+
+        if (role === 'tool' || role === 'toolResult') {
+          continue;
+        }
+
+        for (const block of msg.content) {
+          const info = toolBlockInfo(block);
+          if (!info) continue;
+          let toolDetail = '';
+          if (info.input !== undefined) {
+            toolDetail = (typeof info.input === 'string'
+              ? info.input : JSON.stringify(info.input)
+            ).substring(0, 80);
+          }
+          toolHistory.push({ tool: info.name, detail: toolDetail, ts });
+        }
+
+        const text = extractText(msg.content);
+        if (text) messages.push({ role, text: text.substring(0, 200), ts });
+      }
+
+      return {
+        toolHistory: toolHistory.slice(-15),
+        messages: messages.slice(-5),
+        tokenUsage,
+        sessionId,
+      };
+    });
+
+    return detail || { toolHistory: [], messages: [] };
   }
 
   getWatchPaths(): WatchPath[] {
@@ -336,6 +609,11 @@ export class OpenClawAdapter implements AgentAdapter {
         .filter((d: Dirent) => d.isDirectory());
 
       for (const dir of agentDirs) {
+        const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
+        if (fs.existsSync(dbPath)) {
+          paths.push({ type: 'file', path: dbPath });
+        }
+
         const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
         if (fs.existsSync(sessionsDir)) {
           paths.push({ type: 'directory', path: sessionsDir, filter: '.jsonl' });
