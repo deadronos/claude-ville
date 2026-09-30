@@ -5,6 +5,7 @@ import { Position } from '../domain/value-objects/Position.js';
 import { BUILDING_DEFS } from '../config/buildings.js';
 import { resolveAgentDisplayName } from '../config/agentNames.js';
 import { HubDataSource } from '../infrastructure/HubDataSource.js';
+import { normalizeTokens } from '../../../shared/session-utils.js';
 
 interface TeamMember {
     agentId?: string;
@@ -106,10 +107,7 @@ export class AgentManager {
         const latestTool = detailToolHistory[detailToolHistory.length - 1] || null;
         const latestMessage = detailMessages[detailMessages.length - 1]?.text || null;
         const messages = Array.isArray(session.messages) && session.messages.length > 0 ? session.messages : detailMessages;
-        const tokens = session.tokens || (tokenUsage ? {
-            input: tokenUsage.totalInput || 0,
-            output: tokenUsage.totalOutput || 0,
-        } : { input: 0, output: 0 });
+        const tokens = normalizeTokens(tokenUsage, session.tokens || null);
 
         const teamName: string | null = teamInfo?.teamName
             || (session.project ? session.project.split('/').filter(Boolean).pop() || null : null);

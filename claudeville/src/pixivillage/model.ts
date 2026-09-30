@@ -1,3 +1,5 @@
+import { normalizeTokens } from '../../../shared/session-utils.js';
+
 export type VillageStatus = 'running' | 'waiting' | 'idle' | 'error' | 'offline';
 
 export interface HubSession {
@@ -200,8 +202,9 @@ export function mapSessionToVillageAgent(session: HubSession, now = Date.now()):
   const latestMessage = session.lastMessage || session.detail?.messages?.at(-1)?.text || null;
   const latestTool = session.lastTool || session.detail?.toolHistory?.at(-1)?.tool || null;
   const currentTask = session.currentTask || latestMessage || (latestTool ? `Using ${latestTool}` : 'Monitoring session activity');
-  const tokenInput = session.tokens?.input ?? session.tokenUsage?.totalInput ?? session.tokenUsage?.input ?? 0;
-  const tokenOutput = session.tokens?.output ?? session.tokenUsage?.totalOutput ?? session.tokenUsage?.output ?? 0;
+  const tokens = normalizeTokens(session.tokenUsage, session.tokens || null);
+  const tokenInput = tokens.input;
+  const tokenOutput = tokens.output;
 
   return {
     id: session.sessionId,
