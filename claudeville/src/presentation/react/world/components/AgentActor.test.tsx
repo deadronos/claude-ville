@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, renderHook } from '@testing-library/react';
 
 import type { BubbleConfig } from '../types.js';
-import { AgentActor, Accessory, Bubble, Hair, NameTag } from './AgentActor.js';
+import { AgentActor } from './AgentActor.js';
+import { Accessory, Hair } from './agent/AvatarParts.js';
+import { Bubble } from './agent/Bubble.js';
+import { NameTag } from './agent/NameTag.js';
 import { AgentStatus } from '../../../../domain/value-objects/AgentStatus.js';
 import { useInverseZoom } from '../hooks/useInverseZoom.js';
 import { createPolygonGeometry, createRoundedRectGeometry } from '../utils.js';
