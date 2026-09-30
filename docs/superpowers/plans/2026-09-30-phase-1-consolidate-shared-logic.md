@@ -31,11 +31,11 @@
 **Interfaces:**
 - Produces: `export function extractText(content: unknown): string`
 
-- [ ] Step 1: Write failing tests in `text-utils.test.ts` (string trims, `text`/`output_text` blocks, non-block arrays return `''`, non-string/non-array returns `''`, first match wins).
-- [ ] Step 2: Run `npx vitest run claudeville/adapters/text-utils.test.ts` — expect FAIL (module missing).
-- [ ] Step 3: Implement `extractText` in `text-utils.ts` copying the openclaw variant exactly.
-- [ ] Step 4: Re-run — expect PASS.
-- [ ] Step 5: Replace the three local copies with imports; update `${N}` and commit `refactor(adapters): extract shared extractText helper`.
+- [x] Step 1: Write failing tests in `text-utils.test.ts` (string trims, `text`/`output_text` blocks, non-block arrays return `''`, non-string/non-array returns `''`, first match wins).
+- [x] Step 2: Run `npx vitest run claudeville/adapters/text-utils.test.ts` — expect FAIL (module missing).
+- [x] Step 3: Implement `extractText` in `text-utils.ts` copying the openclaw variant exactly.
+- [x] Step 4: Re-run — expect PASS.
+- [x] Step 5: Replace the three local copies with imports; update `${N}` and commit `refactor(adapters): extract shared extractText helper`.
 
 ### Task 2: Canonical isometric projection
 
@@ -54,11 +54,11 @@
 - `world/utils.ts` keeps its public API (`isoToScreen`, `worldToIso`, `isoToWorld`) but delegates with `TILE_WIDTH/TILE_HEIGHT`.
 - `renderVillage.ts` keeps its local origin-offset wrapper, delegating with its `tileWidth = 96`, `tileHeight = 48`.
 
-- [ ] Step 1: Write failing round-trip and known-value tests in `iso.test.ts`.
-- [ ] Step 2: Run — expect FAIL.
-- [ ] Step 3: Implement `iso.ts`; make `Position.toScreen` delegate.
-- [ ] Step 4: Run `npx vitest run claudeville/src/domain claudeville/src/presentation/react/world --reporter=dot` — expect PASS.
-- [ ] Step 5: Update the four consumers and commit `refactor(world): single isometric projection implementation`.
+- [x] Step 1: Write failing round-trip and known-value tests in `iso.test.ts`.
+- [x] Step 2: Run — expect FAIL.
+- [x] Step 3: Implement `iso.ts`; make `Position.toScreen` delegate.
+- [x] Step 4: Run `npx vitest run claudeville/src/domain claudeville/src/presentation/react/world --reporter=dot` — expect PASS.
+- [x] Step 5: Update the four consumers and commit `refactor(world): single isometric projection implementation`.
 
 ### Task 3: `fetchSessionDetail` infrastructure helper
 
@@ -74,11 +74,11 @@
 - Produces: `fetchSessionDetail(sessionId: string, project?: string, provider?: string): Promise<{ toolHistory: any[]; messages: any[] } | null>`
 - Returns `null` on non-OK response or network error; never throws.
 
-- [ ] Step 1: Write failing tests (URL params, auth header, success normalization, non-OK → null, throw → null), mirroring `HubDataSource.test.ts` mocking.
-- [ ] Step 2: Run — expect FAIL.
-- [ ] Step 3: Implement helper; return `{ toolHistory: data.toolHistory || [], messages: data.messages || [] }`.
-- [ ] Step 4: Run — expect PASS.
-- [ ] Step 5: Update the four call sites; commit `refactor(infrastructure): shared fetchSessionDetail helper`.
+- [x] Step 1: Write failing tests (URL params, auth header, success normalization, non-OK → null, throw → null), mirroring `HubDataSource.test.ts` mocking.
+- [x] Step 2: Run — expect FAIL.
+- [x] Step 3: Implement helper; return `{ toolHistory: data.toolHistory || [], messages: data.messages || [] }`.
+- [x] Step 4: Run — expect PASS.
+- [x] Step 5: Update the four call sites; commit `refactor(infrastructure): shared fetchSessionDetail helper`.
 
 ### Task 4: Token normalization via `shared/session-utils.ts`
 
@@ -86,10 +86,10 @@
 - Modify: `claudeville/src/application/AgentManager.ts:109-112`
 - Modify: `claudeville/src/pixivillage/model.ts:203-204`
 
-- [ ] Step 1: Run the existing precedence tests first (`npx vitest run claudeville/src/application/AgentManager.test.ts claudeville/src/pixivillage/model.test.ts`) — they are the safety net.
-- [ ] Step 2: Replace both implementations with `normalizeTokens(session.tokenUsage || null, session.tokens || null)` imported as `'../../../shared/session-utils.js'`.
-- [ ] Step 3: Re-run tests — expect PASS.
-- [ ] Step 4: Commit `refactor: reuse shared token normalization`.
+- [x] Step 1: Run the existing precedence tests first (`npx vitest run claudeville/src/application/AgentManager.test.ts claudeville/src/pixivillage/model.test.ts`) — they are the safety net.
+- [x] Step 2: Replace both implementations with `normalizeTokens(session.tokenUsage || null, session.tokens || null)` imported as `'../../../shared/session-utils.js'`.
+- [x] Step 3: Re-run tests — expect PASS.
+- [x] Step 4: Commit `refactor: reuse shared token normalization`.
 
 ### Task 5: Canonical building styles
 
@@ -102,9 +102,9 @@
 - Modify: `claudeville/src/presentation/react/world/components/BuildingActor.tsx:8`
 - Modify: `claudeville/src/presentation/react/world/components.low-coverage.test.tsx:8`
 
-- [ ] Step 1: Move type + constant (React palette, current live values).
-- [ ] Step 2: Update importers; run `npx vitest run claudeville/src/presentation/react/world`.
-- [ ] Step 3: Commit `refactor(config): canonical building styles beside building definitions`.
+- [x] Step 1: Move type + constant (React palette, current live values).
+- [x] Step 2: Update importers; run `npx vitest run claudeville/src/presentation/react/world`.
+- [x] Step 3: Commit `refactor(config): canonical building styles beside building definitions`.
 
 ### Task 6: Route legacy consumers through `dashboardViewModel`
 
@@ -113,14 +113,14 @@
 - Modify: `claudeville/src/presentation/shared/Sidebar.ts:7-13,107-149`
 - Modify: `claudeville/src/presentation/shared/ActivityPanel.ts:5-13,192-202`
 
-- [ ] Step 1: Add `PROVIDER_COLORS`.
-- [ ] Step 2: Replace legacy duplicate maps/helpers with imports; `_trunc` keeps its legacy ellipsis (not `truncateText`).
-- [ ] Step 3: Run `npx vitest run claudeville/src/presentation/shared/ActivityPanel.test.ts claudeville/src/presentation/App.test.ts`.
-- [ ] Step 4: Commit `refactor(presentation): reuse dashboardViewModel helpers in legacy chrome`.
+- [x] Step 1: Add `PROVIDER_COLORS`.
+- [x] Step 2: Replace legacy duplicate maps/helpers with imports; `_trunc` keeps its legacy ellipsis (not `truncateText`).
+- [x] Step 3: Run `npx vitest run claudeville/src/presentation/shared/ActivityPanel.test.ts claudeville/src/presentation/App.test.ts`.
+- [x] Step 4: Commit `refactor(presentation): reuse dashboardViewModel helpers in legacy chrome`.
 
 ### Task 7: Full verification
 
-- [ ] `npm run typecheck`
-- [ ] `npm run lint`
-- [ ] `npm test` (expect 110+ files, 1065+ tests, 0 failures)
-- [ ] `git diff --stat` review against issue #79 acceptance criteria
+- [x] `npm run typecheck`
+- [x] `npm run lint`
+- [x] `npm test` (expect 110+ files, 1065+ tests, 0 failures)
+- [x] `git diff --stat` review against issue #79 acceptance criteria
