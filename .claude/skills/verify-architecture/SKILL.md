@@ -20,17 +20,19 @@ src/
 ├── domain/
 ├── infrastructure/
 └── presentation/
-    ├── App.ts
-    ├── character-mode/
-    ├── dashboard-mode/
+    ├── character-mode/       (AgentSprite.ts only — the live sprite model)
     ├── react/
     │   ├── ClaudeVilleApp.tsx
     │   ├── state/
     │   └── world/
-    └── shared/
+    └── shared/               (dashboardViewModel, textSizePresets)
 ```
 
-- **PASS**: React world code stays in `presentation/react`, legacy canvas code stays in `presentation/character-mode`, and shared chrome stays in `presentation/shared`
+The legacy imperative DOM shell (`App.ts`, `dashboard-mode/`, the other
+`character-mode/` renderers, `ModeManager`, `NotificationService`) was removed
+in Phase 2; it is no longer expected to be present.
+
+- **PASS**: React world code stays in `presentation/react`, the live sprite model stays in `presentation/character-mode/AgentSprite.ts`, and shared helpers stay in `presentation/shared`
 - **WARN**: UI files land in the wrong presentation subtree or a directory is unexpectedly empty
 - **FAIL**: Missing core directories (`domain`, `application`, `infrastructure`, `presentation`, `config`)
 

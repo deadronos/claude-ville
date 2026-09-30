@@ -24,7 +24,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 | `claudeville/src/pixivillage/PixiVillageApp.tsx` | PixiJS alternate frontend | Root component for the alternate 2D observability view. |
 | `claudeville/src/voxelvillage/VoxelVillageApp.tsx` | Voxel alternate frontend | Root component for the Minecraft-like R3F village view served at `/voxel.html`. |
 | `claudeville/src/presentation/react/components/GradientAvatar.tsx` | Generative visualizer | Generates unique circular gradient avatars based on agent IDs. |
-| `claudeville/src/presentation/character-mode/*` | Legacy reference renderer | Provides the older imperative canvas implementation and the canonical coordinate math that the React scene mirrors. |
+| `claudeville/src/presentation/character-mode/AgentSprite.ts` | Sprite model | Long-lived mutable sprite state (movement, chat pairing, appearance) rendered by the React world via `useWorldSprites`. |
 
 ## Ownership model
 
@@ -61,7 +61,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 - Render the world hot path from the local `useWorldStore` helper rather than re-deriving large agent/building arrays during scene updates.
 - Use refs for mutable scene data and ephemeral pointer state.
 - Keep selection, mode, and layout concerns in the controller / React shell; keep per-frame motion in the R3F scene and ECS systems.
-- Treat the legacy imperative shell in `claudeville/src/presentation/App.ts` as historical reference, not the primary implementation path for the React UI.
+- The legacy imperative shell was removed in Phase 2. For historical reference use git history; do not reintroduce a parallel DOM implementation of the shell.
 
 ## Reference files
 

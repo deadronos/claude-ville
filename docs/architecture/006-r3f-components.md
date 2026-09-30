@@ -97,15 +97,13 @@ The inverse helpers follow the same convention:
 
 Keep each responsibility in its dedicated helper instead of reintroducing competing transform math in actors or overlays.
 
-## Legacy parity
+## Parity reference
 
-The React scene intentionally mirrors the old imperative renderer under `claudeville/src/presentation/character-mode`:
+The old imperative renderer was removed in Phase 2 (git history preserves it). The behavior references now live with the live code:
 
-- `Camera.ts` uses the same centering and follow formulas.
-- `IsometricRenderer.ts` uses the same isometric projection and minimap conversion.
-- `AgentSprite.ts` uses the same screen-space motion model and facing flip rules.
-
-If the React scene ever feels “wrong,” compare it against those files first; they are the behavior reference.
+- `claudeville/src/domain/value-objects/iso.ts` is the canonical isometric projection.
+- `world/utils.ts` exposes the camera-relative transforms and `getCameraFocusPosition()` centering helper.
+- `character-mode/AgentSprite.ts` remains the screen-space motion model and facing flip reference used by the React world.
 
 ## Invariants
 

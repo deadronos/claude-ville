@@ -20,6 +20,6 @@ Keep the architecture split clear:
 - `WorldScene` handles per-frame scene mutation and transform updates.
 - `ScreenSpaceCamera` stays manual and screen-space aligned.
 
-Treat `claudeville/src/presentation/character-mode/**` as legacy reference only.
+The legacy DOM shell was removed in Phase 2. `claudeville/src/presentation/character-mode/AgentSprite.ts` is live (rendered by `useWorldSprites`); do not add other files back to that directory.
 Avoid touching server or adapter code unless the request explicitly needs it.
 Before major changes, verify with typecheck and tests, and note any viewport-sensitive UI behavior.

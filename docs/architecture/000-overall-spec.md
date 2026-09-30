@@ -65,9 +65,7 @@ Pure domain entities and value objects:
 Application services orchestrate state and live updates:
 
 - `AgentManager`
-- `ModeManager`
 - `SessionWatcher`
-- `NotificationService`
 
 ### `claudeville/src/infrastructure`
 
@@ -78,13 +76,13 @@ Infrastructure adapters provide transport and data access:
 
 ### `claudeville/src/presentation`
 
-UI rendering is split by mode and runtime surface:
+UI rendering is split by runtime surface:
 
-- `App.ts` for the legacy imperative shell
 - `react/` for the React shell, controller, mirrored world store, and R3F world composition
-- `character-mode/` for the legacy isometric renderer and camera math reference
-- `dashboard-mode/` for project-grouped cards and per-session details used by the non-React legacy shell
-- `shared/` for legacy shared chrome and helpers
+- `character-mode/AgentSprite.ts` for the long-lived sprite model rendered by the React world (`useWorldSprites`)
+- `shared/` for helpers shared by the React shell and the alternate frontends (`dashboardViewModel`, `textSizePresets`)
+
+The legacy imperative DOM shell (`App.ts`, `dashboard-mode/`, most of `character-mode/`, `ModeManager`, `NotificationService`) was removed in Phase 2; git history preserves it.
 
 ### `claudeville/adapters`
 
