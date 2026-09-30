@@ -87,10 +87,17 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
       return;
     }
 
-    void handleApiRoute(req, res, url).then((handled) => {
-      if (!handled) {
-        sendError(res, 404, 'Not Found');
-      }
-    });
+    void handleApiRoute(req, res, url)
+      .then((handled) => {
+        if (!handled) {
+          sendError(res, 404, 'Not Found');
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('[hubreceiver] api dispatch failed:', err instanceof Error ? err.message : String(err));
+        if (!res.headersSent) {
+          sendError(res, 500, 'internal server error');
+        }
+      });
   };
 }

@@ -347,9 +347,16 @@ const server = http.createServer((req: HttpRequest, res: HttpResponse) => {
     if (pathname === '/runtime-config.js') {
       return handleRuntimeConfig(req, res);
     }
-    void handleApiRoute(req, res, parsedUrl).then((handled) => {
-      if (!handled) handleStaticFile(req, res);
-    });
+    void handleApiRoute(req, res, parsedUrl)
+      .then((handled) => {
+        if (!handled) handleStaticFile(req, res);
+      })
+      .catch((err: unknown) => {
+        console.error('[api] dispatch failed:', err instanceof Error ? err.message : String(err));
+        if (!res.headersSent) {
+          sendError(res, 500, 'internal server error');
+        }
+      });
     return;
   }
 

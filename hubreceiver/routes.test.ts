@@ -249,6 +249,21 @@ describe('hubreceiver routes', () => {
     expect(unknownRes.end).toHaveBeenCalledWith(JSON.stringify({ error: 'Not Found' }));
   });
 
+  it('returns 500 instead of crashing when the state store throws', async () => {
+    const { handler } = createHandler({
+      getCurrentState: vi.fn(() => {
+        throw new Error('state boom');
+      }),
+    });
+
+    const res = makeResponse();
+    handler(makeRequest('GET', '/api/sessions', { host: 'localhost', authorization: 'Bearer secret' }), res);
+    await flush();
+
+    expect(res.writeHead).toHaveBeenCalledWith(500, expect.any(Object));
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: 'failed to load session info' }));
+  });
+
   it('serves teams, tasks, providers, and usage endpoints', async () => {
     const { handler, getCurrentState } = createHandler();
 
