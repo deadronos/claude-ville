@@ -5,8 +5,6 @@ export type SessionDetailData = {
   messages: any[];
 };
 
-const EMPTY_DETAIL: SessionDetailData = { toolHistory: [], messages: [] };
-
 export async function fetchSessionDetail(
   sessionId: string,
   project = '',

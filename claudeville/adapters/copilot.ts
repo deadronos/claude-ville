@@ -29,7 +29,13 @@ type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 // ─── Session parsing ──────────────────────────────────────
 
 async function parseSession(filePath: string) {
-  const detail = {
+  const detail: {
+    model: string | null;
+    project: string | null;
+    lastTool: string | null;
+    lastToolInput: string | null;
+    lastMessage: string | null;
+  } = {
     model: null,
     project: null,
     lastTool: null,
