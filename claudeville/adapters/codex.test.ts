@@ -534,3 +534,21 @@ describe('codex adapter', () => {
     });
   });
 });
+
+describe('codex token usage', () => {
+  it('uses the last cumulative token_usage_record', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-usage-'));
+    try {
+      const file = path.join(tmp, 'rollout-x.jsonl');
+      fs.writeFileSync(file, [
+        JSON.stringify({ type: 'session_meta', payload: { model: 'gpt-5', cwd: '/tmp/proj' } }),
+        JSON.stringify({ type: 'token_usage_record', payload: { usage: { input_tokens: 500, output_tokens: 50, total_tokens: 550 } } }),
+        JSON.stringify({ type: 'token_usage_record', payload: { usage: { input_tokens: 800, output_tokens: 90, total_tokens: 890 } } }),
+      ].join('\n'));
+      const detail = await new CodexAdapter().getSessionDetail('codex-x', null, file);
+      expect(detail.tokenUsage).toEqual({ input: 800, output: 90 });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

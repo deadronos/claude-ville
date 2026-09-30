@@ -356,6 +356,37 @@ async function scanActiveSessions(activeThresholdMs: number) {
 
 // ─── Adapter class ────────────────────────────────────
 
+/**
+ * Extract token usage from the last cumulative `tokens` record in a session file.
+ */
+async function getTokenUsage(filePath: string) {
+  try {
+    let messages: any[] = [];
+    if (filePath.endsWith('.jsonl')) {
+      const lines = await readLines(filePath, { count: 50, scope: 'gemini-adapter' });
+      messages = parseJsonLines(lines, 'gemini-adapter');
+    } else {
+      const session = await readJsonFile(filePath);
+      if (session && Array.isArray(session.messages)) {
+        messages = session.messages;
+      }
+    }
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const tokens = messages[i]?.tokens;
+      if (tokens && (typeof tokens.input === 'number' || typeof tokens.output === 'number')) {
+        return {
+          input: Number(tokens.input || 0),
+          output: Number(tokens.output || 0),
+        };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export class GeminiAdapter implements AgentAdapter {
   get name() { return 'Gemini CLI'; }
   get provider() { return 'gemini'; }
@@ -397,6 +428,7 @@ export class GeminiAdapter implements AgentAdapter {
       return {
         toolHistory: await getToolHistory(filePath),
         messages: await getRecentMessages(filePath),
+        tokenUsage: await getTokenUsage(filePath),
         sessionId,
       };
     }
@@ -410,6 +442,7 @@ export class GeminiAdapter implements AgentAdapter {
         return {
           toolHistory: await getToolHistory(filePath),
           messages: await getRecentMessages(filePath),
+          tokenUsage: await getTokenUsage(filePath),
           sessionId,
         };
       }

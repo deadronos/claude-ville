@@ -274,6 +274,24 @@ async function scanRecentRollouts(activeThresholdMs: number) {
   return results;
 }
 
+/**
+ * Extract cumulative token usage from the last token_usage_record in a rollout.
+ */
+async function getTokenUsage(filePath: string) {
+  const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'codex' });
+  const entries = parseJsonLines(lines, 'codex');
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const usage = entries[i]?.payload?.usage;
+    if (usage && typeof usage.input_tokens === 'number') {
+      return {
+        input: Number(usage.input_tokens || 0),
+        output: Number(usage.output_tokens || 0),
+      };
+    }
+  }
+  return null;
+}
+
 // ─── Adapter class ────────────────────────────────────
 
 export class CodexAdapter implements AgentAdapter {
@@ -317,6 +335,7 @@ export class CodexAdapter implements AgentAdapter {
       return {
         toolHistory: await getToolHistory(filePath),
         messages: await getRecentMessages(filePath),
+        tokenUsage: await getTokenUsage(filePath),
         sessionId,
       };
     }
@@ -331,6 +350,7 @@ export class CodexAdapter implements AgentAdapter {
         return {
           toolHistory: await getToolHistory(filePath),
           messages: await getRecentMessages(filePath),
+          tokenUsage: await getTokenUsage(filePath),
           sessionId,
         };
       }

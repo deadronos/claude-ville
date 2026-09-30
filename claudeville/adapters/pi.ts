@@ -181,6 +181,20 @@ function buildSessionId(projectDir: string, fileName: string) {
   return `pi:${encodeProjectKey(projectDir)}:${encodeProjectKey(sessionId)}`;
 }
 
+async function getTokenUsage(filePath: string) {
+  const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'pi' });
+  const entries = parseJsonLines(lines, 'pi');
+  let input = 0;
+  let output = 0;
+  for (const entry of entries) {
+    const usage = entry?.message?.usage;
+    if (!usage) continue;
+    input += Number(usage.input || 0);
+    output += Number(usage.output || 0);
+  }
+  return input > 0 || output > 0 ? { input, output } : null;
+}
+
 function parseSessionId(sessionId: string) {
   if (!sessionId.startsWith('pi:')) {
     return {
@@ -314,6 +328,7 @@ export class PiAdapter implements AgentAdapter {
       return {
         toolHistory: await getToolHistory(filePath),
         messages: await getRecentMessages(filePath),
+        tokenUsage: await getTokenUsage(filePath),
         sessionId,
       };
     }
@@ -330,6 +345,7 @@ export class PiAdapter implements AgentAdapter {
         return {
           toolHistory: await getToolHistory(filePath),
           messages: await getRecentMessages(filePath),
+          tokenUsage: await getTokenUsage(filePath),
           sessionId,
         };
       }

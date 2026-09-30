@@ -489,3 +489,20 @@ describe('gemini adapter', () => {
     });
   });
 });
+
+describe('gemini token usage', () => {
+  it('uses the last cumulative tokens record', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-usage-'));
+    try {
+      const file = path.join(tmp, 'session.jsonl');
+      fs.writeFileSync(file, [
+        JSON.stringify({ type: 'gemini', model: 'gemini-2.5-flash', content: 'one', tokens: { input: 1000, output: 10, cached: 0, thoughts: 0, tool: 0, total: 1010 } }),
+        JSON.stringify({ type: 'gemini', model: 'gemini-2.5-flash', content: 'two', tokens: { input: 1200, output: 30, cached: 0, thoughts: 0, tool: 0, total: 1230 } }),
+      ].join('\n'));
+      const detail = await new GeminiAdapter().getSessionDetail('gemini-session', null, file);
+      expect(detail.tokenUsage).toEqual({ input: 1200, output: 30 });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
