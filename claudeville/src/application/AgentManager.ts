@@ -107,7 +107,8 @@ export class AgentManager {
         const latestTool = detailToolHistory[detailToolHistory.length - 1] || null;
         const latestMessage = detailMessages[detailMessages.length - 1]?.text || null;
         const messages = Array.isArray(session.messages) && session.messages.length > 0 ? session.messages : detailMessages;
-        const tokens = normalizeTokens(tokenUsage, session.tokens || null);
+        // Summary tokens take precedence over raw tokenUsage when both are present.
+        const tokens = session.tokens || normalizeTokens(tokenUsage, null);
 
         const teamName: string | null = teamInfo?.teamName
             || (session.project ? session.project.split('/').filter(Boolean).pop() || null : null);

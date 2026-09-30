@@ -220,6 +220,20 @@ describe('AgentManager', () => {
     expect(call.tokens).toEqual({ input: 500, output: 1000 });
   });
 
+  it('prefers session tokens over tokenUsage when both are present', async () => {
+    const session = makeSession({
+      tokens: { input: 1, output: 2 },
+      tokenUsage: { totalInput: 9, totalOutput: 9 },
+    });
+    mockDataSource.getSessions.mockResolvedValue([session]);
+    mockDataSource.getTeams.mockResolvedValue([]);
+
+    await manager.loadInitialData();
+
+    const call = mockWorld.addAgent.mock.calls[0][0];
+    expect(call.tokens).toEqual({ input: 1, output: 2 });
+  });
+
   it('defaults tokens to {0,0} when neither tokens nor tokenUsage', async () => {
     const session = makeSession({ tokens: undefined, tokenUsage: undefined });
     mockDataSource.getSessions.mockResolvedValue([session]);
