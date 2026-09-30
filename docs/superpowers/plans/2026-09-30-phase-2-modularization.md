@@ -30,12 +30,12 @@ Verified import graph (2026-09-30): `presentation/App.ts` is imported only by `A
 **Delete (tests):** `presentation/App.test.ts`, `shared/{TopBar,Modal,Sidebar,ActivityPanel,Toast}.test.ts`, `dashboard-mode/DashboardRenderer.test.ts`, `character-mode/{IsometricRenderer,Minimap,ParticleSystem,Camera,BuildingRenderer}.test.ts`, `application/{ModeManager,NotificationService}.test.ts`.
 
 **Tasks:**
-- [ ] `git rm` the files above; remove the empty `dashboard-mode/` directory
-- [ ] `npm run typecheck` — no dangling imports (legacy `Camera.ts` consumers in React tests are false positives; verify)
-- [ ] `npm test` — suite green with the legacy tests removed
-- [ ] Update current-guidance docs/skills: `.github/copilot-instructions.md:42`, `.github/agents/claudeville-frontend.agent.md:23`, `.github/instructions/react-world.instructions.md:13`, `docs/architecture/000-overall-spec.md:68-86`, `docs/architecture/005-react-components.md:27,64`, `docs/architecture/006-r3f-components.md:102-105`, `.claude/skills/verify-architecture/SKILL.md:24-33`
-- [ ] `verify-architecture` pass after doc updates
-- [ ] Commit; PR references #80
+- [x] `git rm` the files above; remove the empty `dashboard-mode/` directory
+- [x] `npm run typecheck` — no dangling imports (legacy `Camera.ts` consumers in React tests are false positives; verify)
+- [x] `npm test` — suite green with the legacy tests removed
+- [x] Update current-guidance docs/skills: `.github/copilot-instructions.md:42`, `.github/agents/claudeville-frontend.agent.md:23`, `.github/instructions/react-world.instructions.md:13`, `docs/architecture/000-overall-spec.md:68-86`, `docs/architecture/005-react-components.md:27,64`, `docs/architecture/006-r3f-components.md:102-105`, `.claude/skills/verify-architecture/SKILL.md:24-33`
+- [x] `verify-architecture` pass after doc updates
+- [x] Commit; PR references #80
 
 ## Deliverable B: Shared API layer (PR 2)
 

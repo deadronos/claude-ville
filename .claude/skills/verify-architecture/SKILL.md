@@ -20,7 +20,7 @@ src/
 ├── domain/
 ├── infrastructure/
 └── presentation/
-    ├── character-mode/       (AgentSprite.ts only — the live sprite model)
+    ├── character-mode/       (AgentSprite.ts + test only — the live sprite model)
     ├── react/
     │   ├── ClaudeVilleApp.tsx
     │   ├── state/
