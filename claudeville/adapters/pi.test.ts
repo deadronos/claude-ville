@@ -430,3 +430,21 @@ describe('pi adapter', () => {
     });
   });
 });
+
+describe('pi token usage', () => {
+  it('sums assistant message usage into tokenUsage', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-usage-'));
+    try {
+      const file = path.join(tmp, 'session.jsonl');
+      fs.writeFileSync(file, [
+        JSON.stringify({ type: 'session', id: 's1', cwd: '/tmp/proj' }),
+        JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'one' }], usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 0, totalTokens: 125 } } }),
+        JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'two' }], usage: { input: 300, output: 80, cacheRead: 7, cacheWrite: 0, totalTokens: 387 } } }),
+      ].join('\n'));
+      const detail = await new PiAdapter().getSessionDetail('pi-s1', null, file);
+      expect(detail.tokenUsage).toEqual({ input: 400, output: 100 });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

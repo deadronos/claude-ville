@@ -356,6 +356,43 @@ async function scanActiveSessions(activeThresholdMs: number) {
 
 // ─── Adapter class ────────────────────────────────────
 
+/**
+ * Sum per-response `tokens` records into session totals.
+ */
+async function getTokenUsage(filePath: string) {
+  try {
+    let messages: any[] = [];
+    if (filePath.endsWith('.jsonl')) {
+      const lines = await readLines(filePath, { count: 2000, scope: 'gemini-adapter' });
+      messages = parseJsonLines(lines, 'gemini-adapter');
+    } else {
+      const session = await readJsonFile(filePath);
+      if (session && Array.isArray(session.messages)) {
+        messages = session.messages;
+      }
+    }
+
+    let input = 0;
+    let output = 0;
+    let found = false;
+    for (const msg of messages) {
+      const tokens = msg?.tokens;
+      if (!tokens) continue;
+      if (typeof tokens.input === 'number') {
+        input += tokens.input;
+        found = true;
+      }
+      if (typeof tokens.output === 'number') {
+        output += tokens.output;
+        found = true;
+      }
+    }
+    return found ? { input, output } : null;
+  } catch {
+    return null;
+  }
+}
+
 export class GeminiAdapter implements AgentAdapter {
   get name() { return 'Gemini CLI'; }
   get provider() { return 'gemini'; }
@@ -394,11 +431,12 @@ export class GeminiAdapter implements AgentAdapter {
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
-      return {
-        toolHistory: await getToolHistory(filePath),
-        messages: await getRecentMessages(filePath),
-        sessionId,
-      };
+      const [toolHistory, messages, tokenUsage] = await Promise.all([
+        getToolHistory(filePath),
+        getRecentMessages(filePath),
+        getTokenUsage(filePath),
+      ]);
+      return { toolHistory, messages, tokenUsage, sessionId };
     }
 
     const cleanId = sessionId.replace('gemini-', '');
@@ -407,11 +445,12 @@ export class GeminiAdapter implements AgentAdapter {
     for (const { filePath, fileName } of sessionFiles) {
       const fileId = fileName.replace('session-', '').replace('.json', '');
       if (fileId === cleanId) {
-        return {
-          toolHistory: await getToolHistory(filePath),
-          messages: await getRecentMessages(filePath),
-          sessionId,
-        };
+        const [toolHistory, messages, tokenUsage] = await Promise.all([
+          getToolHistory(filePath),
+          getRecentMessages(filePath),
+          getTokenUsage(filePath),
+        ]);
+        return { toolHistory, messages, tokenUsage, sessionId };
       }
     }
 

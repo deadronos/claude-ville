@@ -489,3 +489,37 @@ describe('gemini adapter', () => {
     });
   });
 });
+
+describe('gemini token usage', () => {
+  it('sums per-response tokens records', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-usage-'));
+    try {
+      const file = path.join(tmp, 'session.jsonl');
+      fs.writeFileSync(file, [
+        JSON.stringify({ type: 'gemini', model: 'gemini-2.5-flash', content: 'one', tokens: { input: 1000, output: 10, cached: 0, thoughts: 0, tool: 0, total: 1010 } }),
+        JSON.stringify({ type: 'gemini', model: 'gemini-2.5-flash', content: 'two', tokens: { input: 1200, output: 30, cached: 0, thoughts: 0, tool: 0, total: 1230 } }),
+      ].join('\n'));
+      const detail = await new GeminiAdapter().getSessionDetail('gemini-session', null, file);
+      expect(detail.tokenUsage).toEqual({ input: 2200, output: 40 });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('sums tokens from JSON session files', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-usage-json-'));
+    try {
+      const file = path.join(tmp, 'session.json');
+      fs.writeFileSync(file, JSON.stringify({
+        messages: [
+          { type: 'gemini', model: 'gemini-2.5-flash', content: 'one', tokens: { input: 10, output: 1 } },
+          { type: 'gemini', model: 'gemini-2.5-flash', content: 'two', tokens: { input: 20, output: 2 } },
+        ],
+      }));
+      const detail = await new GeminiAdapter().getSessionDetail('gemini-json', null, file);
+      expect(detail.tokenUsage).toEqual({ input: 30, output: 3 });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

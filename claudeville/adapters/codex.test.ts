@@ -534,3 +534,36 @@ describe('codex adapter', () => {
     });
   });
 });
+
+describe('codex token usage', () => {
+  it('uses the last cumulative thread_token_usage', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-usage-'));
+    try {
+      const file = path.join(tmp, 'rollout-x.jsonl');
+      fs.writeFileSync(file, [
+        JSON.stringify({ type: 'session_meta', payload: { model: 'gpt-5', cwd: '/tmp/proj' } }),
+        JSON.stringify({ type: 'token_usage_record', payload: { usage: { input_tokens: 500, output_tokens: 50 }, thread_token_usage: { input_tokens: 7000, output_tokens: 700, total_tokens: 7700 } } }),
+        JSON.stringify({ type: 'token_usage_record', payload: { usage: { input_tokens: 800, output_tokens: 90 }, thread_token_usage: { input_tokens: 9000, output_tokens: 900, total_tokens: 9900 } } }),
+      ].join('\n'));
+      const detail = await new CodexAdapter().getSessionDetail('codex-x', null, file);
+      expect(detail.tokenUsage).toEqual({ input: 9000, output: 900 });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to event_msg total_token_usage for older rollouts', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-usage-old-'));
+    try {
+      const file = path.join(tmp, 'rollout-y.jsonl');
+      fs.writeFileSync(file, [
+        JSON.stringify({ type: 'session_meta', payload: { model: 'gpt-5', cwd: '/tmp/proj' } }),
+        JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 4000, output_tokens: 400, total_tokens: 4400 } } } }),
+      ].join('\n'));
+      const detail = await new CodexAdapter().getSessionDetail('codex-y', null, file);
+      expect(detail.tokenUsage).toEqual({ input: 4000, output: 400 });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
