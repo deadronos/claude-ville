@@ -189,4 +189,18 @@ describe('opencode adapter', () => {
     expect(detail.messages).toEqual([{ role: 'assistant', text: 'Live db message', ts: now - 450 }]);
     expect(detail.toolHistory).toEqual([{ tool: 'read', detail: '/workspace/live/file.ts', ts: now - 425 }]);
   });
+
+  it('degrades to empty results when the database file is corrupt', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-corrupt-'));
+    fs.writeFileSync(path.join(tmp, 'opencode.db'), 'this is not a sqlite database');
+
+    const adapter = await loadAdapter(tmp);
+    const sessions = await adapter.getActiveSessions(60_000);
+    const detail = await adapter.getSessionDetail('opencode-ses_missing', null, 'opencode-db:ses_missing');
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+    expect(sessions).toEqual([]);
+    expect(detail.toolHistory).toEqual([]);
+    expect(detail.messages).toEqual([]);
+  });
 });
