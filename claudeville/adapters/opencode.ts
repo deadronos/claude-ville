@@ -307,7 +307,7 @@ async function getDbMessages(sessionId: string, limit = 30): Promise<DbMessage[]
 }
 
 async function getDbSessions(activeThresholdMs: number): Promise<DbSession[]> {
-  if (!fs.existsSync(DB_FILE)) return [];
+  // queryDb already guards existence via the read-only SQLite helper.
   const cutoff = Date.now() - activeThresholdMs;
   const rows = await queryDb<DbSession & { message_model: string | null; message_provider: string | null }>(
     `SELECT
