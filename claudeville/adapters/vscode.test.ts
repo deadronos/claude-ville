@@ -511,4 +511,14 @@ describe('vscode.ts utilities', () => {
       } finally { rmTmp(tmp); }
     });
   });
+
+  describe('adapter metadata', () => {
+    it('reports a single homeDir path instead of a pipe-joined display string', async () => {
+      const { VSCodeAdapter } = await import('./vscode');
+      const adapter = new VSCodeAdapter();
+
+      expect(adapter.homeDir).toBeTruthy();
+      expect(adapter.homeDir).not.toContain('|');
+    });
+  });
 });

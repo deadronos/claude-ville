@@ -578,7 +578,9 @@ async function scanAllSessions(activeThresholdMs: number) {
 export class VSCodeAdapter implements AgentAdapter {
   get name() { return 'VS Code Copilot Chat'; }
   get provider() { return 'vscode'; }
-  get homeDir() { return `${VSCODE_USER_DIR} | ${VSCODE_INSIDERS_USER_DIR}`; }
+  // Primary VS Code user dir; the Insiders dir is also scanned (see STORAGE_ROOTS)
+  // but homeDir stays a single path for display/consumers.
+  get homeDir() { return VSCODE_USER_DIR; }
 
   isAvailable() {
     return STORAGE_ROOTS.some(root => fs.existsSync(root.workspaceStorageDir));
