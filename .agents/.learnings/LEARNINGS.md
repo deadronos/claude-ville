@@ -310,3 +310,72 @@ When verifying "what does the server do with no env set", prefer a unit-level ca
 - Source: conversation
 - Related Files: claudeville/server.ts, load-local-env.ts, runtime-config.shared.ts
 - Tags: env, tests, smoke-test, gotcha
+
+---
+
+## [LRN-20260930-001] best_practice
+
+**Logged**: 2026-09-30T00:00:00Z
+**Priority**: low
+**Status**: resolved
+**Area**: tests
+
+### Summary
+When consolidating duplicated call sites into one helper, a test failure often means the test's local mock is an incomplete copy of the real dependency signature — fix the mock to mirror the real function instead of contorting the helper to satisfy it.
+
+### Details
+Phase 1 unified four `/api/session-detail` fetch implementations into `fetchSessionDetail`. Two existing tests mocked `config/runtime.ts#getHubApiUrl` differently: `DashboardView.test.tsx` handled plain-object params, `ActivityPanel.test.ts` only handled `URLSearchParams`. The real function (`runtime.ts:22`) accepts `URLSearchParams | string | Record<...>`, and `HubDataSource` already passes plain objects. The fix was to make the incomplete mock mirror the real implementation, keeping the helper's plain-object call shape.
+
+### Suggested Action
+Before changing production code to satisfy a test mock, compare the mock against the real function — if the mock is narrower, widen the mock (copy the real branching) and note it in the PR.
+
+### Metadata
+- Source: conversation
+- Related Files: claudeville/src/config/runtime.ts, claudeville/src/infrastructure/sessionDetailApi.ts, claudeville/src/presentation/shared/ActivityPanel.test.ts, claudeville/src/presentation/react/components/DashboardView.test.tsx
+- Tags: tests, mocks, refactor, consolidation
+
+---
+
+## [LRN-20260930-002] best_practice
+
+**Logged**: 2026-09-30T00:00:00Z
+**Priority**: low
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+Replacing a locally-defined helper with an explicitly-typed shared one can surface previously-implicit `any` leaks; object literals initialized with `null` fields infer `null` types, so mutable accumulators need explicit interface types.
+
+### Details
+`copilot.ts` had a local `extractText(content: unknown)` whose loop indexed `block.text` on an `any[]`, giving the function an implicit `any` return. Callers like `detail.lastMessage = text.substring(0, 80)` then typechecked even though `detail` (`{ lastMessage: null, ... }`) inferred `lastMessage: null`. Moving to the shared `text-utils.ts#extractText` (returns `string`) turned this into `TS2322`. Fix: give the accumulator an explicit `{ model: string | null; ... }` type.
+
+### Suggested Action
+When swapping an implicit-`any` helper for a typed one, expect downstream type errors that were previously masked; type the accumulator objects explicitly rather than reverting the helper.
+
+### Metadata
+- Source: error
+- Related Files: claudeville/adapters/copilot.ts, claudeville/adapters/text-utils.ts
+- Tags: typescript, implicit-any, refactor, adapters
+
+---
+
+## [LRN-20260930-003] knowledge_gap
+
+**Logged**: 2026-09-30T00:00:00Z
+**Priority**: medium
+**Status**: pending
+**Area**: docs
+
+### Summary
+`.claude/skills/verify-server/SKILL.md` still expects `Access-Control-Allow-Origin: *` on the legacy server, but the server was intentionally hardened to a restricted origin (e.g. `http://localhost:3001`) in the insecure-CORS-default fix. The skill's check item is stale.
+
+### Details
+During Phase 1 verification, `curl -I http://localhost:4000/api/sessions` returned `Access-Control-Allow-Origin: http://localhost:3001`, which is correct current behavior, not a failure. The skill text says missing `*` is a FAIL.
+
+### Suggested Action
+Update `verify-server` SKILL.md check 8 to expect the configured/restricted origin (or document `CORS_ALLOWED_ORIGIN`) instead of `*`.
+
+### Metadata
+- Source: conversation
+- Related Files: .claude/skills/verify-server/SKILL.md, shared/http-utils.ts, hubreceiver/server.ts
+- Tags: cors, security, verification, stale-docs

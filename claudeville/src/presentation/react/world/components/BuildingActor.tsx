@@ -5,7 +5,7 @@ import * as THREE from 'three';
 
 import { TILE_HEIGHT, TILE_WIDTH } from '../../../../config/constants.js';
 import { THEME } from '../../../../config/theme.js';
-import { BUILDING_STYLES } from '../styles.js';
+import { BUILDING_STYLES } from '../../../../config/buildings.js';
 import { createPolygonGeometry, isoToScreen, lighten } from '../utils.js';
 import { WorldText } from './WorldText.js';
 

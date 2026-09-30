@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from '../../../config/constants.js';
+import { isoToScreen as projectIso, isoToWorld as unprojectIso } from '../../../domain/value-objects/iso.js';
 import type { CameraModel, ViewportSize } from './types.js';
 
 // World Coordinates:
@@ -10,29 +11,17 @@ import type { CameraModel, ViewportSize } from './types.js';
 // - Panning adjusts targetX/targetZ, zooming adjusts zoom level
 
 export function isoToScreen(tileX: number, tileY: number) {
-  return {
-    x: (tileX - tileY) * TILE_WIDTH / 2,
-    y: (tileX + tileY) * TILE_HEIGHT / 2,
-  };
+  return projectIso(tileX, tileY, TILE_WIDTH, TILE_HEIGHT);
 }
 
 // Convert world coordinates to isometric screen coordinates
 export function worldToIso(worldX: number, worldZ: number): { x: number; y: number } {
-  return {
-    x: (worldX - worldZ) * (TILE_WIDTH / 2),
-    y: (worldX + worldZ) * (TILE_HEIGHT / 2),
-  };
+  return projectIso(worldX, worldZ, TILE_WIDTH, TILE_HEIGHT);
 }
 
 // Convert isometric screen coordinates to world coordinates
 export function isoToWorld(isoX: number, isoY: number): { x: number; z: number } {
-  // isoX = (x - z) * TILE_WIDTH/2
-  // isoY = (x + z) * TILE_HEIGHT/2
-  // Solving: x = isoX / (TILE_WIDTH/2) + isoY / (TILE_HEIGHT/2)) / 2
-  //         z = isoY / (TILE_HEIGHT/2) - x
-  const x = (isoX / (TILE_WIDTH / 2) + isoY / (TILE_HEIGHT / 2)) / 2;
-  const z = isoY / (TILE_HEIGHT / 2) - x;
-  return { x, z };
+  return unprojectIso(isoX, isoY, TILE_WIDTH, TILE_HEIGHT);
 }
 
 // Convert screen coordinates to world coordinates using camera

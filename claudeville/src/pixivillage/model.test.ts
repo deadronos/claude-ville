@@ -37,6 +37,20 @@ describe('pixivillage model mapping', () => {
     });
   });
 
+  it('prefers session tokens over tokenUsage when both are present', () => {
+    vi.setSystemTime(new Date('2026-04-30T12:00:00.000Z'));
+    const session: HubSession = {
+      sessionId: 'both',
+      provider: 'claude',
+      status: 'active',
+      lastActivity: Date.now() - 5_000,
+      tokens: { input: 1, output: 2 },
+      tokenUsage: { totalInput: 9, totalOutput: 9 },
+    };
+
+    expect(mapSessionToVillageAgent(session).tokensTotal).toBe(3);
+  });
+
   it('maps stale active sessions to waiting or idle using split frontend thresholds', () => {
     vi.setSystemTime(new Date('2026-04-30T12:00:00.000Z'));
 

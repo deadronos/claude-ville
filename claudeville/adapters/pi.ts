@@ -14,6 +14,7 @@ import os from 'os';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { extractText } from './text-utils.js';
 
 const PI_DIR = path.join(os.homedir(), '.pi');
 const SESSIONS_DIR = path.join(PI_DIR, 'agent', 'sessions');
@@ -100,16 +101,6 @@ export async function parseSession(filePath: string) {
   }
 
   return detail;
-}
-
-function extractText(content: unknown) {
-  if (typeof content === 'string') return content.trim();
-  if (!Array.isArray(content)) return '';
-  for (const block of content) {
-    if ((block as { type?: string; text?: string }).type === 'text' && (block as { type?: string; text?: string }).text) return (block as { type?: string; text?: string }).text!.trim();
-    if ((block as { type?: string; text?: string }).type === 'output_text' && (block as { type?: string; text?: string }).text) return (block as { type?: string; text?: string }).text!.trim();
-  }
-  return '';
 }
 
 // ─── Tool history ───────────────────────────────────

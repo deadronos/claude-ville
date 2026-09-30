@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { createWorld, ECSWorld } from './world.js';
-import { TILE_HEIGHT, TILE_WIDTH } from '../../../../config/constants.js';
+import { isoToScreen } from '../utils.js';
 
 export interface Agent {
   id: string;
@@ -23,10 +23,7 @@ export interface Building {
 
 function agentToScreen(agent: Agent): { x: number; y: number } {
   if (agent.position) {
-    return {
-      x: (agent.position.tileX - agent.position.tileY) * TILE_WIDTH / 2,
-      y: (agent.position.tileX + agent.position.tileY) * TILE_HEIGHT / 2,
-    };
+    return isoToScreen(agent.position.tileX, agent.position.tileY);
   }
   return { x: 0, y: 0 };
 }

@@ -36,14 +36,6 @@ export type TerrainTileModel = {
   water: boolean;
 };
 
-export type BuildingStyle = {
-  wallColor: string;
-  roofColor: string;
-  accentColor: string;
-  wallHeight: number;
-  roundRoof?: boolean;
-};
-
 export type InteractionModel = {
   dragging: boolean;
   moved: boolean;

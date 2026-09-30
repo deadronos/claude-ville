@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { getHubApiUrl, getHubAuthHeaders } from '../../../config/runtime.js';
+import { fetchSessionDetail } from '../../../infrastructure/sessionDetailApi.js';
 
 type SessionDetailState = {
   toolHistory: any[];
@@ -25,26 +25,10 @@ export function useSessionDetail(agent: any | null, enabled: boolean, intervalMs
     let cancelled = false;
 
     const fetchDetail = async () => {
-      try {
-        const url = getHubApiUrl('/api/session-detail', {
-          sessionId: agentId,
-          project: agentProject,
-          provider: agentProvider,
-        });
-        const headers = getHubAuthHeaders();
-        const response = headers ? await fetch(url, { headers }) : await fetch(url);
-        if (!response.ok) {
-          return;
-        }
-        const data = await response.json();
-        if (!cancelled) {
-          setDetail({
-            toolHistory: data.toolHistory || [],
-            messages: data.messages || [],
-          });
-        }
-      } catch {
-        // Ignore network hiccups; polling will try again.
+      // Ignore network hiccups; polling will try again.
+      const data = await fetchSessionDetail(agentId, agentProject, agentProvider);
+      if (!cancelled && data) {
+        setDetail(data);
       }
     };
 

@@ -38,6 +38,15 @@ export const PROVIDER_ICONS: Record<string, string> = {
   vscode: 'V',
 };
 
+export const PROVIDER_COLORS: Record<string, string> = {
+  claude: '#a78bfa',
+  codex: '#4ade80',
+  gemini: '#60a5fa',
+  openclaw: '#f97316',
+  copilot: '#22d3ee',
+  vscode: '#7dd3fc',
+};
+
 export const TOOL_ICONS: Record<string, string> = {
   Read: '📖',
   Edit: '✏️',

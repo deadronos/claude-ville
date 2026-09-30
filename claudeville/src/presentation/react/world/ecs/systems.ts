@@ -4,7 +4,7 @@ import type { MutableRefObject } from 'react';
 import type { CameraModel } from '../types.js';
 import { worldToIso } from '../utils.js';
 import { TILE_WIDTH } from '../../../../config/constants.js';
-import { BUILDING_STYLES } from '../styles.js';
+import { BUILDING_STYLES } from '../../../../config/buildings.js';
 
 export function createMovementSystem(world: ECSWorld) {
   return function MovementSystem() {

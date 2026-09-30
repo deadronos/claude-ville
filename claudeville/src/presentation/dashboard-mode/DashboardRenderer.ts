@@ -1,7 +1,7 @@
 import { World } from '../../domain/entities/World.js';
 import { Agent } from '../../domain/entities/Agent.js';
 import { eventBus } from '../../domain/events/DomainEvent.js';
-import { getHubApiUrl, getHubAuthHeaders } from '../../config/runtime.js';
+import { fetchSessionDetail } from '../../infrastructure/sessionDetailApi.js';
 import { i18n } from '../../config/i18n.js';
 import {
     PROJECT_COLORS as PROJECT_COLORS_BASE,
@@ -371,24 +371,11 @@ export class DashboardRenderer {
     }
 
     async _fetchDetail(agent: Agent) {
-        try {
-            const params = new URLSearchParams({
-                sessionId: agent.id,
-                project: (agent as any).projectPath || '',
-                provider: agent.provider || 'claude',
-            });
-            const headers = getHubAuthHeaders();
-            const url = getHubApiUrl('/api/session-detail', params);
-            const resp = headers ? await fetch(url, { headers }) : await fetch(url);
-            if (!resp.ok) return;
-            const data = await resp.json();
-            if (data.toolHistory) {
-                this.toolHistories.set(agent.id, data.toolHistory);
-                const cardEl = this.cards.get(agent.id);
-                if (cardEl) this._renderToolHistory(cardEl, data.toolHistory);
-            }
-        } catch {
-            // Ignore network errors
+        const data = await fetchSessionDetail(agent.id, (agent as any).projectPath || '', agent.provider || 'claude');
+        if (data?.toolHistory) {
+            this.toolHistories.set(agent.id, data.toolHistory);
+            const cardEl = this.cards.get(agent.id);
+            if (cardEl) this._renderToolHistory(cardEl, data.toolHistory);
         }
     }
 

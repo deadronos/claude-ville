@@ -171,3 +171,30 @@ For dependency provenance scans, prefer lockfile/direct import scans first; if u
 - Related Files: package.json
 
 ---
+
+## [ERR-20260930-001] ripgrep type filter
+
+**Logged**: 2026-09-30T00:00:00Z
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+`rg --type tsx` fails with `unrecognized file type: tsx`; numeric escapes like `--type ts --type tsx` silently return no results when stderr is suppressed.
+
+### Error
+```
+rg: unrecognized file type: tsx
+```
+
+### Context
+- Command attempted: `rg -n "getCameraFocusPosition" claudeville/src/presentation/react/world --type ts --type tsx -g '!*.test.*' 2>/dev/null`
+- The stderr redirect hid the invalid `tsx` type, making it look like there were no matches.
+
+### Suggested Fix
+Use `-g '*.ts' -g '*.tsx'` glob filters instead of `--type tsx`; avoid suppressing stderr on rg so invalid flags surface immediately.
+
+### Metadata
+- Reproducible: yes
+- Related Files: none
+- Tags: ripgrep, tooling
