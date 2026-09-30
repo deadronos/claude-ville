@@ -511,4 +511,21 @@ describe('vscode.ts utilities', () => {
       } finally { rmTmp(tmp); }
     });
   });
+
+  describe('adapter metadata', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    it('reports the primary user dir as homeDir instead of a pipe-joined display string', async () => {
+      vi.resetModules();
+      vi.stubEnv('VSCODE_USER_DATA_DIR', '/tmp/fake-vscode-user');
+      const { VSCodeAdapter } = await import('./vscode');
+      const adapter = new VSCodeAdapter();
+
+      expect(adapter.homeDir).toBe('/tmp/fake-vscode-user');
+      expect(adapter.homeDir).not.toContain('|');
+    });
+  });
 });
