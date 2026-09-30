@@ -25,6 +25,7 @@ import type { AdapterSessionDetail, AgentAdapter, WatchPath } from '../../shared
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 import { decodeZstdText, hasTable, queryAll, safeJsonParse, withReadonlySqlite } from './sqlite-utils.js';
 import type { SqliteDb } from './sqlite-utils.js';
+import { extractText } from './text-utils.js';
 
 const OPENCLAW_DIR = path.join(os.homedir(), '.openclaw');
 const AGENTS_DIR = path.join(OPENCLAW_DIR, 'agents');
@@ -37,16 +38,6 @@ type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 function isPrimarySessionFile(fileName: string) {
   return fileName.endsWith('.jsonl') && !fileName.endsWith('.trajectory.jsonl');
-}
-
-function extractText(content: unknown) {
-  if (typeof content === 'string') return content.trim();
-  if (!Array.isArray(content)) return '';
-  for (const block of content) {
-    if (block.type === 'text' && block.text) return block.text.trim();
-    if (block.type === 'output_text' && block.text) return block.text.trim();
-  }
-  return '';
 }
 
 function toolBlockInfo(block: any): { name: string; input: unknown } | null {

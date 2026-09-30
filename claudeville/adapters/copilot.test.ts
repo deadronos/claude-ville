@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CopilotAdapter } from './copilot';
+import { extractText } from './text-utils';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -141,75 +142,25 @@ describe('copilot adapter', () => {
   // ─── extractText utility ──────────────────────────────────
   describe('extractText utility', () => {
     it('returns string content as-is', () => {
-      const extractText = (content) => {
-        if (typeof content === 'string') return content.trim();
-        if (!Array.isArray(content)) return '';
-        for (const block of content) {
-          if ((block.type === 'text' || block.type === 'output_text') && block.text) {
-            return block.text.trim();
-          }
-        }
-        return '';
-      };
       expect(extractText('hello world')).toBe('hello world');
     });
 
     it('extracts text block from content array', () => {
-      const extractText = (content) => {
-        if (typeof content === 'string') return content.trim();
-        if (!Array.isArray(content)) return '';
-        for (const block of content) {
-          if ((block.type === 'text' || block.type === 'output_text') && block.text) {
-            return block.text.trim();
-          }
-        }
-        return '';
-      };
       const result = extractText([{ type: 'text', text: 'Hello world' }]);
       expect(result).toBe('Hello world');
     });
 
     it('extracts output_text block', () => {
-      const extractText = (content) => {
-        if (typeof content === 'string') return content.trim();
-        if (!Array.isArray(content)) return '';
-        for (const block of content) {
-          if ((block.type === 'text' || block.type === 'output_text') && block.text) {
-            return block.text.trim();
-          }
-        }
-        return '';
-      };
       const result = extractText([{ type: 'output_text', text: 'Command output' }]);
       expect(result).toBe('Command output');
     });
 
     it('skips non-text blocks', () => {
-      const extractText = (content) => {
-        if (typeof content === 'string') return content.trim();
-        if (!Array.isArray(content)) return '';
-        for (const block of content) {
-          if ((block.type === 'text' || block.type === 'output_text') && block.text) {
-            return block.text.trim();
-          }
-        }
-        return '';
-      };
       const result = extractText([{ type: 'image', text: 'image data' }, { type: 'text', text: 'visible' }]);
       expect(result).toBe('visible');
     });
 
     it('returns empty string for non-array non-string', () => {
-      const extractText = (content) => {
-        if (typeof content === 'string') return content.trim();
-        if (!Array.isArray(content)) return '';
-        for (const block of content) {
-          if ((block.type === 'text' || block.type === 'output_text') && block.text) {
-            return block.text.trim();
-          }
-        }
-        return '';
-      };
       expect(extractText(null)).toBe('');
       expect(extractText({})).toBe('');
       expect(extractText(123)).toBe('');

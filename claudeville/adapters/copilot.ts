@@ -16,6 +16,7 @@ import os from 'os';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { extractText } from './text-utils.js';
 
 const COPILOT_DIR = path.join(os.homedir(), '.copilot');
 const SESSION_STATE_DIR = path.join(COPILOT_DIR, 'session-state');
@@ -104,17 +105,6 @@ async function parseSession(filePath: string) {
   }
 
   return detail;
-}
-
-function extractText(content: unknown) {
-  if (typeof content === 'string') return content.trim();
-  if (!Array.isArray(content)) return '';
-  for (const block of content) {
-    if ((block.type === 'text' || block.type === 'output_text') && block.text) {
-      return block.text.trim();
-    }
-  }
-  return '';
 }
 
 // ─── Tool history ────────────────────────────────────
