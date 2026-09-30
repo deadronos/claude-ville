@@ -9,7 +9,8 @@ import { WebSocketServer, type WebSocket } from 'ws';
 
 import { buildRuntimeConfig } from '../runtime-config.shared.js';
 import { MIME_TYPES } from '../shared/mime-types.js';
-import { setCorsHeaders, sendJson, sendError, safeLimit } from '../shared/http-utils.js';
+import { setCorsHeaders, sendError } from '../shared/http-utils.js';
+import { createApiRouteHandler } from '../shared/api-routes.js';
 import { createFileWatchers } from '../shared/watch-utils.js';
 import {
   adapters,
@@ -47,105 +48,15 @@ function parseRequestUrl(req: HttpRequest) {
 
 // ─── API handlers ─────────────────────────────────────────
 
-/**
- * GET /api/sessions
- * Collect sessions from all active adapters
- */
-async function handleGetSessions(req: HttpRequest, res: HttpResponse) {
-  try {
-    const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
-    sendJson(res, 200, { sessions, count: sessions.length, timestamp: Date.now() });
-  } catch (err: unknown) {
-    console.error('session query failed:', err instanceof Error ? err.message : String(err));
-    sendError(res, 500, 'failed to load session info');
-  }
-}
-
-/**
- * GET /api/teams
- * Claude team info (Claude only)
- */
-async function handleGetTeams(req: HttpRequest, res: HttpResponse) {
-  try {
-    const teams = claudeAdapter?.getTeams ? await claudeAdapter.getTeams() : [];
-    sendJson(res, 200, { teams, count: teams.length });
-  } catch (err: unknown) {
-    console.error('team query failed:', err instanceof Error ? err.message : String(err));
-    sendError(res, 500, 'failed to load team info');
-  }
-}
-
-/**
- * GET /api/tasks
- * Claude task info (Claude only)
- */
-async function handleGetTasks(req: HttpRequest, res: HttpResponse) {
-  try {
-    const taskGroups = claudeAdapter?.getTasks ? await claudeAdapter.getTasks() : [];
-    sendJson(res, 200, { taskGroups, totalGroups: taskGroups.length });
-  } catch (err: unknown) {
-    console.error('task query failed:', err instanceof Error ? err.message : String(err));
-    sendError(res, 500, 'failed to load task info');
-  }
-}
-
-/**
- * GET /api/session-detail?sessionId=xxx&project=xxx&provider=claude
- * Returns tool history + recent messages for a specific session
- */
-async function handleGetSessionDetail(req: HttpRequest, res: HttpResponse) {
-  try {
-    const url = parseRequestUrl(req);
-    const sessionId = url.searchParams.get('sessionId');
-    const project = url.searchParams.get('project');
-    const provider = url.searchParams.get('provider') || 'claude';
-
-    if (!sessionId) return sendError(res, 400, 'sessionId required');
-
-    const result = await getSessionDetailByProvider(provider, sessionId, project);
-    sendJson(res, 200, result);
-  } catch (err: unknown) {
-    console.error('session detail query failed:', err instanceof Error ? err.message : String(err));
-    sendError(res, 500, 'failed to load session detail');
-  }
-}
-
-/**
- * GET /api/providers
- * List of active providers
- */
-function handleGetProviders(req: HttpRequest, res: HttpResponse) {
-  try {
-    const providers = getActiveProviders();
-    sendJson(res, 200, { providers, count: providers.length });
-  } catch (err: unknown) {
-    console.error('provider query failed:', err instanceof Error ? err.message : String(err));
-    sendError(res, 500, 'failed to load provider info');
-  }
-}
-
-/**
- * GET /api/usage
- * Claude usage / subscription info
- */
-async function handleGetUsage(req: HttpRequest, res: HttpResponse) {
-  try {
-    const usage = await usageQuota.fetchUsage();
-    sendJson(res, 200, usage);
-  } catch (err: unknown) {
-    console.error('usage query failed:', err instanceof Error ? err.message : String(err));
-    sendError(res, 500, 'failed to load usage info');
-  }
-}
-
-/**
- * GET /api/history?lines=100
- * Returns recent message history
- */
-async function handleGetHistory(req: HttpRequest, res: HttpResponse) {
-  try {
-    const url = parseRequestUrl(req);
-    const limit = safeLimit(url.searchParams.get('lines'));
+// Shared read API surface; this server sources data from live adapter pulls.
+const handleApiRoute = createApiRouteHandler({
+  getSessions: async () => ({ sessions: await getAllSessions(ACTIVE_THRESHOLD_MS) }),
+  getTeams: async () => (claudeAdapter?.getTeams ? claudeAdapter.getTeams() : []),
+  getTasks: async () => (claudeAdapter?.getTasks ? claudeAdapter.getTasks() : []),
+  getProviders: () => getActiveProviders(),
+  getUsage: () => usageQuota.fetchUsage(),
+  getSessionDetail: (sessionId, project, provider) => getSessionDetailByProvider(provider, sessionId, project),
+  getHistory: async (limit) => {
     const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
     const entries: { provider: string; sessionId: string; project: string | null; role: string; text: string; ts: number }[] = [];
 
@@ -165,12 +76,9 @@ async function handleGetHistory(req: HttpRequest, res: HttpResponse) {
     }
 
     entries.sort((a, b) => a.ts - b.ts);
-    sendJson(res, 200, { entries: entries.slice(-limit) });
-  } catch (err: unknown) {
-    console.error('history query failed:', err instanceof Error ? err.message : String(err));
-    sendError(res, 500, 'failed to load history');
-  }
-}
+    return entries.slice(-limit);
+  },
+});
 
 // ─── Static file serving ─────────────────────────────────────
 
@@ -436,24 +344,13 @@ const server = http.createServer((req: HttpRequest, res: HttpResponse) => {
   const pathname = parsedUrl.pathname;
 
   if (req.method === 'GET') {
-    switch (pathname) {
-      case '/runtime-config.js':
-        return handleRuntimeConfig(req, res);
-      case '/api/sessions':
-        return handleGetSessions(req, res);
-      case '/api/teams':
-        return handleGetTeams(req, res);
-      case '/api/tasks':
-        return handleGetTasks(req, res);
-      case '/api/session-detail':
-        return handleGetSessionDetail(req, res);
-      case '/api/providers':
-        return handleGetProviders(req, res);
-      case '/api/usage':
-        return handleGetUsage(req, res);
-      case '/api/history':
-        return handleGetHistory(req, res);
+    if (pathname === '/runtime-config.js') {
+      return handleRuntimeConfig(req, res);
     }
+    void handleApiRoute(req, res, parsedUrl).then((handled) => {
+      if (!handled) handleStaticFile(req, res);
+    });
+    return;
   }
 
   handleStaticFile(req, res);

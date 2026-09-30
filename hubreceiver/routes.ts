@@ -1,6 +1,7 @@
 import http from 'http';
 
-import { setCorsHeaders, sendJson, sendError, safeLimit, readBoundedBody } from '../shared/http-utils.js';
+import { createApiRouteHandler } from '../shared/api-routes.js';
+import { setCorsHeaders, sendJson, sendError, readBoundedBody } from '../shared/http-utils.js';
 import { defaultUsage } from './state.js';
 
 export function maybeGetAuthToken(req: http.IncomingMessage) {
@@ -23,6 +24,19 @@ interface HubreceiverDeps {
 }
 
 export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
+  const handleApiRoute = createApiRouteHandler({
+    getSessions: () => {
+      const state = deps.getCurrentState();
+      return { sessions: state.sessions, timestamp: state.timestamp };
+    },
+    getTeams: () => deps.getCurrentState().teams,
+    getTasks: () => deps.getCurrentState().taskGroups,
+    getProviders: () => deps.getCurrentState().providers,
+    getUsage: () => deps.getCurrentState().usage || defaultUsage(),
+    getHistory: (limit) => deps.getHistory(limit),
+    getSessionDetail: (sessionId, _project, provider) => deps.getSessionDetail(sessionId, provider),
+  });
+
   return (req: http.IncomingMessage, res: http.ServerResponse) => {
     if (req.method === 'OPTIONS') {
       setCorsHeaders(res);
@@ -73,53 +87,10 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
       return;
     }
 
-    if (req.method === 'GET' && pathname === '/api/sessions') {
-      const state = deps.getCurrentState();
-      sendJson(res, 200, { sessions: state.sessions, count: state.sessions.length, timestamp: state.timestamp });
-      return;
-    }
-
-    if (req.method === 'GET' && pathname === '/api/session-detail') {
-      const sessionId = url.searchParams.get('sessionId');
-      const provider = url.searchParams.get('provider') || 'claude';
-      if (!sessionId) {
-        sendError(res, 400, 'sessionId is required');
-        return;
+    void handleApiRoute(req, res, url).then((handled) => {
+      if (!handled) {
+        sendError(res, 404, 'Not Found');
       }
-      sendJson(res, 200, deps.getSessionDetail(sessionId, provider));
-      return;
-    }
-
-    if (req.method === 'GET' && pathname === '/api/teams') {
-      const state = deps.getCurrentState();
-      sendJson(res, 200, { teams: state.teams, count: state.teams.length });
-      return;
-    }
-
-    if (req.method === 'GET' && pathname === '/api/tasks') {
-      const state = deps.getCurrentState();
-      sendJson(res, 200, { taskGroups: state.taskGroups, totalGroups: state.taskGroups.length });
-      return;
-    }
-
-    if (req.method === 'GET' && pathname === '/api/providers') {
-      const state = deps.getCurrentState();
-      sendJson(res, 200, { providers: state.providers, count: state.providers.length });
-      return;
-    }
-
-    if (req.method === 'GET' && pathname === '/api/usage') {
-      const state = deps.getCurrentState();
-      sendJson(res, 200, state.usage || defaultUsage());
-      return;
-    }
-
-    if (req.method === 'GET' && pathname === '/api/history') {
-      const limit = safeLimit(url.searchParams.get('lines'));
-      sendJson(res, 200, { entries: deps.getHistory(limit) });
-      return;
-    }
-
-    sendError(res, 404, 'Not Found');
+    });
   };
 }
