@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MAP_SIZE } from '../../../config/constants.js';
 import { THEME } from '../../../config/theme.js';
-import { BUILDING_STYLES, MINIMAP_SIZE } from './styles.js';
+import { BUILDING_STYLES } from '../../../config/buildings.js';
+import { MINIMAP_SIZE } from './styles.js';
 
 const frameState = vi.hoisted(() => ({
   callbacks: [] as Array<(state: { clock: { elapsedTime: number } }) => void>,

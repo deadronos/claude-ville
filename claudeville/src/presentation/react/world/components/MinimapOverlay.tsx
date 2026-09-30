@@ -4,7 +4,8 @@ import type { MutableRefObject } from 'react';
 import { MAP_SIZE } from '../../../../config/constants.js';
 import { THEME } from '../../../../config/theme.js';
 import type { AgentSprite } from '../../../character-mode/AgentSprite.js';
-import { MINIMAP_SIZE, BUILDING_STYLES } from '../styles.js';
+import { BUILDING_STYLES } from '../../../../config/buildings.js';
+import { MINIMAP_SIZE } from '../styles.js';
 import type { CameraModel, ViewportSize } from '../types.js';
 import { screenToTile, isoToWorld } from '../utils.js';
 
