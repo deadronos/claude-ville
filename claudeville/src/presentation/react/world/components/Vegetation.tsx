@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MAP_SIZE } from '../../../../config/constants.js';
+import { isoToScreen } from '../utils.js';
 
 const VERTEX_SHADER = /* glsl */ `
   attribute vec3 instancePosition;
@@ -48,15 +49,11 @@ export function Vegetation({ waterTiles }: { waterTiles: Set<string> }) {
       const tileKey = `${Math.floor(x)},${Math.floor(y)}`;
       
       if (!waterTiles.has(tileKey)) {
-        // Correct isometric projection for tile centers
-        // isoX = (tileX - tileY) * TILE_WIDTH/2
-        // isoY = (tileX + tileY) * TILE_HEIGHT/2
-        const screenX = (x - y) * 32; // TILE_WIDTH/2
-        const screenY = (x + y) * 16; // TILE_HEIGHT/2
+        const screen = isoToScreen(x, y);
         // Dynamic depth: terrain is at 0, agents/buildings start at ~10-20. 
         // We set grass at a depth that matches its Y position to participate in sorting.
         const depth = 5 + (y * 0.001) + (x * 0.00001); 
-        pos.push(screenX, screenY, depth);
+        pos.push(screen.x, screen.y, depth);
       }
     }
     return { positions: new Float32Array(pos), count: pos.length / 3 };

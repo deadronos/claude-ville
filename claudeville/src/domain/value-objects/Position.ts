@@ -1,3 +1,5 @@
+import { isoToScreen } from './iso.js';
+
 export class Position {
     tileX: number;
     tileY: number;
@@ -8,10 +10,7 @@ export class Position {
     }
 
     toScreen(tileWidth = 64, tileHeight = 32) {
-        return {
-            x: (this.tileX - this.tileY) * tileWidth / 2,
-            y: (this.tileX + this.tileY) * tileHeight / 2,
-        };
+        return isoToScreen(this.tileX, this.tileY, tileWidth, tileHeight);
     }
 
     distanceTo(other: Position) {

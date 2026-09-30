@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Polygon, Text } from 'pixi.js';
+import { isoToScreen as projectIso } from '../../domain/value-objects/iso.js';
 import type { VillageBuilding, VillageStatus } from '../model.js';
 
 const tileWidth = 96;
@@ -318,9 +319,10 @@ function syncBuildingView(
 // ─── Geometry helpers ───────────────────────────────────────────────────────
 
 function isoToScreen(x: number, y: number, originX: number, originY: number) {
+  const point = projectIso(x, y, tileWidth, tileHeight);
   return {
-    x: originX + (x - y) * (tileWidth / 2),
-    y: originY + (x + y) * (tileHeight / 2),
+    x: originX + point.x,
+    y: originY + point.y,
   };
 }
 
