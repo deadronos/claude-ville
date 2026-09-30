@@ -2,15 +2,14 @@ import { World } from '../../domain/entities/World.js';
 import { Agent } from '../../domain/entities/Agent.js';
 import { eventBus } from '../../domain/events/DomainEvent.js';
 import { i18n } from '../../config/i18n.js';
-
-// Project color palette
-const PROVIDER_ICONS: Record<string, string> = { claude: 'C', codex: 'X', gemini: 'G', openclaw: 'O', copilot: 'P' };
-const PROVIDER_COLORS: Record<string, string> = { claude: '#a78bfa', codex: '#4ade80', gemini: '#60a5fa', openclaw: '#f97316', copilot: '#22d3ee' };
-
-const PROJECT_COLORS = [
-    '#e8d44d', '#4ade80', '#60a5fa', '#f97316', '#a78bfa',
-    '#f472b6', '#34d399', '#fb923c', '#818cf8', '#22d3ee',
-];
+import {
+    getProviderIcon,
+    groupByProject,
+    PROVIDER_COLORS,
+    PROJECT_COLORS,
+    shortModel,
+    shortProjectName,
+} from './dashboardViewModel.js';
 
 export class Sidebar {
     world: World;
@@ -52,12 +51,12 @@ export class Sidebar {
         if (this.countEl) this.countEl.textContent = String(agents.length);
 
         // Group by project
-        const groups = this._groupByProject(agents);
+        const groups = groupByProject(agents);
         this._assignProjectColors(groups);
 
         let html = '';
         for (const [projectPath, groupAgents] of groups) {
-            const projectName = this._shortProjectName(projectPath);
+            const projectName = shortProjectName(projectPath, i18n.t('unknownProject'));
             const color = this._projectColorMap.get(projectPath) || '#8b8b9e';
             html += `<div class="sidebar__project-group">
                 <div class="sidebar__project-header" style="border-left-color: ${color}">
@@ -71,7 +70,7 @@ export class Sidebar {
                     <span class="sidebar__agent-dot sidebar__agent-dot--${agent.status}"></span>
                     <div class="sidebar__agent-info">
                         <span class="sidebar__agent-name">${this._escape(agent.name)}</span>
-                        <span class="sidebar__agent-model"><span style="color:${PROVIDER_COLORS[agent.provider] || '#8b8b9e'};font-weight:bold">${PROVIDER_ICONS[agent.provider] || '?'}</span> ${this._shortModel(agent.model)}</span>
+                        <span class="sidebar__agent-model"><span style="color:${PROVIDER_COLORS[agent.provider] || '#8b8b9e'};font-weight:bold">${getProviderIcon(agent.provider)}</span> ${shortModel(agent.model)}</span>
                     </div>
                 </div>`;
             }
@@ -104,16 +103,6 @@ export class Sidebar {
         }
     }
 
-    _groupByProject(agents: Agent[]) {
-        const groups = new Map<string, Agent[]>();
-        for (const agent of agents) {
-            const key = (agent as any).projectPath || '_unknown';
-            if (!groups.has(key)) groups.set(key, []);
-            groups.get(key)!.push(agent);
-        }
-        return groups;
-    }
-
     _assignProjectColors(groups: Map<string, Agent[]>) {
         let idx = 0;
         for (const key of groups.keys()) {
@@ -124,28 +113,11 @@ export class Sidebar {
         }
     }
 
-    _shortProjectName(path: string | undefined) {
-        if (!path || path === '_unknown') return i18n.t('unknownProject');
-        const parts = path.replace(/\/+$/, '').split('/').filter(Boolean);
-        const last = parts[parts.length - 1] || path;
-        // For home directory itself (e.g. /Users/username) → show as ~
-        if (parts.length <= 2 && parts[0] === 'Users') return '~';
-        return last;
-    }
-
     _escape(str: string) {
         if (!str) return '';
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
-    }
-
-    _shortModel(model: string | undefined) {
-        if (!model) return '';
-        return model
-            .replace('claude-', '')
-            .replace('-20250929', '')
-            .replace('-20251001', '');
     }
 
     destroy() {
