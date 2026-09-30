@@ -198,3 +198,33 @@ Use `-g '*.ts' -g '*.tsx'` glob filters instead of `--type tsx`; avoid suppressi
 - Reproducible: yes
 - Related Files: none
 - Tags: ripgrep, tooling
+
+---
+
+## [ERR-20260930-002] zsh backtick substitution in gh --body
+
+**Logged**: 2026-09-30T00:00:00Z
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+Passing a markdown body containing backticks to `gh issue comment --body "..."` fails in zsh with `parse error near '()'` because backticks start command substitution inside double quotes.
+
+### Error
+```
+zsh: parse error near `()'
+zsh:1: parse error in command substitution
+```
+
+### Context
+- Command attempted: `gh issue comment 78 --repo deadronos/claude-ville --body "… \`state.getHistory\` …"`
+- Backtick-wrapped identifiers in the body were interpreted by zsh before `gh` saw them.
+
+### Suggested Fix
+Use `--body-file -` with a single-quoted heredoc (`<<'EOF'`) for any markdown containing backticks, `$`, or `!`; it avoids all shell interpolation.
+
+### Metadata
+- Reproducible: yes
+- Related Files: none
+- Tags: gh, zsh, shell-quoting

@@ -379,3 +379,26 @@ Update `verify-server` SKILL.md check 8 to expect the configured/restricted orig
 - Source: conversation
 - Related Files: .claude/skills/verify-server/SKILL.md, shared/http-utils.ts, hubreceiver/server.ts
 - Tags: cors, security, verification, stale-docs
+
+---
+
+## [LRN-20260930-004] best_practice
+
+**Logged**: 2026-09-30T00:00:00Z
+**Priority**: medium
+**Status**: resolved
+**Area**: infra
+
+### Summary
+`git rm` stages deletions immediately, so a later `git add <one-file> && git commit` bundles those deletions into an unrelated commit. Likewise, chaining `git checkout -b new main && ... && git reset --hard <branch>` applies the reset to whichever branch is checked out when the reset runs.
+
+### Details
+During Phase 2a, `git rm` of 28 legacy files was followed by `git add docs/...plan.md && git commit -m "docs: ..."` — the staged deletions went into the docs commit, and the subsequent "refactor: remove legacy shell" commit contained only doc edits. An independent reviewer flagged the mismatch as an Important history-hygiene issue; it was resolved by squash-merging. Separately, a chained `git checkout -b phase-2-shared-api-surface main && git cherry-pick ... && git reset --hard origin/phase-2-retire-legacy-shell` reset the NEW branch to the old branch's head, destroying the cherry-picks; recovery used the dangling commit SHAs.
+
+### Suggested Action
+After `git rm` (or any destructive staging), run `git status --short` and commit the deletions in one focused commit before staging anything else. Never chain checkout/cherry-pick/reset in a single `&&` line: run `git rev-parse --abbrev-ref HEAD` between destructive steps.
+
+### Metadata
+- Source: error
+- Related Files: none
+- Tags: git, staging, cherry-pick, review-feedback
