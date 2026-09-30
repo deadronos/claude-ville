@@ -316,8 +316,6 @@ function syncBuildingView(
   };
 }
 
-// ─── Geometry helpers ───────────────────────────────────────────────────────
-
 // ─── Drawing primitives ─────────────────────────────────────────────────────
 
 function drawTerrain(scene: Container, originX: number, originY: number): { terrainTiles: TerrainTileRef[]; sparkleRefs: SparkleRef[] } {
