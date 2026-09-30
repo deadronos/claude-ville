@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { getHubApiUrl, getHubAuthHeaders } from '../../../config/runtime.js';
+import { fetchSessionDetail } from '../../../infrastructure/sessionDetailApi.js';
 
 type DashboardDetailState = Record<string, { toolHistory: any[] }>;
 
@@ -25,18 +25,8 @@ export function useDashboardDetails(agents: any[], enabled: boolean) {
     const fetchAll = async () => {
       const entries = await Promise.allSettled(
         agentRequests.map(async (agent) => {
-          const url = getHubApiUrl('/api/session-detail', {
-            sessionId: agent.id,
-            project: agent.project,
-            provider: agent.provider,
-          });
-          const headers = getHubAuthHeaders();
-          const response = headers ? await fetch(url, { headers }) : await fetch(url);
-          if (!response.ok) {
-            return [agent.id, { toolHistory: [] }] as const;
-          }
-          const data = await response.json();
-          return [agent.id, { toolHistory: data.toolHistory || [] }] as const;
+          const data = await fetchSessionDetail(agent.id, agent.project, agent.provider);
+          return [agent.id, { toolHistory: data?.toolHistory ?? [] }] as const;
         }),
       );
 

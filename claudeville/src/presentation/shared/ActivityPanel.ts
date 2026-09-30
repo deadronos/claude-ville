@@ -1,5 +1,5 @@
 import { eventBus } from '../../domain/events/DomainEvent.js';
-import { getHubApiUrl, getHubAuthHeaders } from '../../config/runtime.js';
+import { fetchSessionDetail } from '../../infrastructure/sessionDetailApi.js';
 import { Agent } from '../../domain/entities/Agent.js';
 
 const TOOL_ICONS: Record<string, string> = {
@@ -130,23 +130,10 @@ export class ActivityPanel {
     async _fetchDetail() {
         if (!this.currentAgent) return;
         const agent = this.currentAgent;
-        try {
-            const params = new URLSearchParams({
-                sessionId: agent.id,
-                project: (agent as any).projectPath || '',
-                provider: agent.provider || 'claude',
-            });
-            const headers = getHubAuthHeaders();
-            const url = getHubApiUrl('/api/session-detail', params);
-            const resp = headers ? await fetch(url, { headers }) : await fetch(url);
-            if (!resp.ok) return;
-            const data = await resp.json();
-            if (this.currentAgent && this.currentAgent.id === agent.id) {
-                this._renderToolHistory(data.toolHistory || []);
-                this._renderMessages(data.messages || []);
-            }
-        } catch {
-            // ignore network errors
+        const data = await fetchSessionDetail(agent.id, (agent as any).projectPath || '', agent.provider || 'claude');
+        if (data && this.currentAgent && this.currentAgent.id === agent.id) {
+            this._renderToolHistory(data.toolHistory);
+            this._renderMessages(data.messages);
         }
     }
 

@@ -5,9 +5,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eventBus } from '../../domain/events/DomainEvent.js';
 
 vi.mock('../../config/runtime.js', () => ({
-  getHubApiUrl: (pathname: string, searchParams?: URLSearchParams) => {
-    const suffix = searchParams ? `?${searchParams.toString()}` : '';
-    return `https://hub.test${pathname}${suffix}`;
+  getHubApiUrl: (pathname: string, searchParams?: URLSearchParams | Record<string, string>) => {
+    const url = new URL(pathname, 'https://hub.test');
+    if (searchParams instanceof URLSearchParams) {
+      searchParams.forEach((value, key) => url.searchParams.set(key, value));
+    } else if (searchParams && typeof searchParams === 'object') {
+      for (const [key, value] of Object.entries(searchParams)) {
+        if (value !== undefined && value !== null && value !== '') {
+          url.searchParams.set(key, String(value));
+        }
+      }
+    }
+    return url.toString();
   },
   getHubAuthHeaders: () => undefined,
 }));
