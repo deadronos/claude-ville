@@ -275,21 +275,41 @@ async function scanRecentRollouts(activeThresholdMs: number) {
 }
 
 /**
- * Extract cumulative token usage from the last token_usage_record in a rollout.
+ * Extract cumulative token usage from a rollout.
+ * Newer rollouts carry `payload.thread_token_usage` (exact session total);
+ * older ones only have `event_msg`/`token_count` → `payload.info.total_token_usage`.
  */
 async function getTokenUsage(filePath: string) {
-  const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'codex' });
-  const entries = parseJsonLines(lines, 'codex');
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const usage = entries[i]?.payload?.usage;
-    if (usage && typeof usage.input_tokens === 'number') {
-      return {
-        input: Number(usage.input_tokens || 0),
-        output: Number(usage.output_tokens || 0),
-      };
+  try {
+    const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'codex' });
+    const entries = parseJsonLines(lines, 'codex');
+    let fallback: { input: number; output: number } | null = null;
+
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const payload = entries[i]?.payload;
+      if (!payload) continue;
+
+      const thread = payload.thread_token_usage;
+      if (thread && typeof thread.input_tokens === 'number') {
+        return {
+          input: Number(thread.input_tokens || 0),
+          output: Number(thread.output_tokens || 0),
+        };
+      }
+
+      const total = payload.info?.total_token_usage;
+      if (!fallback && total && typeof total.input_tokens === 'number') {
+        fallback = {
+          input: Number(total.input_tokens || 0),
+          output: Number(total.output_tokens || 0),
+        };
+      }
     }
+
+    return fallback;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 // ─── Adapter class ────────────────────────────────────
@@ -332,12 +352,12 @@ export class CodexAdapter implements AgentAdapter {
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
-      return {
-        toolHistory: await getToolHistory(filePath),
-        messages: await getRecentMessages(filePath),
-        tokenUsage: await getTokenUsage(filePath),
-        sessionId,
-      };
+      const [toolHistory, messages, tokenUsage] = await Promise.all([
+        getToolHistory(filePath),
+        getRecentMessages(filePath),
+        getTokenUsage(filePath),
+      ]);
+      return { toolHistory, messages, tokenUsage, sessionId };
     }
 
     // Find file from sessionId
@@ -347,12 +367,12 @@ export class CodexAdapter implements AgentAdapter {
     for (const { filePath, fileName } of rollouts) {
       const fileId = fileName.replace('rollout-', '').replace('.jsonl', '');
       if (fileId === cleanId) {
-        return {
-          toolHistory: await getToolHistory(filePath),
-          messages: await getRecentMessages(filePath),
-          tokenUsage: await getTokenUsage(filePath),
-          sessionId,
-        };
+        const [toolHistory, messages, tokenUsage] = await Promise.all([
+          getToolHistory(filePath),
+          getRecentMessages(filePath),
+          getTokenUsage(filePath),
+        ]);
+        return { toolHistory, messages, tokenUsage, sessionId };
       }
     }
 

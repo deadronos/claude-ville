@@ -182,17 +182,24 @@ function buildSessionId(projectDir: string, fileName: string) {
 }
 
 async function getTokenUsage(filePath: string) {
-  const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'pi' });
+  const lines = await readLines(filePath, { from: 'end', count: 2000, scope: 'pi' });
   const entries = parseJsonLines(lines, 'pi');
   let input = 0;
   let output = 0;
+  let found = false;
   for (const entry of entries) {
     const usage = entry?.message?.usage;
     if (!usage) continue;
-    input += Number(usage.input || 0);
-    output += Number(usage.output || 0);
+    if (typeof usage.input === 'number') {
+      input += usage.input;
+      found = true;
+    }
+    if (typeof usage.output === 'number') {
+      output += usage.output;
+      found = true;
+    }
   }
-  return input > 0 || output > 0 ? { input, output } : null;
+  return found ? { input, output } : null;
 }
 
 function parseSessionId(sessionId: string) {
@@ -325,12 +332,12 @@ export class PiAdapter implements AgentAdapter {
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
-      return {
-        toolHistory: await getToolHistory(filePath),
-        messages: await getRecentMessages(filePath),
-        tokenUsage: await getTokenUsage(filePath),
-        sessionId,
-      };
+      const [toolHistory, messages, tokenUsage] = await Promise.all([
+        getToolHistory(filePath),
+        getRecentMessages(filePath),
+        getTokenUsage(filePath),
+      ]);
+      return { toolHistory, messages, tokenUsage, sessionId };
     }
 
     const sessionFiles = await scanAllSessionFiles(30 * 60 * 1000);
@@ -342,12 +349,12 @@ export class PiAdapter implements AgentAdapter {
         fileId === parsed.fileId
         && (!parsed.projectDir || parsed.projectDir === projectDir)
       ) {
-        return {
-          toolHistory: await getToolHistory(filePath),
-          messages: await getRecentMessages(filePath),
-          tokenUsage: await getTokenUsage(filePath),
-          sessionId,
-        };
+        const [toolHistory, messages, tokenUsage] = await Promise.all([
+          getToolHistory(filePath),
+          getRecentMessages(filePath),
+          getTokenUsage(filePath),
+        ]);
+        return { toolHistory, messages, tokenUsage, sessionId };
       }
     }
 
