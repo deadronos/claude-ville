@@ -5,18 +5,16 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 
 import type { AgentAdapter, AdapterSessionDetail, AgentSessionSummary, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
+import { queryAll, withReadonlySqlite } from './sqlite-utils.js';
 
 const OPENCODE_DIR = process.env.OPENCODE_DATA_DIR || path.join(os.homedir(), '.local', 'share', 'opencode');
 const STORAGE_DIR = path.join(OPENCODE_DIR, 'storage');
 const SESSION_DIR = path.join(STORAGE_DIR, 'session');
 const MESSAGE_DIR = path.join(STORAGE_DIR, 'message');
 const DB_FILE = path.join(OPENCODE_DIR, 'opencode.db');
-const execFileAsync = promisify(execFile);
 
 type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 type SessionFile = { filePath: string; sessionId: string; projectKey: string; mtime: number };
@@ -67,19 +65,7 @@ async function readJson(filePath: string): Promise<any | null> {
 }
 
 async function queryDb<T>(sql: string, params: string[] = []): Promise<T[]> {
-  if (!fs.existsSync(DB_FILE)) return [];
-  try {
-    let renderedSql = sql;
-    for (const param of params) {
-      renderedSql = renderedSql.replace('?', `'${param.replace(/'/g, "''")}'`);
-    }
-    const { stdout } = await execFileAsync('sqlite3', ['-json', DB_FILE, renderedSql], { maxBuffer: 10 * 1024 * 1024 });
-    if (!stdout.trim()) return [];
-    return JSON.parse(stdout) as T[];
-  } catch (err) {
-    debugAdapterError('opencode', 'queryDb', err, DB_FILE);
-    return [];
-  }
+  return withReadonlySqlite(DB_FILE, 'opencode', (db) => queryAll<T>(db, sql, params)) ?? [];
 }
 
 function asTimestamp(value: unknown): number {
