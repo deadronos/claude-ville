@@ -8,6 +8,7 @@ import { createHubreceiverRequestHandler } from './routes.js';
 import { createHubWebSocketManager } from './ws.js';
 
 const PORT = Number(process.env.HUB_PORT || 3030);
+let boundPort = PORT;
 const HOST = process.env.HUB_HOST || '127.0.0.1';
 const AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
 const MAX_SNAPSHOT_BYTES = Number(process.env.MAX_SNAPSHOT_BYTES || 10 * 1024 * 1024); // 10 MB default
@@ -36,7 +37,11 @@ server.on('upgrade', (req: http.IncomingMessage, socket: net.Socket) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`hubreceiver listening on http://${HOST}:${PORT}`);
+  const address = server.address();
+  if (address && typeof address === 'object') {
+    boundPort = address.port;
+  }
+  console.log(`hubreceiver listening on http://${HOST}:${boundPort}`);
 });
 
 // ─── Signal handling for graceful shutdown ────────────────────────
