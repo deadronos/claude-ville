@@ -291,7 +291,7 @@ describe('hubreceiver state', () => {
     it('returns empty detail for unknown session', async () => {
       const { getSessionDetail } = await getFreshState();
       const detail = getSessionDetail('unknown-session', 'unknown-provider');
-      expect(detail).toEqual({ toolHistory: [], messages: [], tokenUsage: null, sessionId: 'unknown-session' });
+      expect(detail).toEqual({ toolHistory: [], messages: [] });
     });
 
     it('returns stored detail for known session', async () => {
@@ -320,9 +320,14 @@ describe('hubreceiver state', () => {
       expect(getSessionDetail('s1', 'codex').toolHistory[0].tool).toBe('CdxTool');
     });
 
-    it('includes sessionId in empty response', async () => {
-      const { getSessionDetail } = await getFreshState();
-      expect(getSessionDetail('my-session', 'gemini').sessionId).toBe('my-session');
+    it('returns the canonical empty shape when a stored detail is null', async () => {
+      const { applySnapshot, getSessionDetail } = await getFreshState();
+      applySnapshot({
+        collectorId: 'c1', timestamp: 1,
+        sessionDetails: { 'gemini:my-session': null },
+        sessions: [], teams: [], taskGroups: [], providers: [],
+      });
+      expect(getSessionDetail('my-session', 'gemini')).toEqual({ toolHistory: [], messages: [] });
     });
   });
 

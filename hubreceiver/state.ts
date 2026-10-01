@@ -145,7 +145,7 @@ export function getCurrentState() {
 
 export function getSessionDetail(sessionId: string, provider: string) {
   const key = `${provider}:${sessionId}`;
-  return getCurrentState().sessionDetails.get(key) || { toolHistory: [], messages: [], tokenUsage: null, sessionId };
+  return getCurrentState().sessionDetails.get(key) || { toolHistory: [], messages: [] };
 }
 
 export function getHistory(limit = 100) {
