@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { Canvas } from '@react-three/fiber';
 
@@ -23,7 +23,10 @@ export function WorldView({
   const agents = useWorldStore((s) => s.agents);
   const buildings = useWorldStore((s) => s.buildings);
   const selectedAgentId = useWorldStore((s) => s.selectedAgentId);
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+  const selectedAgent = useMemo(
+    () => agents.find((a) => a.id === selectedAgentId),
+    [agents, selectedAgentId],
+  );
   const selectedAgentName = selectedAgent?.name ?? null;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<CameraModel>(createCenteredCamera(1, 1));
