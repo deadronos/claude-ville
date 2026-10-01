@@ -152,23 +152,26 @@ describe('WebSocketClient', () => {
       eventBus.off('usage:updated', handler);
     });
 
-    it('emits ws:message for unknown type', async () => {
+    it('drops unknown frame types without emitting a generic message', async () => {
       const { eventBus } = await import('../domain/events/DomainEvent.js');
       const handler = vi.fn();
+      eventBus.on('ws:init', handler);
+      eventBus.on('ws:update', handler);
+      eventBus.on('usage:updated', handler);
+      // Canary for the removed generic channel: the event bus is keyed by
+      // plain string, so this still resolves if 'ws:message' is ever re-emitted.
       eventBus.on('ws:message', handler);
 
       client.connect();
       (client.ws as any)._simulateOpen();
       (client.ws as any)._simulateMessage({ type: 'unknown', data: 42 });
 
-      expect(handler).toHaveBeenCalledWith({ type: 'unknown', data: 42 });
-      eventBus.off('ws:message', handler);
+      expect(handler).not.toHaveBeenCalled();
     });
 
     it('ignores pong type silently', async () => {
       const { eventBus } = await import('../domain/events/DomainEvent.js');
       const handler = vi.fn();
-      eventBus.on('ws:message', handler);
       eventBus.on('ws:init', handler);
       eventBus.on('ws:update', handler);
 

@@ -83,15 +83,15 @@ export function ClaudeVilleApp() {
             <div className="topbar__badges" role="status" aria-label={i18n.t('agentStats')}>
               <span className="topbar__badge topbar__badge--working" title={i18n.t('working')}>
                 <span className="topbar__badge-dot" aria-hidden="true" />
-                <span id="badgeWorking" className="tabular-nums">{stats.working}</span> <span data-i18n="working" className="topbar__stat-label-text">{i18n.t('working')}</span>
+                <span id="badgeWorking" className="tabular-nums">{stats.working}</span> <span data-i18n="working" className="topbar__stat-label">{i18n.t('working')}</span>
               </span>
               <span className="topbar__badge topbar__badge--idle" title={i18n.t('idle')}>
                 <span className="topbar__badge-dot" aria-hidden="true" />
-                <span id="badgeIdle" className="tabular-nums">{stats.idle}</span> <span data-i18n="idle" className="topbar__stat-label-text">{i18n.t('idle')}</span>
+                <span id="badgeIdle" className="tabular-nums">{stats.idle}</span> <span data-i18n="idle" className="topbar__stat-label">{i18n.t('idle')}</span>
               </span>
               <span className="topbar__badge topbar__badge--waiting" title={i18n.t('waiting')}>
                 <span className="topbar__badge-dot" aria-hidden="true" />
-                <span id="badgeWaiting" className="tabular-nums">{stats.waiting}</span> <span data-i18n="waiting" className="topbar__stat-label-text">{i18n.t('waiting')}</span>
+                <span id="badgeWaiting" className="tabular-nums">{stats.waiting}</span> <span data-i18n="waiting" className="topbar__stat-label">{i18n.t('waiting')}</span>
               </span>
             </div>
             <button id="btnSettings" type="button" className="topbar__settings-btn" aria-label={i18n.t('settings')} title={i18n.t('settings')} onClick={() => controller.openSettings()}>

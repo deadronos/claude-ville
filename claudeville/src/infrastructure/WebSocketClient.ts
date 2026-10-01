@@ -89,7 +89,10 @@ export class WebSocketClient {
             case 'pong':
                 break;
             default:
-                eventBus.emit('ws:message', data);
+                // Unrecognized frame type. No production subscriber exists for a generic
+                // message event, so this is intentionally dropped rather than emitted.
+                console.debug('[WS] Ignoring unknown frame type:', data.type);
+                break;
         }
     }
 
