@@ -378,6 +378,39 @@ describe('hubreceiver state', () => {
       expect(getHistory(100)[0].ts).toBe(0);
     });
 
+    it('preserves provider-prefixed session ids using the session index', async () => {
+      const { applySnapshot, getHistory } = await getFreshState();
+      applySnapshot({
+        collectorId: 'c1', timestamp: 1,
+        sessions: [{ sessionId: 'openclaw:agent-alpha:sess-1', provider: 'openclaw', lastActivity: 1 }],
+        sessionDetails: {
+          'openclaw:openclaw:agent-alpha:sess-1': {
+            toolHistory: [],
+            messages: [{ role: 'assistant', text: 'hi', ts: 5 }],
+          },
+        },
+        teams: [], taskGroups: [], providers: [],
+      });
+      expect(getHistory(100)).toEqual([
+        { provider: 'openclaw', sessionId: 'openclaw:agent-alpha:sess-1', role: 'assistant', text: 'hi', ts: 5 },
+      ]);
+    });
+
+    it('skips null stored details', async () => {
+      const { applySnapshot, getHistory } = await getFreshState();
+      applySnapshot({
+        collectorId: 'c1', timestamp: 1,
+        sessionDetails: {
+          'claude:s1': null,
+          'claude:s2': { toolHistory: [], messages: [{ role: 'user', text: 'kept', ts: 1 }] },
+        },
+        sessions: [], teams: [], taskGroups: [], providers: [],
+      });
+      expect(getHistory(100)).toEqual([
+        { provider: 'claude', sessionId: 's2', role: 'user', text: 'kept', ts: 1 },
+      ]);
+    });
+
     it('includes all messages in history without pre-filtering', async () => {
       const { applySnapshot, getHistory } = await getFreshState();
       applySnapshot({
