@@ -98,6 +98,7 @@ export function WorldView({
         viewportRef={viewportRef}
       />
       <MinimapOverlay
+        active={active}
         buildings={buildings}
         spritesRef={spritesRef}
         cameraRef={cameraRef}

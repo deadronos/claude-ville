@@ -8,14 +8,17 @@ import { BUILDING_STYLES } from '../../../../config/buildings.js';
 import { MINIMAP_SIZE } from '../styles.js';
 import type { CameraModel, ViewportSize } from '../types.js';
 import { screenToTile, isoToWorld } from '../utils.js';
+import { subscribeFrame } from '../frameTicker.js';
 
 export function MinimapOverlay({
+  active,
   buildings,
   spritesRef,
   cameraRef,
   viewport,
   onNavigate,
 }: {
+  active: boolean;
   buildings: any[];
   spritesRef: MutableRefObject<Map<string, AgentSprite>>;
   cameraRef: MutableRefObject<CameraModel>;
@@ -25,12 +28,14 @@ export function MinimapOverlay({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    let frameId = 0;
+    if (!active) {
+      return;
+    }
+
     const draw = () => {
       const canvas = canvasRef.current;
       const context = canvas?.getContext('2d');
       if (!canvas || !context) {
-        frameId = window.requestAnimationFrame(draw);
         return;
       }
 
@@ -75,15 +80,11 @@ export function MinimapOverlay({
       context.strokeStyle = THEME.border;
       context.lineWidth = 1;
       context.strokeRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
-
-      frameId = window.requestAnimationFrame(draw);
     };
 
-    frameId = window.requestAnimationFrame(draw);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [buildings, cameraRef, spritesRef, viewport]);
+    draw();
+    return subscribeFrame(draw);
+  }, [active, buildings, cameraRef, spritesRef, viewport]);
 
   return (
     <div className="world-view__minimap">

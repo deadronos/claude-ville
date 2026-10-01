@@ -29,6 +29,7 @@ vi.mock('./components/InstancedTerrain.js', () => ({
 }));
 
 import { BuildingActor } from './components/BuildingActor.js';
+import { BubbleDebugOverlay } from './components/BubbleDebugOverlay.js';
 import { MinimapOverlay } from './components/MinimapOverlay.js';
 import { InstancedTerrain } from './components/InstancedTerrain.js';
 
@@ -143,6 +144,7 @@ describe('React world low-coverage components', () => {
 
     const { container, unmount } = render(
       <MinimapOverlay
+        active
         buildings={buildings}
         spritesRef={spritesRef as any}
         cameraRef={cameraRef as any}
@@ -152,7 +154,6 @@ describe('React world low-coverage components', () => {
     );
 
     expect(animationCallbacks).toHaveLength(1);
-    animationCallbacks[0](0);
 
     expect(context.clearRect).toHaveBeenCalledWith(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
     expect(context.fillRect).toHaveBeenCalledWith(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
@@ -176,6 +177,55 @@ describe('React world low-coverage components', () => {
     fireEvent.click(canvas, { clientX: 85, clientY: 95 });
 
     expect(onNavigate).toHaveBeenCalledWith(20, 20);
+
+    unmount();
+    expect(window.cancelAnimationFrame).toHaveBeenCalled();
+  });
+
+  it('does not schedule minimap frames while inactive', () => {
+    const animationCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+      animationCallbacks.push(callback);
+      return animationCallbacks.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+
+    const { unmount } = render(
+      <MinimapOverlay
+        active={false}
+        buildings={[]}
+        spritesRef={{ current: new Map() } as any}
+        cameraRef={{ current: { zoom: 1 } } as any}
+        viewport={{ width: 400, height: 300 }}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    expect(animationCallbacks).toHaveLength(0);
+    unmount();
+  });
+
+  it('only ticks the bubble debug overlay while the panel is visible', () => {
+    const animationCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+      animationCallbacks.push(callback);
+      return animationCallbacks.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+
+    const { getByRole, unmount } = render(
+      <BubbleDebugOverlay
+        spritesRef={{ current: new Map() } as any}
+        selectedAgentId={null}
+        cameraRef={{ current: { zoom: 1 } } as any}
+      />,
+    );
+
+    expect(animationCallbacks).toHaveLength(0);
+
+    fireEvent.click(getByRole('button', { name: 'Debug' }));
+
+    expect(animationCallbacks).toHaveLength(1);
 
     unmount();
     expect(window.cancelAnimationFrame).toHaveBeenCalled();

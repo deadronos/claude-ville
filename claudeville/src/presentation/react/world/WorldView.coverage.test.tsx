@@ -226,6 +226,7 @@ describe('WorldView', () => {
     fireEvent.click(getByTestId('minimap-overlay'));
     expect(worldToIso).toHaveBeenCalledWith(6, 7);
     expect(worldViewMocks.worldSceneProps?.cameraRef.current.followAgentId).toBeNull();
+    expect(worldViewMocks.minimapProps?.active).toBe(true);
   });
 
   it('hides selection UI when there is no selected agent', async () => {
