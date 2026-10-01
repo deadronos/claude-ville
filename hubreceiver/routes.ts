@@ -45,12 +45,26 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
       return;
     }
 
-    const url = new URL(req.url!, `http://${req.headers.host}`);
+    let url: URL;
+    try {
+      url = new URL(req.url!, `http://${req.headers.host}`);
+    } catch {
+      console.error(`[hubreceiver] rejected malformed request url: ${req.url}`);
+      sendError(res, 400, 'bad request');
+      return;
+    }
     const pathname = url.pathname;
 
     // Health check is always unauthenticated (for load balancers)
     if (req.method === 'GET' && pathname === '/health') {
-      sendJson(res, 200, { ok: true, collectors: deps.getCurrentState().sessions.length });
+      try {
+        sendJson(res, 200, { ok: true, collectors: deps.getCurrentState().sessions.length });
+      } catch (error) {
+        console.error('[hubreceiver] health check failed:', error instanceof Error ? error.message : String(error));
+        if (!res.headersSent) {
+          sendError(res, 500, 'internal server error');
+        }
+      }
       return;
     }
 
