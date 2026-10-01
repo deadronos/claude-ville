@@ -392,7 +392,7 @@ describe('hubreceiver state', () => {
         teams: [], taskGroups: [], providers: [],
       });
       expect(getHistory(100)).toEqual([
-        { provider: 'openclaw', sessionId: 'openclaw:agent-alpha:sess-1', role: 'assistant', text: 'hi', ts: 5 },
+        { provider: 'openclaw', sessionId: 'openclaw:agent-alpha:sess-1', project: null, role: 'assistant', text: 'hi', ts: 5 },
       ]);
     });
 
@@ -407,11 +407,11 @@ describe('hubreceiver state', () => {
         sessions: [], teams: [], taskGroups: [], providers: [],
       });
       expect(getHistory(100)).toEqual([
-        { provider: 'claude', sessionId: 's2', role: 'user', text: 'kept', ts: 1 },
+        { provider: 'claude', sessionId: 's2', project: null, role: 'user', text: 'kept', ts: 1 },
       ]);
     });
 
-    it('includes all messages in history without pre-filtering', async () => {
+    it('drops messages with empty or missing text', async () => {
       const { applySnapshot, getHistory } = await getFreshState();
       applySnapshot({
         collectorId: 'c1', timestamp: 1,
@@ -422,8 +422,9 @@ describe('hubreceiver state', () => {
         ], tokenUsage: null, sessionId: 's1' } },
         sessions: [], teams: [], taskGroups: [], providers: [],
       });
-      const entries = getHistory(100);
-      expect(entries).toHaveLength(3);
+      expect(getHistory(100)).toEqual([
+        { provider: 'claude', sessionId: 's1', project: null, role: 'user', text: 'visible', ts: 0 },
+      ]);
     });
 
     it('limits to N most recent entries', async () => {
