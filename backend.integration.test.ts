@@ -316,23 +316,25 @@ describe('collector and legacy server entrypoints', () => {
 
   it('legacy server serves adapter-backed endpoints from the same fixtures', async () => {
     const { homeDir, workspaceDir } = createAdapterFixtureHome();
+    const port = await getFreePort();
     const legacy = startTsx(legacyServerEntrypoint, {
       HOME: homeDir,
+      PORT: String(port),
     });
 
     try {
-      const sessions = await waitForJson('http://127.0.0.1:4000/api/sessions', (json) => json.count >= 2);
+      const sessions = await waitForJson(`http://127.0.0.1:${port}/api/sessions`, (json) => json.count >= 2);
       expect(sessions.sessions.map((session: any) => session.provider).sort()).toEqual(['gemini', 'openclaw']);
 
-      const providers = await (await fetch('http://127.0.0.1:4000/api/providers')).json();
+      const providers = await (await fetch(`http://127.0.0.1:${port}/api/providers`)).json();
       expect(providers.providers.map((provider: any) => provider.provider).sort()).toEqual(['gemini', 'openclaw']);
 
       const firstSession = sessions.sessions.find((session: any) => session.provider === 'openclaw') || sessions.sessions[0];
-      const detail = await (await fetch(`http://127.0.0.1:4000/api/session-detail?sessionId=${encodeURIComponent(firstSession.sessionId)}&project=${encodeURIComponent(firstSession.project || workspaceDir)}&provider=${encodeURIComponent(firstSession.provider)}`)).json();
+      const detail = await (await fetch(`http://127.0.0.1:${port}/api/session-detail?sessionId=${encodeURIComponent(firstSession.sessionId)}&project=${encodeURIComponent(firstSession.project || workspaceDir)}&provider=${encodeURIComponent(firstSession.provider)}`)).json();
       expect(detail.toolHistory.length).toBeGreaterThan(0);
       expect(detail.messages.length).toBeGreaterThan(0);
 
-      const history = await (await fetch('http://127.0.0.1:4000/api/history?lines=5')).json();
+      const history = await (await fetch(`http://127.0.0.1:${port}/api/history?lines=5`)).json();
       expect(history.entries.length).toBeGreaterThan(0);
     } catch (error) {
       const legacyOutput = legacy.getOutput();
