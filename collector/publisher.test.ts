@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
-const { createCollectorPublisher, computeSnapshotFingerprint } = await import('./publisher.ts');
+const { createCollectorPublisher, computeSnapshotFingerprint, sendCollectorSnapshot } = await import('./publisher.ts');
 
 describe('collector publisher', () => {
   it('reuses the same fingerprint for identical snapshots', () => {
@@ -72,5 +72,51 @@ describe('collector publisher', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(logSpy).toHaveBeenCalledWith('[collector] published snapshot (1 sessions)');
+  });
+
+  it('times out stalled hub requests with an actionable error', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_url: string, options: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+      capturedSignal = options.signal;
+      options.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted', 'TimeoutError')));
+    }));
+
+    await expect(
+      sendCollectorSnapshot({ collectorId: 'c1' }, { hubUrl: 'http://hub.test', hubAuthToken: 'secret' }, fetchMock, 0),
+    ).rejects.toThrow('hub did not respond within 0ms');
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it('recovers and publishes again after a stalled hub request', async () => {
+    const snapshot = { collectorId: 'c1', sessions: [{ sessionId: 's1' }] };
+    const buildSnapshot = vi.fn().mockResolvedValue(snapshot);
+    const errorSpy = vi.fn();
+    const fetchMock = vi.fn()
+      .mockImplementationOnce((_url: string, options: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted', 'TimeoutError')));
+      }))
+      .mockResolvedValueOnce({ ok: true, status: 202, statusText: 'Accepted' });
+
+    const publisher = createCollectorPublisher(
+      {
+        createHash,
+        fetch: fetchMock as typeof fetch,
+        console: { log: vi.fn(), error: errorSpy },
+        setTimeout: globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout,
+      },
+      {
+        hubUrl: 'http://hub.test',
+        hubAuthToken: 'secret',
+        requestTimeoutMs: 0,
+      },
+      buildSnapshot,
+    );
+
+    await publisher.publishSnapshot();
+    await publisher.publishSnapshot();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(errorSpy).toHaveBeenCalledWith('[collector] publish failed:', expect.stringContaining('hub did not respond within 0ms'));
   });
 });
