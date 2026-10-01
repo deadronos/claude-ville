@@ -92,7 +92,11 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                               <span className="dash-card__model tabular-nums">{shortModel(agent.model)}</span>
                               <span className="dash-card__role">{agent.role || ''}</span>
                             </div>
-                            <div className="dash-card__context-bar-wrap" aria-label={i18n.t('contextUsage', { percent: contextPercent })}>
+                            <div
+                              className="dash-card__context-bar-wrap"
+                              role="img"
+                              aria-label={i18n.t('contextUsage', { percent: contextPercent })}
+                            >
                               <div
                                 className="dash-card__context-bar"
                                 ref={(node) => {

@@ -388,7 +388,7 @@
 }
 
 .activity-panel__context-bar--warning {
-    background: linear-gradient(90deg, var(--status-waiting), var(--status-idle));
+    background: linear-gradient(90deg, var(--status-waiting), var(--status-error));
 }
 
 .activity-panel__context-bar--danger {
