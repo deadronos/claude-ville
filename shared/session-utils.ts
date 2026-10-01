@@ -1,7 +1,7 @@
 /**
  * Shared session normalization utilities.
  *
- * `normalizeTokens` is the only export here, and its callers are
+ * `normalizeTokens` is the only exported function here, and its callers are
  * `collector/snapshot.ts`, `claudeville/adapters/index.ts`, and claudeville's
  * own app layer (`claudeville/src/application/AgentManager.ts` and
  * `claudeville/src/pixivillage/model.ts`).

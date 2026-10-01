@@ -1,8 +1,9 @@
 /**
  * Shared WebSocket frame construction (RFC 6455).
  * Only the frame-building utility is shared. Each server owns its own
- * wsSend, wsBroadcast, and upgrade handler so that claudeville's richer
- * ping/pong + frame-issue tracking is preserved.
+ * wsSend and upgrade handler; claudeville owns its own wsBroadcast while
+ * hubreceiver imports the shared one from ws-helpers.ts. Sharing just the
+ * frame builder preserves claudeville's ping/pong + frame-issue tracking.
  */
 
 import crypto from 'crypto';

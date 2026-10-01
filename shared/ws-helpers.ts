@@ -1,10 +1,11 @@
 /**
  * Shared WebSocket broadcast helper.
  *
- * Only wsBroadcast lives here: hubreceiver/ws.ts uses it for fan-out. Each
- * server owns its own wsSend, because they send over different transports —
- * hubreceiver over raw net.Socket frames, claudeville over the `ws` library's
- * WebSocket.
+ * Only wsBroadcast and DISCONNECTED_CODES live here: hubreceiver/ws.ts uses
+ * wsBroadcast for fan-out, and wsBroadcast uses DISCONNECTED_CODES to suppress
+ * expected disconnect errors. Each server owns its own wsSend, because they
+ * send over different transports — hubreceiver over raw net.Socket frames,
+ * claudeville over the `ws` library's WebSocket.
  *
  * The frame-building utilities (createWebSocketFrame, computeAcceptKey) live in
  * shared/ws-utils.ts.
