@@ -15,8 +15,9 @@ function makeResponse() {
 }
 
 function makeRequest() {
-  const req = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
+  const req = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> };
   req.destroy = vi.fn();
+  req.pause = vi.fn();
   return req;
 }
 
@@ -66,6 +67,7 @@ describe('shared HTTP utilities', () => {
       statusCode: 413,
       message: 'body exceeds 5 bytes',
     });
-    expect(tooLargeReq.destroy).toHaveBeenCalled();
+    expect(tooLargeReq.pause).toHaveBeenCalled();
+    expect(tooLargeReq.destroy).not.toHaveBeenCalled();
   });
 });
