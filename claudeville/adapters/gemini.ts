@@ -24,6 +24,7 @@ import type { Dirent } from 'fs';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 import { readLines, parseJsonLines } from './jsonl-utils.js';
+import { extractText } from './text-utils.js';
 
 const GEMINI_DIR = path.join(os.homedir(), '.gemini');
 const TMP_DIR = path.join(GEMINI_DIR, 'tmp');
@@ -177,7 +178,7 @@ async function parseSession(filePath: string) {
 
         // Text message
         if (!detail.lastMessage && msg.content) {
-          const text = typeof msg.content === 'string' ? msg.content.trim() : '';
+          const text = extractText(msg.content);
           if (text.length > 0) {
             detail.lastMessage = text.substring(0, 80);
           }

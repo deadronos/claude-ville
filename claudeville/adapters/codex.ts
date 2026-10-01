@@ -14,6 +14,7 @@ import os from 'os';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { extractText } from './text-utils.js';
 
 const CODEX_DIR = path.join(os.homedir(), '.codex');
 const SESSIONS_DIR = path.join(CODEX_DIR, 'sessions');
@@ -79,20 +80,9 @@ async function parseRollout(filePath: string) {
 
       // Text message (assistant)
       if (!detail.lastMessage && payload.type === 'message' && payload.role === 'assistant') {
-        const content = payload.content;
-        if (typeof content === 'string') {
-          detail.lastMessage = content.substring(0, 80);
-        } else if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === 'output_text' && block.text) {
-              detail.lastMessage = block.text.trim().substring(0, 80);
-              break;
-            }
-            if (block.type === 'text' && block.text) {
-              detail.lastMessage = block.text.trim().substring(0, 80);
-              break;
-            }
-          }
+        const text = extractText(payload.content);
+        if (text) {
+          detail.lastMessage = text.substring(0, 80);
         }
       }
     }
