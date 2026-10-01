@@ -50,7 +50,6 @@ export default tseslint.config(
       'collector/**/*.{ts,js}',
       'hubreceiver/**/*.{ts,js}',
       'shared/**/*.{ts,js}',
-      'demo-server.ts',
       'load-local-env.ts',
       'runtime-config.shared.ts',
     ],
