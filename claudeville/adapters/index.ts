@@ -4,6 +4,7 @@
  */
 import { estimateCost } from '../../shared/cost.js';
 import { normalizeTokens } from '../../shared/session-utils.js';
+import { computeSessionContextPercent } from '../../shared/context-window.js';
 import type { AdapterSessionDetail, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import { sanitizeSessionDetail, sanitizeSessionSummary } from './sanitize.js';
@@ -43,6 +44,8 @@ export async function getAllSessions(activeThresholdMs: number) {
         const tokens = normalizeTokens(detailRaw?.tokenUsage ?? null, session.tokens || null);
 
         const sanitizedSession = sanitizeSessionSummary(session);
+        const contextPercent = await computeSessionContextPercent(sanitizedSession, detailRaw?.tokenUsage ?? null);
+        const contextFields = contextPercent === null ? {} : { contextPercent };
 
         return {
           ...sanitizedSession,
@@ -50,6 +53,7 @@ export async function getAllSessions(activeThresholdMs: number) {
           tokenUsage: detailRaw?.tokenUsage || null,
           tokens,
           estimatedCost: estimateCost(sanitizedSession.model, tokens),
+          ...contextFields,
         };
       }));
     } catch (err) {

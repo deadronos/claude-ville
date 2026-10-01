@@ -21,6 +21,11 @@ describe('collector snapshot helpers', () => {
     expect(typeof result.estimatedCost).toBe('number');
   });
 
+  it('preserves contextPercent through normalizeSession', () => {
+    const normalized = normalizeSession({ sessionId: 's1', tokens: { input: 1, output: 2 }, contextPercent: 40 } as any, null);
+    expect(normalized.contextPercent).toBe(40);
+  });
+
   it('builds a normalized snapshot with providers, teams, and task groups', async () => {
     const getAllSessions = vi.fn().mockResolvedValue([
       {
