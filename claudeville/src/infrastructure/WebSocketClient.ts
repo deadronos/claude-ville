@@ -88,8 +88,6 @@ export class WebSocketClient {
                 break;
             case 'pong':
                 break;
-            default:
-                eventBus.emit('ws:message', data);
         }
     }
 
