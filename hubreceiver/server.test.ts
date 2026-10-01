@@ -93,10 +93,11 @@ describe('hubreceiver entrypoint', () => {
     });
 
     it('refuses to bind :: while the dev fallback token is in use', async () => {
-      await expectStartupToFail(
+      const code = await expectStartupToFail(
         { HUB_HOST: '::', HUB_PORT: '0', HUB_AUTH_TOKEN: '' },
         /Set HUB_AUTH_TOKEN before binding hubreceiver to a public interface/,
       );
+      expect(code).not.toBe(0);
     });
 
     it('allows a public bind once a real token is set', async () => {

@@ -298,8 +298,8 @@ cd android
 ```
 
 Notes:
-- Run `bash android/sync-assets.sh` from the repo root — it runs `npm run build:frontend` and copies `dist/frontend/` into `android/app/src/main/assets/www`.
-- Open the `android/` project in Android Studio to run on emulators, inspect logs, or create a signed release (Build → Generate Signed Bundle / APK). Configure `signingConfigs` for release builds.
+- **Run `bash android/sync-assets.sh` before any build**, from the repo root — it runs `npm run build:frontend` and copies `dist/frontend/` into `android/app/src/main/assets/www/`. That directory is generated and not committed, so a build without this step produces an app with a blank WebView and no other error.
+- Open the `android/` project in Android Studio to run on emulators, inspect logs, or create a signed release (Build → Generate Signed Bundle / APK). Configure `signingConfigs` for release builds. The same sync step applies to the Studio path.
 
 ## Contributing
 
