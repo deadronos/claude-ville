@@ -264,6 +264,30 @@ describe('hubreceiver routes', () => {
     expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: 'failed to load session info' }));
   });
 
+  it('returns 400 for unparseable request urls instead of crashing', () => {
+    const { handler } = createHandler();
+    const res = makeResponse();
+
+    expect(() => handler(makeRequest('GET', 'http://[', { host: 'localhost' }), res)).not.toThrow();
+
+    expect(res.writeHead).toHaveBeenCalledWith(400, expect.any(Object));
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: 'bad request' }));
+  });
+
+  it('returns 500 when the health check state lookup throws', () => {
+    const { handler } = createHandler({
+      getCurrentState: vi.fn(() => {
+        throw new Error('state boom');
+      }),
+    });
+    const res = makeResponse();
+
+    expect(() => handler(makeRequest('GET', '/health', { host: 'localhost' }), res)).not.toThrow();
+
+    expect(res.writeHead).toHaveBeenCalledWith(500, expect.any(Object));
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: 'internal server error' }));
+  });
+
   it('serves teams, tasks, providers, and usage endpoints', async () => {
     const { handler, getCurrentState } = createHandler();
 
