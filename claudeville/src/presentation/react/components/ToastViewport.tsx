@@ -1,4 +1,4 @@
-import type { ToastItem } from '../state/ClaudeVilleController.js';
+import type { ToastItem } from '../state/controller/toasts.js';
 
 export function ToastViewport({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: (toastId: string) => void }) {
   return (
