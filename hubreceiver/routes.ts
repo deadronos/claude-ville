@@ -61,7 +61,9 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
         sendJson(res, 200, { ok: true, collectors: deps.getCurrentState().sessions.length });
       } catch (error) {
         console.error('[hubreceiver] health check failed:', error instanceof Error ? error.message : String(error));
-        sendError(res, 500, 'internal server error');
+        if (!res.headersSent) {
+          sendError(res, 500, 'internal server error');
+        }
       }
       return;
     }
