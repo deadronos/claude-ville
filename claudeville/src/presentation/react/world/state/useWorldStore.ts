@@ -23,8 +23,6 @@ export interface WorldStoreState {
   setAgents: (agents: WorldAgent[]) => void;
   setBuildings: (buildings: WorldBuilding[]) => void;
   setSelectedAgentId: (id: string | null) => void;
-  updateAgent: (id: string, data: Partial<WorldAgent>) => void;
-  removeAgent: (id: string) => void;
 }
 
 type WorldStoreListener = () => void;
@@ -32,7 +30,6 @@ type WorldStorePatch = Partial<WorldStoreState> | ((state: WorldStoreState) => P
 type WorldStoreHook = {
   <T>(selector: (state: WorldStoreState) => T): T;
   getState: () => WorldStoreState;
-  setState: (patch: WorldStorePatch) => void;
   subscribe: (listener: WorldStoreListener) => () => void;
 };
 
@@ -49,14 +46,6 @@ function createState(): WorldStoreState {
     setAgents: (agents) => setState({ agents }),
     setBuildings: (buildings) => setState({ buildings }),
     setSelectedAgentId: (id) => setState({ selectedAgentId: id }),
-
-    updateAgent: (id, data) => setState((current) => ({
-      agents: current.agents.map((agent) => (agent.id === id ? { ...agent, ...data } : agent)),
-    })),
-
-    removeAgent: (id) => setState((current) => ({
-      agents: current.agents.filter((agent) => agent.id !== id),
-    })),
   };
 }
 
@@ -87,7 +76,6 @@ export const useWorldStore: WorldStoreHook = Object.assign(
   },
   {
     getState,
-    setState,
     subscribe,
   },
 );

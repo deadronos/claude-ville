@@ -1,29 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { useWorldStore } from './useWorldStore';
 
 describe('useWorldStore', () => {
-  it('should initialize with empty agents', () => {
+  beforeEach(() => {
+    useWorldStore.getState().setAgents([]);
+    useWorldStore.getState().setBuildings([]);
+    useWorldStore.getState().setSelectedAgentId(null);
+  });
+
+  it('should initialize with empty projection state', () => {
     expect(useWorldStore.getState().agents).toEqual([]);
+    expect(useWorldStore.getState().buildings).toEqual([]);
+    expect(useWorldStore.getState().selectedAgentId).toBeNull();
   });
 
   it('should set agents', () => {
     const agents = [{ id: '1', name: 'Alice' }];
     useWorldStore.getState().setAgents(agents);
     expect(useWorldStore.getState().agents).toEqual(agents);
-  });
-
-  it('should update a single agent', () => {
-    useWorldStore.getState().setAgents([{ id: '1', name: 'Alice', status: 'idle' }]);
-    useWorldStore.getState().updateAgent('1', { status: 'working' });
-    expect(useWorldStore.getState().agents[0].status).toBe('working');
-  });
-
-  it('should remove an agent', () => {
-    useWorldStore.getState().setAgents([{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }]);
-    useWorldStore.getState().removeAgent('1');
-    const remaining = useWorldStore.getState().agents;
-    expect(remaining.length).toBe(1);
-    expect(remaining[0].id).toBe('2');
   });
 
   it('should set buildings', () => {
@@ -35,5 +29,22 @@ describe('useWorldStore', () => {
   it('should set selectedAgentId', () => {
     useWorldStore.getState().setSelectedAgentId('1');
     expect(useWorldStore.getState().selectedAgentId).toBe('1');
+  });
+
+  it('should notify subscribers when the projection changes', () => {
+    const listener = vi.fn();
+    const unsubscribe = useWorldStore.subscribe(listener);
+
+    useWorldStore.getState().setSelectedAgentId('agent-9');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('should not expose the retired mutation helpers', () => {
+    const state = useWorldStore.getState() as Record<string, unknown>;
+    expect(state.updateAgent).toBeUndefined();
+    expect(state.removeAgent).toBeUndefined();
+    expect(state.setState).toBeUndefined();
   });
 });
