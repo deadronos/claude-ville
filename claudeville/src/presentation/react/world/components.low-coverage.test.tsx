@@ -28,7 +28,6 @@ vi.mock('./components/InstancedTerrain.js', () => ({
   InstancedTerrain: () => <div data-testid="instanced-terrain" />,
 }));
 
-import { FocusReticle } from './components/FocusReticle.js';
 import { BuildingActor } from './components/BuildingActor.js';
 import { MinimapOverlay } from './components/MinimapOverlay.js';
 import { InstancedTerrain } from './components/InstancedTerrain.js';
@@ -43,12 +42,6 @@ afterEach(() => {
 });
 
 describe('React world low-coverage components', () => {
-  it('renders the focus reticle label', () => {
-    const { getByText } = render(<FocusReticle label="Scout 7" />);
-
-    expect(getByText('Following Scout 7')).toBeTruthy();
-  });
-
   it('renders InstancedTerrain when buildings are present', () => {
     hookMocks.useTerrain.mockReturnValue({
       tiles: [

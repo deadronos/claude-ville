@@ -3,11 +3,10 @@ import { useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 
 import type { AgentSprite } from '../../character-mode/AgentSprite.js';
-import { FocusReticle } from './components/FocusReticle.js';
 import { MinimapOverlay } from './components/MinimapOverlay.js';
+import { SelectionOverlay } from './components/SelectionOverlay.js';
 import { WorldScene } from './components/WorldScene.js';
 import { BubbleDebugOverlay } from './components/BubbleDebugOverlay.js';
-import { useSelectedAgentOverlay } from './hooks/useSelectedAgentOverlay.js';
 import { useWorldInteraction } from './hooks/useWorldInteraction.js';
 import { useWorldSprites } from './hooks/useWorldSprites.js';
 import { useWorldViewport } from './hooks/useWorldViewport.js';
@@ -48,13 +47,6 @@ export function WorldView({
     viewportRef,
     interactionRef,
   });
-  const { selectedMarkerRef, selectedAgentScreen } = useSelectedAgentOverlay({
-    selectedAgentId,
-    spritesRef,
-    cameraRef,
-    viewportRef,
-  });
-
   const sprites = useWorldSprites(agents, spritesRef);
 
   const navigateToTile = (tileX: number, tileZ: number) => {
@@ -97,13 +89,14 @@ export function WorldView({
           interactionRef={interactionRef}
         />
       </Canvas>
-      {active && selectedAgentScreen ? (
-        <div ref={selectedMarkerRef} className="world-view__selected-agent-marker" aria-hidden="true">
-          <div className="world-view__selected-agent-ring" />
-          {selectedAgentName ? <div className="world-view__selected-agent-label">{selectedAgentName}</div> : null}
-        </div>
-      ) : null}
-      {active && selectedAgentId ? <FocusReticle label={selectedAgentName || selectedAgentId} /> : null}
+      <SelectionOverlay
+        active={active}
+        selectedAgentId={selectedAgentId}
+        selectedAgentName={selectedAgentName}
+        spritesRef={spritesRef}
+        cameraRef={cameraRef}
+        viewportRef={viewportRef}
+      />
       <MinimapOverlay
         buildings={buildings}
         spritesRef={spritesRef}
