@@ -21,7 +21,6 @@ export type AppMode = 'character' | 'dashboard';
 export interface ClaudeVilleSnapshot {
   world: World;
   agents: any[];
-  buildings: any[];
   selectedAgentId: string | null;
   selectedAgent: any | null;
   mode: AppMode;
@@ -60,6 +59,15 @@ export class ClaudeVilleController {
   private _syncAgentsCache() {
     this._cachedAgents = Array.from(this.world.agents.values());
     useWorldStore.getState().setAgents(this._cachedAgents);
+  }
+
+  /** Single writer for selection: controller state plus the world-store projection. */
+  private _setSelection(agentId: string | null) {
+    this.selectedAgentId = agentId;
+    const store = useWorldStore.getState();
+    if (store.selectedAgentId !== agentId) {
+      store.setSelectedAgentId(agentId);
+    }
   }
 
   constructor() {
@@ -107,7 +115,7 @@ export class ClaudeVilleController {
       eventBus.on('agent:removed', (agent: any) => {
         this.knownAgents.delete(agent.id);
         if (this.selectedAgentId === agent.id) {
-          this.selectedAgentId = null;
+          this._setSelection(null);
         }
         this.pushToast(i18n.t('agentLeft', agent.name), 'warning');
         this._syncAgentsCache();
@@ -145,7 +153,10 @@ export class ClaudeVilleController {
         this.booted = true;
         this.bootError = null;
       },
-      syncAgents: () => this._syncAgentsCache(),
+      syncAgents: () => {
+        this._syncAgentsCache();
+        this._setSelection(this.selectedAgentId);
+      },
       syncBuildings: () => useWorldStore.getState().setBuildings(Array.from(this.world.buildings.values())),
       emitChange: () => this._emitChange(),
       markBootError: (error) => {
@@ -177,7 +188,6 @@ export class ClaudeVilleController {
     return {
       world: this.world,
       agents,
-      buildings: Array.from(this.world.buildings.values()),
       selectedAgentId: this.selectedAgentId,
       selectedAgent,
       mode: this.mode,
@@ -210,7 +220,6 @@ export class ClaudeVilleController {
     }
 
     this.mode = nextMode;
-    eventBus.emit('mode:changed', nextMode);
     const key = nextMode === 'character' ? 'modeSwitchWorld' : 'modeSwitchDashboard';
     this.pushToast(i18n.t(key), 'info');
     this._emitChange();
@@ -222,9 +231,7 @@ export class ClaudeVilleController {
       return;
     }
 
-    this.selectedAgentId = agentId;
-    useWorldStore.getState().setSelectedAgentId(agentId);
-    eventBus.emit('agent:selected', agent);
+    this._setSelection(agentId);
     this._emitChange();
   }
 
@@ -233,19 +240,8 @@ export class ClaudeVilleController {
       return;
     }
 
-    this.selectedAgentId = null;
-    useWorldStore.getState().setSelectedAgentId(null);
-    eventBus.emit('agent:deselected');
+    this._setSelection(null);
     this._emitChange();
-  }
-
-  toggleAgent(agentId: string) {
-    if (this.selectedAgentId === agentId) {
-      this.clearSelection();
-      return;
-    }
-
-    this.selectAgent(agentId);
   }
 
   focusAgent(agentId: string) {
@@ -254,14 +250,11 @@ export class ClaudeVilleController {
       return;
     }
 
-    this.selectedAgentId = agentId;
-    useWorldStore.getState().setSelectedAgentId(agentId);
+    this._setSelection(agentId);
     if (this.mode !== 'character') {
       this.mode = 'character';
-      eventBus.emit('mode:changed', 'character');
     }
 
-    eventBus.emit('agent:selected', agent);
     this._emitChange();
   }
 

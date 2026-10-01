@@ -25,7 +25,9 @@ describe('ClaudeVilleController', () => {
     localStorage.clear();
     document.documentElement.style.removeProperty('--text-scale');
     resetBubbleConfig();
-    useWorldStore.setState({ agents: [], buildings: [], selectedAgentId: null });
+    useWorldStore.getState().setAgents([]);
+    useWorldStore.getState().setBuildings([]);
+    useWorldStore.getState().setSelectedAgentId(null);
   });
 
   afterEach(() => {
@@ -42,28 +44,62 @@ describe('ClaudeVilleController', () => {
     controller.dispose();
   });
 
-  it('focuses an agent, switches back to character mode, and emits selection events', () => {
+  it('focuses an agent through the store projection without emitting selection events', () => {
     const controller = new ClaudeVilleController();
     const agent = makeAgent();
     controller.world.agents.set(agent.id, agent);
 
-    const modeChanges: string[] = [];
-    const selectedAgents: string[] = [];
-    const unsubscribeMode = eventBus.on('mode:changed', (mode) => modeChanges.push(mode));
-    const unsubscribeSelect = eventBus.on('agent:selected', (selected) => selectedAgents.push(selected.id));
+    const modeListener = vi.fn();
+    const selectedListener = vi.fn();
+    const deselectedListener = vi.fn();
+    const unsubscribeMode = eventBus.on('mode:changed', modeListener);
+    const unsubscribeSelect = eventBus.on('agent:selected', selectedListener);
+    const unsubscribeDeselect = eventBus.on('agent:deselected', deselectedListener);
 
     controller.setMode('dashboard');
-
     controller.focusAgent(agent.id);
 
     expect(controller.getSnapshot().selectedAgentId).toBe(agent.id);
+    expect(controller.getSnapshot().selectedAgent).toBe(agent);
     expect(controller.getSnapshot().mode).toBe('character');
     expect(useWorldStore.getState().selectedAgentId).toBe(agent.id);
-    expect(modeChanges).toEqual(['dashboard', 'character']);
-    expect(selectedAgents).toEqual([agent.id]);
+    expect(modeListener).not.toHaveBeenCalled();
+    expect(selectedListener).not.toHaveBeenCalled();
+    expect(deselectedListener).not.toHaveBeenCalled();
 
     unsubscribeMode();
     unsubscribeSelect();
+    unsubscribeDeselect();
+    controller.dispose();
+  });
+
+  it('projects select and clear through the world store', () => {
+    const controller = new ClaudeVilleController();
+    const agent = makeAgent();
+    controller.world.agents.set(agent.id, agent);
+
+    controller.selectAgent(agent.id);
+    expect(controller.getSnapshot().selectedAgentId).toBe(agent.id);
+    expect(controller.getSnapshot().selectedAgent).toBe(agent);
+    expect(useWorldStore.getState().selectedAgentId).toBe(agent.id);
+
+    controller.clearSelection();
+    expect(controller.getSnapshot().selectedAgentId).toBeNull();
+    expect(useWorldStore.getState().selectedAgentId).toBeNull();
+
+    controller.dispose();
+  });
+
+  it('heals a stale store selection during boot', async () => {
+    useWorldStore.getState().setSelectedAgentId('stale-agent');
+    const controller = new ClaudeVilleController();
+    vi.spyOn(controller.agentManager, 'loadInitialData').mockResolvedValue(undefined);
+    vi.spyOn(controller.dataSource, 'getUsage').mockResolvedValue(null as any);
+    vi.spyOn(controller.sessionWatcher, 'start').mockImplementation(() => undefined);
+
+    await controller.boot();
+
+    expect(useWorldStore.getState().selectedAgentId).toBeNull();
     controller.dispose();
   });
 
@@ -77,6 +113,7 @@ describe('ClaudeVilleController', () => {
 
     const snapshot = controller.getSnapshot();
     expect(snapshot.selectedAgentId).toBeNull();
+    expect(useWorldStore.getState().selectedAgentId).toBeNull();
     expect(snapshot.toasts.at(-1)).toMatchObject({
       tone: 'warning',
       message: expect.stringContaining('left the village'),

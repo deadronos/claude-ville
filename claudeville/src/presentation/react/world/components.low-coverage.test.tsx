@@ -12,30 +12,23 @@ const frameState = vi.hoisted(() => ({
   callbacks: [] as Array<(state: { clock: { elapsedTime: number } }) => void>,
 }));
 
-const hookMocks = vi.hoisted(() => ({
-  useTerrain: vi.fn(),
-}));
-
 vi.mock('@react-three/fiber', () => ({
   useFrame: (callback: (state: { clock: { elapsedTime: number } }) => void) => {
     frameState.callbacks.push(callback);
   },
 }));
 
-vi.mock('./hooks/useTerrain.js', () => hookMocks);
-
 vi.mock('./components/InstancedTerrain.js', () => ({
   InstancedTerrain: () => <div data-testid="instanced-terrain" />,
 }));
 
-import { FocusReticle } from './components/FocusReticle.js';
 import { BuildingActor } from './components/BuildingActor.js';
+import { BubbleDebugOverlay } from './components/BubbleDebugOverlay.js';
 import { MinimapOverlay } from './components/MinimapOverlay.js';
 import { InstancedTerrain } from './components/InstancedTerrain.js';
 
 beforeEach(() => {
   frameState.callbacks.length = 0;
-  hookMocks.useTerrain.mockReset();
 });
 
 afterEach(() => {
@@ -43,21 +36,15 @@ afterEach(() => {
 });
 
 describe('React world low-coverage components', () => {
-  it('renders the focus reticle label', () => {
-    const { getByText } = render(<FocusReticle label="Scout 7" />);
-
-    expect(getByText('Following Scout 7')).toBeTruthy();
-  });
-
-  it('renders InstancedTerrain when buildings are present', () => {
-    hookMocks.useTerrain.mockReturnValue({
-      tiles: [
-        { key: 'land', x: 10, y: 20, color: '#224422', water: false },
-        { key: 'water', x: 30, y: 40, color: '#113355', water: true },
-      ],
-    });
-
-    const { container } = render(<InstancedTerrain buildings={[{ id: 'forge' }]} />);
+  it('renders InstancedTerrain when tiles are present', () => {
+    const { container } = render(
+      <InstancedTerrain
+        tiles={[
+          { key: 'land', x: 10, y: 20, color: '#224422', water: false },
+          { key: 'water', x: 30, y: 40, color: '#113355', water: true },
+        ]}
+      />,
+    );
 
     expect(container.querySelector('[data-testid="instanced-terrain"]')).toBeTruthy();
   });
@@ -150,6 +137,7 @@ describe('React world low-coverage components', () => {
 
     const { container, unmount } = render(
       <MinimapOverlay
+        active
         buildings={buildings}
         spritesRef={spritesRef as any}
         cameraRef={cameraRef as any}
@@ -159,7 +147,6 @@ describe('React world low-coverage components', () => {
     );
 
     expect(animationCallbacks).toHaveLength(1);
-    animationCallbacks[0](0);
 
     expect(context.clearRect).toHaveBeenCalledWith(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
     expect(context.fillRect).toHaveBeenCalledWith(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
@@ -183,6 +170,55 @@ describe('React world low-coverage components', () => {
     fireEvent.click(canvas, { clientX: 85, clientY: 95 });
 
     expect(onNavigate).toHaveBeenCalledWith(20, 20);
+
+    unmount();
+    expect(window.cancelAnimationFrame).toHaveBeenCalled();
+  });
+
+  it('does not schedule minimap frames while inactive', () => {
+    const animationCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+      animationCallbacks.push(callback);
+      return animationCallbacks.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+
+    const { unmount } = render(
+      <MinimapOverlay
+        active={false}
+        buildings={[]}
+        spritesRef={{ current: new Map() } as any}
+        cameraRef={{ current: { zoom: 1 } } as any}
+        viewport={{ width: 400, height: 300 }}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    expect(animationCallbacks).toHaveLength(0);
+    unmount();
+  });
+
+  it('only ticks the bubble debug overlay while the panel is visible', () => {
+    const animationCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+      animationCallbacks.push(callback);
+      return animationCallbacks.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+
+    const { getByRole, unmount } = render(
+      <BubbleDebugOverlay
+        spritesRef={{ current: new Map() } as any}
+        selectedAgentId={null}
+        cameraRef={{ current: { zoom: 1 } } as any}
+      />,
+    );
+
+    expect(animationCallbacks).toHaveLength(0);
+
+    fireEvent.click(getByRole('button', { name: 'Debug' }));
+
+    expect(animationCallbacks).toHaveLength(1);
 
     unmount();
     expect(window.cancelAnimationFrame).toHaveBeenCalled();

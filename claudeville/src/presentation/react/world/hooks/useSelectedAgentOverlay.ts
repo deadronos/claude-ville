@@ -1,73 +1,62 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
 import type { AgentSprite } from '../../../character-mode/AgentSprite.js';
+import { subscribeFrame } from '../frameTicker.js';
 import type { CameraModel, ViewportSize } from '../types.js';
 import { getCameraFocusPosition } from '../utils.js';
 
 export function useSelectedAgentOverlay({
+  active,
   selectedAgentId,
   spritesRef,
   cameraRef,
   viewportRef,
 }: {
+  active: boolean;
   selectedAgentId: string | null;
   spritesRef: MutableRefObject<Map<string, AgentSprite>>;
   cameraRef: MutableRefObject<CameraModel>;
   viewportRef: MutableRefObject<ViewportSize>;
 }) {
-  const selectedMarkerRef = useRef<HTMLDivElement | null>(null);
-  const [selectedAgentScreen, setSelectedAgentScreen] = useState<{ x: number; y: number } | null>(null);
+  const markerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     cameraRef.current.followAgentId = selectedAgentId;
   }, [selectedAgentId, cameraRef]);
 
   useEffect(() => {
-    if (!selectedAgentId) {
-      setSelectedAgentScreen(null);
+    if (!active || !selectedAgentId) {
       return;
     }
 
-    let frameId = 0;
     const update = () => {
+      const marker = markerRef.current;
+      if (!marker) {
+        return;
+      }
+
       const sprite = spritesRef.current.get(selectedAgentId);
       if (!sprite) {
-        setSelectedAgentScreen(null);
-      } else {
-        const camera = cameraRef.current;
-        const focus = getCameraFocusPosition(
-          camera.targetX,
-          camera.targetZ,
-          viewportRef.current,
-          camera.zoom,
-        );
-        setSelectedAgentScreen({
-          x: sprite.x * camera.zoom + focus.x,
-          y: sprite.y * camera.zoom + focus.y,
-        });
+        marker.style.visibility = 'hidden';
+        return;
       }
-      frameId = window.requestAnimationFrame(update);
+
+      const camera = cameraRef.current;
+      const focus = getCameraFocusPosition(
+        camera.targetX,
+        camera.targetZ,
+        viewportRef.current,
+        camera.zoom,
+      );
+      marker.style.left = `${sprite.x * camera.zoom + focus.x}px`;
+      marker.style.top = `${sprite.y * camera.zoom + focus.y}px`;
+      marker.style.visibility = 'visible';
     };
 
-    frameId = window.requestAnimationFrame(update);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [selectedAgentId, spritesRef, cameraRef, viewportRef]);
+    update();
+    return subscribeFrame(update);
+  }, [active, selectedAgentId, spritesRef, cameraRef, viewportRef]);
 
-  useEffect(() => {
-    if (!selectedMarkerRef.current) {
-      return;
-    }
-    if (!selectedAgentScreen) {
-      selectedMarkerRef.current.style.left = '-9999px';
-      selectedMarkerRef.current.style.top = '-9999px';
-      return;
-    }
-    selectedMarkerRef.current.style.left = `${selectedAgentScreen.x}px`;
-    selectedMarkerRef.current.style.top = `${selectedAgentScreen.y}px`;
-  }, [selectedAgentScreen]);
-
-  return { selectedMarkerRef, selectedAgentScreen };
+  return { markerRef };
 }

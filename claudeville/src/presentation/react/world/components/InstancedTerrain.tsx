@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { TILE_HEIGHT, TILE_WIDTH } from '../../../../config/constants.js';
-import { useTerrain } from '../hooks/useTerrain.js';
+import type { TerrainTileModel } from '../types.js';
 
 export const INSTANCED_TERRAIN_VERTEX_SHADER = /* glsl */ `
   attribute vec3 instanceColor;
@@ -73,8 +73,7 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-export function InstancedTerrain({ buildings }: { buildings: any[] }) {
-  const { tiles } = useTerrain(buildings);
+export function InstancedTerrain({ tiles }: { tiles: TerrainTileModel[] }) {
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
   const shaderRef = useRef<THREE.ShaderMaterial | null>(null);
 

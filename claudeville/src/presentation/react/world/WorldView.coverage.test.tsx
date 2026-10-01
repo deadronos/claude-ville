@@ -8,7 +8,6 @@ const worldViewMocks = vi.hoisted(() => ({
   canvasProps: null as null | Record<string, any>,
   minimapProps: null as null | Record<string, any>,
   worldSceneProps: null as null | Record<string, any>,
-  focusLabels: [] as string[],
   sprites: [] as any[],
   animationCallbacks: [] as FrameRequestCallback[],
   resizeCallback: null as null | ResizeObserverCallback,
@@ -40,13 +39,6 @@ vi.mock('./components/MinimapOverlay.js', () => ({
   MinimapOverlay: (props: Record<string, any>) => {
     worldViewMocks.minimapProps = props;
     return <button data-testid="minimap-overlay" onClick={() => props.onNavigate(6, 7)}>navigate</button>;
-  },
-}));
-
-vi.mock('./components/FocusReticle.js', () => ({
-  FocusReticle: ({ label }: { label: string }) => {
-    worldViewMocks.focusLabels.push(label);
-    return <div data-testid="focus-reticle">{label}</div>;
   },
 }));
 
@@ -104,7 +96,6 @@ beforeEach(() => {
   worldViewMocks.canvasProps = null;
   worldViewMocks.minimapProps = null;
   worldViewMocks.worldSceneProps = null;
-  worldViewMocks.focusLabels.length = 0;
   worldViewMocks.sprites = [];
   worldViewMocks.animationCallbacks.length = 0;
   worldViewMocks.resizeCallback = null;
@@ -190,17 +181,8 @@ describe('WorldView', () => {
     expect(createCenteredCamera).toHaveBeenCalledWith(1, 1);
     expect(createCenteredCamera).toHaveBeenCalledWith(400, 300, 1.2);
     expect(worldViewMocks.worldSceneProps?.cameraRef.current.followAgentId).toBe('agent-1');
-    expect(getByTestId('focus-reticle').textContent).toBe('Scout 7');
-
-    await act(async () => {
-      worldViewMocks.animationCallbacks[0]?.(0);
-      await Promise.resolve();
-    });
-
-    // Note: With ECS architecture, selectedAgentScreen is computed from spritesRef which is
-    // populated via useWorldSprites. The exact marker position depends on timing of when
-    // spritesRef is populated vs when requestAnimationFrame callbacks run. These tests
-    // focus on verifying the ECS integration rather than exact marker positioning.
+    expect(container.querySelector('.world-view__focus-badge')?.textContent).toBe('Following Scout 7');
+    expect(container.querySelector('.world-view__selected-agent-marker')).toBeTruthy();
 
     fireEvent.pointerDown(worldRoot, { button: 0, clientX: 100, clientY: 80 });
     expect(worldRoot.className).toContain('world-view--dragging');
@@ -244,6 +226,7 @@ describe('WorldView', () => {
     fireEvent.click(getByTestId('minimap-overlay'));
     expect(worldToIso).toHaveBeenCalledWith(6, 7);
     expect(worldViewMocks.worldSceneProps?.cameraRef.current.followAgentId).toBeNull();
+    expect(worldViewMocks.minimapProps?.active).toBe(true);
   });
 
   it('hides selection UI when there is no selected agent', async () => {
@@ -251,9 +234,9 @@ describe('WorldView', () => {
     sharedStoreState.selectedAgentId = null;
     sharedStoreState.agents = [];
     worldViewMocks.sprites = [];
-    const { container, queryByTestId, rerender } = renderWorldView();
+    const { container, rerender } = renderWorldView();
 
-    expect(queryByTestId('focus-reticle')).toBeNull();
+    expect(container.querySelector('.world-view__focus-badge')).toBeNull();
     expect(container.querySelector('.world-view__selected-agent-marker')).toBeNull();
 
     // Now set up store to return a selected agent with a sprite
@@ -277,6 +260,6 @@ describe('WorldView', () => {
 
     // With ECS architecture, spritesRef is populated for ALL agents in store.
     // So the marker WILL show when selectedAgentId is set and sprite exists.
-    expect(queryByTestId('focus-reticle')?.textContent).toBe('Ghost');
+    expect(container.querySelector('.world-view__focus-badge')?.textContent).toBe('Following Ghost');
   });
 });

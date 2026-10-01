@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { AgentSprite } from '../../../character-mode/AgentSprite.js';
+import { subscribeFrame } from '../frameTicker.js';
 
 export type AgentDebugSnapshot = {
   id: string;
@@ -24,9 +25,12 @@ type Props = {
 export function BubbleDebugOverlay({ spritesRef, selectedAgentId, cameraRef }: Props) {
   const [visible, setVisible] = useState(false);
   const [snapshots, setSnapshots] = useState<AgentDebugSnapshot[]>([]);
-  const frameRef = useRef(0);
 
   useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
     const tick = () => {
       const out: AgentDebugSnapshot[] = [];
       for (const sprite of spritesRef.current.values()) {
@@ -44,11 +48,11 @@ export function BubbleDebugOverlay({ spritesRef, selectedAgentId, cameraRef }: P
         });
       }
       setSnapshots(out);
-      frameRef.current = requestAnimationFrame(tick);
     };
-    frameRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameRef.current);
-  }, [spritesRef, selectedAgentId, cameraRef]);
+
+    tick();
+    return subscribeFrame(tick);
+  }, [visible, spritesRef, selectedAgentId, cameraRef]);
 
   if (!visible) {
     return (

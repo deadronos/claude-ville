@@ -15,9 +15,7 @@ export function ClaudeVilleApp() {
   const snapshot = useClaudeVilleSnapshot(controller);
   // Agents are already cached in the controller; snapshot.agents is stable
   const agents = snapshot.agents;
-  const selectedAgent = snapshot.selectedAgentId
-    ? snapshot.world.agents.get(snapshot.selectedAgentId) || null
-    : null;
+  const selectedAgent = snapshot.selectedAgent;
   const stats = snapshot.world.getStats();
 
   useEffect(() => {

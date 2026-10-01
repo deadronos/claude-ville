@@ -30,7 +30,7 @@ The inverse helpers follow the same convention:
 - The camera helper must preserve that manual frustum; otherwise R3F's resize defaults can overwrite the projection with a centered y-up camera and flip the scene.
 - `getCameraFocusPosition(targetX, targetZ, viewport, zoom)` is the single source of truth for centering.
 - `followAgentId` and `followSmoothing` are the only follow controls.
-- `WorldView` sets `followAgentId` when selection changes; `createCameraFollowSystem()` performs the follow easing in `useFrame`.
+- `useSelectedAgentOverlay` (rendered by `SelectionOverlay`) sets `followAgentId` when selection changes, while `WorldView` clears it on minimap navigation or drag; `createCameraFollowSystem()` performs the follow easing in `useFrame`.
 
 ## Scene graph and transforms
 
@@ -48,8 +48,8 @@ The inverse helpers follow the same convention:
 
 ### Terrain
 
-- `useTerrain()` derives path tiles, water tiles, and per-tile palette choices from building placement plus a stable random seed.
-- `InstancedTerrain` creates a single diamond `ShapeGeometry`, uploads per-instance transform / color / water attributes, and positions each tile at `isoToScreen(tileX, tileY)`.
+- `useTerrain()` is called once by `WorldScene` and derives path tiles, water tiles, and per-tile palette choices from building placement plus a stable random seed; `InstancedTerrain` receives `tiles` as a prop.
+- Given the derived `tiles`, `InstancedTerrain` creates a single diamond `ShapeGeometry`, uploads per-instance transform / color / water attributes, and positions each tile at `isoToScreen(tileX, tileY)`.
 - A custom shader animates fluid water shimmer using dual-scrolling noise layers and soft edge foam.
 - Passing cloud shadows are implemented as a low-frequency scrolling noise filter across the entire terrain.
 - Tiles remain flat and use `DoubleSide` materials because the scene is effectively 2D.
@@ -63,6 +63,7 @@ The inverse helpers follow the same convention:
 
 ### Buildings
 
+- `WorldScene` resolves each ECS building through a memoized building-type map instead of a per-render linear search.
 - `BuildingActor` computes a building center with `isoToScreen(tileX + width / 2, tileY + height / 2)`.
 - Geometry is layered with explicit z offsets for foundation, walls, roof, and label.
 - Enhanced visuals include interior "glow" meshes, foundation occlusion shading, and window props.
@@ -81,9 +82,9 @@ The inverse helpers follow the same convention:
 
 ### Overlays
 
-- `FocusReticle` is a DOM overlay, not a mesh.
-- The selected-agent marker in `WorldView` is positioned in screen space from sprite coordinates, `camera.zoom`, and `getCameraFocusPosition()`.
-- `BubbleDebugOverlay` is also a DOM overlay tied to the world view.
+- `SelectionOverlay` renders both the projected marker (ring + name) and the "Following" badge from one hook; the marker position is written imperatively and the badge is plain DOM.
+- `useSelectedAgentOverlay` subscribes to the shared frame ticker only while active and selected; camera follow is set from the same hook.
+- `BubbleDebugOverlay` and `MinimapOverlay` subscribe to the same ticker only while visible/active, so hidden overlays schedule no frames.
 - `MinimapOverlay` uses `screenToTile()` and the viewport dimensions to show the visible rectangle and to navigate back into the world.
 
 ## Frame model
@@ -94,6 +95,7 @@ The inverse helpers follow the same convention:
 2. `createProximitySystem()` updates building roof opacity
 3. `createCameraFollowSystem()` eases the logical camera target toward the followed agent
 4. `WorldScene` applies the root-group pan and zoom transform from `getCameraFocusPosition()`
+5. DOM overlays do not own rAF loops; they subscribe to `world/frameTicker.ts`, which runs at most one `requestAnimationFrame` and cancels it when the last subscriber leaves. `useInverseZoom` is the deliberate exception: it runs inside the always-on WebGL loop and bails out when the value is unchanged.
 
 Keep each responsibility in its dedicated helper instead of reintroducing competing transform math in actors or overlays.
 
@@ -111,7 +113,7 @@ The old imperative renderer was removed in Phase 2 (git history preserves it). T
 - Do not let R3F auto-resize the orthographic camera.
 - Do not move zoom back onto `ScreenSpaceCamera`; the camera stays at `zoom={1}` and the root group absorbs pan and zoom.
 - Do not duplicate follow math outside `getCameraFocusPosition()`.
-- Do not duplicate selected-agent marker projection math outside `WorldView` and `getCameraFocusPosition()`.
+- Do not duplicate selected-agent marker projection math outside `SelectionOverlay` and `getCameraFocusPosition()`.
 - Do not replace the instanced terrain path with ad-hoc per-tile meshes unless profiling justifies it.
 - Sibling panels (like the sidebar) may animate width if the world container uses `ResizeObserver` to trigger smooth updates.
 - Keep text and bubble scale corrections local so the rest of the scene can stay in screen-space units.

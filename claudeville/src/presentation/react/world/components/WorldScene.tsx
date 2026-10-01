@@ -31,7 +31,11 @@ export function WorldScene({
   const rootRef = useRef<THREE.Group | null>(null);
   const agents = sprites.map(s => s.agent);
   const { world } = useEcsWorld(agents, buildings);
-  const { waterTiles } = useTerrain(buildings);
+  const { tiles, waterTiles } = useTerrain(buildings);
+  const buildingByType = useMemo(
+    () => new Map(buildings.map((building) => [building.type, building])),
+    [buildings],
+  );
 
   // Memoize systems to avoid recreating them on every render
   const movementSystem = useMemo(() => createMovementSystem(world), [world]);
@@ -59,16 +63,22 @@ export function WorldScene({
       <ScreenSpaceCamera viewport={viewport} cameraRef={cameraRef} />
       <color attach="background" args={[THEME.bg]} />
       <group ref={rootRef}>
-        <InstancedTerrain buildings={buildings} />
+        <InstancedTerrain tiles={tiles} />
         <Vegetation waterTiles={waterTiles} />
-        {world.with('Building').entities.map((entity: any) => (
-          <BuildingActor
-            key={entity.buildingType}
-            building={buildings.find(b => b.type === entity.buildingType)}
-            roofAlphaRef={roofAlphaRef}
-            hovered={hoveredBuildingId === entity.buildingType}
-          />
-        ))}
+        {world.with('Building').entities.map((entity: any) => {
+          const building = buildingByType.get(entity.buildingType);
+          if (!building) {
+            return null;
+          }
+          return (
+            <BuildingActor
+              key={entity.buildingType}
+              building={building}
+              roofAlphaRef={roofAlphaRef}
+              hovered={hoveredBuildingId === entity.buildingType}
+            />
+          );
+        })}
         {world.with('Agent').entities.map((entity: any) => (
           <AgentActor
             key={entity.id}

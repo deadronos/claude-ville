@@ -402,3 +402,26 @@ After `git rm` (or any destructive staging), run `git status --short` and commit
 - Source: error
 - Related Files: none
 - Tags: git, staging, cherry-pick, review-feedback
+
+---
+
+## [LRN-20261001-001] correction
+
+**Logged**: 2026-10-01T00:00:00Z
+**Priority**: medium
+**Status**: pending
+**Area**: docs
+
+### Summary
+Doc edits that only touch the lines named in a brief can leave other sentences contradicting the new text; review the whole document for the same claim, not just the edited lines.
+
+### Details
+Task 8 changed the `006-r3f-components.md` overlays section to say camera follow is set from the `SelectionOverlay`/`useSelectedAgentOverlay` hook, but the camera-contract bullet `:33` still said `WorldView` sets `followAgentId` on selection. Code writes it in `useSelectedAgentOverlay.ts:25`; `WorldView.tsx:52-57` only clears it on minimap navigation. Review caught the contradiction. Fixed in `e650f3a`, plus the coarser `005:54` wording.
+
+### Suggested Action
+After applying line-scoped doc edits, grep the whole doc (and sibling docs) for the edited concept's keywords and reconcile every remaining mention with the code.
+
+### Metadata
+- Source: user_feedback
+- Related Files: docs/architecture/005-react-components.md, docs/architecture/006-r3f-components.md, claudeville/src/presentation/react/world/hooks/useSelectedAgentOverlay.ts, claudeville/src/presentation/react/world/WorldView.tsx
+- Tags: docs, consistency, review
