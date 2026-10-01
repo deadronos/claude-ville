@@ -12,15 +12,11 @@ import { getBubbleConfig, updateBubbleConfig } from '../../../config/bubbleConfi
 import { getNameMode, setNameMode } from '../../../config/agentNames.js';
 import { i18n } from '../../../config/i18n.js';
 import { useWorldStore } from '../world/state/useWorldStore.js';
+import { bootController, disposeController } from './controller/lifecycle.js';
+import { ToastStore } from './controller/toasts.js';
+import type { ToastItem, ToastTone } from './controller/toasts.js';
 
 export type AppMode = 'character' | 'dashboard';
-export type ToastTone = 'info' | 'success' | 'warning';
-
-export interface ToastItem {
-  id: string;
-  tone: ToastTone;
-  message: string;
-}
 
 export interface ClaudeVilleSnapshot {
   world: World;
@@ -47,14 +43,13 @@ export class ClaudeVilleController {
   selectedAgentId: string | null;
   mode: AppMode;
   settingsOpen: boolean;
-  toasts: ToastItem[];
   booted: boolean;
   bootError: Error | null;
 
+  private toastStore: ToastStore;
   private listeners: Set<() => void>;
   private unsubscribers: Array<() => void>;
   private snapshot: ClaudeVilleSnapshot;
-  private toastTimers: Map<string, number>;
   private knownAgents: Set<string>;
   private wsEverConnected: boolean;
 
@@ -82,14 +77,13 @@ export class ClaudeVilleController {
     this.selectedAgentId = null;
     this.mode = 'character';
     this.settingsOpen = false;
-    this.toasts = [];
     this.booted = false;
     this.bootError = null;
 
     this.listeners = new Set();
     this.unsubscribers = [];
+    this.toastStore = new ToastStore(() => this._emitChange());
     this.snapshot = this._buildSnapshot();
-    this.toastTimers = new Map();
     this.knownAgents = new Set();
     this.wsEverConnected = false;
 
@@ -136,40 +130,36 @@ export class ClaudeVilleController {
   }
 
   async boot() {
-    if (this.booted) {
-      return;
-    }
-
-    try {
-      await this.agentManager.loadInitialData();
-      this.usage = await this.dataSource.getUsage();
-      if (this.usage) {
-        eventBus.emit('usage:updated', this.usage);
-      }
-      this.sessionWatcher.start();
-      this.booted = true;
-      this.bootError = null;
-      this._syncAgentsCache();
-      useWorldStore.getState().setBuildings(Array.from(this.world.buildings.values()));
-      this._emitChange();
-    } catch (error) {
-      this.bootError = error instanceof Error ? error : new Error(String(error));
-      this._emitChange();
-      throw this.bootError;
-    }
+    await bootController({
+      isBooted: () => this.booted,
+      loadInitialData: () => this.agentManager.loadInitialData(),
+      getUsage: () => this.dataSource.getUsage(),
+      storeUsage: (usage) => {
+        this.usage = usage;
+      },
+      publishUsage: (usage) => {
+        eventBus.emit('usage:updated', usage);
+      },
+      startWatcher: () => this.sessionWatcher.start(),
+      markBooted: () => {
+        this.booted = true;
+        this.bootError = null;
+      },
+      syncAgents: () => this._syncAgentsCache(),
+      syncBuildings: () => useWorldStore.getState().setBuildings(Array.from(this.world.buildings.values())),
+      emitChange: () => this._emitChange(),
+      markBootError: (error) => {
+        this.bootError = error;
+      },
+    });
   }
 
   dispose() {
-    this.sessionWatcher.stop();
-    for (const unsubscribe of this.unsubscribers) {
-      unsubscribe();
-    }
-    this.unsubscribers = [];
-
-    for (const timer of this.toastTimers.values()) {
-      window.clearTimeout(timer);
-    }
-    this.toastTimers.clear();
+    disposeController({
+      stopWatcher: () => this.sessionWatcher.stop(),
+      unsubscribers: this.unsubscribers,
+      clearToastTimers: () => this.toastStore.dispose(),
+    });
   }
 
   subscribe(listener: () => void) {
@@ -193,7 +183,7 @@ export class ClaudeVilleController {
       mode: this.mode,
       usage: this.usage,
       settingsOpen: this.settingsOpen,
-      toasts: [...this.toasts],
+      toasts: this.toastStore.snapshot(),
       bubbleConfig: getBubbleConfig(),
       booted: this.booted,
       bootError: this.bootError,
@@ -300,25 +290,11 @@ export class ClaudeVilleController {
   }
 
   dismissToast(toastId: string) {
-    const timer = this.toastTimers.get(toastId);
-    if (timer) {
-      window.clearTimeout(timer);
-      this.toastTimers.delete(toastId);
-    }
-
-    this.toasts = this.toasts.filter((toast) => toast.id !== toastId);
-    this._emitChange();
+    this.toastStore.dismiss(toastId);
   }
 
   pushToast(message: string, tone: ToastTone) {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    this.toasts = [...this.toasts, { id, tone, message }].slice(-5);
-    this._emitChange();
-
-    const timer = window.setTimeout(() => {
-      this.dismissToast(id);
-    }, 3200);
-    this.toastTimers.set(id, timer);
+    this.toastStore.push(message, tone);
   }
 
   private _emitChange() {
