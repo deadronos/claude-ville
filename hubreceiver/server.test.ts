@@ -36,7 +36,7 @@ function startServer(env: Record<string, string>) {
   };
 }
 
-async function waitForServerPort(server: ReturnType<typeof startServer>, timeoutMs = 20000): Promise<number> {
+async function waitForServerPort(server: ReturnType<typeof startServer>, timeoutMs = 4000): Promise<number> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const match = server.getOutput().stdout.match(/hubreceiver listening on http:\/\/[^:]+:(\d+)/);
@@ -105,6 +105,7 @@ describe('hubreceiver entrypoint', () => {
       body: JSON.stringify({ sessions: [{ blob: 'x'.repeat(500) }] }),
     });
     expect(oversized.status).toBe(413);
+    expect(oversized.headers.get('connection')).toBe('close');
 
     const payload = JSON.stringify({ collectorId: 'c1', sessions: [{ sessionId: 's1', lastActivity: 1 }] });
     expect(payload.length).toBeLessThanOrEqual(128);
