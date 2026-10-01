@@ -228,3 +228,40 @@ Use `--body-file -` with a single-quoted heredoc (`<<'EOF'`) for any markdown co
 - Reproducible: yes
 - Related Files: none
 - Tags: gh, zsh, shell-quoting
+
+---
+
+## [ERR-20261001-001] browser test needs e2e config and Playwright chromium
+
+**Logged**: 2026-10-01T00:00:00Z
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+`npx vitest run <path>.browser.test.ts` exits 1 with "No test files found" because the default `vitest.config.ts` excludes `**/*.browser.test.ts`; the file only runs under `vitest.e2e.config.ts`. Running it also requires Playwright Chromium, which may not be installed in a fresh environment.
+
+### Error
+```
+No test files found, exiting with code 1
+filter: claudeville/src/presentation/react/ClaudeVilleApp.browser.test.ts
+exclude: ... **/*.browser.test.ts ...
+```
+and
+```
+Error: browserType.launch: Executable doesn't exist at
+/Users/<user>/Library/Caches/ms-playwright/chromium_headless_shell-1243/...
+```
+
+### Context
+- Command attempted: `npx vitest run claudeville/src/presentation/react/ClaudeVilleApp.browser.test.ts`
+- Working command: `npx vitest run --config vitest.e2e.config.ts claudeville/src/presentation/react/ClaudeVilleApp.browser.test.ts` (or `npm run test:e2e -- <path>`)
+- Fix for the browser: `npx playwright install chromium` (~94 MiB, cached outside the repo)
+
+### Suggested Fix
+Always invoke browser tests through `vitest.e2e.config.ts`/`npm run test:e2e`; run `npx playwright install chromium` on a fresh checkout before expecting E2E to pass.
+
+### Metadata
+- Reproducible: yes
+- Related Files: vitest.config.ts, vitest.e2e.config.ts
+- Tags: vitest, playwright, e2e, environment
