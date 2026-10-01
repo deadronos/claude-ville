@@ -297,9 +297,8 @@ describe('collector and legacy server entrypoints', () => {
       COLLECTOR_HOST: 'collector-host',
       FLUSH_INTERVAL_MS: '60000',
       HOME: homeDir,
-      // Pin Claude to a path nothing creates: the usage-quota `claude auth status`
-      // call would otherwise materialize ~/.claude under the fixture HOME and
-      // flip the adapter to "available" mid-test.
+      // The usage-quota `claude auth status` call materializes ~/.claude under
+      // the fixture HOME; pin the adapter's dir so availability cannot flip mid-test.
       CLAUDE_DIR: path.join(homeDir, '.claude-unused'),
     });
 
@@ -334,9 +333,7 @@ describe('collector and legacy server entrypoints', () => {
     const legacy = startTsx(legacyServerEntrypoint, {
       HOME: homeDir,
       PORT: '0',
-      // Pin Claude to a path nothing creates: the usage-quota `claude auth status`
-      // call would otherwise materialize ~/.claude under the fixture HOME and
-      // flip the adapter to "available" mid-test.
+      // Keep adapter availability stable regardless of any home-dir side effects.
       CLAUDE_DIR: path.join(homeDir, '.claude-unused'),
     });
 

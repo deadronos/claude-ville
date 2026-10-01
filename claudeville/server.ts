@@ -28,7 +28,7 @@ type HttpResponse = http.ServerResponse;
 const claudeAdapter = adapters.find((a: { provider: string }) => a.provider === 'claude');
 
 // ─── Config ────────────────────────────────────────────────
-const PORT = process.env.PORT === undefined ? 4000 : Number(process.env.PORT);
+const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 let boundPort = PORT;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -429,7 +429,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`port ${PORT} is already in use`);
+    console.error(`port ${boundPort} is already in use`);
   } else {
     console.error('server error:', err.message);
   }
