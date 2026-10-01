@@ -13,22 +13,6 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getFreePort() {
-  return await new Promise<number>((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      if (!address || typeof address === 'string') {
-        server.close(() => reject(new Error('Failed to allocate a port')));
-        return;
-      }
-      server.close(() => resolve(address.port));
-    });
-  });
-}
-
 function startTsx(entrypoint: string, env: Record<string, string>) {
   const child = spawn(process.execPath, ['--import', 'tsx', entrypoint], {
     cwd: repoRoot,
@@ -52,6 +36,17 @@ function startTsx(entrypoint: string, env: Record<string, string>) {
     child,
     getOutput: () => ({ stdout, stderr }),
   };
+}
+
+async function waitForServerPort(server: ReturnType<typeof startTsx>, timeoutMs = 20000): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const match = server.getOutput().stdout.match(/server running: http:\/\/localhost:(\d+)/);
+    if (match) return Number(match[1]);
+    await delay(25);
+  }
+  const { stdout, stderr } = server.getOutput();
+  throw new Error(`server did not report a bound port\n\n[stdout]\n${stdout}\n[stderr]\n${stderr}`);
 }
 
 async function stopProcess(child: ReturnType<typeof spawn>) {
@@ -226,14 +221,14 @@ async function connectWebSocket(port: number) {
 
 describe('legacy server entrypoint', () => {
   it('serves runtime config, JSON APIs, and CORS headers on a configurable port', async () => {
-    const port = await getFreePort();
     const server = startTsx(legacyServerEntrypoint, {
-      PORT: String(port),
+      PORT: '0',
       // Override any local ALLOWED_ORIGIN so CORS header is predictable in tests
       ALLOWED_ORIGIN: '',
     });
 
     try {
+      const port = await waitForServerPort(server);
       const runtimeConfig = await waitForText(`http://127.0.0.1:${port}/runtime-config.js`, (text) => text.includes('window.__CLAUDEVILLE_CONFIG__'));
       expect(runtimeConfig).toContain('window.__CLAUDEVILLE_CONFIG__');
 
@@ -263,13 +258,13 @@ describe('legacy server entrypoint', () => {
   });
 
   it('handles websocket text frames split across TCP chunks', async () => {
-    const port = await getFreePort();
     const server = startTsx(legacyServerEntrypoint, {
-      PORT: String(port),
+      PORT: '0',
     });
     let socket: net.Socket | null = null;
 
     try {
+      const port = await waitForServerPort(server);
       await waitForText(`http://127.0.0.1:${port}/runtime-config.js`, (text) => text.includes('window.__CLAUDEVILLE_CONFIG__'));
       socket = await connectWebSocket(port);
       const frame = createMaskedTextFrame(JSON.stringify({ type: 'ping' }));
@@ -290,13 +285,13 @@ describe('legacy server entrypoint', () => {
   });
 
   it('handles multiple websocket text frames delivered in one TCP chunk', async () => {
-    const port = await getFreePort();
     const server = startTsx(legacyServerEntrypoint, {
-      PORT: String(port),
+      PORT: '0',
     });
     let socket: net.Socket | null = null;
 
     try {
+      const port = await waitForServerPort(server);
       await waitForText(`http://127.0.0.1:${port}/runtime-config.js`, (text) => text.includes('window.__CLAUDEVILLE_CONFIG__'));
       socket = await connectWebSocket(port);
       const frame = createMaskedTextFrame(JSON.stringify({ type: 'ping' }));

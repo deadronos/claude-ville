@@ -28,7 +28,8 @@ type HttpResponse = http.ServerResponse;
 const claudeAdapter = adapters.find((a: { provider: string }) => a.provider === 'claude');
 
 // ─── Config ────────────────────────────────────────────────
-const PORT = Number(process.env.PORT || 4000);
+const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
+let boundPort = PORT;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const BUILT_FRONTEND_DIR = path.join(__dirname, '..', 'dist', 'frontend');
@@ -42,7 +43,7 @@ const wsClients = new Set<WebSocket>();
 function parseRequestUrl(req: HttpRequest) {
   const host = req.headers.host && /^[A-Za-z0-9.:[\]-]+$/.test(req.headers.host)
     ? req.headers.host
-    : `localhost:${PORT}`;
+    : `localhost:${boundPort}`;
   return new URL(req.url ?? '/', `http://${host}`);
 }
 
@@ -140,7 +141,7 @@ function handleRuntimeConfig(req: HttpRequest, res: HttpResponse) {
   // is set, expose this server's own origin. This keeps `/runtime-config.js`
   // working out of the box even after the shared default moved to the
   // split-stack hubreceiver port (3030).
-  const legacyBase = `http://localhost:${PORT}`;
+  const legacyBase = `http://localhost:${boundPort}`;
   const env = {
     ...process.env,
     HUB_HTTP_URL: process.env.HUB_HTTP_URL || process.env.HUB_URL || legacyBase,
@@ -397,8 +398,12 @@ const ASCII_LOGO = `
 `;
 
 server.listen(PORT, '0.0.0.0', () => {
+  const address = server.address();
+  if (address && typeof address === 'object') {
+    boundPort = address.port;
+  }
   console.log(ASCII_LOGO);
-  console.log(`  server running: http://localhost:${PORT} (bound to 0.0.0.0)`);
+  console.log(`  server running: http://localhost:${boundPort} (bound to 0.0.0.0)`);
   console.log('');
 
   // Show active providers
@@ -424,7 +429,7 @@ server.listen(PORT, '0.0.0.0', () => {
 
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`port ${PORT} is already in use`);
+    console.error(`port ${boundPort} is already in use`);
   } else {
     console.error('server error:', err.message);
   }
