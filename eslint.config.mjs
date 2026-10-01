@@ -55,7 +55,7 @@ export default tseslint.config(
       'runtime-config.shared.ts',
     ],
     languageOptions: {
-      sourceType: 'commonjs',
+      sourceType: 'module',
       globals: globals.node,
     },
     rules: {
