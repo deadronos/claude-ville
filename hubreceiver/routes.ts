@@ -9,6 +9,16 @@ export function maybeGetAuthToken(req: http.IncomingMessage) {
   return header.replace(/^Bearer /i, '');
 }
 
+/**
+ * Per-snapshot accept logging fires on every publish, which is continuous once
+ * a collector is running. Gate it behind CLAUDEVILLE_DEBUG=1 rather than
+ * deleting it — the byte count and session count are useful when diagnosing
+ * snapshot-size growth or a collector that is publishing empties.
+ */
+function isDebugEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.CLAUDEVILLE_DEBUG === '1' || env.CLAUDEVILLE_DEBUG === 'true';
+}
+
 function isAuthorized(req: http.IncomingMessage, authToken: string) {
   return maybeGetAuthToken(req) === authToken;
 }
@@ -81,7 +91,9 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
             const snapshot = JSON.parse(body || '{}');
             const state = deps.applySnapshot(snapshot);
             deps.wsManager.broadcast('update');
-            console.log(`[hubreceiver] snapshot accepted ${Buffer.byteLength(body, 'utf8')} bytes → ${(state as { sessions: unknown[] }).sessions.length} sessions`);
+            if (isDebugEnabled()) {
+              console.log(`[hubreceiver] snapshot accepted ${Buffer.byteLength(body, 'utf8')} bytes → ${(state as { sessions: unknown[] }).sessions.length} sessions`);
+            }
             sendJson(res, 200, { ok: true, sessions: (state as { sessions: unknown[] }).sessions.length });
           } catch (error) {
             console.error(`[hubreceiver] snapshot parse error (${Buffer.byteLength(body, 'utf8')} bytes): ${error instanceof Error ? error.message : String(error)}`);

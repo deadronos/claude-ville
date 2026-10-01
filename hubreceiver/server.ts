@@ -6,14 +6,15 @@ import net from 'net';
 import { applySnapshot, getCurrentState, getSessionDetail, getHistory } from './state.js';
 import { createHubreceiverRequestHandler } from './routes.js';
 import { createHubWebSocketManager } from './ws.js';
+import { isDevFallbackToken, resolveHubAuthToken } from '../shared/hub-auth.js';
 
 const PORT = Number(process.env.HUB_PORT || 3030);
 let boundPort = PORT;
 const HOST = process.env.HUB_HOST || '127.0.0.1';
-const AUTH_TOKEN = process.env.HUB_AUTH_TOKEN || 'dev-secret';
+const AUTH_TOKEN = resolveHubAuthToken();
 const MAX_SNAPSHOT_BYTES = Number(process.env.MAX_SNAPSHOT_BYTES || 10 * 1024 * 1024); // 10 MB default
 
-if ((HOST === '0.0.0.0' || HOST === '::') && AUTH_TOKEN === 'dev-secret') {
+if ((HOST === '0.0.0.0' || HOST === '::') && isDevFallbackToken(AUTH_TOKEN)) {
   throw new Error('Set HUB_AUTH_TOKEN before binding hubreceiver to a public interface');
 }
 
