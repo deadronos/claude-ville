@@ -70,7 +70,7 @@ function readBoundedBody(req: IncomingMessage, maxBytes: number = Infinity) {
     req.on('data', (chunk: Buffer) => {
       if (body.length + chunk.length > maxBytes) {
         truncated = true;
-        req.destroy();
+        req.pause();
         reject({ statusCode: 413, message: `body exceeds ${maxBytes} bytes` });
         return;
       }

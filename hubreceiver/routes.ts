@@ -92,6 +92,9 @@ export function createHubreceiverRequestHandler(deps: HubreceiverDeps) {
           if (err && typeof err === 'object' && 'statusCode' in err && (err as { statusCode: number }).statusCode === 413) {
             const errWithMessage = err as unknown as { message: string };
             console.error(`[hubreceiver] snapshot rejected — ${errWithMessage.message}`);
+            // The request body was left unread; close the connection so the
+            // remainder cannot be parsed as a follow-up request.
+            res.setHeader('Connection', 'close');
             sendError(res, 413, errWithMessage.message);
           } else {
             console.error(`[hubreceiver] snapshot read error: ${err}`);

@@ -19,12 +19,14 @@ function makeRequest(method: string, url: string, headers: Record<string, string
     method: string;
     url: string;
     destroy: ReturnType<typeof vi.fn>;
+    pause: ReturnType<typeof vi.fn>;
   };
 
   req.headers = headers;
   req.method = method;
   req.url = url;
   req.destroy = vi.fn();
+  req.pause = vi.fn();
   return req;
 }
 
@@ -185,7 +187,9 @@ describe('hubreceiver routes', () => {
 
     await flush();
 
-    expect(req.destroy).toHaveBeenCalled();
+    expect(req.pause).toHaveBeenCalled();
+    expect(req.destroy).not.toHaveBeenCalled();
+    expect(res.setHeader).toHaveBeenCalledWith('Connection', 'close');
     expect(res.writeHead).toHaveBeenCalledWith(413, expect.any(Object));
     expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: 'body exceeds 8 bytes' }));
   });
