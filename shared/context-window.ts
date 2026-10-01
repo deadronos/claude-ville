@@ -22,6 +22,10 @@ export function mapProvider(provider: string): string {
   return PROVIDER_ALIASES[provider] ?? provider;
 }
 
+function validLimit(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
 let catalogPromise: Promise<ContextCatalog | null> | null = null;
 
 export function loadContextCatalog(): Promise<ContextCatalog | null> {
@@ -59,31 +63,32 @@ export async function resolveContextLimit(
   loadCatalog: CatalogLoader = loadContextCatalog,
 ): Promise<number | null> {
   const cache = limitCacheFor(loadCatalog);
-  const key = `${provider}:${model}`;
-  const cached = cache.get(key);
-  if (cached !== undefined || cache.has(key)) {
-    return cached ?? null;
+  const mappedProvider = mapProvider(provider);
+  const key = `${mappedProvider}:${model}`;
+  if (cache.has(key)) {
+    return cache.get(key) ?? null;
   }
 
   const catalog = await loadCatalog();
-  const mappedProvider = mapProvider(provider);
-  const candidate = catalog?.providers?.[mappedProvider]?.models?.[model]?.limit?.context
-    ?? catalog?.models?.[`${mappedProvider}/${model}`]?.limit?.context;
-
-  const limit = typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0 ? candidate : null;
+  const scoped = validLimit(catalog?.providers?.[mappedProvider]?.models?.[model]?.limit?.context);
+  const agnostic = validLimit(catalog?.models?.[`${mappedProvider}/${model}`]?.limit?.context);
+  // Claude Code's default context is 200k; models.dev's provider-scoped anthropic
+  // entry can list the opt-in 1M beta, so prefer the provider-agnostic value there.
+  const limit = mappedProvider === 'anthropic' ? (agnostic ?? scoped) : (scoped ?? agnostic);
   cache.set(key, limit);
   return limit;
 }
 
 export function computeContextPercent(tokenUsage: unknown, limit: number | null): number | null {
-  if (typeof limit !== 'number' || !Number.isFinite(limit) || limit <= 0) {
+  const resolvedLimit = validLimit(limit);
+  if (resolvedLimit === null) {
     return null;
   }
   const contextWindow = (tokenUsage as { contextWindow?: unknown } | null | undefined)?.contextWindow;
   if (typeof contextWindow !== 'number' || !Number.isFinite(contextWindow) || contextWindow <= 0) {
     return null;
   }
-  return Math.min(100, Math.max(0, Math.round((contextWindow / limit) * 100)));
+  return Math.min(100, Math.max(0, Math.round((contextWindow / resolvedLimit) * 100)));
 }
 
 export async function computeSessionContextPercent(

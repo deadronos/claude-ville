@@ -152,9 +152,8 @@ describe('adapter registry fixtures', () => {
     const sessions = await registry.getAllSessions(Number.MAX_SAFE_INTEGER);
     const claudeSession = sessions.find((s: any) => s.sessionId === 'claude-fixture-1');
     expect(claudeSession).toBeDefined();
-    // numerator: input 50000 + cache_read 30000 + cache_create 0 = 80000
-    expect(claudeSession.contextPercent).toBeGreaterThan(0);
-    expect(claudeSession.contextPercent).toBeLessThanOrEqual(100);
+    // numerator: input 50000 + cache_read 30000 + cache_create 0 = 80000; limit 200000
+    expect(claudeSession.contextPercent).toBe(40);
   });
 
   it('omits contextPercent when the session has no context numerator', async () => {

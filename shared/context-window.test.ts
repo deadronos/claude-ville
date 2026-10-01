@@ -40,6 +40,30 @@ describe('resolveContextLimit', () => {
     await expect(resolveContextLimit('claude', 'claude-agnostic-only', loadFake)).resolves.toBe(210000);
   });
 
+  it('prefers the provider-agnostic limit for anthropic', async () => {
+    const catalog = {
+      providers: { anthropic: { models: { m: { limit: { context: 1_000_000 } } } } },
+      models: { 'anthropic/m': { limit: { context: 200_000 } } },
+    };
+    await expect(resolveContextLimit('claude', 'm', async () => catalog)).resolves.toBe(200000);
+  });
+
+  it('prefers the provider-scoped limit for non-anthropic providers', async () => {
+    const catalog = {
+      providers: { openai: { models: { m2: { limit: { context: 400_000 } } } } },
+      models: { 'openai/m2': { limit: { context: 128_000 } } },
+    };
+    await expect(resolveContextLimit('codex', 'm2', async () => catalog)).resolves.toBe(400000);
+  });
+
+  it('ignores an invalid provider-scoped limit and falls through', async () => {
+    const catalog = {
+      providers: { openai: { models: { m3: { limit: { context: 0 } } } } },
+      models: { 'openai/m3': { limit: { context: 128_000 } } },
+    };
+    await expect(resolveContextLimit('codex', 'm3', async () => catalog)).resolves.toBe(128000);
+  });
+
   it('returns null for unknown providers or models', async () => {
     await expect(resolveContextLimit('claude', 'nope', loadFake)).resolves.toBeNull();
     await expect(resolveContextLimit('nope', 'claude-sonnet-4-5', loadFake)).resolves.toBeNull();

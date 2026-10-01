@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@opencode-ai/models/snapshot', () => {
   const failSnapshotLoad = () => {
@@ -14,6 +14,10 @@ vi.mock('@opencode-ai/models/snapshot', () => {
   };
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('loadContextCatalog failure', () => {
   it('resolves to null and logs once when the snapshot cannot load', async () => {
     vi.resetModules();
@@ -24,6 +28,6 @@ describe('loadContextCatalog failure', () => {
       '[context-window] failed to load models.dev snapshot:',
       expect.stringContaining('snapshot unavailable'),
     );
-    warn.mockRestore();
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });
