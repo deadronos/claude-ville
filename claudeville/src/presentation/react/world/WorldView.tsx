@@ -68,7 +68,7 @@ export function WorldView({
       <Canvas
         orthographic
         dpr={[1, 2]}
-        frameloop="always"
+        frameloop={active ? 'always' : 'demand'}
         gl={{ antialias: false, alpha: true, powerPreference: 'high-performance' }}
         className="content__canvas world-view__canvas"
         onPointerMissed={() => {

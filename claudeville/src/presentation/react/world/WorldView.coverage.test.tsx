@@ -262,4 +262,18 @@ describe('WorldView', () => {
     // So the marker WILL show when selectedAgentId is set and sprite exists.
     expect(container.querySelector('.world-view__focus-badge')?.textContent).toBe('Following Ghost');
   });
+
+  it('runs the GL render loop only while the world is active', () => {
+    worldViewMocks.sprites = [{ agent: { id: 'agent-1', name: 'Scout 7' }, x: 0, y: 0 }];
+    sharedStoreState.agents = [{ id: 'agent-1', name: 'Scout 7' }];
+
+    const frameloopFor = (active: boolean) => {
+      worldViewMocks.canvasProps = null;
+      renderWorldView({ active });
+      return (worldViewMocks.canvasProps as Record<string, any> | null)?.frameloop;
+    };
+
+    expect(frameloopFor(true)).toBe('always');
+    expect(frameloopFor(false)).toBe('demand');
+  });
 });
