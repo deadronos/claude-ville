@@ -16,6 +16,6 @@ describe('InstancedTerrain', () => {
   });
 
   it('should render without crashing', () => {
-    render(<InstancedTerrain buildings={[]} />);
+    render(<InstancedTerrain tiles={[]} />);
   });
 });

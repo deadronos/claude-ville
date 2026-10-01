@@ -12,17 +12,11 @@ const frameState = vi.hoisted(() => ({
   callbacks: [] as Array<(state: { clock: { elapsedTime: number } }) => void>,
 }));
 
-const hookMocks = vi.hoisted(() => ({
-  useTerrain: vi.fn(),
-}));
-
 vi.mock('@react-three/fiber', () => ({
   useFrame: (callback: (state: { clock: { elapsedTime: number } }) => void) => {
     frameState.callbacks.push(callback);
   },
 }));
-
-vi.mock('./hooks/useTerrain.js', () => hookMocks);
 
 vi.mock('./components/InstancedTerrain.js', () => ({
   InstancedTerrain: () => <div data-testid="instanced-terrain" />,
@@ -35,7 +29,6 @@ import { InstancedTerrain } from './components/InstancedTerrain.js';
 
 beforeEach(() => {
   frameState.callbacks.length = 0;
-  hookMocks.useTerrain.mockReset();
 });
 
 afterEach(() => {
@@ -43,15 +36,15 @@ afterEach(() => {
 });
 
 describe('React world low-coverage components', () => {
-  it('renders InstancedTerrain when buildings are present', () => {
-    hookMocks.useTerrain.mockReturnValue({
-      tiles: [
-        { key: 'land', x: 10, y: 20, color: '#224422', water: false },
-        { key: 'water', x: 30, y: 40, color: '#113355', water: true },
-      ],
-    });
-
-    const { container } = render(<InstancedTerrain buildings={[{ id: 'forge' }]} />);
+  it('renders InstancedTerrain when tiles are present', () => {
+    const { container } = render(
+      <InstancedTerrain
+        tiles={[
+          { key: 'land', x: 10, y: 20, color: '#224422', water: false },
+          { key: 'water', x: 30, y: 40, color: '#113355', water: true },
+        ]}
+      />,
+    );
 
     expect(container.querySelector('[data-testid="instanced-terrain"]')).toBeTruthy();
   });

@@ -59,8 +59,18 @@ vi.mock('./components/ScreenSpaceCamera.js', () => ({
   ScreenSpaceCamera: () => <div data-testid="screen-space-camera" />,
 }));
 
+const sceneMocks = vi.hoisted(() => ({
+  useTerrain: vi.fn(),
+  instancedTerrainProps: null as null | Record<string, any>,
+}));
+
+vi.mock('./hooks/useTerrain.js', () => ({ useTerrain: sceneMocks.useTerrain }));
+
 vi.mock('./components/InstancedTerrain.js', () => ({
-  InstancedTerrain: () => <div data-testid="instanced-terrain" />,
+  InstancedTerrain: (props: Record<string, any>) => {
+    sceneMocks.instancedTerrainProps = props;
+    return <div data-testid="instanced-terrain" />;
+  },
 }));
 
 vi.mock('./components/AgentActor.js', () => ({
@@ -84,6 +94,12 @@ describe('WorldScene', () => {
     fiberMocks.rootNode.position.set.mockClear();
     fiberMocks.rootNode.scale.set.mockClear();
     fiberMocks.rootNode.entities.splice(0);
+    sceneMocks.instancedTerrainProps = null;
+    sceneMocks.useTerrain.mockReset();
+    sceneMocks.useTerrain.mockReturnValue({
+      tiles: [{ key: '0,0', x: 0, y: 0, color: '#224422', water: false }],
+      waterTiles: new Set<string>(),
+    });
   });
 
   it('renders with ECS entities and calls systems', () => {
@@ -189,5 +205,38 @@ describe('WorldScene', () => {
     // With mocked useFrame, the inner proximity check isn't actually executed.
     // Just verify the frameCallback was registered (systems are wired up).
     expect(fiberMocks.frameCallback).toBeTypeOf('function');
+  });
+
+  it('derives terrain once per buildings change and passes tiles down', () => {
+    const building = {
+      type: 'command',
+      position: { tileX: 10, tileY: 10 },
+      width: 1,
+      height: 1,
+      label: 'Command',
+      icon: '⚡',
+    };
+
+    render(
+      <WorldScene
+        viewport={{ width: 400, height: 300 }}
+        sprites={[]}
+        cameraRef={{ current: { targetX: 0, targetZ: 0, zoom: 1, minZoom: 0.5, maxZoom: 3, followAgentId: null, followSmoothing: 0.08 } } as any}
+        roofAlphaRef={{ current: new Map() } as any}
+        bubbleConfig={{ textScale: 1, statusFontSize: 14, statusMaxWidth: 260, statusBubbleH: 28, statusPaddingH: 24, chatFontSize: 14 }}
+        buildings={[building]}
+        selectedAgentId={null}
+        hoveredBuildingId={null}
+        onSelectAgent={vi.fn()}
+        onHoverBuilding={vi.fn()}
+        interactionRef={{ current: { moved: false } } as any}
+      />,
+    );
+
+    expect(sceneMocks.useTerrain).toHaveBeenCalledTimes(1);
+    expect(sceneMocks.useTerrain).toHaveBeenCalledWith([building]);
+    expect(sceneMocks.instancedTerrainProps?.tiles).toEqual([
+      { key: '0,0', x: 0, y: 0, color: '#224422', water: false },
+    ]);
   });
 });
