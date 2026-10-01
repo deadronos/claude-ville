@@ -1,14 +1,8 @@
 /** @vitest-environment jsdom */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { i18n } from './i18n.js';
 
 describe('i18n (real module, jsdom)', () => {
-  afterEach(() => {
-    // Reset language to en between tests
-    i18n._lang = 'en';
-    localStorage.removeItem('claudeville-lang');
-  });
-
   describe('t()', () => {
     it('returns the string for known key', () => {
       expect(i18n.t('working')).toBe('WORKING');
@@ -38,6 +32,10 @@ describe('i18n (real module, jsdom)', () => {
 
     it('interpolates nameModeChanged', () => {
       expect(i18n.t('nameModeChanged', { mode: 'pooled' })).toBe('Name mode set to pooled');
+    });
+
+    it('interpolates contextUsage', () => {
+      expect(i18n.t('contextUsage', { percent: 42 })).toBe('Context 42%');
     });
   });
 

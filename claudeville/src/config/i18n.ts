@@ -18,6 +18,7 @@ const STRINGS: any = {
     toolHistory: 'TOOL HISTORY',
     noToolUsage: 'No tool usage yet',
     nAgents: (n: number) => `${n} agents`,
+    contextUsage: (data: { percent: number }) => `Context ${data.percent}%`,
 
     model: 'MODEL',
     role: 'ROLE',
