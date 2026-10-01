@@ -639,5 +639,40 @@ describe('copilot adapter', () => {
       expect(detail).toHaveProperty('messages');
       expect(detail).toHaveProperty('sessionId');
     });
+
+    it('getSessionDetail returns tokenUsage from a session.shutdown aggregate', async () => {
+      const fs = require('fs');
+      const os = require('os');
+      const path = require('path');
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-tokens-'));
+      const file = path.join(tmp, 'events.jsonl');
+      fs.writeFileSync(file, [
+        JSON.stringify({ type: 'assistant.message', data: { content: 'hi' }, timestamp: '2024-01-01T00:00:00Z' }),
+        JSON.stringify({
+          type: 'session.shutdown',
+          data: { modelMetrics: { 'gpt-5.3-codex': { usage: { inputTokens: 298, outputTokens: 14 } } } },
+          timestamp: '2024-01-01T00:01:00Z',
+        }),
+      ].join('\n'));
+
+      const adapter = new CopilotAdapter();
+      const detail = await adapter.getSessionDetail('copilot-x', null, file);
+      fs.rmSync(tmp, { recursive: true, force: true });
+      expect(detail.tokenUsage).toEqual({ input: 298, output: 14 });
+    });
+
+    it('getSessionDetail returns null tokenUsage for a live session with no shutdown event', async () => {
+      const fs = require('fs');
+      const os = require('os');
+      const path = require('path');
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-live-'));
+      const file = path.join(tmp, 'events.jsonl');
+      fs.writeFileSync(file, JSON.stringify({ type: 'assistant.message', data: { content: 'hi' } }) + '\n');
+
+      const adapter = new CopilotAdapter();
+      const detail = await adapter.getSessionDetail('copilot-y', null, file);
+      fs.rmSync(tmp, { recursive: true, force: true });
+      expect(detail.tokenUsage).toBeNull();
+    });
   });
 });

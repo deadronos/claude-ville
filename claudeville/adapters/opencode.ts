@@ -455,7 +455,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     const cleanId = sessionId.replace(/^opencode-/, '');
     const files = await getSessionFiles(30 * 60 * 1000);
     const match = files.find((file) => file.sessionId === cleanId);
-    if (!match) return { toolHistory: [], messages: [] };
+    if (!match) return { toolHistory: [], messages: [], tokenUsage: null };
 
     return this.getSessionDetail(sessionId, project, resolveMessageFile(match.projectKey, cleanId));
   }
