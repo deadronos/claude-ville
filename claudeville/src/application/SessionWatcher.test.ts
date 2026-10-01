@@ -18,7 +18,6 @@ describe('SessionWatcher', () => {
     mockWsClient = {
       connect: vi.fn(),
       disconnect: vi.fn(),
-      isConnected: false,
     };
 
     mockDataSource = {
@@ -63,13 +62,12 @@ describe('SessionWatcher', () => {
 
     it('starts polling as fallback when ws not connected', () => {
       watcher.start();
-      // Since isConnected is false, polling should have started
+      // Polling should have started on start()
       // _startPolling calls _poll immediately, then sets interval
       expect(mockDataSource.getSessions).toHaveBeenCalled();
     });
 
-    it('still starts polling even when ws is already connected', () => {
-      mockWsClient.isConnected = true;
+    it('still starts polling when the watcher is restarted', () => {
       watcher.start();
       // Polling should run regardless of WS connection state
       expect(mockDataSource.getSessions).toHaveBeenCalled();
@@ -105,10 +103,8 @@ describe('SessionWatcher', () => {
       const watcher2 = new SessionWatcher(mockAgentManager, mockWsClient, mockDataSource);
       watcher2.start();
       mockDataSource.getSessions.mockClear();
-      // watcher2.start() sets isConnected=false so polling already started,
-      // but we want to test the DISCONNECT event triggering _startPolling.
-      // Simulate being in a connected state first:
-      mockWsClient.isConnected = true;
+      // watcher2.start() already started polling.
+      // Clear it so the DISCONNECT event must restart polling.
       watcher2['_stopPolling'](); // clear the initial pollTimer
       mockDataSource.getSessions.mockClear();
       eventBus.emit('ws:disconnected');

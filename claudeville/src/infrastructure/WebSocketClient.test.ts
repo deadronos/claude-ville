@@ -61,10 +61,6 @@ describe('WebSocketClient', () => {
   });
 
   describe('constructor', () => {
-    it('starts disconnected', () => {
-      expect(client.isConnected).toBe(false);
-    });
-
     it('starts with null ws', () => {
       expect(client.ws).toBeNull();
     });
@@ -98,19 +94,11 @@ describe('WebSocketClient', () => {
       (client.ws as any)._simulateOpen();
 
       expect(handler).toHaveBeenCalled();
-      expect(client.isConnected).toBe(true);
       eventBus.off('ws:connected', handler);
     });
   });
 
   describe('disconnect()', () => {
-    it('sets connected to false', () => {
-      client.connect();
-      (client.ws as any)._simulateOpen();
-      client.disconnect();
-      expect(client.isConnected).toBe(false);
-    });
-
     it('sets ws to null', () => {
       client.connect();
       client.disconnect();
@@ -121,25 +109,6 @@ describe('WebSocketClient', () => {
       client.connect();
       client.disconnect();
       expect(client.reconnectTimer).toBeNull();
-    });
-  });
-
-  describe('send()', () => {
-    it('sends data when connected', () => {
-      client.connect();
-      const ws = client.ws as any;
-      ws._simulateOpen();
-      const sendSpy = vi.spyOn(ws, 'send');
-      client.send({ type: 'ping' });
-      expect(sendSpy).toHaveBeenCalledWith(JSON.stringify({ type: 'ping' }));
-    });
-
-    it('is a no-op when not connected', () => {
-      client.connect();
-      (client.ws as any).readyState = MockWebSocket.CONNECTING;
-      const sendSpy = vi.spyOn(client.ws, 'send');
-      client.send({ type: 'ping' });
-      expect(sendSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -230,7 +199,6 @@ describe('WebSocketClient', () => {
       (client.ws as any)._simulateClose();
 
       expect(handler).toHaveBeenCalled();
-      expect(client.isConnected).toBe(false);
       eventBus.off('ws:disconnected', handler);
     });
 

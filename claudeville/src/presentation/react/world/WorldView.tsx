@@ -7,7 +7,6 @@ import { FocusReticle } from './components/FocusReticle.js';
 import { MinimapOverlay } from './components/MinimapOverlay.js';
 import { WorldScene } from './components/WorldScene.js';
 import { BubbleDebugOverlay } from './components/BubbleDebugOverlay.js';
-import { PostProcessing } from './components/PostProcessing.js';
 import { useSelectedAgentOverlay } from './hooks/useSelectedAgentOverlay.js';
 import { useWorldInteraction } from './hooks/useWorldInteraction.js';
 import { useWorldSprites } from './hooks/useWorldSprites.js';
@@ -97,7 +96,6 @@ export function WorldView({
           onHoverBuilding={setHoveredBuildingId}
           interactionRef={interactionRef}
         />
-        <PostProcessing />
       </Canvas>
       {active && selectedAgentScreen ? (
         <div ref={selectedMarkerRef} className="world-view__selected-agent-marker" aria-hidden="true">

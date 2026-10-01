@@ -23,10 +23,6 @@ export class WebSocketClient {
         this.url = getHubWsUrl();
     }
 
-    get isConnected() {
-        return this.connected;
-    }
-
     connect() {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
@@ -78,12 +74,6 @@ export class WebSocketClient {
             this.ws = null;
         }
         this.connected = false;
-    }
-
-    send(data: unknown) {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify(data));
-        }
     }
 
     _handleMessage(data: WsMessage) {
