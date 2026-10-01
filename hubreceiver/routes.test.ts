@@ -1,7 +1,7 @@
 /** @vitest-environment node */
 
 import { EventEmitter } from 'node:events';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { createHubreceiverRequestHandler, maybeGetAuthToken } = await import('./routes.ts');
 
@@ -189,6 +189,12 @@ describe('hubreceiver routes', () => {
       process.env.CLAUDEVILLE_DEBUG = 'true';
       await postSnapshot();
       expect(snapshotAcceptLines(console.log as never).length).toBe(1);
+    });
+
+    // Leave the env clean: vitest.config.ts sets no unstubEnvs, so a leaked
+    // 'true' would silently enable logging for every later test in this file.
+    afterEach(() => {
+      delete process.env.CLAUDEVILLE_DEBUG;
     });
   });
 

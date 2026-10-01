@@ -15,8 +15,8 @@ export function maybeGetAuthToken(req: http.IncomingMessage) {
  * deleting it — the byte count and session count are useful when diagnosing
  * snapshot-size growth or a collector that is publishing empties.
  */
-function isDebugEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.CLAUDEVILLE_DEBUG === '1' || env.CLAUDEVILLE_DEBUG === 'true';
+function isDebugEnabled(): boolean {
+  return process.env.CLAUDEVILLE_DEBUG === '1' || process.env.CLAUDEVILLE_DEBUG === 'true';
 }
 
 function isAuthorized(req: http.IncomingMessage, authToken: string) {

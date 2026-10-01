@@ -17,9 +17,10 @@ nobody verified, which is the same defect class as a comment claiming a caller
 that does not exist: a source of truth that is confidently wrong is worse than
 one that is merely incomplete.
 
-**The authoritative status of a change is the GitHub issue that tracks it**, not
-the plan file. If you need to know whether a plan's work landed, look at the
-linked issue and the commits it closed.
+**The authoritative status of a change is not the plan file.** For plans that
+link a tracking issue, that issue is authoritative; for the older ones that
+predate the convention, use the commit history (`git log --oneline -- <paths the
+plan touches>`). Either way, do not read the checkboxes as a completion report.
 
 If you are executing a plan right now, tick boxes as you go — that is what they
 are for. The inconsistency above is only a problem for plans being read

@@ -71,6 +71,42 @@ afterEach(async () => {
 });
 
 describe('hubreceiver entrypoint', () => {
+  // The dev fallback token is only tolerable because the entrypoint refuses to
+  // bind a public interface while it is in use. shared/hub-auth.ts documents
+  // that guarantee, so it needs a test of its own — refactor the guard and
+  // nothing else here would notice.
+  describe('public-bind guard', () => {
+    async function expectStartupToFail(env: Record<string, string>, expected: RegExp) {
+      const server = startServer(env);
+      const [code] = (await once(server.child, 'exit')) as [number | null, string | null];
+      const { stderr, stdout } = server.getOutput();
+      expect(`${stdout}\n${stderr}`).toMatch(expected);
+      return code;
+    }
+
+    it('refuses to bind 0.0.0.0 while the dev fallback token is in use', async () => {
+      const code = await expectStartupToFail(
+        { HUB_HOST: '0.0.0.0', HUB_PORT: '0', HUB_AUTH_TOKEN: '' },
+        /Set HUB_AUTH_TOKEN before binding hubreceiver to a public interface/,
+      );
+      expect(code).not.toBe(0);
+    });
+
+    it('refuses to bind :: while the dev fallback token is in use', async () => {
+      await expectStartupToFail(
+        { HUB_HOST: '::', HUB_PORT: '0', HUB_AUTH_TOKEN: '' },
+        /Set HUB_AUTH_TOKEN before binding hubreceiver to a public interface/,
+      );
+    });
+
+    it('allows a public bind once a real token is set', async () => {
+      const server = startServer({ HUB_HOST: '0.0.0.0', HUB_PORT: '0' });
+      running.add(server.child);
+      const port = await waitForServerPort(server);
+      expect(port).toBeGreaterThan(0);
+    });
+  });
+
   it('rejects unauthenticated API requests but serves the health check', async () => {
     const server = startServer({ HUB_PORT: '0' });
     running.add(server.child);
