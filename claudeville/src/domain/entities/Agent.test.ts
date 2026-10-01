@@ -59,6 +59,14 @@ describe('Agent', () => {
       expect(agent.provider).toBe('claude');
     });
 
+    it('defaults usage to null and stores provided usage', () => {
+      const bare = new Agent(makeProps({ usage: undefined as any }));
+      expect(bare.usage).toBeNull();
+
+      const withUsage = new Agent(makeProps({ usage: { contextPercent: 50 } }));
+      expect(withUsage.usage).toEqual({ contextPercent: 50 });
+    });
+
     it('sets nameSeed from id when nameSeed not provided', () => {
       const agent = new Agent(makeProps({ nameSeed: undefined as any }));
       expect(agent.nameSeed).toBe('agent-1');
