@@ -26,7 +26,10 @@ const STRINGS: any = {
 
     // Accessible names. These are announced by screen readers rather than read
     // on screen, so they use sentence case — uppercase here would be spelled
-    // out letter by letter.
+    // out letter by letter. They belong on elements that support naming
+    // (landmarks, widgets, interactive roles), or as a .sr-only prefix beside a
+    // bare value; never as aria-label on a generic span or div, which either
+    // does nothing or replaces the text it was meant to describe.
     agentList: 'Agent list',
     agentCount: 'Agent count',
     totalAgents: 'Total agents',
@@ -34,8 +37,6 @@ const STRINGS: any = {
     viewMode: 'View mode',
     viewAgentDetails: (data: { name: string }) => `View details for ${data.name}`,
     focusAgent: 'Focus agent',
-    lastMessage: 'Last message',
-    projectPath: 'Project path',
     close: 'Close',
 
     statusWorking: 'WORKING',

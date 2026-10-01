@@ -19,7 +19,10 @@ export function Sidebar({ agents, selectedAgentId, onFocus, isOpen = true }: { a
     <aside id="sidebar" className={`sidebar ${!isOpen ? 'sidebar--closed' : ''}`} aria-label={i18n.t('agentList')}>
       <div className="sidebar__header">
         <h2 data-i18n="agents" className="sidebar__title">{i18n.t('agents')}</h2>
-        <span id="agentCount" className="sidebar__count tabular-nums" aria-label={i18n.t('totalAgents')}>{agents.length}</span>
+        <span id="agentCount" className="sidebar__count tabular-nums">
+          <span className="sr-only">{i18n.t('totalAgents')}: </span>
+          {agents.length}
+        </span>
       </div>
       <div id="agentList" className="sidebar__list" role="list">
         {projectKeys.map((projectPath) => {
