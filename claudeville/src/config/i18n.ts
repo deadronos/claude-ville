@@ -1,5 +1,6 @@
-import { eventBus } from '../domain/events/DomainEvent.js';
-
+// The `data-i18n="*"` attributes sprinkled through the TSX are inert markers:
+// no runtime code reads them — visible text comes from `i18n.t()`. They exist
+// only as hints for a future language-switching feature.
 const STRINGS: any = {
     time: 'TIME',
     working: 'WORKING',
@@ -53,13 +54,6 @@ export const i18n: any = {
 
     get lang() {
         return this._lang;
-    },
-
-    set lang(value: string) {
-        if (value === this._lang) return;
-        this._lang = value;
-        localStorage.setItem('claudeville-lang', value);
-        eventBus.emit('i18n:language-changed', value);
     },
 
     t(key: string, data?: any) {
