@@ -190,6 +190,21 @@ describe('opencode adapter', () => {
     expect(detail.toolHistory).toEqual([{ tool: 'read', detail: '/workspace/live/file.ts', ts: now - 425 }]);
   });
 
+  it('returns tokenUsage aggregated from message tokens', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-tokens-'));
+    const messageFile = path.join(tmp, 'storage', 'message', 'demo-project', 'session-9.json');
+    writeJson(messageFile, [
+      { role: 'assistant', parts: [{ type: 'text', text: 'one' }], tokens: { input: 100, output: 20 }, time: { created: 1000 } },
+      { role: 'assistant', parts: [{ type: 'text', text: 'two' }], tokens: { input: 50, output: 5 }, time: { created: 2000 } },
+    ]);
+
+    const adapter = await loadAdapter(tmp);
+    const detail = await adapter.getSessionDetail('opencode-session-9', null, messageFile);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+    expect(detail.tokenUsage).toEqual({ input: 150, output: 25 });
+  });
+
   it('degrades to empty results when the database file is corrupt', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-corrupt-'));
     fs.writeFileSync(path.join(tmp, 'opencode.db'), 'this is not a sqlite database');
