@@ -74,63 +74,6 @@
 .provider-badge--vscode { color: #7dd3fc; background: rgba(125, 211, 252, 0.15); }
 .provider-badge--unknown { color: #8b8b9e; background: rgba(139, 139, 158, 0.15); }
 
-.dash-card__context-progress,
-.activity-panel__context-progress {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    border: 0;
-}
-
-.dash-card__context-progress {
-    height: 3px;
-}
-
-.activity-panel__context-progress {
-    height: 6px;
-}
-
-.dash-card__context-progress::-webkit-progress-bar,
-.activity-panel__context-progress::-webkit-progress-bar {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 999px;
-}
-
-.dash-card__context-progress::-webkit-progress-value {
-    background: linear-gradient(90deg, #4ade80 0%, #e8d44d 60%, #ef4444 100%);
-    border-radius: 999px;
-}
-
-.activity-panel__context-progress::-webkit-progress-value {
-    background: linear-gradient(90deg, #4ade80, #e8d44d);
-    border-radius: 999px;
-}
-
-.activity-panel__context-progress--warning::-webkit-progress-value {
-    background: linear-gradient(90deg, #e8d44d, #f97316);
-}
-
-.activity-panel__context-progress--danger::-webkit-progress-value {
-    background: linear-gradient(90deg, #f97316, #ef4444);
-}
-
-.dash-card__context-progress::-moz-progress-bar {
-    background: linear-gradient(90deg, #4ade80 0%, #e8d44d 60%, #ef4444 100%);
-    border-radius: 999px;
-}
-
-.activity-panel__context-progress::-moz-progress-bar {
-    background: linear-gradient(90deg, #4ade80, #e8d44d);
-    border-radius: 999px;
-}
-
-.activity-panel__context-progress--warning::-moz-progress-bar {
-    background: linear-gradient(90deg, #e8d44d, #f97316);
-}
-
-.activity-panel__context-progress--danger::-moz-progress-bar {
-    background: linear-gradient(90deg, #f97316, #ef4444);
-}
 
 .activity-panel__status--working {
     color: #4ade80;
@@ -255,46 +198,6 @@
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
-.world-view__focus-reticle {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    z-index: 4;
-}
-
-.world-view__focus-cross {
-    width: 48px;
-    height: 48px;
-    border: 1px dashed rgba(255, 255, 255, 0.6);
-    border-radius: 50%;
-    box-shadow: 0 0 12px rgba(0, 0, 0, 0.2);
-    position: relative;
-}
-
-.world-view__focus-cross::before,
-.world-view__focus-cross::after {
-    content: '';
-    position: absolute;
-    background: rgba(255, 255, 255, 0.8);
-}
-
-.world-view__focus-cross::before {
-    left: 50%;
-    top: 12px;
-    bottom: 12px;
-    width: 1px;
-    transform: translateX(-50%);
-}
-
-.world-view__focus-cross::after {
-    top: 50%;
-    left: 12px;
-    right: 12px;
-    height: 1px;
-    transform: translateY(-50%);
-}
 
 .world-view__focus-badge {
     position: absolute;

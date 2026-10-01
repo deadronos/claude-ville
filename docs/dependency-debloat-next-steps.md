@@ -25,7 +25,7 @@ The goal is not to hand-roll core rendering, test, or protocol infrastructure. T
 
 ## Second-Pass Result
 
-- `@react-three/postprocessing` and `postprocessing` were removed; `PostProcessing` is now a local no-op.
+- `@react-three/postprocessing` and `postprocessing` were removed; the local no-op `PostProcessing` placeholder has since been deleted too.
 - The Drei camera helper was replaced with a local `THREE.OrthographicCamera` installed via R3F `useThree().set`.
 - `WorldText` was replaced with a local canvas-text plane helper, allowing `@react-three/drei` to be removed.
 - `concurrently` was replaced with `scripts/dev.mjs`.
@@ -66,6 +66,8 @@ export function PostProcessing() {
   return null;
 }
 ```
+
+(That placeholder and its `WorldView` render site were later removed in the Phase 0 dead-code cleanup.)
 
 - `@react-three/postprocessing` and `postprocessing` were removed from `package.json` and the lockfile.
 - `docs/architecture/006-r3f-components.md` now describes postprocessing as deferred.
@@ -168,7 +170,7 @@ Risk: low to medium. This is a reasonable cleanup, but it is not a major disk-si
 ## Remaining Follow-Up
 
 - Do a browser visual check of labels, bubbles, status icons, and zoom behavior because `WorldText` is now canvas-text backed.
-- Consider removing the no-op `PostProcessing` component entirely from `WorldView` in a later cleanup if the named placeholder stops being useful.
+- Consider removing the no-op `PostProcessing` component entirely from `WorldView` in a later cleanup if the named placeholder stops being useful. **Done:** the placeholder and its render site were removed in the Phase 0 dead-code cleanup.
 
 ## Bottom Line
 

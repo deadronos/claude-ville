@@ -324,7 +324,7 @@ describe('collector and legacy server entrypoints', () => {
     } finally {
       await stopProcess(collector.child);
       await stopProcess(hubreceiver.child);
-      fs.rmSync(homeDir, { recursive: true, force: true });
+      fs.rmSync(homeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 
@@ -357,7 +357,7 @@ describe('collector and legacy server entrypoints', () => {
       throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n[legacy stdout]\n${legacyOutput.stdout}\n[legacy stderr]\n${legacyOutput.stderr}`);
     } finally {
       await stopProcess(legacy.child);
-      fs.rmSync(homeDir, { recursive: true, force: true });
+      fs.rmSync(homeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 });

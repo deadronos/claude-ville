@@ -50,10 +50,6 @@ vi.mock('./components/FocusReticle.js', () => ({
   },
 }));
 
-vi.mock('./components/PostProcessing.js', () => ({
-  PostProcessing: () => null,
-}));
-
 vi.mock('./hooks/useWorldSprites.js', () => ({
   useWorldSprites: (_agents: unknown[], spritesRef: { current: Map<string, unknown> }) => {
     spritesRef.current = new Map(worldViewMocks.sprites.map((sprite) => [sprite.agent.id, sprite]));
