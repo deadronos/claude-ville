@@ -61,6 +61,12 @@ export interface AgentAdapter {
   homeDir: string;
   isAvailable(): boolean;
   getActiveSessions(activeThresholdMs: number): Promise<AgentSessionSummary[]>;
+  /**
+   * Returns the stored detail for a session. Unknown sessions (or unsupported
+   * lookups) must resolve to an empty `{ toolHistory: [], messages: [] }`
+   * detail, never `null`/`undefined`. Optional `tokenUsage`/`sessionId` fields
+   * may be present when the source exposes them.
+   */
   getSessionDetail(sessionId: string, project: string | null, filePath?: string | null): Promise<AdapterSessionDetail>;
   getWatchPaths(): WatchPath[];
   getTeams?(): Promise<unknown[]> | unknown[];
