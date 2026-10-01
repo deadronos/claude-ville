@@ -24,6 +24,21 @@ const STRINGS: any = {
     role: 'ROLE',
     team: 'TEAM',
 
+    // Accessible names. These are announced by screen readers rather than read
+    // on screen, so they use sentence case — uppercase here would be spelled
+    // out letter by letter. They belong on elements that support naming
+    // (landmarks, widgets, interactive roles), or as a .sr-only prefix beside a
+    // bare value; never as aria-label on a generic span or div, which either
+    // does nothing or replaces the text it was meant to describe.
+    agentList: 'Agent list',
+    agentCount: 'Agent count',
+    totalAgents: 'Total agents',
+    agentStats: 'Agent statistics',
+    viewMode: 'View mode',
+    viewAgentDetails: (data: { name: string }) => `View details for ${data.name}`,
+    focusAgent: 'Focus agent',
+    close: 'Close',
+
     statusWorking: 'WORKING',
     statusIdle: 'IDLE',
     statusWaiting: 'WAITING',

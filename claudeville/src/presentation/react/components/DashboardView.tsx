@@ -56,8 +56,11 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                 <header className="dashboard__section-header">
                   <span className="dashboard__section-dot" aria-hidden="true" />
                   <h2 id={`project-title-${projectPath}`} className="dashboard__section-name">{shortProjectName(projectPath, i18n.t('unknownProject'))}</h2>
-                  <span className="dashboard__section-path" aria-label={i18n.t('projectPath')}>{truncateProjectPath(projectPath)}</span>
-                  <span className="dashboard__section-count tabular-nums" aria-label={i18n.t('agentCount')}>{i18n.t('nAgents', groupAgents.length)}</span>
+                  <span className="dashboard__section-path">{truncateProjectPath(projectPath)}</span>
+                  <span className="dashboard__section-count tabular-nums">
+                    <span className="sr-only">{i18n.t('agentCount')}: </span>
+                    {i18n.t('nAgents', groupAgents.length)}
+                  </span>
                 </header>
                 <div className="dashboard__section-grid">
                   {groupAgents.map((agent) => {
@@ -127,7 +130,7 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
                               <div className="dash-card__tool-detail">{agent.currentToolInput || ''}</div>
                             </div>
                           </div>
-                          {agent.lastMessage ? <div className="dash-card__message" aria-label={i18n.t('lastMessage')}>“{agent.lastMessage}”</div> : null}
+                          {agent.lastMessage ? <div className="dash-card__message">“{agent.lastMessage}”</div> : null}
                         </div>
 
                         <div
