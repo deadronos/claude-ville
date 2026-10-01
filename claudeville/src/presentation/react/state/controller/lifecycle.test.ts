@@ -13,6 +13,9 @@ function makeBootDeps(overrides: BootOverrides = {}) {
       calls.push('loadInitialData');
     }),
     getUsage: vi.fn(async () => ({}) as unknown),
+    storeUsage: vi.fn(() => {
+      calls.push('storeUsage');
+    }),
     publishUsage: vi.fn(() => {
       calls.push('publishUsage');
     }),
@@ -47,6 +50,7 @@ describe('bootController', () => {
 
     expect(calls).toEqual([
       'loadInitialData',
+      'storeUsage',
       'publishUsage',
       'startWatcher',
       'markBooted',
@@ -65,11 +69,12 @@ describe('bootController', () => {
     expect(deps.emitChange).not.toHaveBeenCalled();
   });
 
-  it('skips publishing usage when none is available', async () => {
+  it('stores usage unconditionally but only publishes when available', async () => {
     const { deps } = makeBootDeps({ getUsage: vi.fn(async () => null) });
 
     await bootController(deps);
 
+    expect(deps.storeUsage).toHaveBeenCalledWith(null);
     expect(deps.publishUsage).not.toHaveBeenCalled();
     expect(deps.markBooted).toHaveBeenCalledTimes(1);
     expect(deps.syncBuildings).toHaveBeenCalledTimes(1);

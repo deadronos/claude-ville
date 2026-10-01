@@ -134,8 +134,10 @@ export class ClaudeVilleController {
       isBooted: () => this.booted,
       loadInitialData: () => this.agentManager.loadInitialData(),
       getUsage: () => this.dataSource.getUsage(),
-      publishUsage: (usage) => {
+      storeUsage: (usage) => {
         this.usage = usage;
+      },
+      publishUsage: (usage) => {
         eventBus.emit('usage:updated', usage);
       },
       startWatcher: () => this.sessionWatcher.start(),

@@ -2,6 +2,7 @@ export interface BootDeps {
   isBooted(): boolean;
   loadInitialData(): Promise<void>;
   getUsage(): Promise<unknown>;
+  storeUsage(usage: unknown): void;
   publishUsage(usage: unknown): void;
   startWatcher(): void;
   markBooted(): void;
@@ -19,6 +20,7 @@ export async function bootController(deps: BootDeps): Promise<void> {
   try {
     await deps.loadInitialData();
     const usage = await deps.getUsage();
+    deps.storeUsage(usage);
     if (usage) {
       deps.publishUsage(usage);
     }
