@@ -57,20 +57,9 @@
     gap: 20px;
 }
 
-.topbar__stat {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
 .topbar__stat-label {
     font-size: var(--font-size-xs);
     color: var(--text-muted);
-}
-
-.topbar__stat-value {
-    font-size: var(--font-size-xs);
-    color: var(--text-main);
 }
 
 .topbar__badges {

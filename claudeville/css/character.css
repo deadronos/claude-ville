@@ -2,9 +2,3 @@
 .content__character {
     background: #0a0a0f;
 }
-
-
-.content__minimap:hover {
-    opacity: 1;
-    border-color: rgba(232, 212, 77, 0.5);
-}
