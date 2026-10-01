@@ -84,6 +84,7 @@ export function getCurrentState() {
   const taskMap = new Map<string, Record<string, any>>();
   const providerMap = new Map<string, Record<string, any>>();
   const detailMap = new Map<string, SessionDetail>();
+  const detailKeyIndex = new Map<string, { provider: string; sessionId: string }>();
 
   let latestUsage: Usage = defaultUsage();
   let latestUsageTs = 0;
@@ -98,6 +99,13 @@ export function getCurrentState() {
       const nextActivity = Number(session.lastActivity || 0);
       if (!existing || nextActivity >= existingActivity) {
         sessionMap.set(session.sessionId, session);
+      }
+
+      if (typeof session.provider === 'string' && typeof session.sessionId === 'string') {
+        detailKeyIndex.set(`${session.provider}:${session.sessionId}`, {
+          provider: session.provider,
+          sessionId: session.sessionId,
+        });
       }
     }
 
@@ -139,6 +147,7 @@ export function getCurrentState() {
     providers: [...providerMap.values()],
     usage: latestUsage,
     sessionDetails: detailMap,
+    sessionDetailKeys: detailKeyIndex,
     timestamp: latestTimestamp,
   };
 }
@@ -150,8 +159,15 @@ export function getSessionDetail(sessionId: string, provider: string) {
 
 export function getHistory(limit = 100) {
   const entries = [];
-  for (const [key, detail] of getCurrentState().sessionDetails.entries()) {
-    const [provider, sessionId] = key.split(':');
+  const state = getCurrentState();
+  for (const [key, detail] of state.sessionDetails.entries()) {
+    if (!detail) {
+      continue;
+    }
+    const identity = state.sessionDetailKeys.get(key);
+    const [fallbackProvider, fallbackSessionId] = key.split(':');
+    const provider = identity?.provider ?? fallbackProvider;
+    const sessionId = identity?.sessionId ?? fallbackSessionId;
     for (const message of detail.messages || []) {
       entries.push({
         provider,
