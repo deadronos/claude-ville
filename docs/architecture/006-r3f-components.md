@@ -30,7 +30,7 @@ The inverse helpers follow the same convention:
 - The camera helper must preserve that manual frustum; otherwise R3F's resize defaults can overwrite the projection with a centered y-up camera and flip the scene.
 - `getCameraFocusPosition(targetX, targetZ, viewport, zoom)` is the single source of truth for centering.
 - `followAgentId` and `followSmoothing` are the only follow controls.
-- `useSelectedAgentOverlay` (rendered by `SelectionOverlay`) sets `followAgentId` when selection changes, while `WorldView` clears it on minimap navigation; `createCameraFollowSystem()` performs the follow easing in `useFrame`.
+- `useSelectedAgentOverlay` (rendered by `SelectionOverlay`) sets `followAgentId` when selection changes, while `WorldView` clears it on minimap navigation or drag; `createCameraFollowSystem()` performs the follow easing in `useFrame`.
 
 ## Scene graph and transforms
 

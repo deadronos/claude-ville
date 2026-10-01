@@ -16,6 +16,6 @@ describe('InstancedTerrain', () => {
   });
 
   it('should render without crashing', () => {
-    render(<InstancedTerrain tiles={[]} />);
+    render(<InstancedTerrain tiles={[{ key: '0,0', x: 0, y: 0, color: '#224422', water: false }]} />);
   });
 });

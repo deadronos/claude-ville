@@ -29,7 +29,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 ## Ownership model
 
 - `ClaudeVilleController` owns the domain `World`, app mode, selection, settings, usage, and toasts.
-- `ClaudeVilleController` projects agents, buildings, and selection into `useWorldStore` through `_setSelection`, so the world renderer subscribes to a smaller hot-path state slice and the projection cannot drift.
+- `ClaudeVilleController` projects agents and buildings into `useWorldStore` through its sync helpers and writes selection only through `_setSelection`, so the world renderer subscribes to a smaller hot-path state slice and the projection cannot drift.
 - `ClaudeVilleApp.tsx` is the composition shell: it reads the controller snapshot for chrome and activity-panel state, then wires callbacks into the world and dashboard.
 - `WorldView` owns local view concerns such as viewport size, dragging state, camera refs, pointer input, and DOM world overlays.
 - `WorldScene` owns frame-by-frame scene mutation through refs, `useFrame`, and ECS system helpers.
@@ -51,7 +51,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 - The browser chrome stays flexbox-based: top bar, sidebar, content column, optional activity panel.
 - `ClaudeVilleApp.tsx` always composes both `WorldView` and `DashboardView`; the `active` prop controls which one renders visible UI.
 - `focusAgent()` is the entry point for “jump to this agent from the sidebar.”
-- The world view should not apply a second camera snap when selection changes; the R3F scene owns follow behavior, `useSelectedAgentOverlay` updates the logical follow target on selection, and `WorldView` clears it when the minimap navigates.
+- The world view should not apply a second camera snap when selection changes; the R3F scene owns follow behavior, `useSelectedAgentOverlay` updates the logical follow target on selection, and `WorldView` clears it when the minimap navigates or the user drags.
 - The `SelectionOverlay` component renders the selected-agent ring and focus badge from the shared projection; camera follow is set from the same hook.
 - Side panels (like the sidebar) may animate width if the world viewport logic (via `ResizeObserver`) is robust enough to handle the transition without significant performance degradation.
 
