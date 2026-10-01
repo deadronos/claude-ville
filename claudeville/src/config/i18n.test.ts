@@ -37,6 +37,39 @@ describe('i18n (real module, jsdom)', () => {
     it('interpolates contextUsage', () => {
       expect(i18n.t('contextUsage', { percent: 42 })).toBe('Context 42%');
     });
+
+    it('interpolates viewAgentDetails', () => {
+      expect(i18n.t('viewAgentDetails', { name: 'Scout 7' })).toBe('View details for Scout 7');
+    });
+  });
+
+  describe('accessible names', () => {
+    // Every one of these is used as an aria-label in the TSX. If a key is
+    // missing, i18n.t() returns the key itself and a screen reader announces
+    // the raw identifier — so each needs a real, sentence-cased string.
+    const accessibleNameKeys = [
+      'agentList',
+      'agentCount',
+      'totalAgents',
+      'agentStats',
+      'viewMode',
+      'focusAgent',
+      'lastMessage',
+      'projectPath',
+      'close',
+    ];
+
+    it.each(accessibleNameKeys)('%s resolves to a real string, not the key', (key) => {
+      const value = i18n.t(key);
+      expect(value).not.toBe(key);
+      expect(value.length).toBeGreaterThan(0);
+    });
+
+    it('uses sentence case so screen readers do not spell out uppercase', () => {
+      for (const key of accessibleNameKeys) {
+        expect(i18n.t(key)).toBe(i18n.t(key)[0].toUpperCase() + i18n.t(key).slice(1));
+      }
+    });
   });
 
   describe('lang', () => {

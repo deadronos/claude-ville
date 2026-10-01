@@ -24,6 +24,20 @@ const STRINGS: any = {
     role: 'ROLE',
     team: 'TEAM',
 
+    // Accessible names. These are announced by screen readers rather than read
+    // on screen, so they use sentence case — uppercase here would be spelled
+    // out letter by letter.
+    agentList: 'Agent list',
+    agentCount: 'Agent count',
+    totalAgents: 'Total agents',
+    agentStats: 'Agent statistics',
+    viewMode: 'View mode',
+    viewAgentDetails: (data: { name: string }) => `View details for ${data.name}`,
+    focusAgent: 'Focus agent',
+    lastMessage: 'Last message',
+    projectPath: 'Project path',
+    close: 'Close',
+
     statusWorking: 'WORKING',
     statusIdle: 'IDLE',
     statusWaiting: 'WAITING',
