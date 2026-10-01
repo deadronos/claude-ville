@@ -60,16 +60,9 @@ describe('SessionWatcher', () => {
       expect(mockWsClient.connect).toHaveBeenCalled();
     });
 
-    it('starts polling as fallback when ws not connected', () => {
+    it('starts polling on start()', () => {
       watcher.start();
-      // Polling should have started on start()
       // _startPolling calls _poll immediately, then sets interval
-      expect(mockDataSource.getSessions).toHaveBeenCalled();
-    });
-
-    it('still starts polling when the watcher is restarted', () => {
-      watcher.start();
-      // Polling should run regardless of WS connection state
       expect(mockDataSource.getSessions).toHaveBeenCalled();
     });
 

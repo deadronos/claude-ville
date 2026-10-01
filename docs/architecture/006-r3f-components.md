@@ -40,7 +40,7 @@ The inverse helpers follow the same convention:
 - `rootRef.scale` is set to `camera.zoom` on both x and y so the entire world pans and zooms together.
 - The scene avoids a traditional perspective camera; the root group does the pan and zoom work.
 - `createMovementSystem()`, `createProximitySystem()`, and `createCameraFollowSystem()` register focused `useFrame` loops for animation, roof fading, and follow behavior.
-- `PostProcessing` is intentionally a local no-op while effects are deferred. Do not add a postprocessing dependency unless real effects ship with it.
+- No post-processing pass is installed; the previous no-op `PostProcessing` placeholder was removed. Do not add a postprocessing dependency unless real effects ship with it.
 - All visible objects are built from flat meshes, shape geometries, or text; depth ordering is achieved with small z offsets.
 - `InstancedTerrain`, `Vegetation`, `BuildingActor`, and `AgentActor` all position themselves in the same isometric scene-space coordinate system.
 
@@ -125,7 +125,6 @@ The old imperative renderer was removed in Phase 2 (git history preserves it). T
 - `claudeville/src/presentation/react/world/components/Vegetation.tsx`
 - `claudeville/src/presentation/react/world/components/BuildingActor.tsx`
 - `claudeville/src/presentation/react/world/components/AgentActor.tsx`
-- `claudeville/src/presentation/react/world/components/PostProcessing.tsx`
 - `claudeville/src/presentation/react/world/components/WorldText.tsx`
 - `claudeville/src/presentation/react/world/hooks/useWorldSprites.ts`
 - `claudeville/src/presentation/react/world/hooks/useTerrain.ts`
