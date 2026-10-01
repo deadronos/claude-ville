@@ -51,7 +51,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 - The browser chrome stays flexbox-based: top bar, sidebar, content column, optional activity panel.
 - `ClaudeVilleApp.tsx` always composes both `WorldView` and `DashboardView`; the `active` prop controls which one renders visible UI.
 - `focusAgent()` is the entry point for “jump to this agent from the sidebar.”
-- The world view should not apply a second camera snap when selection changes; the R3F scene owns follow behavior and `WorldView` only updates the logical follow target.
+- The world view should not apply a second camera snap when selection changes; the R3F scene owns follow behavior, `useSelectedAgentOverlay` updates the logical follow target on selection, and `WorldView` clears it when the minimap navigates.
 - The `SelectionOverlay` component renders the selected-agent ring and focus badge from the shared projection; camera follow is set from the same hook.
 - Side panels (like the sidebar) may animate width if the world viewport logic (via `ResizeObserver`) is robust enough to handle the transition without significant performance degradation.
 
