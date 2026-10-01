@@ -35,7 +35,7 @@ contextPercent = round(100 * contextWindow / limit)   // clamped to 0..100
 ### Catalog helper — `shared/context-window.ts`
 
 - `loadContextCatalog(): Promise<ContextCatalog | null>` — internal seam. Lazily `await import('@opencode-ai/models/snapshot')` (memoized promise). Returns `{ providers, models }` in models.dev shapes; on failure logs `console.warn` once and returns `null`.
-- `resolveContextLimit(provider: string, model: string, loadCatalog = loadContextCatalog): Promise<number | null>` — wraps the loader, memoized per `` `${provider}:${model}` `` including `null` results. Memoization applies to the default loader only; an explicitly injected loader bypasses the cache. Lookup order:
+- `resolveContextLimit(provider: string, model: string, loadCatalog = loadContextCatalog): Promise<number | null>` — wraps the loader, memoized per `` `${provider}:${model}` `` including `null` results. The cache is a `WeakMap` keyed by loader identity, so the default catalog is cached across calls and each injected test loader caches independently. Lookup order:
   1. `providers[mapProvider(provider)]?.models[model]?.limit?.context`
   2. provider-agnostic `models[`${mapProvider(provider)}/${model}`]?.limit?.context`
 - `computeContextPercent(tokenUsage: unknown, limit: number | null): number | null` — reads `contextWindow`, validates finite `> 0`; returns `round` + clamp.
