@@ -68,6 +68,17 @@ function startTsx(entrypoint: string, env: Record<string, string>) {
   };
 }
 
+async function waitForServerPort(server: ReturnType<typeof startTsx>, timeoutMs = 20000): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const match = server.getOutput().stdout.match(/server running: http:\/\/localhost:(\d+)/);
+    if (match) return Number(match[1]);
+    await delay(25);
+  }
+  const { stdout, stderr } = server.getOutput();
+  throw new Error(`server did not report a bound port\n\n[stdout]\n${stdout}\n[stderr]\n${stderr}`);
+}
+
 async function stopProcess(child: ReturnType<typeof spawn>) {
   if (child.exitCode !== null || child.signalCode !== null) {
     return;
@@ -286,6 +297,10 @@ describe('collector and legacy server entrypoints', () => {
       COLLECTOR_HOST: 'collector-host',
       FLUSH_INTERVAL_MS: '60000',
       HOME: homeDir,
+      // Pin Claude to a path nothing creates: the usage-quota `claude auth status`
+      // call would otherwise materialize ~/.claude under the fixture HOME and
+      // flip the adapter to "available" mid-test.
+      CLAUDE_DIR: path.join(homeDir, '.claude-unused'),
     });
 
     try {
@@ -316,13 +331,17 @@ describe('collector and legacy server entrypoints', () => {
 
   it('legacy server serves adapter-backed endpoints from the same fixtures', async () => {
     const { homeDir, workspaceDir } = createAdapterFixtureHome();
-    const port = await getFreePort();
     const legacy = startTsx(legacyServerEntrypoint, {
       HOME: homeDir,
-      PORT: String(port),
+      PORT: '0',
+      // Pin Claude to a path nothing creates: the usage-quota `claude auth status`
+      // call would otherwise materialize ~/.claude under the fixture HOME and
+      // flip the adapter to "available" mid-test.
+      CLAUDE_DIR: path.join(homeDir, '.claude-unused'),
     });
 
     try {
+      const port = await waitForServerPort(legacy);
       const sessions = await waitForJson(`http://127.0.0.1:${port}/api/sessions`, (json) => json.count >= 2);
       expect(sessions.sessions.map((session: any) => session.provider).sort()).toEqual(['gemini', 'openclaw']);
 
