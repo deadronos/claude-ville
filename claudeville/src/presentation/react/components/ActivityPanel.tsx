@@ -25,7 +25,7 @@ export function ActivityPanel({ agent, onClose }: { agent: any | null; onClose: 
             {agent.status.toUpperCase()}
           </span>
         </div>
-        <button id="panelClose" className="activity-panel__close" type="button" onClick={onClose} aria-label={i18n.t('close')}>×</button>
+        <button id="panelClose" className="activity-panel__close" type="button" onClick={onClose} aria-label={i18n.t('close') || 'Close'}>×</button>
       </div>
 
       <div className="activity-panel__meta">

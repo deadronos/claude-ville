@@ -1,6 +1,7 @@
 /** @vitest-environment node */
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, it, expect } from 'vitest';
 import { i18n } from './i18n.js';
 
@@ -69,7 +70,7 @@ describe('i18n (real module)', () => {
         const value = i18n.t(key);
         // Every character after the first must be lowercase, so 'AGENT LIST'
         // fails while 'Agent list' passes.
-        expect(value.slice(1)).toBe(value.slice(1).toLowerCase());
+        expect(value.slice(1), `${key} should be sentence case`).toBe(value.slice(1).toLowerCase());
       }
     });
   });
@@ -78,7 +79,7 @@ describe('i18n (real module)', () => {
     // Guards the whole bug class rather than a hand-copied list of the keys
     // that were once missing: any i18n.t('literal') call anywhere in the app
     // must name a key that exists, or a screen reader announces the identifier.
-    const SRC = path.resolve(__dirname, '..');
+    const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
     // Function-valued keys take a data argument, so they cannot be called with
     // no argument. Each is paired with the data its call site passes.

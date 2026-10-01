@@ -319,7 +319,9 @@ describe('ClaudeVilleApp browser selection flow', () => {
       page.on('pageerror', (error) => browserMessages.push(`pageerror: ${error.message}`));
 
       stage = 'waiting for agent count';
-      await page.waitForFunction(() => document.getElementById('agentCount')?.textContent === '2');
+      // #agentCount renders a .sr-only "Total agents: " prefix ahead of the
+      // number, so match on the number rather than the whole textContent.
+      await page.waitForFunction(() => document.getElementById('agentCount')?.textContent?.trim().endsWith('2'));
       stage = 'waiting for sidebar agents';
       await page.waitForFunction(() => document.querySelectorAll('#sidebar .sidebar__agent').length === 2);
         await page.waitForTimeout(500); // Adjusted settle delay before live-refresh update snapshot
