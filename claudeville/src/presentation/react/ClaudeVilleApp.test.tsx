@@ -25,7 +25,6 @@ const snapshotState = vi.hoisted(() => ({
       getStats: () => ({ working: 0, idle: 0, waiting: 0, total: 0 }),
     },
     agents: [] as any[],
-    buildings: [] as any[],
     selectedAgentId: null as string | null,
     selectedAgent: null as any,
     mode: 'character' as string,
@@ -109,7 +108,6 @@ function setBaseSnapshot() {
   snapshotState.current.world.startTime = Date.now() - 3661000;
   snapshotState.current.agents = [selectedAgent, otherAgent];
   snapshotState.current.world = makeWorld([selectedAgent, otherAgent]);
-  snapshotState.current.buildings = [];
   snapshotState.current.selectedAgentId = 'agent-1';
   snapshotState.current.selectedAgent = selectedAgent;
   snapshotState.current.mode = 'character';
@@ -254,7 +252,6 @@ describe('ClaudeVilleApp', () => {
     snapshotState.current.mode = 'dashboard';
     snapshotState.current.agents = [];
     snapshotState.current.world = makeWorld();
-    snapshotState.current.buildings = [];
     snapshotState.current.selectedAgent = null;
     snapshotState.current.selectedAgentId = null;
 
@@ -263,5 +260,15 @@ describe('ClaudeVilleApp', () => {
     expect(screen.getByTestId('world-view')).toHaveAttribute('data-active', 'false');
     expect(screen.getByText('NO ACTIVE AGENTS')).toBeInTheDocument();
     expect(screen.getByText('Start a Claude Code session to see agents here')).toBeInTheDocument();
+  });
+
+  it('renders the selected agent from the snapshot projection even when the world map is empty', () => {
+    snapshotState.current.selectedAgent = selectedAgent;
+    snapshotState.current.selectedAgentId = 'agent-1';
+    snapshotState.current.world = makeWorld();
+
+    render(<ClaudeVilleApp />);
+
+    expect(screen.getByText('Agent One', { selector: '#panelAgentName' })).toBeInTheDocument();
   });
 });

@@ -20,7 +20,7 @@ export function WorldView({
   bubbleConfig,
   onSelectAgent,
   onClearSelection,
-}: Omit<WorldViewProps, 'agents' | 'buildings' | 'selectedAgentId' | 'selectedAgentName'>) {
+}: WorldViewProps) {
   const agents = useWorldStore((s) => s.agents);
   const buildings = useWorldStore((s) => s.buildings);
   const selectedAgentId = useWorldStore((s) => s.selectedAgentId);

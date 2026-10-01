@@ -21,7 +21,6 @@ export type AppMode = 'character' | 'dashboard';
 export interface ClaudeVilleSnapshot {
   world: World;
   agents: any[];
-  buildings: any[];
   selectedAgentId: string | null;
   selectedAgent: any | null;
   mode: AppMode;
@@ -189,7 +188,6 @@ export class ClaudeVilleController {
     return {
       world: this.world,
       agents,
-      buildings: Array.from(this.world.buildings.values()),
       selectedAgentId: this.selectedAgentId,
       selectedAgent,
       mode: this.mode,

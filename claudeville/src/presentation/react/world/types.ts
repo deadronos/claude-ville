@@ -47,10 +47,6 @@ export type InteractionModel = {
 
 export type WorldViewProps = {
   active: boolean;
-  agents: any[];
-  buildings: any[];
-  selectedAgentId: string | null;
-  selectedAgentName: string | null;
   bubbleConfig: BubbleConfig;
   onSelectAgent: (agentId: string) => void;
   onClearSelection: () => void;
