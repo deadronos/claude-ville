@@ -67,6 +67,8 @@ export function PostProcessing() {
 }
 ```
 
+(That placeholder and its `WorldView` render site were later removed in the Phase 0 dead-code cleanup.)
+
 - `@react-three/postprocessing` and `postprocessing` were removed from `package.json` and the lockfile.
 - `docs/architecture/006-r3f-components.md` now describes postprocessing as deferred.
 
