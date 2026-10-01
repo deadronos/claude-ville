@@ -49,6 +49,7 @@ type ResourceSessionCandidate = {
   filePath: string;
   project: string;
   mtime: number;
+  tokens: { input: number; output: number } | null;
 };
 
 function shouldReplaceCandidate(existing: { sourceType: string; mtime: number } | null | undefined, incoming: { sourceType: string; mtime: number } | null | undefined): boolean {
@@ -331,6 +332,11 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
+async function getTokenUsage(filePath: string): Promise<{ input: number; output: number } | null> {
+  const parsed = await parseSession(filePath);
+  return parsed.tokens;
+}
+
 async function readWorkspacePath(workspaceDir: string): Promise<string | null> {
   const workspaceFile = path.join(workspaceDir, 'workspace.json');
   if (!fs.existsSync(workspaceFile)) return null;
@@ -442,6 +448,7 @@ async function scanAllSessions(activeThresholdMs: number) {
                   filePath: mainLogFile,
                   project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
+                  tokens: (await parseSession(mainLogFile)).tokens,
                 };
               } catch (err) {
                 debugAdapterError('vscode', 'scanAllSessions stat debug log', err, mainLogFile);
@@ -480,6 +487,7 @@ async function scanAllSessions(activeThresholdMs: number) {
                   filePath: transcriptPath,
                   project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
+                  tokens: (await parseSession(transcriptPath)).tokens,
                 };
               } catch (err) {
                 debugAdapterError('vscode', 'scanAllSessions stat transcript', err, transcriptPath);
@@ -547,6 +555,7 @@ async function scanAllSessions(activeThresholdMs: number) {
                 filePath: newest.filePath,
                 project: projectPath || `vscode:${root.channel}:${workspaceId}`,
                 mtime: newest.mtime,
+                tokens: (await parseSession(newest.filePath)).tokens,
               };
             }));
 
@@ -613,11 +622,12 @@ export class VSCodeAdapter implements AgentAdapter {
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
-      return {
-        toolHistory: await getToolHistory(filePath),
-        messages: await getRecentMessages(filePath),
-        sessionId,
-      };
+      const [toolHistory, messages, tokenUsage] = await Promise.all([
+        getToolHistory(filePath),
+        getRecentMessages(filePath),
+        getTokenUsage(filePath),
+      ]);
+      return { toolHistory, messages, tokenUsage, sessionId };
     }
 
     const parsed = parseSessionId(sessionId);
@@ -635,6 +645,7 @@ export class VSCodeAdapter implements AgentAdapter {
     return {
       toolHistory: await getToolHistory(found.filePath),
       messages: await getRecentMessages(found.filePath),
+      tokenUsage: found.tokens ?? null,
       sessionId,
     };
   }
