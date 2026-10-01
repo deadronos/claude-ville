@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Baseline before any change: **1105 tests passing across 109 files.** The final count must be **>= 1105**. A regression means assertions were traded away, not that the cleanup succeeded.
+- Baseline before any change: **1105 tests passing across 109 files.** The final count must be **>= 1103 across 109 files.** The -2 delta is Task 2 replacing three `i18n.lang` setter tests with one; those tests asserted behavior that no longer exists. Any drop beyond that -2 means assertions were traded away, not that the cleanup succeeded.
 - ESM backend: all relative imports use the `.js` extension (even from `.ts`).
 - Deletions must be provably safe: every symbol removed must be shown to have zero production callers, with grep run excluding `*.test.*`.
 - Do NOT touch `android/`, `widget/`, or `e2e/`.
@@ -118,7 +118,7 @@ Expected: every `claudeville/src` count is 0 (only the CSS file itself may match
 - [ ] **Step 6: Run the full gate**
 
 Run: `npm run typecheck && npm run lint && npm test`
-Expected: all green, **tests >= 1105**.
+Expected: all green, **tests >= 1103** (Task 1 is test-count neutral, so 1103 at this point).
 
 - [ ] **Step 7: Commit**
 
@@ -333,7 +333,7 @@ git commit -m "refactor(shared): remove unreferenced exports and correct their d
 - [ ] **Step 1: Confirm the test-count floor**
 
 Run: `npm test`
-Expected: **>= 1103 passing** and **>= 107 files**. The drop from the 1105 baseline is the two `i18n.lang` setter tests deleted in Task 2, which asserted deleted behavior. Any other drop is a regression — investigate rather than explain away.
+Expected: **exactly 1103 passing across 109 files.** The drop from the 1105 baseline is the two `i18n.lang` setter tests deleted in Task 2, which asserted deleted behavior; no task in this plan deletes a test file, so the file count must stay at 109. Any other number is a regression — investigate rather than explain away.
 
 - [ ] **Step 2: Prove the deletions are complete**
 
