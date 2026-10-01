@@ -44,6 +44,7 @@ interface AgentParams {
     status?: AgentStatusType;
     role?: string;
     tokens?: { input: number; output: number };
+    usage?: { contextPercent?: number } | null;
     messages?: unknown[];
     teamName?: string | null;
     projectPath?: string | null;
@@ -64,6 +65,7 @@ export class Agent {
     status: AgentStatusType;
     role: string;
     tokens: { input: number; output: number };
+    usage: { contextPercent?: number } | null;
     messages: unknown[];
     teamName: string | null;
     projectPath: string | null;
@@ -77,7 +79,7 @@ export class Agent {
     walkFrame: number;
     lastActive: number;
 
-    constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }: AgentParams) {
+    constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, usage, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }: AgentParams) {
         this.id = id;
         this.nameSeed = nameSeed || id;
         this.nameKind = nameKind;
@@ -88,6 +90,7 @@ export class Agent {
         this.status = status || AgentStatus.IDLE;
         this.role = role || 'general';
         this.tokens = tokens || { input: 0, output: 0 };
+        this.usage = usage ?? null;
         this.messages = messages || [];
         this.teamName = teamName ?? null;
         this.projectPath = projectPath ?? null;

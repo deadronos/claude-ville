@@ -152,6 +152,35 @@ describe('AgentManager', () => {
     expect(call.messages).toEqual([]);
   });
 
+  it('maps session contextPercent into agent usage on create', async () => {
+    mockDataSource.getSessions.mockResolvedValue([makeSession({ contextPercent: 42 })]);
+    mockDataSource.getTeams.mockResolvedValue([]);
+
+    await manager.loadInitialData();
+
+    const call = mockWorld.addAgent.mock.calls[0][0];
+    expect(call.usage).toEqual({ contextPercent: 42 });
+  });
+
+  it('sets usage to null when the session has no contextPercent', async () => {
+    mockDataSource.getSessions.mockResolvedValue([makeSession()]);
+    mockDataSource.getTeams.mockResolvedValue([]);
+
+    await manager.loadInitialData();
+
+    expect(mockWorld.addAgent.mock.calls[0][0].usage).toBeNull();
+  });
+
+  it('maps session contextPercent into the update payload', async () => {
+    mockWorld.agents.set('s-x', { id: 's-x', name: 'OldName' });
+    mockDataSource.getSessions.mockResolvedValue([makeSession({ contextPercent: 77 })]);
+    mockDataSource.getTeams.mockResolvedValue([]);
+
+    await manager.loadInitialData();
+
+    expect(mockWorld.updateAgent).toHaveBeenCalledWith('s-x', expect.objectContaining({ usage: { contextPercent: 77 } }));
+  });
+
   it('falls back to session detail activity when summary fields are missing', async () => {
     const detailMessages = [{ role: 'assistant', text: 'recent detail message' }];
     mockDataSource.getSessions.mockResolvedValue([makeSession({

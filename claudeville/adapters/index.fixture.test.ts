@@ -90,6 +90,25 @@ describe('adapter registry fixtures', () => {
     ]);
     fs.utimesSync(hermesSession, new Date('2024-01-01T00:00:05Z'), new Date('2024-01-01T00:00:05Z'));
 
+    const claudeSessionId = 'claude-fixture-1';
+    const encodedWorkspace = workspaceDir.replace(/\//g, '-');
+    const claudeSessionFile = path.join(tmpHome, '.claude', 'projects', encodedWorkspace, `${claudeSessionId}.jsonl`);
+    writeJsonl(claudeSessionFile, [
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-4-5',
+          usage: { input_tokens: 50_000, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 0, output_tokens: 100 },
+          content: [{ type: 'text', text: 'Claude fixture' }],
+        },
+      }),
+    ]);
+    const claudeHistoryFile = path.join(tmpHome, '.claude', 'history.jsonl');
+    writeJsonl(claudeHistoryFile, [
+      JSON.stringify({ sessionId: claudeSessionId, project: workspaceDir, timestamp: Date.now(), model: 'claude-sonnet-4-5', display: 'Claude fixture' }),
+    ]);
+
     process.env.HOME = tmpHome;
     vi.resetModules();
     registry = await import('./index.js');
@@ -127,6 +146,21 @@ describe('adapter registry fixtures', () => {
 
     expect(sessions.find((s: any) => s.provider === 'opencode')).toBeDefined();
     expect(sessions.find((s: any) => s.provider === 'hermes')).toBeDefined();
+  });
+
+  it('attaches contextPercent when a context numerator and model limit exist', async () => {
+    const sessions = await registry.getAllSessions(Number.MAX_SAFE_INTEGER);
+    const claudeSession = sessions.find((s: any) => s.sessionId === 'claude-fixture-1');
+    expect(claudeSession).toBeDefined();
+    // numerator: input 50000 + cache_read 30000 + cache_create 0 = 80000; limit 200000
+    expect(claudeSession.contextPercent).toBe(40);
+  });
+
+  it('omits contextPercent when the session has no context numerator', async () => {
+    const sessions = await registry.getAllSessions(Number.MAX_SAFE_INTEGER);
+    const openclawSession = sessions.find((s: any) => s.provider === 'openclaw');
+    expect(openclawSession).toBeDefined();
+    expect(openclawSession.contextPercent).toBeUndefined();
   });
 
   it('collects watch paths from active adapters only', () => {

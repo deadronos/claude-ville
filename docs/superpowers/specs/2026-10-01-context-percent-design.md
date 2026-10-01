@@ -35,9 +35,7 @@ contextPercent = round(100 * contextWindow / limit)   // clamped to 0..100
 ### Catalog helper — `shared/context-window.ts`
 
 - `loadContextCatalog(): Promise<ContextCatalog | null>` — internal seam. Lazily `await import('@opencode-ai/models/snapshot')` (memoized promise). Returns `{ providers, models }` in models.dev shapes; on failure logs `console.warn` once and returns `null`.
-- `resolveContextLimit(provider: string, model: string, loadCatalog = loadContextCatalog): Promise<number | null>` — wraps the loader, memoized per `` `${provider}:${model}` `` including `null` results. The cache is a `WeakMap` keyed by loader identity, so the default catalog is cached across calls and each injected test loader caches independently. Lookup order:
-  1. `providers[mapProvider(provider)]?.models[model]?.limit?.context`
-  2. provider-agnostic `models[`${mapProvider(provider)}/${model}`]?.limit?.context`
+- `resolveContextLimit(provider: string, model: string, loadCatalog = loadContextCatalog): Promise<number | null>` — wraps the loader, memoized per `` `${mapProvider(provider)}:${model}` `` including `null` results. The cache is a `WeakMap` keyed by loader identity, so the default catalog is cached across calls and each injected test loader caches independently. Lookup candidates are validated as finite positive numbers; anthropic prefers the provider-agnostic `models[...]` limit (Claude Code's default context is 200k, while models.dev's scoped entry can list the opt-in 1M beta), and all other providers prefer `providers[...]` with the agnostic value as fallback.
 - `computeContextPercent(tokenUsage: unknown, limit: number | null): number | null` — reads `contextWindow`, validates finite `> 0`; returns `round` + clamp.
 - `mapProvider(adapterProvider)` — `claude→anthropic`, `codex→openai`, `gemini→google`, `copilot→github-copilot`, `opencode→opencode`; otherwise the raw name.
 - Future-proofing: callers depend only on `resolveContextLimit`. A later live-catalog mode replaces `loadContextCatalog` internals (live fetch with snapshot fallback, timeout, caching) without changing the public API.
