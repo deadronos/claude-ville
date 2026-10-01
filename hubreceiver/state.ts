@@ -58,6 +58,19 @@ interface SnapshotInput {
   sessionDetails?: Record<string, unknown>;
 }
 
+/**
+ * Reads a session's project path.
+ *
+ * The `Session` contract in shared/types.ts declares `projectPath`, but the
+ * collector emits the adapter summary's `project` (normalizeSession spreads it),
+ * and the frontend reads `projectPath`. Accept both spellings so this stays
+ * correct whichever side produces the snapshot.
+ */
+function readProject(session: AnyRecord): string | null {
+  const value = session.project ?? session.projectPath;
+  return typeof value === 'string' ? value : null;
+}
+
 function normalizeSnapshot(snapshot: SnapshotInput) {
   return {
     collectorId: snapshot.collectorId || 'default',
@@ -107,7 +120,7 @@ export function getCurrentState() {
         detailKeyIndex.set(`${session.provider}:${session.sessionId}`, {
           provider: session.provider,
           sessionId: session.sessionId,
-          project: typeof session.project === 'string' ? session.project : null,
+          project: readProject(session),
         });
       }
     }

@@ -427,6 +427,32 @@ describe('hubreceiver state', () => {
       ]);
     });
 
+    it('carries the session project through from the collector "project" field', async () => {
+      const { applySnapshot, getHistory } = await getFreshState();
+      applySnapshot({
+        collectorId: 'c1', timestamp: 1,
+        sessions: [{ sessionId: 's1', provider: 'claude', project: '/repo/one', lastActivity: 1 }],
+        sessionDetails: { 'claude:s1': { toolHistory: [], messages: [{ role: 'user', text: 'hi', ts: 1 }] } },
+        teams: [], taskGroups: [], providers: [],
+      });
+      expect(getHistory(100)).toEqual([
+        { provider: 'claude', sessionId: 's1', project: '/repo/one', role: 'user', text: 'hi', ts: 1 },
+      ]);
+    });
+
+    it('also accepts the projectPath spelling declared by the Session contract', async () => {
+      const { applySnapshot, getHistory } = await getFreshState();
+      applySnapshot({
+        collectorId: 'c1', timestamp: 1,
+        sessions: [{ sessionId: 's1', provider: 'claude', projectPath: '/repo/two', lastActivity: 1 }],
+        sessionDetails: { 'claude:s1': { toolHistory: [], messages: [{ role: 'user', text: 'hi', ts: 1 }] } },
+        teams: [], taskGroups: [], providers: [],
+      });
+      expect(getHistory(100)).toEqual([
+        { provider: 'claude', sessionId: 's1', project: '/repo/two', role: 'user', text: 'hi', ts: 1 },
+      ]);
+    });
+
     it('limits to N most recent entries', async () => {
       const { applySnapshot, getHistory } = await getFreshState();
       const msgs = Array.from({ length: 300 }, (_, i) => ({ role: 'user' as const, text: `msg ${i}`, ts: i }));
