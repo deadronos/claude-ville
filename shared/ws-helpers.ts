@@ -1,51 +1,18 @@
 /**
- * Shared WebSocket send helpers.
+ * Shared WebSocket broadcast helper.
  *
- * Contains wsSend and wsBroadcast with full error handling, dead-socket
- * cleanup, and EPIPE/ECONNRESET suppression. Used by both hubreceiver
- * and claudeville servers.
+ * Only wsBroadcast lives here: hubreceiver/ws.ts uses it for fan-out. Each
+ * server owns its own wsSend, because they send over different transports —
+ * hubreceiver over raw net.Socket frames, claudeville over the `ws` library's
+ * WebSocket.
  *
- * The frame-building utilities (createWebSocketFrame, computeAcceptKey)
- * live in shared/ws-utils.ts — this file only handles send/broadcast.
+ * The frame-building utilities (createWebSocketFrame, computeAcceptKey) live in
+ * shared/ws-utils.ts.
  */
 import type { Socket } from 'net';
 import { createWebSocketFrame } from './ws-utils.js';
 
 export const DISCONNECTED_CODES = new Set<string>(['EPIPE', 'ECONNRESET', 'EBADF', 'ENOTCONN']);
-
-/**
- * Send a JSON payload over a WebSocket socket.
- * Guards against destroyed sockets, handles write errors, cleans up dead sockets.
- */
-export function wsSend(
-  socket: Socket,
-  data: any,
-  clientSet: Set<Socket> | null = null,
-): void {
-  try {
-    if (socket.destroyed || !socket.writable) {
-      if (clientSet) clientSet.delete(socket);
-      return;
-    }
-
-    const frame = createWebSocketFrame(JSON.stringify(data));
-    socket.write(frame, (err) => {
-      if (err) {
-        const socketError = err as Error & { code?: string };
-        if (socketError.code && !DISCONNECTED_CODES.has(socketError.code)) {
-          console.error(`[WebSocket] send failed (${socketError.code}): ${err.message}`);
-        }
-      }
-      if (clientSet && (socket.destroyed || !socket.writable)) {
-        clientSet.delete(socket);
-      }
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[WebSocket] send error: msg=${msg}`);
-    if (clientSet) clientSet.delete(socket);
-  }
-}
 
 /**
  * Broadcast a JSON payload to all connected WebSocket clients.

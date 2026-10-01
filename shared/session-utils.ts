@@ -1,7 +1,10 @@
 /**
  * Shared session normalization utilities.
- * Used by both the collector (collector/index.ts) and the adapter layer
- * (claudeville/adapters/index.ts).
+ *
+ * `normalizeTokens` is the only export here, and its callers are
+ * `collector/snapshot.ts`, `claudeville/adapters/index.ts`, and claudeville's
+ * own app layer (`claudeville/src/application/AgentManager.ts` and
+ * `claudeville/src/pixivillage/model.ts`).
  */
 
 export interface TokenUsageShape {
@@ -35,16 +38,4 @@ export function normalizeTokens(
     input: fallbackTokens?.input ?? 0,
     output: fallbackTokens?.output ?? 0,
   };
-}
-
-/**
- * Normalize a session + detail pair into the shape used by the adapter registry.
- */
-export function normalizeSessionTokens(
-  session: { tokens?: { input?: number; output?: number }; [key: string]: any },
-  detailRaw: { tokenUsage?: TokenUsageShape; [key: string]: any } | null | undefined,
-): { tokenUsage: TokenUsageShape | null; tokens: NormalizedTokens } {
-  const tokenUsage = detailRaw?.tokenUsage || null;
-  const tokens = normalizeTokens(tokenUsage, session.tokens || null);
-  return { tokenUsage, tokens };
 }
