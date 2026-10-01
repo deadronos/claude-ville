@@ -126,6 +126,15 @@ function normalizeDbJson(value: unknown) {
   }
 }
 
+function addTokens(
+  acc: { input: number; output: number },
+  tokens: any,
+): void {
+  if (!tokens || typeof tokens !== 'object') return;
+  acc.input += Number(tokens.input || 0);
+  acc.output += Number(tokens.output || 0);
+}
+
 function normalizeModel(value: unknown, provider: unknown = null): string | null {
   if (!value) return null;
   if (typeof value === 'string') return value;
@@ -144,6 +153,7 @@ function extractDetail(messages: any[]): AdapterSessionDetail & {
   lastTool: string | null;
   lastToolInput: string | null;
   lastMessage: string | null;
+  tokenUsage: { input: number; output: number } | null;
 } {
   const detail = {
     toolHistory: [] as Array<{ tool: string; detail: string; ts: number }>,
@@ -152,6 +162,7 @@ function extractDetail(messages: any[]): AdapterSessionDetail & {
     lastTool: null as string | null,
     lastToolInput: null as string | null,
     lastMessage: null as string | null,
+    tokenUsage: { input: 0, output: 0 },
   };
 
   for (const message of messages) {
@@ -160,6 +171,7 @@ function extractDetail(messages: any[]): AdapterSessionDetail & {
     if (!detail.model && (message.modelID || message.model || message.modelId)) {
       detail.model = message.modelID || message.model || message.modelId;
     }
+    addTokens(detail.tokenUsage, message.tokens);
 
     const parts = Array.isArray(message.parts)
       ? message.parts
@@ -184,7 +196,10 @@ function extractDetail(messages: any[]): AdapterSessionDetail & {
     }
   }
 
-  return detail;
+  return {
+    ...detail,
+    tokenUsage: detail.tokenUsage.input || detail.tokenUsage.output ? detail.tokenUsage : null,
+  };
 }
 
 async function getSessionFiles(activeThresholdMs: number): Promise<SessionFile[]> {
@@ -211,6 +226,7 @@ function extractDbDetail(messages: DbMessage[]): AdapterSessionDetail & {
   lastTool: string | null;
   lastToolInput: string | null;
   lastMessage: string | null;
+  tokenUsage: { input: number; output: number } | null;
 } {
   const detail = {
     toolHistory: [] as Array<{ tool: string; detail: string; ts: number }>,
@@ -219,6 +235,7 @@ function extractDbDetail(messages: DbMessage[]): AdapterSessionDetail & {
     lastTool: null as string | null,
     lastToolInput: null as string | null,
     lastMessage: null as string | null,
+    tokenUsage: { input: 0, output: 0 },
   };
 
   for (const message of messages) {
@@ -227,6 +244,7 @@ function extractDbDetail(messages: DbMessage[]): AdapterSessionDetail & {
     if (!detail.model && (messageData?.modelID || messageData?.model || message.modelID)) {
       detail.model = normalizeModel(messageData?.modelID || messageData?.model || message.modelID, messageData?.providerID || message.providerID);
     }
+    addTokens(detail.tokenUsage, messageData?.tokens);
 
     for (const part of message.parts) {
       const partData = normalizeDbJson(part.data) as any;
@@ -246,7 +264,10 @@ function extractDbDetail(messages: DbMessage[]): AdapterSessionDetail & {
     }
   }
 
-  return detail;
+  return {
+    ...detail,
+    tokenUsage: detail.tokenUsage.input || detail.tokenUsage.output ? detail.tokenUsage : null,
+  };
 }
 
 async function getDbMessages(sessionId: string, limit = 30): Promise<DbMessage[]> {
@@ -422,19 +443,19 @@ export class OpenCodeAdapter implements AgentAdapter {
     if (filePath?.startsWith('opencode-db:')) {
       const dbSessionId = filePath.replace('opencode-db:', '');
       const detail = extractDbDetail(await getDbMessages(dbSessionId, 60));
-      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId };
+      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId };
     }
 
     const raw = filePath ? await readJson(filePath) : null;
     if (raw) {
       const detail = extractDetail(normalizeMessages(raw));
-      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId };
+      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId };
     }
 
     const cleanId = sessionId.replace(/^opencode-/, '');
     const files = await getSessionFiles(30 * 60 * 1000);
     const match = files.find((file) => file.sessionId === cleanId);
-    if (!match) return { toolHistory: [], messages: [] };
+    if (!match) return { toolHistory: [], messages: [], tokenUsage: null };
 
     return this.getSessionDetail(sessionId, project, resolveMessageFile(match.projectKey, cleanId));
   }

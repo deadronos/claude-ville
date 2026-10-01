@@ -185,6 +185,34 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
   return messages.slice(-maxItems);
 }
 
+// ─── Token usage ────────────────────────────────────────────
+
+// Copilot only reports token totals in the terminal `session.shutdown` event,
+// so live sessions legitimately return null.
+async function getTokenUsage(filePath: string): Promise<{ input: number; output: number } | null> {
+  try {
+    const lines = await readLines(filePath, { from: 'end', count: 80, scope: 'copilot' });
+    const entries = parseJsonLines(lines, 'copilot');
+    let input = 0;
+    let output = 0;
+    let found = false;
+    for (const entry of entries) {
+      if (entry.type !== 'session.shutdown' || !entry.data?.modelMetrics) continue;
+      for (const metric of Object.values(entry.data.modelMetrics) as any[]) {
+        const usage = metric?.usage;
+        if (!usage) continue;
+        input += Number(usage.inputTokens || 0);
+        output += Number(usage.outputTokens || 0);
+        found = true;
+      }
+    }
+    return found ? { input, output } : null;
+  } catch (err) {
+    debugAdapterError('copilot', 'getTokenUsage', err, filePath);
+    return null;
+  }
+}
+
 // ─── Session scan ────────────────────────────────────────
 
 async function scanAllSessions(activeThresholdMs: number) {
@@ -260,11 +288,12 @@ export class CopilotAdapter implements AgentAdapter {
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     if (filePath) {
-      return {
-        toolHistory: await getToolHistory(filePath),
-        messages: await getRecentMessages(filePath),
-        sessionId,
-      };
+      const [toolHistory, messages, tokenUsage] = await Promise.all([
+        getToolHistory(filePath),
+        getRecentMessages(filePath),
+        getTokenUsage(filePath),
+      ]);
+      return { toolHistory, messages, tokenUsage, sessionId };
     }
 
     const cleanId = sessionId.replace('copilot-', '');
@@ -272,11 +301,12 @@ export class CopilotAdapter implements AgentAdapter {
 
     const found = sessions.find(s => s.sessionId === cleanId);
     if (found) {
-      return {
-        toolHistory: await getToolHistory(found.filePath),
-        messages: await getRecentMessages(found.filePath),
-        sessionId,
-      };
+      const [toolHistory, messages, tokenUsage] = await Promise.all([
+        getToolHistory(found.filePath),
+        getRecentMessages(found.filePath),
+        getTokenUsage(found.filePath),
+      ]);
+      return { toolHistory, messages, tokenUsage, sessionId };
     }
 
     return { toolHistory: [], messages: [] };

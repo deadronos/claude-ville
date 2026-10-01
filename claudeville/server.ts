@@ -11,6 +11,7 @@ import { buildRuntimeConfig } from '../runtime-config.shared.js';
 import { MIME_TYPES } from '../shared/mime-types.js';
 import { setCorsHeaders, sendError } from '../shared/http-utils.js';
 import { createApiRouteHandler } from '../shared/api-routes.js';
+import { flattenHistoryEntries } from '../shared/history-utils.js';
 import { createFileWatchers } from '../shared/watch-utils.js';
 import {
   adapters,
@@ -59,25 +60,15 @@ const handleApiRoute = createApiRouteHandler({
   getSessionDetail: (sessionId, project, provider) => getSessionDetailByProvider(provider, sessionId, project),
   getHistory: async (limit) => {
     const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
-    const entries: { provider: string; sessionId: string; project: string | null; role: string; text: string; ts: number }[] = [];
-
-    for (const session of sessions) {
-      const messages = session.detail?.messages || [];
-      for (const message of messages) {
-        if (!message || !message.text) continue;
-        entries.push({
-          provider: session.provider,
-          sessionId: session.sessionId,
-          project: session.project || null,
-          role: message.role || 'assistant',
-          text: message.text,
-          ts: message.ts || 0,
-        });
-      }
-    }
-
-    entries.sort((a, b) => a.ts - b.ts);
-    return entries.slice(-limit);
+    return flattenHistoryEntries(
+      sessions.map((session) => ({
+        provider: session.provider,
+        sessionId: session.sessionId,
+        project: session.project || null,
+        messages: session.detail?.messages,
+      })),
+      limit,
+    );
   },
 });
 

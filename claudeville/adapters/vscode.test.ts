@@ -529,3 +529,21 @@ describe('vscode.ts utilities', () => {
     });
   });
 });
+
+describe('getSessionDetail', () => {
+  it('returns tokenUsage from llm_request entries in getSessionDetail', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-tokens-'));
+    const file = path.join(tmp, 'debug.log');
+    fs.writeFileSync(file, [
+      JSON.stringify({ type: 'llm_request', attrs: { model: 'gpt-4o', inputTokens: 120, outputTokens: 34 } }),
+      JSON.stringify({ type: 'assistant.message', data: { content: 'done' } }),
+    ].join('\n'));
+
+    const { VSCodeAdapter } = await import('./vscode');
+    const adapter = new VSCodeAdapter();
+    const detail = await adapter.getSessionDetail('sess', null, file);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+    expect(detail.tokenUsage).toEqual({ input: 120, output: 34 });
+  });
+});

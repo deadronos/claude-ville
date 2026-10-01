@@ -39,4 +39,13 @@ describe('extractText', () => {
     expect(extractText([{ type: 'toolCall', name: 'bash' }])).toBe('');
     expect(extractText([])).toBe('');
   });
+
+  it('extracts the first text or output_text block, skipping other types', () => {
+    expect(extractText([{ type: 'tool_use' }, { type: 'output_text', text: ' hi ' }])).toBe('hi');
+    expect(extractText([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }])).toBe('a');
+  });
+
+  it('does not match input_text blocks', () => {
+    expect(extractText([{ type: 'input_text', text: 'environment' }])).toBe('');
+  });
 });

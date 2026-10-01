@@ -95,7 +95,8 @@ The inverse helpers follow the same convention:
 2. `createProximitySystem()` updates building roof opacity
 3. `createCameraFollowSystem()` eases the logical camera target toward the followed agent
 4. `WorldScene` applies the root-group pan and zoom transform from `getCameraFocusPosition()`
-5. DOM overlays do not own rAF loops; they subscribe to `world/frameTicker.ts`, which runs at most one `requestAnimationFrame` and cancels it when the last subscriber leaves. `useInverseZoom` is the deliberate exception: it runs inside the always-on WebGL loop and bails out when the value is unchanged.
+5. DOM overlays do not own rAF loops; they subscribe to `world/frameTicker.ts`, which runs at most one `requestAnimationFrame` and cancels it when the last subscriber leaves.
+6. `WorldView` passes `frameloop={active ? 'always' : 'demand'}` to the R3F `Canvas`, so the whole GL loop (root transform, terrain and vegetation `uTime`, ECS systems, `useInverseZoom`) stops while the world view is hidden in dashboard mode. Resuming is safe because movement uses a fixed per-frame step rather than a delta. `useInverseZoom` remains a deliberate exception to the "no per-frame `setState`" rule while the world is visible: it bails out when the value is unchanged, and zoom only moves on user input.
 
 Keep each responsibility in its dedicated helper instead of reintroducing competing transform math in actors or overlays.
 

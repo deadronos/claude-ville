@@ -464,7 +464,7 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
     const sessionFilePath = filePath || await resolveSessionFilePath(sessionId, project);
-    if (!sessionFilePath) return { toolHistory: [], messages: [], tokenUsage: null };
+    if (!sessionFilePath) return { toolHistory: [], messages: [] };
     const [toolHistory, messages, tokenUsage] = await Promise.all([
       getToolHistory(sessionFilePath),
       getRecentMessages(sessionFilePath),

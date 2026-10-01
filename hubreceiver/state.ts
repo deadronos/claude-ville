@@ -3,6 +3,8 @@
  * CollectorSnapshot shape is compatible with shared/types.ts CollectorSnapshot.
  */
 
+import { flattenHistoryEntries, type HistorySource } from '../shared/history-utils.js';
+
 export function defaultUsage() {
   return {
     account: {
@@ -56,6 +58,19 @@ interface SnapshotInput {
   sessionDetails?: Record<string, unknown>;
 }
 
+/**
+ * Reads a session's project path.
+ *
+ * The `Session` contract in shared/types.ts declares `projectPath`, but the
+ * collector emits the adapter summary's `project` (normalizeSession spreads it),
+ * and the frontend reads `projectPath`. Accept both spellings so this stays
+ * correct whichever side produces the snapshot.
+ */
+function readProject(session: AnyRecord): string | null {
+  const value = session.project ?? session.projectPath;
+  return typeof value === 'string' ? value : null;
+}
+
 function normalizeSnapshot(snapshot: SnapshotInput) {
   return {
     collectorId: snapshot.collectorId || 'default',
@@ -84,7 +99,7 @@ export function getCurrentState() {
   const taskMap = new Map<string, Record<string, any>>();
   const providerMap = new Map<string, Record<string, any>>();
   const detailMap = new Map<string, SessionDetail>();
-  const detailKeyIndex = new Map<string, { provider: string; sessionId: string }>();
+  const detailKeyIndex = new Map<string, { provider: string; sessionId: string; project: string | null }>();
 
   let latestUsage: Usage = defaultUsage();
   let latestUsageTs = 0;
@@ -105,6 +120,7 @@ export function getCurrentState() {
         detailKeyIndex.set(`${session.provider}:${session.sessionId}`, {
           provider: session.provider,
           sessionId: session.sessionId,
+          project: readProject(session),
         });
       }
     }
@@ -158,26 +174,18 @@ export function getSessionDetail(sessionId: string, provider: string) {
 }
 
 export function getHistory(limit = 100) {
-  const entries = [];
   const state = getCurrentState();
+  const sources: HistorySource[] = [];
   for (const [key, detail] of state.sessionDetails.entries()) {
-    if (!detail) {
-      continue;
-    }
+    if (!detail) continue;
     const identity = state.sessionDetailKeys.get(key);
     const [fallbackProvider, fallbackSessionId] = key.split(':');
-    const provider = identity?.provider ?? fallbackProvider;
-    const sessionId = identity?.sessionId ?? fallbackSessionId;
-    for (const message of detail.messages || []) {
-      entries.push({
-        provider,
-        sessionId,
-        role: message.role,
-        text: message.text,
-        ts: message.ts || 0,
-      });
-    }
+    sources.push({
+      provider: identity?.provider ?? fallbackProvider,
+      sessionId: identity?.sessionId ?? fallbackSessionId,
+      project: identity?.project ?? null,
+      messages: detail.messages,
+    });
   }
-  entries.sort((a, b) => a.ts - b.ts);
-  return entries.slice(-limit);
+  return flattenHistoryEntries(sources, limit);
 }

@@ -22,6 +22,13 @@ describe('claude adapter', () => {
       expect(typeof result).toBe('boolean');
     });
 
+    it('getSessionDetail omits tokenUsage for an unknown session', async () => {
+      const adapter = new ClaudeAdapter();
+      const detail = await adapter.getSessionDetail('does-not-exist', null, null);
+      expect(detail).toEqual({ toolHistory: [], messages: [] });
+      expect('tokenUsage' in detail).toBe(false);
+    });
+
     it('getWatchPaths returns array of path objects', async () => {
       const adapter = new ClaudeAdapter();
       const paths = adapter.getWatchPaths();
