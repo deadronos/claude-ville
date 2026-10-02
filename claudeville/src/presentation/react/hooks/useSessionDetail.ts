@@ -14,7 +14,7 @@ export function useSessionDetail(
     messages: [],
   });
   const agentId = agent?.id;
-  const agentProject = agent?.projectPath || '';
+  const agentProject = agent?.project || '';
   const agentProvider = agent?.provider || 'claude';
 
   useEffect(() => {

@@ -45,18 +45,18 @@ export function DashboardView({ active, agents, onSelect }: { active: boolean; a
         </div>
       ) : (
         <div id="dashboardGrid" className="dashboard__grid">
-          {projectKeys.map((projectPath) => {
-            const groupAgents = [...(groups.get(projectPath) || [])].sort((left, right) => {
+          {projectKeys.map((projectKey) => {
+            const groupAgents = [...(groups.get(projectKey) || [])].sort((left, right) => {
               return (STATUS_ORDER[left.status] ?? 3) - (STATUS_ORDER[right.status] ?? 3);
             });
-            const accentIndex = colors.get(projectPath) ?? 0;
+            const accentIndex = colors.get(projectKey) ?? 0;
 
             return (
-              <section key={projectPath} className={`dashboard__section project-accent--${accentIndex}`} data-project={projectPath} aria-labelledby={`project-title-${projectPath}`}>
+              <section key={projectKey} className={`dashboard__section project-accent--${accentIndex}`} data-project={projectKey} aria-labelledby={`project-title-${projectKey}`}>
                 <header className="dashboard__section-header">
                   <span className="dashboard__section-dot" aria-hidden="true" />
-                  <h2 id={`project-title-${projectPath}`} className="dashboard__section-name">{shortProjectName(projectPath, i18n.t('unknownProject'))}</h2>
-                  <span className="dashboard__section-path">{truncateProjectPath(projectPath)}</span>
+                  <h2 id={`project-title-${projectKey}`} className="dashboard__section-name">{shortProjectName(projectKey, i18n.t('unknownProject'))}</h2>
+                  <span className="dashboard__section-path">{truncateProjectPath(projectKey)}</span>
                   <span className="dashboard__section-count tabular-nums">
                     <span className="sr-only">{i18n.t('agentCount')}: </span>
                     {i18n.t('nAgents', groupAgents.length)}

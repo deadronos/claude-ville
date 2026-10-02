@@ -84,7 +84,7 @@ const selectedAgent = {
   status: 'working',
   provider: 'claude',
   model: 'claude-sonnet-4-5-20250929',
-  projectPath: '/Users/openclaw/Github/claude-ville',
+  project: '/Users/openclaw/Github/claude-ville',
   currentTool: 'Read',
   currentToolInput: 'README.md',
   role: 'builder',
@@ -101,7 +101,7 @@ const otherAgent = {
   status: 'idle',
   provider: 'gemini',
   model: 'gemini-2.5-pro',
-  projectPath: '/Users/openclaw/Github/other-project',
+  project: '/Users/openclaw/Github/other-project',
 };
 
 function setBaseSnapshot() {

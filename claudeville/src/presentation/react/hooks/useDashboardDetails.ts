@@ -11,7 +11,7 @@ export function useDashboardDetails(agents: readonly AgentDetailRef[], enabled: 
   const agentRequests = useMemo(
     () => agents.map((agent) => ({
       id: agent.id,
-      project: agent.projectPath || '',
+      project: agent.project || '',
       provider: agent.provider || 'claude',
     })),
     [agents],

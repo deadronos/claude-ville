@@ -5,7 +5,7 @@
  */
 export type AgentDetailRef = {
   id: string;
-  projectPath?: string | null;
+  project?: string | null;
   provider?: string | null;
 };
 
@@ -13,7 +13,7 @@ export type ProjectAgentLike = {
   id?: string;
   name?: string;
   status?: string | null;
-  projectPath?: string | null;
+  project?: string | null;
   provider?: string | null;
   model?: string | null;
   role?: string | null;
@@ -101,7 +101,7 @@ export function groupByProject<T extends ProjectAgentLike>(agents: readonly T[])
   const groups = new Map<string, T[]>();
 
   for (const agent of agents) {
-    const key = agent.projectPath || '_unknown';
+    const key = agent.project || '_unknown';
     if (!groups.has(key)) {
       groups.set(key, []);
     }

@@ -18,8 +18,8 @@ describe('dashboardViewModel', () => {
   it('groups agents by project and preserves insertion order', () => {
     const agents = [
       { id: 'a1' },
-      { id: 'a2', projectPath: '/repo/app' },
-      { id: 'a3', projectPath: '/repo/app' },
+      { id: 'a2', project: '/repo/app' },
+      { id: 'a3', project: '/repo/app' },
     ];
 
     const groups = groupByProject(agents);
