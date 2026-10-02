@@ -75,3 +75,49 @@ export function parseJsonLines(lines: string[], scope = 'jsonl-utils') {
   }
   return results;
 }
+
+/**
+ * Read + parse in one step. All nine adapters use this pair back to back;
+ * this is where that pairing is expressed once.
+ */
+export async function readJsonlEntries(
+  filePath: string,
+  { from = 'end', count = 50, scope = 'jsonl-utils' }: { from?: 'start' | 'end'; count?: number; scope?: string } = {},
+) {
+  return parseJsonLines(await readLines(filePath, { from, count, scope }), scope);
+}
+
+/**
+ * Read a JSONL file, fold each entry through `onEntry`, and keep the last
+ * `maxItems`. Swallows and debug-logs read/parse/fold errors, returning
+ * whatever was accumulated — the contract every adapter's getToolHistory /
+ * getRecentMessages already had.
+ */
+export async function collectJsonl<T>(
+  filePath: string,
+  {
+    scope,
+    operation,
+    from = 'end',
+    count = 50,
+    maxItems,
+    onEntry,
+  }: {
+    scope: string;
+    operation: string;
+    from?: 'start' | 'end';
+    count?: number;
+    maxItems?: number;
+    onEntry: (entry: any, out: T[]) => void;
+  },
+): Promise<T[]> {
+  const out: T[] = [];
+  try {
+    for (const entry of await readJsonlEntries(filePath, { from, count, scope })) {
+      onEntry(entry, out);
+    }
+  } catch (err) {
+    debugAdapterError(scope, operation, err, filePath);
+  }
+  return typeof maxItems === 'number' ? out.slice(-maxItems) : out;
+}

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readLines, parseJsonLines } from './jsonl-utils';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { readLines, parseJsonLines, readJsonlEntries, collectJsonl } from './jsonl-utils';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -105,6 +105,112 @@ describe('jsonl-utils', () => {
 
       const result = await readLines(dirPath);
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('readJsonlEntries / collectJsonl', () => {
+    let tmpDir: string;
+
+    const write = (name: string, content: string) => {
+      const filePath = path.join(tmpDir, name);
+      fs.writeFileSync(filePath, content);
+      return filePath;
+    };
+
+    beforeAll(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudeville-jsonl-utils-'));
+    });
+
+    afterAll(() => {
+      if (fs.existsSync(tmpDir)) {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    describe('readJsonlEntries', () => {
+      it('returns parsed objects and skips a malformed line', async () => {
+        const filePath = write('mixed.jsonl', '{"id":1}\nnot valid json\n{"id":2}\n');
+
+        const result = await readJsonlEntries(filePath);
+
+        expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+      });
+
+      it('returns only the first entry with from: start and count: 1', async () => {
+        const filePath = write('first-only.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+
+        const result = await readJsonlEntries(filePath, { from: 'start', count: 1 });
+
+        expect(result).toEqual([{ id: 1 }]);
+      });
+    });
+
+    describe('collectJsonl', () => {
+      it('folds entries and returns them in order', async () => {
+        const filePath = write('fold.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'fold',
+          count: 10,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      });
+
+      it('keeps only the last N entries when maxItems is set', async () => {
+        const filePath = write('capped.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n{"id":4}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'capped',
+          count: 10,
+          maxItems: 2,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([{ id: 3 }, { id: 4 }]);
+      });
+
+      it('returns every entry when maxItems is omitted', async () => {
+        const filePath = write('uncapped.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'uncapped',
+          count: 10,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      });
+
+      it('returns [] for a nonexistent file without throwing', async () => {
+        const result = await collectJsonl<{ id: number }>(path.join(tmpDir, 'nope.jsonl'), {
+          scope: 'test',
+          operation: 'missing',
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([]);
+      });
+
+      it('keeps entries folded before an onEntry throw', async () => {
+        const filePath = write('throwing.jsonl', '{"id":1}\n{"id":2}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'throwing',
+          count: 10,
+          onEntry: (entry, out) => {
+            if (entry.id === 2) throw new Error('boom');
+            out.push({ id: entry.id });
+          },
+        });
+
+        expect(result).toEqual([{ id: 1 }]);
+      });
     });
   });
 });

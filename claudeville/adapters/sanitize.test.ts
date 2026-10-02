@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanText, summarizeText, sanitizeSessionDetail, sanitizeSessionSummary } from './sanitize';
+import { cleanText, summarizeText, sanitizeSessionDetail, sanitizeSessionSummary, summarizeToolInput } from './sanitize';
 
 describe('sanitize', () => {
   describe('cleanText', () => {
@@ -222,6 +222,32 @@ describe('sanitize', () => {
         messages: [],
       });
       expect(result.toolHistory[0].tool).toBe('unknown');
+    });
+  });
+
+  describe('summarizeToolInput', () => {
+    it('passes a string through and caps it at maxLen', () => {
+      expect(summarizeToolInput('short input', 60)).toBe('short input');
+      expect(summarizeToolInput('x'.repeat(200), 60)).toBe('x'.repeat(60));
+    });
+
+    it('JSON-stringifies non-string values before capping', () => {
+      expect(summarizeToolInput({ a: 1 }, 60)).toBe('{"a":1}');
+      expect(summarizeToolInput({ a: 1 }, 4)).toBe('{"a"');
+      expect(summarizeToolInput(42, 60)).toBe('42');
+    });
+
+    it('respects maxLen exactly', () => {
+      const long = 'abcdefghij';
+      expect(summarizeToolInput(long, 3)).toBe(long.substring(0, 3));
+      expect(summarizeToolInput(long, 0)).toBe('');
+      // A cap wider than the input is a no-op, not padding.
+      expect(summarizeToolInput(long, 50)).toBe(long);
+    });
+
+    it('returns an empty string when the value has no string form', () => {
+      expect(summarizeToolInput(undefined, 60)).toBe('');
+      expect(summarizeToolInput(null, 60)).toBe('null');
     });
   });
 });
