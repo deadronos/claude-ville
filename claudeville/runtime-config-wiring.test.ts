@@ -12,6 +12,10 @@
  * These file assertions cover what no runtime test can observe: an unimported
  * module, a missing script tag, a script tag made non-blocking, and a config
  * field that buildRuntimeConfig() emits but the build-time path drops.
+ *
+ * Entry points reach the hub through HubDataSource, which reads
+ * window.__CLAUDEVILLE_CONFIG__ lazily on first call rather than in a
+ * constructor.
  */
 import fs from 'fs';
 import path from 'path';
