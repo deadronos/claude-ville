@@ -91,7 +91,7 @@ The rename only deletes the unused spelling. The producers are already correct:
 
 **Band-aid removal — this is the acceptance signal:**
 
-- `humbreceiver/state.ts:69` — `readProject()` collapses to a single `session.project`
+- `hubreceiver/state.ts:69` — `readProject()` collapses to a single `session.project`
   access. The `typeof value === 'string'` guard **stays**: `AnyRecord` is untyped, so it
   is a genuine type guard, not a spelling shim. Its doc comment is rewritten to say so.
 - `pixivillage/model.ts:199` — becomes `session.project || ''`; delete `projectPath?`
@@ -125,11 +125,11 @@ typechecks clean and breaks at runtime.
 Behavioural wire tests are added at the three seams the type system cannot cover:
 
 - `collector/snapshot.test.ts` — the spread carries the field
-- `humbreceiver/state.test.ts` — the raw store survives it
+- `hubreceiver/state.test.ts` — the raw store survives it
 - `hubreceiver/ws.test.ts` — via the exported `buildWsPayload`. No existing test decodes
   a WS frame, so this is new coverage worth having regardless.
 
-`humbreceiver/state.test.ts:443` ("also accepts the `projectPath` spelling") is deleted.
+`hubreceiver/state.test.ts:443` ("also accepts the `projectPath` spelling") is deleted.
 `pixivillage/model.ts:199`'s `projectPath` branch had no test, so nothing is lost.
 
 ## Deliberately untouched

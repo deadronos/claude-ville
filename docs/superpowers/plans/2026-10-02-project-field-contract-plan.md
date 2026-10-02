@@ -86,7 +86,7 @@ The `| null` is required. `AgentSessionSummary extends Omit<Session, 'displayNam
 
 - [ ] **Step 2: Collapse `readProject()` to a single access**
 
-In `humbreceiver/state.ts`, replace lines 61-72:
+In `hubreceiver/state.ts`, replace lines 61-72:
 
 ```ts
 /**
@@ -535,7 +535,7 @@ import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SOURCE_ROOTS = ['claudeville', 'collector', 'humbreceiver', 'shared'];
+const SOURCE_ROOTS = ['claudeville', 'collector', 'hubreceiver', 'shared'];
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'widget', '.worktrees', '.git', 'coverage']);
 const FORBIDDEN = /\bprojectPath\b/g;
 
@@ -694,7 +694,7 @@ so no layer may assume it can be split on `/` and treated as a directory.
 
 `shared/project-field-contract.test.ts` enforces the spelling. The check exists
 because the type system cannot: the collector's `SessionSummary` carries
-`[key: string]: unknown` and `humbreceiver/state.ts` casts snapshots to
+`[key: string]: unknown` and `hubreceiver/state.ts` casts snapshots to
 `AnyRecord`, so a half-finished rename compiles and fails at runtime instead.
 That gap is what required `readProject()` to accept two spellings in #111.
 ```
