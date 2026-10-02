@@ -106,9 +106,11 @@ A session's project is spelled `project` everywhere: adapters emit it,
 `AgentSessionSummary` declares it, the collector spreads it into the snapshot,
 `hubreceiver` stores it verbatim, and the domain `Agent` exposes it as `project`.
 
-The value is a grouping key, not always a filesystem path. OpenClaw uses
+The value is a grouping key, not necessarily a filesystem path. OpenClaw uses
 `openclaw:<agentId>` and VS Code falls back to `vscode:<channel>:<workspaceId>`,
-so no layer may assume it can be split on `/` and treated as a directory.
+so no layer may assume it is a filesystem path or resolve it as one. Splitting it
+on `/` is legitimate only for display-label fallbacks (`AgentManager.ts:137`,
+`pixivillage/model.ts:199`), where a synthetic key simply yields the whole string.
 
 `shared/project-field-contract.test.ts` enforces the spelling. The check exists
 because the type system cannot: the collector's `SessionSummary` carries

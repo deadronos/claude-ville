@@ -108,9 +108,10 @@ The rename only deletes the unused spelling. The producers are already correct:
 
 **Misleading locals, renamed to `projectKey`:** `DashboardView.tsx:48` and `Sidebar.tsx:28`
 bind `projectPath` to a group key that may be `openclaw:agent-1`; `pi.ts:254` binds it to
-a session *directory* path; `claude.ts`'s `projectPathMap` and `openclaw.ts:212`'s
-`buildProjectKey` parameter are the same problem. Renaming these is what makes the guard
-below expressible.
+a session *directory* path; `openclaw.ts:212`'s `buildProjectKey` parameter is the same
+problem. `claude.ts`'s `projectPathMap` was considered and deliberately kept: it genuinely
+maps encoded directory names to project paths, and the guard's word-bounded pattern does
+not flag it. The renames above are what make the guard below expressible.
 
 ## Acceptance signal
 
@@ -122,12 +123,13 @@ Enforced by `shared/project-field-contract.test.ts`, a source-scanning test mode
 `[key: string]: unknown` and `normalizeSnapshot` casts `AnyRecord[]`. A half-done rename
 typechecks clean and breaks at runtime.
 
-Behavioural wire tests are added at the three seams the type system cannot cover:
+Behavioural wire tests cover the three seams the type system cannot; two are added
+here and the hub-state seam was already covered:
 
-- `collector/snapshot.test.ts` — the spread carries the field
-- `hubreceiver/state.test.ts` — the raw store survives it
-- `hubreceiver/ws.test.ts` — via the exported `buildWsPayload`. No existing test decodes
-  a WS frame, so this is new coverage worth having regardless.
+- `collector/snapshot.test.ts` — added: the spread carries the field
+- `hubreceiver/state.test.ts` — pre-existing coverage; the raw store survives it
+- `hubreceiver/ws.test.ts` — added: via the exported `buildWsPayload`. No existing test
+  decodes a WS frame, so this is new coverage worth having regardless.
 
 `hubreceiver/state.test.ts:443` ("also accepts the `projectPath` spelling") is deleted.
 `pixivillage/model.ts:199`'s `projectPath` branch had no test, so nothing is lost.

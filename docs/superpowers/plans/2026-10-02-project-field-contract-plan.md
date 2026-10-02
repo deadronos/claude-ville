@@ -496,6 +496,13 @@ values that are often not paths at all (\`vscode:<channel>:<workspaceId>\`,
 
 ### Task 5: Add the contract guard and the wire-format tests
 
+> **Amendment (fix wave after Task 5).** The guard shipped in `7d3b964` is broader
+> than the snippet below: it adds a positive AST test that every adapter in
+> `claudeville/adapters/index.ts` emits `project`, scans repo-root `.ts` files,
+> and includes `e2e/` in `SOURCE_ROOTS` — two tests, not one. The Task 6 Step 2
+> prediction of 1181 tests / 110 files is likewise stale; the shipped result is
+> 1185 / 111.
+
 **Files:**
 - Create: `shared/project-field-contract.test.ts`
 - Modify: `hubreceiver/ws.test.ts` (add one test)
@@ -707,7 +714,7 @@ npm run lint
 npm test
 ```
 
-Expected: typecheck clean, lint clean, and **at least 109 test files / 1180 tests**. Report the actual numbers. Task 1 deleted one test (`hubreceiver/state.test.ts:443`) and Task 5 added two, so the expected result is 1181 tests across 110 files — the new `shared/project-field-contract.test.ts` adds a file. If the file count is 109 and the test count is at or above 1180, that is also acceptable; state what you actually got rather than forcing a number.
+Expected: typecheck clean, lint clean, and **at least 109 test files / 1180 tests**. Report the actual numbers. Task 1 deleted one test (`hubreceiver/state.test.ts:443`) and Task 5 added two, so the estimate was 1181 tests across 110 files — the new `shared/project-field-contract.test.ts` adds a file. (Stale: the shipped result is 1185 tests across 111 files — see the Task 5 amendment note.) If the file count is 109 and the test count is at or above 1180, that is also acceptable; state what you actually got rather than forcing a number.
 
 - [ ] **Step 3: Confirm the guard still passes with the docs change**
 
@@ -766,11 +773,11 @@ Iterate to a clean verdict. Then open the PR against `origin/main` on this fork,
 
 ## Self-Review
 
-**Spec coverage.** Every section of the spec's PR A maps to a task: the `Session` fix (Task 1), the `readProject` collapse (Task 1), the pixivillage collapse (Task 1), the `AgentManager` identity write (Task 2), the domain entity (Task 2), the presentation reads (Task 3), the misleading locals in components (Task 3), the misleading adapter locals (Task 4), the guard test (Task 5), the three wire seams (Tasks 1 and 5), the deletion of the dual-spelling test (Task 1), and the docs (Task 6). The "deliberately untouched" list is carried into Global Constraints and into the review brief in Task 6 Step 6.
+**Spec coverage.** Every section of the spec's PR A maps to a task: the `Session` fix (Task 1), the `readProject` collapse (Task 1), the pixivillage collapse (Task 1), the `AgentManager` identity write (Task 2), the domain entity (Task 2), the presentation reads (Task 2), the misleading locals in components (Task 2), the misleading adapter locals (Task 4), the guard test (Task 5), the three wire seams (Tasks 1 and 5), the deletion of the dual-spelling test (Task 1), and the docs (Task 6). The "deliberately untouched" list is carried into Global Constraints and into the review brief in Task 6 Step 6.
 
 **Placeholder scan.** No TBD, no "add appropriate tests", no "similar to Task N". Two snippets were corrected against the real source during self-review: Task 4 Step 1's `claude.ts` snippet originally guessed the wrong identifier for the encoded value (`claude.ts:76` already calls it `encoded`, so the rename introduces no collision), and Task 5 Step 5's `buildCollectorSnapshot` call was verified line-by-line against `collector/snapshot.ts:31-40` and `collector/snapshot.test.ts:5`, which already imports the function at module scope.
 
-**Type consistency.** `Session.project?: string | null` is introduced in Task 1 and `AgentSessionSummary.project: string | null` (which already exists at `shared/types.ts:57`) narrows it. `AgentParams.project` and `Agent.project` are introduced in Task 2 and consumed by `ProjectAgentLike.project` / `AgentDetailRef.project` in Task 3. The guard's `FORBIDDEN` pattern matches exactly the occurrences the renames clear, so Task 5 Step 3 should pass on a correct implementation and fail on an incomplete one.
+**Type consistency.** `Session.project?: string | null` is introduced in Task 1 and `AgentSessionSummary.project: string | null` (which already exists at `shared/types.ts:57`) narrows it. `AgentParams.project` and `Agent.project` are introduced in Task 2 and consumed by `ProjectAgentLike.project` / `AgentDetailRef.project` in Task 2 (the folded-in presentation work). The guard's `FORBIDDEN` pattern matches exactly the occurrences the renames clear, so Task 5 Step 3 should pass on a correct implementation and fail on an incomplete one.
 
 **Known judgement calls, recorded rather than hidden.** `claude.ts`'s `projectPathMap` keeps its name: it genuinely maps encoded directory names to project paths, and the guard's word boundary does not match it. `truncateProjectPath` and `groupByProject` keep theirs. `vscode.real.test.ts`'s workspace-path locals are renamed to `workspaceProject` even though they hold real filesystem paths, because they mirror `vscode.ts:418`. These are the three places a reviewer is most likely to ask why a rename stopped, so they are stated in Task 4.
 
