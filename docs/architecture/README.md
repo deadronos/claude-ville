@@ -20,3 +20,10 @@ This folder documents the current architecture of ClaudeVille and the main decis
 2. Read the ADRs in numeric order.
 3. Read the React shell report before the R3F scene report.
 4. Use the docs as the source of truth when changing architecture-sensitive code.
+
+## Not here
+
+Implementation plans and their upstream design specs live in
+[`../superpowers/`](../superpowers/README.md). They are execution artifacts, not
+architecture references — see that README before reading one, because a plan's
+checkboxes are not a completion report.

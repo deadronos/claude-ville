@@ -1,7 +1,7 @@
 /** @vitest-environment node */
 
 import { EventEmitter } from 'node:events';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { createHubreceiverRequestHandler, maybeGetAuthToken } = await import('./routes.ts');
 
@@ -151,6 +151,51 @@ describe('hubreceiver routes', () => {
     expect(wsManager.broadcast).toHaveBeenCalledWith('update');
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
     expect(res.end).toHaveBeenCalledWith(JSON.stringify({ ok: true, sessions: 1 }));
+  });
+
+  describe('per-snapshot accept logging', () => {
+    async function postSnapshot() {
+      const { handler } = createHandler();
+      const req = makeRequest('POST', '/api/collector/snapshot', {
+        host: 'localhost',
+        authorization: 'Bearer secret',
+      });
+      const res = makeResponse();
+      handler(req, res);
+      req.emit('data', Buffer.from(JSON.stringify({ collectorId: 'c1', sessions: [] })));
+      req.emit('end');
+      await flush();
+    }
+
+    function snapshotAcceptLines(spy: ReturnType<typeof vi.spyOn>) {
+      return spy.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => line.includes('snapshot accepted'));
+    }
+
+    it('stays quiet by default so a running collector does not flood stdout', async () => {
+      delete process.env.CLAUDEVILLE_DEBUG;
+      await postSnapshot();
+      expect(snapshotAcceptLines(console.log as never)).toEqual([]);
+    });
+
+    it('logs when CLAUDEVILLE_DEBUG=1', async () => {
+      process.env.CLAUDEVILLE_DEBUG = '1';
+      await postSnapshot();
+      expect(snapshotAcceptLines(console.log as never).length).toBe(1);
+    });
+
+    it('logs when CLAUDEVILLE_DEBUG=true', async () => {
+      process.env.CLAUDEVILLE_DEBUG = 'true';
+      await postSnapshot();
+      expect(snapshotAcceptLines(console.log as never).length).toBe(1);
+    });
+
+    // Leave the env clean: vitest.config.ts sets no unstubEnvs, so a leaked
+    // 'true' would silently enable logging for every later test in this file.
+    afterEach(() => {
+      delete process.env.CLAUDEVILLE_DEBUG;
+    });
   });
 
   it('rejects invalid snapshot JSON with a 400', async () => {
