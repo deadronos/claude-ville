@@ -158,4 +158,19 @@ describe('collector snapshot helpers', () => {
       'copilot:s2': { tokenUsage: { input: 3, output: 4 } },
     });
   });
+
+  it('carries the session project through normalisation and serialisation', async () => {
+    const snapshot = await buildCollectorSnapshot({
+      getAllSessions: async () => [
+        { provider: 'claude', sessionId: 's1', project: '/repo/app', model: 'claude-sonnet-4-5' },
+      ],
+      getSessionDetailByProvider: vi.fn(async () => null),
+      getActiveProviders: () => [],
+    }, { collectorId: 'c1', collectorHost: 'host-1', activeThresholdMs: 1000 });
+
+    expect(snapshot.sessions[0]).toMatchObject({ project: '/repo/app' });
+    // The publisher POSTs JSON.stringify(snapshot); the hub stores the parsed
+    // object verbatim, so assert on what survives that hop.
+    expect(JSON.parse(JSON.stringify(snapshot)).sessions[0]).toHaveProperty('project', '/repo/app');
+  });
 });

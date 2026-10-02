@@ -84,4 +84,19 @@ describe('hubreceiver websocket manager', () => {
     expect(socket.write).toHaveBeenCalledTimes(1);
     expect(Buffer.isBuffer(socket.write.mock.calls[0][0])).toBe(true);
   });
+
+  it('carries the session project into the broadcast payload', () => {
+    const manager = createHubWebSocketManager(() => ({
+      sessions: [{ sessionId: 's1', project: '/repo/app' }],
+      teams: [],
+      taskGroups: [],
+      providers: [],
+      usage: {},
+      timestamp: 123,
+    }));
+
+    const payload = JSON.parse(JSON.stringify(manager.buildWsPayload('update')));
+
+    expect(payload.sessions[0]).toHaveProperty('project', '/repo/app');
+  });
 });
