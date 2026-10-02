@@ -8,7 +8,7 @@
 export interface Session {
   sessionId: string;
   provider: string;
-  projectPath?: string;
+  project?: string | null;
   model?: string;
   status?: string;
   lastActivity?: number;
