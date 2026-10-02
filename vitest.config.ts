@@ -22,8 +22,8 @@ export default defineConfig({
       'dist/**',
       // The widget bundle is a gitignored build product, but build.sh copies
       // Resources/ verbatim into it — including these test files. Without this
-      // the suite collects a second copy of every widget test from four levels
-      // deeper, where relative specifiers no longer resolve.
+      // the suite collects a second copy of every widget test from a deeper
+      // directory, where relative specifiers no longer resolve.
       'widget/ClaudeVilleWidget.app/**',
       '.worktrees/**',
     ],
