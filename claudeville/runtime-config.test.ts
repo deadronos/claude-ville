@@ -66,4 +66,38 @@ describe('claudeville/runtime-config.ts', () => {
       hubWsUrl: 'wss://api.example.test/socket',
     });
   });
+
+  // The whole of #128 was that a production bundle reached the app with no
+  // config at all, because this module was never imported and the define map
+  // had no token entry. These pin both halves.
+  describe('hub auth token in the build-time fallback', () => {
+    it('carries the inlined token so a static-hosted bundle can authenticate', async () => {
+      vi.stubEnv('VITE_HUB_AUTH_TOKEN', 'dev-secret');
+      setWindowLocation('http://fallback.example.test');
+
+      const config = await loadRuntimeConfigModule();
+
+      expect(config.hubAuthToken).toBe('dev-secret');
+    });
+
+    it('never silently substitutes a different token', async () => {
+      vi.stubEnv('VITE_HUB_AUTH_TOKEN', 'a-real-secret');
+      setWindowLocation('http://fallback.example.test');
+
+      const config = await loadRuntimeConfigModule();
+
+      expect(config.hubAuthToken).toBe('a-real-secret');
+    });
+  });
+
+  it('lets a preloaded config win, so /runtime-config.js beats the build-time values', async () => {
+    const existing = { hubHttpUrl: 'http://server-origin.test', hubAuthToken: 'from-server' };
+    vi.stubEnv('VITE_HUB_AUTH_TOKEN', 'from-build');
+    setWindowLocation('http://fallback.example.test', existing);
+
+    const config = await loadRuntimeConfigModule();
+
+    expect(config).toBe(existing);
+    expect(config.hubAuthToken).toBe('from-server');
+  });
 });

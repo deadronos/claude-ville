@@ -39,9 +39,13 @@ export default defineConfig({
   },
   plugins: [react(), claudeVilleRuntimeConfigPlugin()],
   define: {
-    // For production build: inline the values so runtime-config.ts uses them
+    // For production build: inline the values so runtime-config.ts uses them.
+    // These are the fallback for a bundle served by something that does not
+    // expose /runtime-config.js. The auth token must be inlined too — without
+    // it a production bundle has no token and 401s on every read.
     'import.meta.env.VITE_HUB_HTTP_URL': JSON.stringify(runtimeConfig.hubHttpUrl),
     'import.meta.env.VITE_HUB_WS_URL': JSON.stringify(runtimeConfig.hubWsUrl),
+    'import.meta.env.VITE_HUB_AUTH_TOKEN': JSON.stringify(runtimeConfig.hubAuthToken),
   },
   build: {
     outDir: '../dist/frontend',
