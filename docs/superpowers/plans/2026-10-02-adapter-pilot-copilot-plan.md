@@ -226,8 +226,12 @@ something to be behaviour-preserving against."
 - Produces (used by Task 3 and, later, by B2/B3/B4):
   - `readJsonlEntries(filePath: string, opts?: { from?: 'start' | 'end'; count?: number; scope?: string }): Promise<any[]>`
   - `collectJsonl<T>(filePath: string, opts: { scope: string; operation: string; from?: 'start' | 'end'; count?: number; maxItems?: number; onEntry: (entry: any, out: T[]) => void }): Promise<T[]>`
-  - `collectScanByMtime<T>(opts: { dir: string; scope: string; operation: string; thresholdMs: number; build: (name: string, filePath: string, mtimeMs: number) => Promise<T | null> | T | null }): Promise<T[]>`
-  - `summarizeToolInput(value: unknown, maxLen: number): string`
+  - `collectScanByMtime<T>(opts: { dir: string; scope: string; operation: string; thresholdMs: number; fileFor: (name: string) => string | null; build: (candidate: ScanCandidate) => Promise<T | null> | T | null }): Promise<T[]>` where `ScanCandidate = { name: string; filePath: string; mtimeMs: number }`
+    - **Corrected after Task 2.** This line previously omitted `fileFor` entirely and gave `build` three positional parameters, contradicting the Step-3 source below and the shipped implementation. `fileFor` resolves a child directory name to the file to stat (returning `null` to skip the child); `build` receives one `ScanCandidate` object. Task 3 and the B2/B3/B4 adapters must be written against THIS shape.
+  - `maxItems: 0` or a negative `maxItems` returns `[]`, it does not mean "no limit". Added after Task 2 found that `out.slice(-0)` is `out.slice(0)` (returns everything) and that a negative limit silently dropped the *first* n entries. Documented in the JSDoc and pinned by two tests.
+- `collectScanByMtime` preserves `readdir` order regardless of `build` completion order, because it uses `Promise.all`. Verified with inverted per-child latencies. This is load-bearing: an adapter that sorts on a field with ties depends on input order for determinism.
+- **Implementation note:** the `Promise.all(...) as (T | null)[]` cast is required — `Promise.all` re-applies `Awaited<T>`, so the un-cast form fails with TS2345/TS2677. Casting inside the map callback does **not** work.
+- `summarizeToolInput(value: unknown, maxLen: number): string` — `maxLen` stays a required argument with no default, because copilot uses 60 in `parseSession` and 80 in `getToolHistory` and a default would invite a silent behaviour change.
 
 - [ ] **Step 1: Add `readJsonlEntries` and `collectJsonl` to `jsonl-utils.ts`**
 
@@ -662,6 +666,13 @@ Write `git diff <merge-base origin/main HEAD>..HEAD` to a file and dispatch a re
 Iterate to a clean verdict, then open the PR against `origin/main` on the fork and squash-merge.
 
 ---
+
+## Task 3 hazards (surfaced by the Task 2 review — read before starting)
+
+1. **`summarizeToolInput` is NOT a drop-in for copilot's inline expression.** copilot guards with `tc.input ? … : ''` at `copilot.ts:91,107,135,146`, so a falsy-but-valid input (`0`, `false`, `NaN`) currently yields `''`. The helper would yield `'0'` / `'false'` / `'null'` — a real behaviour change. Conversely copilot's raw expression throws when `JSON.stringify` returns `undefined`, where the helper returns `''`. **Keep the `if (tc.input)` / `tc.input ? … : ''` guard at every call site** and replace only the inner render expression. If the characterization test (Task 1) does not already cover a falsy-but-present input, add one before swapping.
+2. **`collectScanByMtime` drops copilot's explicit `fs.existsSync(eventsFile)`** (`copilot.ts:230`) in favour of the stat-throws→null path. The return value is identical, but the helper now emits a `scanAllSessions stat …: ENOENT` debug line under `DEBUG=1` for any session dir lacking `events.jsonl`, where copilot logs nothing. Behaviour-preserving in output, noisier in debug. Acceptable; note it.
+3. **`build` runs inside the stat try/catch**, so a throwing `build` is logged as `"<operation> stat"`. Latent here (copilot's `build` is a pure object literal) but it goes live in B2 when `pi` needs I/O inside `build`. Deferred to B2 by review decision.
+4. **Ordering is load-bearing.** copilot sorts by `lastActivity` desc; `Array.prototype.sort` is stable, so ties fall back to input order = `readdir` order. Do not replace `Promise.all` with sequential pushes.
 
 ## Self-Review
 
