@@ -17,11 +17,14 @@
  */
 import { describe, expect, it } from 'vitest';
 
-// shared/hub-auth.ts is three levels up from widget/Resources/js/. The
-// '../../shared/' prefix resolves via the vitest alias in vitest.config.ts,
-// which exists for claudeville/ imports — so this import depends on that alias
-// staying repo-wide. If it is ever scoped, use an explicit alias instead.
-import { DEV_HUB_AUTH_TOKEN, resolveHubAuthToken } from '../../shared/hub-auth.js';
+// shared/hub-auth.ts is three levels up from widget/Resources/js (js ->
+// Resources -> widget -> repo root), so this specifier is depth-correct and
+// resolves without help. Do not shorten it to '../../shared/': that lands on
+// widget/shared/, which does not exist, and it only appears to work inside a
+// worktree because vitest.config.ts's repo-wide '../../shared/' alias rewrites
+// the specifier before resolution — which then resolves out to the *parent*
+// checkout's shared/ and masks the mistake.
+import { DEV_HUB_AUTH_TOKEN, resolveHubAuthToken } from '../../../shared/hub-auth.js';
 import { buildRuntimeConfig, getHubWsUrl } from './runtime-config.js';
 
 describe('widget / server hub auth token agreement', () => {
