@@ -177,7 +177,7 @@ and the collector, publisher and hub store carry it verbatim."
 
 ---
 
-### Task 2: Rename the domain entity and the application write
+### Task 2: Rename the domain entity, the application write, and the presentation reads
 
 **Files:**
 - Modify: `claudeville/src/domain/entities/Agent.ts:60`, `:81`, `:92`, `:106`
@@ -187,12 +187,18 @@ and the collector, publisher and hub store carry it verbatim."
 - Modify: `claudeville/src/presentation/react/state/ClaudeVilleController.test.ts:17`
 - Modify: `claudeville/src/presentation/react/ClaudeVilleApp.test.tsx:87`, `:104`
 - Modify: `claudeville/src/presentation/react/components/DashboardView.test.tsx:68`, `:172`
+- Modify: `claudeville/src/presentation/shared/dashboardViewModel.ts:8`, `:16`, `:104`
+- Modify: `claudeville/src/presentation/shared/dashboardViewModel.test.ts:21`, `:22`
+- Modify: `claudeville/src/presentation/react/hooks/useSessionDetail.ts:17`
+- Modify: `claudeville/src/presentation/react/hooks/useDashboardDetails.ts:14`
+- Modify: `claudeville/src/presentation/react/components/DashboardView.tsx:48-59`
+- Modify: `claudeville/src/presentation/react/components/Sidebar.tsx:28-36`
 
 **Interfaces:**
 - Consumes: `Session.project?: string | null` from Task 1.
-- Produces: `AgentParams.project?: string | null`; `Agent.project: string | null`; `AgentManager._upsertAgent` writes `project`.
+- Produces: `AgentParams.project?: string | null`; `Agent.project: string | null`; `AgentManager._upsertAgent` writes `project`; `ProjectAgentLike.project?: string | null`; `AgentDetailRef.project?: string | null`; `groupByProject` groups on `agent.project`.
 
-The `.tsx` test files are listed here, not in Task 3, because `tsconfig.json` typechecks them. Renaming the entity breaks them in this task.
+**This task absorbed the presentation layer during execution.** It was originally split into "domain + application" and "presentation", which was wrong: `groupByProject` reads `Agent.projectPath`, so renaming the entity without renaming the reader produces a commit where every agent falls into the `_unknown` group — broken in production while still passing its tests, because the fixtures carry the stale key. Renaming a field and the code that reads it is one atomic change. Steps 5-9 below are the folded-in presentation work.
 
 - [ ] **Step 1: Rename the entity field**
 
@@ -257,57 +263,13 @@ with:
     expect(call.project).toBeNull();
 ```
 
-- [ ] **Step 5: Verify**
-
-Run: `npx tsc --noEmit`
-Expected: clean. If `DashboardView.test.tsx` or `ClaudeVilleApp.test.tsx` reports an excess-property error on `project`, a fixture in that file was missed — re-grep it.
-
-Run: `npx vitest run claudeville/src/domain/ claudeville/src/application/AgentManager.test.ts claudeville/src/presentation/`
-Expected: all pass.
-
-- [ ] **Step 6: Confirm the entity rename left no stragglers**
-
-Run: `rg -n --word-regexp projectPath claudeville/src/domain claudeville/src/application`
-Expected: no output.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add claudeville/src/domain/entities/Agent.ts claudeville/src/domain/entities/Agent.test.ts \
-  claudeville/src/application/AgentManager.ts claudeville/src/application/AgentManager.test.ts \
-  claudeville/src/presentation/react/state/ClaudeVilleController.test.ts \
-  claudeville/src/presentation/react/ClaudeVilleApp.test.tsx \
-  claudeville/src/presentation/react/components/DashboardView.test.tsx
-git commit -m "refactor(agents): rename the domain Agent field to \`project\`
-
-\`AgentManager\` was converting \`session.project\` into \`Agent.projectPath\`,
-the last place the two spellings met. The entity now carries \`project\`, so
-the write is an identity mapping and the conversion is gone."
-```
-
----
-
-### Task 3: Rename the presentation reads and the misleading group-key locals
-
-**Files:**
-- Modify: `claudeville/src/presentation/shared/dashboardViewModel.ts:8`, `:16`, `:104`
-- Modify: `claudeville/src/presentation/shared/dashboardViewModel.test.ts:21`, `:22`
-- Modify: `claudeville/src/presentation/react/hooks/useSessionDetail.ts:17`
-- Modify: `claudeville/src/presentation/react/hooks/useDashboardDetails.ts:14`
-- Modify: `claudeville/src/presentation/react/components/DashboardView.tsx:48-59`
-- Modify: `claudeville/src/presentation/react/components/Sidebar.tsx:28-36`
-
-**Interfaces:**
-- Consumes: `Agent.project: string | null` from Task 2.
-- Produces: `ProjectAgentLike.project?: string | null` and `AgentDetailRef.project?: string | null`; `groupByProject` groups on `agent.project`.
-
-- [ ] **Step 1: Rename the field on both view-model types**
+- [ ] **Step 5: Rename the field on both view-model types**
 
 In `claudeville/src/presentation/shared/dashboardViewModel.ts`, change `projectPath?: string | null;` to `project?: string | null;` at both `:8` (`AgentDetailRef`) and `:16` (`ProjectAgentLike`).
 
 Leave `PROJECT_COLORS` (`:29`), `groupByProject` (`:100`), `shortProjectName` (`:114`) and `truncateProjectPath` (`:127`) alone. They are about projects, not about the field name, and `truncateProjectPath` is a substring the guard's word boundary does not match.
 
-- [ ] **Step 2: Rename the grouping key read**
+- [ ] **Step 6: Rename the grouping key read**
 
 At `dashboardViewModel.ts:104`:
 
@@ -315,11 +277,11 @@ At `dashboardViewModel.ts:104`:
     const key = agent.project || '_unknown';
 ```
 
-- [ ] **Step 3: Update the view-model test fixtures**
+- [ ] **Step 7: Update the view-model test fixtures**
 
 In `claudeville/src/presentation/shared/dashboardViewModel.test.ts`, change `projectPath:` to `project:` at lines 21 and 22.
 
-- [ ] **Step 4: Rename the field reads in the hooks**
+- [ ] **Step 8: Rename the field reads in the hooks**
 
 In `claudeville/src/presentation/react/hooks/useSessionDetail.ts:17`:
 
@@ -337,7 +299,7 @@ In `claudeville/src/presentation/react/hooks/useDashboardDetails.ts:14`:
 
 This now reads a field into a key already named `project`, so the asymmetry noted in the review of #111 is resolved.
 
-- [ ] **Step 5: Rename the group-key locals in the components**
+- [ ] **Step 9: Rename the group-key locals in the components**
 
 In `claudeville/src/presentation/react/components/DashboardView.tsx`, rename the `projectPath` map callback parameter to `projectKey` on lines 48, 49, 52, 55, 58 and 59. Line 55 becomes:
 
@@ -353,31 +315,58 @@ In `claudeville/src/presentation/react/components/Sidebar.tsx`, rename the same 
             <div key={projectKey} className={`sidebar__project-group project-accent--${accentIndex}`} role="group" aria-labelledby={`sidebar-project-${projectKey}`}>
 ```
 
-- [ ] **Step 6: Verify**
+- [ ] **Step 10: Verify the whole rename**
 
 Run: `npx tsc --noEmit`
 Expected: clean.
 
-Run: `npx vitest run claudeville/src/presentation/`
+Run: `npx vitest run claudeville/src/domain/ claudeville/src/application/AgentManager.test.ts claudeville/src/presentation/`
 Expected: all pass, including `DashboardView.test.tsx`'s assertions on `data-project`, `.sidebar__project-group` and `.sidebar__project-name`. Those must be unchanged — if one fails, a DOM contract was renamed by mistake.
 
-- [ ] **Step 7: Commit**
+Run: `npm run lint`
+Expected: clean.
+
+- [ ] **Step 11: Confirm no stragglers remain in the layers this task owns**
+
+Run: `rg -n --word-regexp projectPath claudeville/src/domain claudeville/src/application claudeville/src/presentation`
+Expected: no output. If anything remains, it belongs to no task in this plan and must be fixed here.
+
+- [ ] **Step 12: Commit**
 
 ```bash
-git add claudeville/src/presentation/shared/dashboardViewModel.ts \
+git add claudeville/src/domain/entities/Agent.ts claudeville/src/domain/entities/Agent.test.ts \
+  claudeville/src/application/AgentManager.ts claudeville/src/application/AgentManager.test.ts \
+  claudeville/src/presentation/react/state/ClaudeVilleController.test.ts \
+  claudeville/src/presentation/react/ClaudeVilleApp.test.tsx \
+  claudeville/src/presentation/react/components/DashboardView.test.tsx \
+  claudeville/src/presentation/shared/dashboardViewModel.ts \
   claudeville/src/presentation/shared/dashboardViewModel.test.ts \
   claudeville/src/presentation/react/hooks/useSessionDetail.ts \
   claudeville/src/presentation/react/hooks/useDashboardDetails.ts \
   claudeville/src/presentation/react/components/DashboardView.tsx \
   claudeville/src/presentation/react/components/Sidebar.tsx
-git commit -m "refactor(presentation): read \`project\` off agents, name group keys \`projectKey\`
+git commit -m "refactor(agents): carry \`project\` from session to Agent to the dashboard
 
-useDashboardDetails read \`agent.projectPath\` into a key named \`project\`; both
-are now \`project\`. DashboardView and Sidebar bound \`projectPath\` to a group
-key that may be \`openclaw:agent-1\`, so the local is \`projectKey\`. The
-\`data-project\` attribute and the project-accent classes are DOM contracts and
-are untouched."
+\`AgentManager\` was converting \`session.project\` into \`Agent.projectPath\`,
+the last place the two spellings met. The entity and every reader of it now
+use \`project\`, so the write is an identity mapping.
+
+Renaming the entity and its readers in one commit is load-bearing: groupByProject
+reads Agent.projectPath, so splitting them leaves a revision where every agent
+falls into the _unknown group while its tests still pass on a stale fixture.
+
+DashboardView and Sidebar bound \`projectPath\` to a group key that may be
+\`openclaw:agent-1\`, so the local is \`projectKey\`. The \`data-project\`
+attribute and the project-accent classes are DOM contracts, untouched."
 ```
+
+---
+
+### Task 3: ~~Folded into Task 2~~
+
+Originally "Rename the presentation reads and the misleading group-key locals". Its steps are now Steps 5-9 of Task 2.
+
+Kept as a numbered placeholder rather than renumbered so the ledger's commit ranges and every other task's cross-references stay valid.
 
 ---
 
