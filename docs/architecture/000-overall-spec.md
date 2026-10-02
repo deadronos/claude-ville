@@ -100,6 +100,22 @@ Current providers include:
 - OpenCode
 - Hermes
 
+#### The session project field
+
+A session's project is spelled `project` everywhere: adapters emit it,
+`AgentSessionSummary` declares it, the collector spreads it into the snapshot,
+`hubreceiver` stores it verbatim, and the domain `Agent` exposes it as `project`.
+
+The value is a grouping key, not always a filesystem path. OpenClaw uses
+`openclaw:<agentId>` and VS Code falls back to `vscode:<channel>:<workspaceId>`,
+so no layer may assume it can be split on `/` and treated as a directory.
+
+`shared/project-field-contract.test.ts` enforces the spelling. The check exists
+because the type system cannot: the collector's `SessionSummary` carries
+`[key: string]: unknown` and `hubreceiver/state.ts` casts snapshots to
+`AnyRecord`, so a half-finished rename compiles and fails at runtime instead.
+That gap is what required `readProject()` to accept two spellings in #111.
+
 ## Data flow
 
 ### Browser app data flow
