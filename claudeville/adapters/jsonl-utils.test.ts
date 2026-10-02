@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { readLines, parseJsonLines, readJsonlEntries, collectJsonl } from './jsonl-utils';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -146,6 +146,52 @@ describe('jsonl-utils', () => {
     });
 
     describe('collectJsonl', () => {
+      it('forwards from and count to the reader', async () => {
+        // Hardcoding { from: 'end', count: 50 } inside collectJsonl would make
+        // every other case here still pass, so this pins the extra hop through
+        // readJsonlEntries — the parameter adapters care most about (copilot
+        // reads 100 lines for tool history but 60 for messages).
+        const filePath = write('forwarded.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+        const options = {
+          scope: 'test',
+          operation: 'forwarded',
+          onEntry: (entry: any, out: { id: number }[]) => out.push({ id: entry.id }),
+        };
+
+        const firstOnly = await collectJsonl<{ id: number }>(filePath, { ...options, from: 'start', count: 1 });
+        const everything = await collectJsonl<{ id: number }>(filePath, options);
+
+        expect(firstOnly).toEqual([{ id: 1 }]);
+        expect(everything).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      });
+
+      it('logs scope and operation when folding throws', async () => {
+        const filePath = write('logged.jsonl', '{"id":1}\n');
+        const lines: string[] = [];
+        const original = process.env.DEBUG;
+        const spy = vi.spyOn(console, 'debug').mockImplementation((...args: unknown[]) => {
+          lines.push(args.map(String).join(' '));
+        });
+        process.env.DEBUG = '1';
+
+        try {
+          await collectJsonl(filePath, {
+            scope: 'my-adapter',
+            operation: 'getToolHistory',
+            onEntry: () => { throw new Error('boom'); },
+          });
+        } finally {
+          spy.mockRestore();
+          if (original === undefined) delete process.env.DEBUG;
+          else process.env.DEBUG = original;
+        }
+
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toContain('my-adapter');
+        expect(lines[0]).toContain('getToolHistory');
+        expect(lines[0]).toContain('boom');
+      });
+
       it('folds entries and returns them in order', async () => {
         const filePath = write('fold.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
 
