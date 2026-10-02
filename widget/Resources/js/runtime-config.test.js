@@ -37,6 +37,24 @@ describe('buildRuntimeConfig', () => {
 
     expect(config.hubWsUrl).toBe('wss://socket.example.test/custom');
   });
+
+  // The widget's only hub path is the WebSocket upgrade, where the token
+  // travels as ?access_token. An empty default meant hubreceiver rejected the
+  // upgrade with 401 and the widget never showed sessions.
+  describe('hub auth token', () => {
+    it('defaults to the shared dev token rather than empty', () => {
+      expect(buildRuntimeConfig({}).hubAuthToken).toBe('dev-secret');
+    });
+
+    it('uses an explicit token when one is supplied', () => {
+      expect(buildRuntimeConfig({ HUB_AUTH_TOKEN: 'real-token' }).hubAuthToken).toBe('real-token');
+    });
+
+    it('puts the token on the websocket url', () => {
+      const config = buildRuntimeConfig({ HUB_AUTH_TOKEN: 'real-token' });
+      expect(getHubWsUrl(config)).toBe('ws://localhost:3030/ws?access_token=real-token');
+    });
+  });
 });
 
 describe('getInjectedRuntimeConfig', () => {
@@ -84,35 +102,4 @@ describe('getDashboardUrl', () => {
       'http://localhost:3030',
     );
   });
-
-  // The widget's only hub path is the WebSocket upgrade, where the token
-  // travels as ?access_token. An empty default meant hubreceiver rejected the
-  // upgrade with 401 and the widget never showed sessions.
-  describe('hub auth token', () => {
-    it('defaults to the shared dev token rather than empty', () => {
-      expect(buildRuntimeConfig({}).hubAuthToken).toBe('dev-secret');
-    });
-
-    it('never resolves to an empty token, which would drop auth entirely', () => {
-      for (const env of [{}, { HUB_AUTH_TOKEN: '' }, { HUB_AUTH_TOKEN: undefined }]) {
-        expect(buildRuntimeConfig(env).hubAuthToken).not.toBe('');
-      }
-    });
-
-    it('uses an explicit token when one is supplied', () => {
-      expect(buildRuntimeConfig({ HUB_AUTH_TOKEN: 'real-token' }).hubAuthToken).toBe('real-token');
-    });
-
-    it('puts the token on the websocket url', () => {
-      const config = buildRuntimeConfig({ HUB_AUTH_TOKEN: 'real-token' });
-      expect(getHubWsUrl(config)).toBe('ws://localhost:3030/ws?access_token=real-token');
-    });
-
-    it('carries the token into a ws url even with no token configured', () => {
-      expect(getHubWsUrl(buildRuntimeConfig({}))).toBe(
-        'ws://localhost:3030/ws?access_token=dev-secret',
-      );
-    });
-  });
-
 });

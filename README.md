@@ -159,10 +159,18 @@ The same variables are used by the legacy app, the split frontend, and the colle
 A lightweight status bar widget that shows agent status at a glance.
 
 ```bash
+npm run widget
+```
+
+Or, to build without launching:
+
+```bash
 cd widget
 bash build.sh
-open ClaudeVilleWidget.app
 ```
+
+`ClaudeVilleWidget.app` is a build product and is not committed; it also embeds the
+absolute path of the machine that built it.
 
 The widget:
 - Shows working/idle agent count in the menu bar
@@ -253,7 +261,7 @@ claude-ville/
 ├── widget/                    #   macOS menu bar widget
 │   ├── Sources/main.swift     #   Swift app (NSStatusItem + WKWebView)
 │   ├── Resources/             #   HTML/CSS for popover UI
-│   └── build.sh               #   Build script
+│   ├── build.sh               #   Build script -> ClaudeVilleWidget.app (gitignored)
 ├── runtime-config.shared.js   #   Shared runtime config builder
 └── package.json
 ```
