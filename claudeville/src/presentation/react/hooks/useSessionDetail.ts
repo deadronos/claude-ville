@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 
+import type { SessionDetailData } from '../../../infrastructure/sessionDetailApi.js';
 import { fetchSessionDetail } from '../../../infrastructure/sessionDetailApi.js';
+import type { AgentDetailRef } from '../../shared/dashboardViewModel.js';
 
-type SessionDetailState = {
-  toolHistory: any[];
-  messages: any[];
-};
-
-export function useSessionDetail(agent: any | null, enabled: boolean, intervalMs: number) {
-  const [detail, setDetail] = useState<SessionDetailState>({
+export function useSessionDetail(
+  agent: AgentDetailRef | null,
+  enabled: boolean,
+  intervalMs: number,
+) {
+  const [detail, setDetail] = useState<SessionDetailData>({
     toolHistory: [],
     messages: [],
   });

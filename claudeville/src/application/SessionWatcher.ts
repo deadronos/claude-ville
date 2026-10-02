@@ -1,4 +1,7 @@
 import { eventBus } from '../domain/events/DomainEvent.js';
+import type { HubWsMessage } from '../domain/events/DomainEvent.js';
+import type { AgentSessionSummary } from '../../../shared/types.js';
+import type { Team } from './AgentManager.js';
 import { AgentManager } from './AgentManager.js';
 import { WebSocketClient } from '../infrastructure/WebSocketClient.js';
 import { HubDataSource } from '../infrastructure/HubDataSource.js';
@@ -10,8 +13,8 @@ export class SessionWatcher {
     dataSource: HubDataSource;
     pollTimer: ReturnType<typeof setInterval> | null;
     running: boolean;
-    _onWsInit: (data: any) => void;
-    _onWsUpdate: (data: any) => void;
+    _onWsInit: (data: HubWsMessage) => void;
+    _onWsUpdate: (data: HubWsMessage) => void;
     _onWsDisconnected: () => void;
     _onWsConnected: () => void;
 
@@ -22,8 +25,15 @@ export class SessionWatcher {
         this.pollTimer = null;
         this.running = false;
 
-        this._onWsInit = (data: any) => this.agentManager.handleWebSocketMessage(data);
-        this._onWsUpdate = (data: any) => this.agentManager.handleWebSocketMessage(data);
+        // The hub frame is an untyped snapshot envelope, so this is the one
+        // place the assertion has to be made. It is checked against
+        // handleWebSocketMessage's signature rather than floating as `any`.
+        const forward = (data: HubWsMessage) =>
+            this.agentManager.handleWebSocketMessage(
+                data as { sessions?: AgentSessionSummary[]; teams?: Team[] },
+            );
+        this._onWsInit = forward;
+        this._onWsUpdate = forward;
         this._onWsDisconnected = () => this._startPolling();
         this._onWsConnected = () => {
             void this._poll();

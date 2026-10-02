@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
+import { Agent } from '../../../domain/entities/Agent.js';
 import { World } from '../../../domain/entities/World.js';
 import { Building } from '../../../domain/entities/Building.js';
 import { BUILDING_DEFS } from '../../../config/buildings.js';
@@ -20,10 +21,16 @@ export type AppMode = 'character' | 'dashboard';
 
 export interface ClaudeVilleSnapshot {
   world: World;
-  agents: any[];
+  agents: Agent[];
   selectedAgentId: string | null;
-  selectedAgent: any | null;
+  selectedAgent: Agent | null;
   mode: AppMode;
+  /**
+   * Mirrors the hub's usage payload, which arrives as an untyped snapshot
+   * record (hubreceiver/state.ts:36 types it `ReturnType<typeof defaultUsage> |
+   * AnyRecord`). Nothing in the view layer reads it, so inventing a shared
+   * Usage type here would guard nothing. Left as any on purpose.
+   */
   usage: any;
   settingsOpen: boolean;
   toasts: ToastItem[];
@@ -38,6 +45,7 @@ export class ClaudeVilleController {
   wsClient: WebSocketClient;
   agentManager: AgentManager;
   sessionWatcher: SessionWatcher;
+  /** See ClaudeVilleSnapshot.usage — untyped hub payload, deliberately so. */
   usage: any;
   selectedAgentId: string | null;
   mode: AppMode;
@@ -53,7 +61,7 @@ export class ClaudeVilleController {
   private wsEverConnected: boolean;
 
   /** Cached agent array to avoid repeated Array.from on every change */
-  private _cachedAgents: any[] = [];
+  private _cachedAgents: Agent[] = [];
 
   /** Sync the cached agents array and world store */
   private _syncAgentsCache() {
@@ -100,7 +108,7 @@ export class ClaudeVilleController {
 
   private _bindEvents() {
     this.unsubscribers.push(
-      eventBus.on('agent:added', (agent: any) => {
+      eventBus.on('agent:added', (agent: Agent) => {
         if (this.knownAgents.size > 0) {
           this.pushToast(i18n.t('agentJoined', agent.name), 'info');
         }
@@ -112,7 +120,7 @@ export class ClaudeVilleController {
         this._syncAgentsCache();
         this._emitChange();
       }),
-      eventBus.on('agent:removed', (agent: any) => {
+      eventBus.on('agent:removed', (agent: Agent) => {
         this.knownAgents.delete(agent.id);
         if (this.selectedAgentId === agent.id) {
           this._setSelection(null);
@@ -121,7 +129,7 @@ export class ClaudeVilleController {
         this._syncAgentsCache();
         this._emitChange();
       }),
-      eventBus.on('usage:updated', (usage: any) => {
+      eventBus.on('usage:updated', (usage: any) => {  // see ClaudeVilleSnapshot.usage
         this.usage = usage;
         this._emitChange();
       }),

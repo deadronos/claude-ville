@@ -5,6 +5,16 @@ import { generateAgentDisplayName, resolveAgentDisplayName } from '../../config/
 import { estimateClaudeCost } from '../../config/costs.js';
 import { formatToolLabel, normalizeBubbleSnippet, parseToolDetail } from '../../config/toolFormatting.js';
 
+/**
+ * A message as the adapters supply it: a widening of
+ * AdapterSessionDetail['messages'][number], which it must stay assignable from.
+ * Redeclared here so the domain layer does not reach out to shared/ for a field
+ * it only reads. Strings are tolerated because some adapters summarise rather
+ * than carry a message object. The two are not linked by any check, so a rename
+ * on the shared side would compile here and silently stop matching.
+ */
+export type AgentMessage = string | { role?: string; text?: string; ts?: number };
+
 const toolBuildingMap: Record<string, string> = {
     read: 'chathall',
     grep: 'chathall',
@@ -45,7 +55,7 @@ interface AgentParams {
     role?: string;
     tokens?: { input: number; output: number };
     usage?: { contextPercent?: number } | null;
-    messages?: unknown[];
+    messages?: AgentMessage[];
     teamName?: string | null;
     projectPath?: string | null;
     lastTool?: string | null;
@@ -66,7 +76,7 @@ export class Agent {
     role: string;
     tokens: { input: number; output: number };
     usage: { contextPercent?: number } | null;
-    messages: unknown[];
+    messages: AgentMessage[];
     teamName: string | null;
     projectPath: string | null;
     provider: string;
@@ -127,8 +137,8 @@ export class Agent {
             return last;
         }
 
-        if (last && typeof last === 'object' && typeof (last as { text?: string }).text === 'string') {
-            return (last as { text: string }).text;
+        if (last && typeof last === 'object' && typeof last.text === 'string') {
+            return last.text;
         }
 
         return null;

@@ -23,6 +23,17 @@ export interface Session {
   startedAt?: number;
 }
 
+/**
+ * Payload of the hub's WebSocket frame: a tagged envelope with untyped extras.
+ * Lives here rather than beside WebSocketClient so domain/ can name it without
+ * depending on infrastructure/.
+ */
+export interface WsMessage {
+  type: string;
+  usage?: unknown;
+  [key: string]: unknown;
+}
+
 export interface WatchPath {
   type: 'file' | 'directory';
   path: string;
@@ -53,6 +64,13 @@ export interface AgentSessionSummary extends Omit<Session, 'displayName'> {
   agentType?: string | null;
   displayName?: string | null;
   parentSessionId?: string | null;
+  /**
+   * Computed in adapters/index.ts from the session's token usage and copied into
+   * Agent.usage by AgentManager, which is what DashboardView and ActivityPanel
+   * read. It was produced and consumed while declared nowhere, so it only
+   * typechecked because the session was `any`.
+   */
+  contextPercent?: number;
 }
 
 export interface AgentAdapter {
