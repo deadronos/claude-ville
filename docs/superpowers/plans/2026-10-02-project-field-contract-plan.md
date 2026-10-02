@@ -518,18 +518,7 @@ values that are often not paths at all (\`vscode:<channel>:<workspaceId>\`,
 
 `tsc` cannot verify the collector → hub hop: `collector/snapshot.ts:22`'s `SessionSummary` carries `[key: string]: unknown`, and `hubreceiver/state.ts` casts snapshots to `AnyRecord`. A half-finished rename typechecks clean and breaks at runtime. This task supplies the three checks that do not rely on the type system.
 
-- [ ] **Step 1: Prove the guard detects the old spelling before writing it green**
-
-This step exists so the guard is not merely asserted to work.
-
-Run: `git stash list | head -1`
-Expected: `stash@{0}: On main: test`. **Do not touch it.** It is not yours.
-
-Instead, temporarily reintroduce one violation: in `shared/types.ts`, change line 11 from `project?: string | null;` back to `projectPath?: string;`, run the guard test once it exists (Step 2), and confirm it fails naming that file and line. Then restore `project?: string | null;`.
-
-If this proves fiddly, the equivalent check is: run the guard against the pre-Task-1 tree with `git stash` of your own changes only. Never use `git stash` on the pre-existing `stash@{0}`.
-
-- [ ] **Step 2: Create the guard test**
+- [ ] **Step 1: Create the guard test**
 
 Create `shared/project-field-contract.test.ts`:
 
@@ -604,10 +593,24 @@ describe('project field contract', () => {
 });
 ```
 
-- [ ] **Step 3: Run the guard**
+- [ ] **Step 2: Run the guard — it should pass, because Tasks 1-4 cleared every site**
 
 Run: `npx vitest run shared/project-field-contract.test.ts`
-Expected: PASS. If it fails, `findViolations()` names the file and line — fix those and re-run. Tasks 1-4 should have cleared every one.
+Expected: PASS. If it fails, `findViolations()` names the file and line of anything a task missed. Fix those and re-run before continuing.
+
+- [ ] **Step 3: Prove the guard has teeth**
+
+A guard test that has only ever passed is not evidence it works. Temporarily reintroduce one violation and confirm the test fails on it.
+
+In `shared/types.ts`, change line 11 from `project?: string | null;` back to `projectPath?: string;`.
+
+Run: `npx vitest run shared/project-field-contract.test.ts`
+Expected: FAIL, with the failure message naming `shared/types.ts:11` among the violations. If it passes, the guard is not scanning what it claims to and must be fixed before this task can be called done.
+
+Then restore `project?: string | null;` and re-run the guard.
+Expected: PASS again.
+
+Do not use `git stash` for this. There is a pre-existing `stash@{0}: On main: test` in this repo that belongs to someone else and must be left alone.
 
 - [ ] **Step 4: Add the wire test at the broadcast seam**
 
@@ -781,3 +784,5 @@ Iterate to a clean verdict. Then open the PR against `origin/main` on this fork,
 **Type consistency.** `Session.project?: string | null` is introduced in Task 1 and `AgentSessionSummary.project: string | null` (which already exists at `shared/types.ts:57`) narrows it. `AgentParams.project` and `Agent.project` are introduced in Task 2 and consumed by `ProjectAgentLike.project` / `AgentDetailRef.project` in Task 3. The guard's `FORBIDDEN` pattern matches exactly the occurrences the renames clear, so Task 5 Step 3 should pass on a correct implementation and fail on an incomplete one.
 
 **Known judgement calls, recorded rather than hidden.** `claude.ts`'s `projectPathMap` keeps its name: it genuinely maps encoded directory names to project paths, and the guard's word boundary does not match it. `truncateProjectPath` and `groupByProject` keep theirs. `vscode.real.test.ts`'s workspace-path locals are renamed to `workspaceProject` even though they hold real filesystem paths, because they mirror `vscode.ts:418`. These are the three places a reviewer is most likely to ask why a rename stopped, so they are stated in Task 4.
+
+**Correction made during execution setup.** Task 5 originally ordered its steps so that Step 1 ran the guard to prove it failed while Step 2 was what created the guard — impossible as written. The steps are now create → confirm pass → reintroduce one violation and confirm it fails → restore → confirm pass. That ordering also matches the plan's own stated intent, which was "a guard test that has only ever passed is not evidence it works".
