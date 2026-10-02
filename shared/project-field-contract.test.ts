@@ -50,12 +50,21 @@ const FORBIDDEN = /\bprojectPath\b/g;
 /**
  * Derives the session records' key fingerprint. `sessionId` + `provider` alone
  * was too broad: a reviewer showed that an unrelated literal
- * `{ sessionId, provider, event: 'x' }` tripped the positive check with a
- * misleading "missing `project`" message. `lastActivity` is added because it is
- * carried by all 14 real session records across the nine adapters (measured, not
- * guessed) and by no unrelated literal in the tree. `sessionId` alone is far
- * broader still: it also selects `getSessionDetail()` return literals, which
- * legitimately carry no project.
+ * `{ sessionId, provider, event: 'x' }` added to an adapter tripped the positive
+ * check with a misleading "missing `project`" message. `lastActivity` is added
+ * because all 14 real session records across the nine adapters carry it
+ * (measured, not guessed). `sessionId` alone is far broader still: it also
+ * selects `getSessionDetail()` return literals, which legitimately carry no
+ * project.
+ *
+ * Two consequences of this fingerprint, both accepted deliberately:
+ * - It is not globally unique. `e2e/live-session.e2e.ts` has unrelated literals
+ *   carrying all three keys. They cannot trip the check because it only reads
+ *   adapter files, but do not treat this as a tree-wide record detector.
+ * - It can under-count. A record that omits `lastActivity` is skipped, not
+ *   flagged, so a multi-record adapter could diverge on one branch and still
+ *   pass. A whole adapter yielding zero fingerprinted records does fail loudly,
+ *   which is the case that matters most.
  */
 const SESSION_RECORD_KEYS = ['sessionId', 'provider', 'lastActivity'] as const;
 
