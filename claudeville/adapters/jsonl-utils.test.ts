@@ -186,6 +186,36 @@ describe('jsonl-utils', () => {
         expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
       });
 
+      it('returns [] when maxItems is 0, even with entries to fold', async () => {
+        const filePath = write('zero.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'zero',
+          count: 10,
+          maxItems: 0,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([]);
+      });
+
+      it('returns [] when maxItems is negative', async () => {
+        // Five entries and maxItems -2: the old `out.slice(-maxItems)` behaviour
+        // would have computed slice(2) and returned three of them.
+        const filePath = write('negative.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n{"id":4}\n{"id":5}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'negative',
+          count: 10,
+          maxItems: -2,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([]);
+      });
+
       it('returns [] for a nonexistent file without throwing', async () => {
         const result = await collectJsonl<{ id: number }>(path.join(tmpDir, 'nope.jsonl'), {
           scope: 'test',

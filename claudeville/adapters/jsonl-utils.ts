@@ -92,6 +92,10 @@ export async function readJsonlEntries(
  * `maxItems`. Swallows and debug-logs read/parse/fold errors, returning
  * whatever was accumulated — the contract every adapter's getToolHistory /
  * getRecentMessages already had.
+ *
+ * `maxItems` is applied as a real limit: `0` or a negative value returns an
+ * empty array rather than the whole file. Omit it (or pass `undefined`) to keep
+ * every entry.
  */
 export async function collectJsonl<T>(
   filePath: string,
@@ -119,5 +123,6 @@ export async function collectJsonl<T>(
   } catch (err) {
     debugAdapterError(scope, operation, err, filePath);
   }
-  return typeof maxItems === 'number' ? out.slice(-maxItems) : out;
+  if (typeof maxItems !== 'number') return out;
+  return maxItems <= 0 ? [] : out.slice(-maxItems);
 }
