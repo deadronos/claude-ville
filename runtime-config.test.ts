@@ -371,11 +371,17 @@ describe('runtime config', () => {
       expect(real({ HUB_AUTH_TOKEN: 'real-token' }).hubAuthToken).toBe('real-token');
     });
 
-    it('agrees with the hubreceiver/collector resolver on every input', async () => {
+    it('never resolves to an empty token, which would suppress the auth header', async () => {
+      // The concrete failure this guards: an empty token makes
+      // getHubAuthHeaders() return undefined, so the browser sends no
+      // Authorization header and every read 401s. Comparing against the
+      // exported constant is the real assertion — comparing against
+      // resolveHubAuthToken would just be f(env) === f(env), since
+      // buildRuntimeConfig now calls that same helper.
       const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
-      const { resolveHubAuthToken } = await import('./shared/hub-auth.js');
-      for (const env of [{}, { HUB_AUTH_TOKEN: '' }, { HUB_AUTH_TOKEN: 'x' }]) {
-        expect(real(env).hubAuthToken).toBe(resolveHubAuthToken(env as NodeJS.ProcessEnv));
+      for (const env of [{}, { HUB_AUTH_TOKEN: '' }, { HUB_AUTH_TOKEN: undefined }]) {
+        expect(real(env).hubAuthToken).toBe(DEV_HUB_AUTH_TOKEN);
+        expect(real(env).hubAuthToken).not.toBe('');
       }
     });
   });
