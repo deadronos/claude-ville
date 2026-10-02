@@ -23,6 +23,18 @@
  * the text, because the text is full of `project` that is not the field: in
  * pi.ts, lines 32, 234 and 333 are type positions (`project: string | null`)
  * that survive an edit of the emitted key on line 321 untouched.
+ *
+ * The adapter list is derived from claudeville/adapters/index.ts — its import
+ * bindings and its `adapters` array literal — rather than hand-maintained, so a
+ * tenth adapter added to the registry is checked without editing this file.
+ * index.ts is parsed as text; it is never imported, because it pulls in sqlite
+ * and child_process.
+ *
+ * PR B plans to extract a shared `buildSessionSummary(fields)` builder and move
+ * each adapter's session literal into it. When that lands, this positive check
+ * must be extended to the builder: the adapter files will no longer contain the
+ * literal it inspects, and it would otherwise fail (or be weakened) rather than
+ * track the field.
  */
 import fs from 'fs';
 import path from 'path';
@@ -36,35 +48,84 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'widget', '.worktrees', '.git
 const FORBIDDEN = /\bprojectPath\b/g;
 
 /**
- * The provider adapters that ship in the default suite, one file each. Kept as
- * an explicit list rather than read off adapters/index.ts: importing the registry
- * would pull the whole adapter graph (and its sqlite/child_process imports) into
- * a test that only needs to read nine files as text.
+ * Derives the session records' key fingerprint. `sessionId` + `provider` alone
+ * was too broad: a reviewer showed that an unrelated literal
+ * `{ sessionId, provider, event: 'x' }` tripped the positive check with a
+ * misleading "missing `project`" message. `lastActivity` is added because it is
+ * carried by all 14 real session records across the nine adapters (measured, not
+ * guessed) and by no unrelated literal in the tree. `sessionId` alone is far
+ * broader still: it also selects `getSessionDetail()` return literals, which
+ * legitimately carry no project.
  */
-const PRODUCTION_ADAPTERS = [
-  'claude',
-  'codex',
-  'copilot',
-  'gemini',
-  'hermes',
-  'openclaw',
-  'opencode',
-  'pi',
-  'vscode',
-] as const;
-
-/**
- * A session record is the object literal an adapter returns from
- * getActiveSessions(). Anchoring on two keys that only such a record carries —
- * `sessionId` identifies the record, `provider` comes from Session and is absent
- * from AdapterSessionDetail — separates the 14 session records across the nine
- * adapters from the detail records that also carry a `sessionId`. The check
- * ignores formatting entirely: it is indifferent to indentation, trailing commas,
- * and whether the value is written `project: x` or shorthand `project`.
- */
-const SESSION_RECORD_KEYS = ['sessionId', 'provider'] as const;
+const SESSION_RECORD_KEYS = ['sessionId', 'provider', 'lastActivity'] as const;
 
 type SessionRecord = { line: number; keys: Set<string> };
+
+/**
+ * Parses claudeville/adapters/index.ts and resolves the `adapters` array's
+ * `new X()` entries to the files their imports name. The specifiers are
+ * `.js`-suffixed (`./claude.js`), the NodeNext convention for what is on disk as
+ * `.ts`, so the suffix is mapped back. Reading the registry through the AST
+ * rather than importing it keeps sqlite and child_process out of the test.
+ */
+function adapterFiles(): string[] {
+  const registry = path.join(REPO_ROOT, 'claudeville', 'adapters', 'index.ts');
+  const parsed = ts.createSourceFile(
+    registry,
+    fs.readFileSync(registry, 'utf-8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const imports = new Map<string, string>();
+  let entries: ts.ArrayLiteralExpression | null = null;
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const bindings = node.importClause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          imports.set(element.name.text, node.moduleSpecifier.text);
+        }
+      }
+    }
+    if (ts.isVariableStatement(node)) {
+      for (const declaration of node.declarationList.declarations) {
+        if (
+          ts.isIdentifier(declaration.name)
+          && declaration.name.text === 'adapters'
+          && declaration.initializer
+          && ts.isArrayLiteralExpression(declaration.initializer)
+        ) {
+          entries = declaration.initializer;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+
+  if (!entries) {
+    throw new Error('claudeville/adapters/index.ts has no `adapters` array literal to derive the adapter list from.');
+  }
+
+  const files: string[] = [];
+  for (const entry of entries.elements) {
+    const expression = ts.isNewExpression(entry) ? entry.expression : entry;
+    if (!ts.isIdentifier(expression)) {
+      throw new Error(`Unsupported entry in index.ts's \`adapters\` array: ${entry.getText(parsed)}`);
+    }
+    const specifier = imports.get(expression.text);
+    if (!specifier) {
+      throw new Error(`index.ts's \`adapters\` array references ${expression.text}, which has no import binding.`);
+    }
+    if (!specifier.startsWith('./')) {
+      throw new Error(`index.ts's adapter ${expression.text} does not resolve to a sibling module: ${specifier}`);
+    }
+    files.push(path.resolve(path.dirname(registry), specifier).replace(/\.js$/, '.ts'));
+  }
+  return files;
+}
 
 function sessionRecords(file: string): SessionRecord[] {
   const source = fs.readFileSync(file, 'utf-8');
@@ -164,9 +225,17 @@ describe('project field contract', () => {
     // they supply their own fixtures. Renaming the key is therefore invisible
     // to the ban above unless something asserts the key is actually present.
     const missing: string[] = [];
-    for (const adapter of PRODUCTION_ADAPTERS) {
-      const rel = path.join('claudeville', 'adapters', `${adapter}.ts`);
-      const records = sessionRecords(path.join(REPO_ROOT, rel));
+    const files = adapterFiles();
+    if (files.length === 0) {
+      missing.push('claudeville/adapters/index.ts (no adapters derived from the registry)');
+    }
+    for (const file of files) {
+      const rel = path.relative(REPO_ROOT, file);
+      if (!fs.existsSync(file)) {
+        missing.push(`${rel} (referenced by the registry but not found on disk)`);
+        continue;
+      }
+      const records = sessionRecords(file);
       const withProject = records.filter((record) => record.keys.has('project'));
       // No record at all is a failure too: it means the adapter stopped emitting
       // sessions in a shape this guard can see, which would otherwise pass

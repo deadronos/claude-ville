@@ -15,7 +15,7 @@ export type SessionDetail = {
 export type SessionSummary = {
   provider: string;
   sessionId: string;
-  project?: string;
+  project?: string | null;
   model?: string;
   tokens?: { input?: number; output?: number } | null;
   detail?: SessionDetail | null;
