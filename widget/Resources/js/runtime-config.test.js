@@ -11,7 +11,37 @@ describe('buildRuntimeConfig', () => {
     expect(buildRuntimeConfig({})).toEqual({
       hubHttpUrl: 'http://localhost:3030',
       hubWsUrl: 'ws://localhost:3030/ws',
-      hubAuthToken: '',
+      hubAuthToken: 'dev-secret',
+    });
+  });
+
+  // The token is what makes an authenticated hubreceiver accept the widget at
+  // all. An empty default meant the widget sent no Authorization header and no
+  // access_token, so it 401'd on every read and its WebSocket was rejected.
+  describe('hub auth token', () => {
+    it('defaults to the shared dev token rather than empty', () => {
+      expect(buildRuntimeConfig({}).hubAuthToken).toBe('dev-secret');
+    });
+
+    it('never resolves to an empty token, which would suppress auth entirely', () => {
+      for (const env of [{}, { HUB_AUTH_TOKEN: '' }, { HUB_AUTH_TOKEN: undefined }]) {
+        expect(buildRuntimeConfig(env).hubAuthToken).not.toBe('');
+      }
+    });
+
+    it('uses an explicit token when one is supplied', () => {
+      expect(buildRuntimeConfig({ HUB_AUTH_TOKEN: 'real-token' }).hubAuthToken).toBe('real-token');
+    });
+
+    it('puts the token on the websocket url', () => {
+      const config = buildRuntimeConfig({ HUB_AUTH_TOKEN: 'real-token' });
+      expect(getHubWsUrl(config)).toBe('ws://localhost:3030/ws?access_token=real-token');
+    });
+
+    it('carries the token into a ws url even with no token configured', () => {
+      expect(getHubWsUrl(buildRuntimeConfig({}))).toBe(
+        'ws://localhost:3030/ws?access_token=dev-secret',
+      );
     });
   });
 
