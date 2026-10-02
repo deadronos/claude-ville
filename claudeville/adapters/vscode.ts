@@ -415,7 +415,7 @@ async function scanAllSessions(activeThresholdMs: number) {
         const copilotChatDir = path.join(workspacePath, 'GitHub.copilot-chat');
         if (!fs.existsSync(copilotChatDir)) return [];
 
-        const projectPath = await readWorkspacePath(workspacePath);
+        const workspaceProject = await readWorkspacePath(workspacePath);
         const candidates: ResourceSessionCandidate[] = [];
 
         // legacy/new debug logs
@@ -446,7 +446,7 @@ async function scanAllSessions(activeThresholdMs: number) {
                   rawSessionId: logDir.name,
                   sourceType: 'debug',
                   filePath: mainLogFile,
-                  project: projectPath || `vscode:${root.channel}:${workspaceId}`,
+                  project: workspaceProject || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
                   tokens: (await parseSession(mainLogFile)).tokens,
                 };
@@ -485,7 +485,7 @@ async function scanAllSessions(activeThresholdMs: number) {
                   rawSessionId: file.replace('.jsonl', ''),
                   sourceType: 'transcript',
                   filePath: transcriptPath,
-                  project: projectPath || `vscode:${root.channel}:${workspaceId}`,
+                  project: workspaceProject || `vscode:${root.channel}:${workspaceId}`,
                   mtime: stat.mtimeMs,
                   tokens: (await parseSession(transcriptPath)).tokens,
                 };
@@ -553,7 +553,7 @@ async function scanAllSessions(activeThresholdMs: number) {
                 rawSessionId: sessionDir.name,
                 sourceType: 'resource',
                 filePath: newest.filePath,
-                project: projectPath || `vscode:${root.channel}:${workspaceId}`,
+                project: workspaceProject || `vscode:${root.channel}:${workspaceId}`,
                 mtime: newest.mtime,
                 tokens: (await parseSession(newest.filePath)).tokens,
               };

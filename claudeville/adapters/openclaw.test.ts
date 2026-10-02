@@ -128,7 +128,7 @@ describe('openclaw adapter', () => {
     });
 
     it('buildProjectKey returns openclaw:agentId when agentId is provided', () => {
-      const buildProjectKey = (agentId, projectPath) => { if (agentId) return `openclaw:${agentId}`; return projectPath || null; };
+      const buildProjectKey = (agentId, project) => { if (agentId) return `openclaw:${agentId}`; return project || null; };
       expect(buildProjectKey('my-agent', '/path/to/project')).toBe('openclaw:my-agent');
       expect(buildProjectKey(null, '/path')).toBe('/path');
       expect(buildProjectKey('', null)).toBeNull();

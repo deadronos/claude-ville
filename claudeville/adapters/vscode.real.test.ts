@@ -30,11 +30,11 @@ function touchRecent(filePath: string, ageMs = 5_000) {
   fs.utimesSync(filePath, date, date);
 }
 
-function writeWorkspaceConfig(userDataDir: string, workspaceId: string, projectPath: string) {
+function writeWorkspaceConfig(userDataDir: string, workspaceId: string, workspaceProject: string) {
   const workspaceDir = path.join(userDataDir, 'workspaceStorage', workspaceId);
   fs.mkdirSync(workspaceDir, { recursive: true });
   writeJson(path.join(workspaceDir, 'workspace.json'), {
-    folder: `file://${projectPath}`,
+    folder: `file://${workspaceProject}`,
   });
   return path.join(workspaceDir, 'GitHub.copilot-chat');
 }
@@ -82,17 +82,17 @@ describe('VSCodeAdapter real module coverage', () => {
     try {
       const vscodeUserDir = path.join(tmpRoot, 'Code', 'User');
       const insidersUserDir = path.join(tmpRoot, 'Code - Insiders', 'User');
-      const projectPath = path.join(tmpRoot, 'project');
-      fs.mkdirSync(projectPath, { recursive: true });
+      const workspaceProject = path.join(tmpRoot, 'project');
+      fs.mkdirSync(workspaceProject, { recursive: true });
 
-      const debugCopilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-debug', projectPath);
+      const debugCopilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-debug', workspaceProject);
       writeDebugLog(debugCopilotDir, 'session-debug', [
         { type: 'llm_request', attrs: { model: 'gpt-4.1', inputTokens: 12, outputTokens: 34 } },
         { type: 'tool_call', name: 'read_file', attrs: { args: { path: 'README.md' } }, ts: 1_000 },
         { type: 'agent_response', attrs: { response: JSON.stringify([{ role: 'assistant', parts: [{ type: 'text', content: 'Debug hello' }] }]) }, ts: 1_001 },
       ]);
 
-      const transcriptCopilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-transcript', projectPath);
+      const transcriptCopilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-transcript', workspaceProject);
       writeTranscript(transcriptCopilotDir, 'session-transcript', [
         { type: 'session.start', data: { vscodeVersion: '1.95.0' } },
         { type: 'assistant.message', data: { toolRequests: [{ name: 'grep_search', arguments: { query: 'TODO' } }], content: 'Transcript hello' }, timestamp: 2_000 },
@@ -115,7 +115,7 @@ describe('VSCodeAdapter real module coverage', () => {
       expect(debugSession).toMatchObject({
         provider: 'vscode',
         model: 'gpt-4.1',
-        project: projectPath,
+        project: workspaceProject,
         lastTool: 'read_file',
         lastMessage: 'Debug hello',
         tokens: { input: 12, output: 34 },
@@ -125,7 +125,7 @@ describe('VSCodeAdapter real module coverage', () => {
       expect(transcriptSession).toMatchObject({
         provider: 'vscode',
         model: 'copilot-chat@1.95.0',
-        project: projectPath,
+        project: workspaceProject,
         lastTool: 'grep_search',
         lastMessage: 'Transcript hello',
       });
@@ -154,10 +154,10 @@ describe('VSCodeAdapter real module coverage', () => {
     try {
       const vscodeUserDir = path.join(tmpRoot, 'Code', 'User');
       const insidersUserDir = path.join(tmpRoot, 'Code - Insiders', 'User');
-      const projectPath = path.join(tmpRoot, 'project');
-      fs.mkdirSync(projectPath, { recursive: true });
+      const workspaceProject = path.join(tmpRoot, 'project');
+      fs.mkdirSync(workspaceProject, { recursive: true });
 
-      const copilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-priority', projectPath);
+      const copilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-priority', workspaceProject);
       writeDebugLog(copilotDir, 'shared-session', [
         { type: 'llm_request', attrs: { model: 'debug-model' } },
         { type: 'assistant.message', data: { content: 'Debug wins' }, timestamp: 1_000 },
@@ -187,10 +187,10 @@ describe('VSCodeAdapter real module coverage', () => {
     try {
       const vscodeUserDir = path.join(tmpRoot, 'Code', 'User');
       const insidersUserDir = path.join(tmpRoot, 'Code - Insiders', 'User');
-      const projectPath = path.join(tmpRoot, 'project');
-      fs.mkdirSync(projectPath, { recursive: true });
+      const workspaceProject = path.join(tmpRoot, 'project');
+      fs.mkdirSync(workspaceProject, { recursive: true });
 
-      const copilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-blank', projectPath);
+      const copilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-blank', workspaceProject);
       // Blank new-chat tab: only session_start, no llm_request, tool_call, or any real event
       writeDebugLog(copilotDir, 'blank-session', [
         { type: 'session_start', attrs: { copilotVersion: '1.0', vscodeVersion: '1.95.0' } },
@@ -230,10 +230,10 @@ describe('VSCodeAdapter real module coverage', () => {
     try {
       const vscodeUserDir = path.join(tmpRoot, 'Code', 'User');
       const insidersUserDir = path.join(tmpRoot, 'Code - Insiders', 'User');
-      const projectPath = path.join(tmpRoot, 'project');
-      fs.mkdirSync(projectPath, { recursive: true });
+      const workspaceProject = path.join(tmpRoot, 'project');
+      fs.mkdirSync(workspaceProject, { recursive: true });
 
-      const debugCopilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-detail', projectPath);
+      const debugCopilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-detail', workspaceProject);
       writeDebugLog(debugCopilotDir, 'detail-session', [
         { type: 'llm_request', attrs: { model: 'debug-detail-model', inputTokens: 7, outputTokens: 11 } },
         { type: 'tool_call', name: 'read_file', attrs: { args: { path: 'README.md' } }, ts: 1_000 },
@@ -288,9 +288,9 @@ describe('VSCodeAdapter real module coverage', () => {
       const missingAdapter = await loadAdapter(vscodeUserDir, insidersUserDir);
       expect(missingAdapter.isAvailable()).toBe(false);
 
-      const projectPath = path.join(tmpRoot, 'project');
-      fs.mkdirSync(projectPath, { recursive: true });
-      const copilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-stale', projectPath);
+      const workspaceProject = path.join(tmpRoot, 'project');
+      fs.mkdirSync(workspaceProject, { recursive: true });
+      const copilotDir = writeWorkspaceConfig(vscodeUserDir, 'workspace-stale', workspaceProject);
       writeDebugLog(copilotDir, 'stale-session', [
         { type: 'assistant.message', data: { content: 'Too old to count' }, timestamp: 1_000 },
       ], 10 * 60 * 1000);
@@ -299,7 +299,7 @@ describe('VSCodeAdapter real module coverage', () => {
       const sessions = await adapter.getActiveSessions(60_000);
       expect(sessions).toEqual([]);
 
-      const missingDetail = await adapter.getSessionDetail('not-a-vscode-session', projectPath);
+      const missingDetail = await adapter.getSessionDetail('not-a-vscode-session', workspaceProject);
       expect(missingDetail).toEqual({ toolHistory: [], messages: [] });
     } finally {
       rmTmp(tmpRoot);

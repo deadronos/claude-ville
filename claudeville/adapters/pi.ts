@@ -251,14 +251,14 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResul
 
     const dirResults = await Promise.all(
       projectDirs.map(async (projectDir: Dirent) => {
-        const projectPath = path.join(SESSIONS_DIR, projectDir.name);
+        const sessionDirPath = path.join(SESSIONS_DIR, projectDir.name);
         try {
-          const sessionFiles = await fs.promises.readdir(projectPath);
+          const sessionFiles = await fs.promises.readdir(sessionDirPath);
           const jsonlFiles = sessionFiles.filter((f: string) => f.endsWith('.jsonl'));
 
           const fileResults = await Promise.all(
             jsonlFiles.map(async (file: string) => {
-              const filePath = path.join(projectPath, file);
+              const filePath = path.join(sessionDirPath, file);
               try {
                 const stat = await fs.promises.stat(filePath);
                 if (now - stat.mtimeMs > activeThresholdMs) return null;
@@ -276,7 +276,7 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResul
           );
           return fileResults.filter((r: ScanResult | null): r is ScanResult => r !== null);
         } catch (err) {
-          debugAdapterError('pi', 'scanAllSessionFiles readdir project', err, projectPath);
+          debugAdapterError('pi', 'scanAllSessionFiles readdir project', err, sessionDirPath);
           return [];
         }
       })
@@ -307,7 +307,7 @@ export class PiAdapter implements AgentAdapter {
     const sessionFiles = await scanAllSessionFiles(activeThresholdMs);
     const sessions = await Promise.all(sessionFiles.map(async ({ filePath, mtime, fileName, projectDir }) => {
       const detail = await parseSession(filePath);
-      const projectPath = resolveProjectPath(detail, projectDir);
+      const project = resolveProjectPath(detail, projectDir);
 
       return {
         sessionId: buildSessionId(projectDir, fileName),
@@ -318,7 +318,7 @@ export class PiAdapter implements AgentAdapter {
         model: detail.model || 'unknown',
         status: 'active',
         lastActivity: mtime,
-        project: projectPath,
+        project,
         lastMessage: detail.lastMessage,
         lastTool: detail.lastTool,
         lastToolInput: detail.lastToolInput,

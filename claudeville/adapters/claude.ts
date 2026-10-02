@@ -70,10 +70,10 @@ function extractDetailFromEntries(entries: any[]): SessionDetail {
 
 // ─── Session parsing ─────────────────────────────────────
 
-async function getSessionDetail(sessionId: string, projectPath: string | null) {
-  if (!projectPath) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+async function getSessionDetail(sessionId: string, project: string | null) {
+  if (!project) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
 
-  const encoded = projectPath.replace(/\//g, '-');
+  const encoded = project.replace(/\//g, '-');
   const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
   if (!fs.existsSync(sessionFile)) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
 

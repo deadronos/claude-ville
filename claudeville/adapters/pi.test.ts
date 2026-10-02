@@ -295,12 +295,12 @@ describe('pi adapter', () => {
         try {
           const projectDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isDirectory());
           const dirResults = await Promise.all(projectDirs.map(async (projectDir) => {
-            const projectPath = path.join(dir, projectDir.name);
+            const sessionDirPath = path.join(dir, projectDir.name);
             try {
-              const sessionFiles = await fs.promises.readdir(projectPath);
+              const sessionFiles = await fs.promises.readdir(sessionDirPath);
               const jsonlFiles = sessionFiles.filter(f => f.endsWith('.jsonl'));
               const fileResults = await Promise.all(jsonlFiles.map(async (file) => {
-                const filePath = path.join(projectPath, file);
+                const filePath = path.join(sessionDirPath, file);
                 try {
                   const stat = await fs.promises.stat(filePath);
                   if (now - stat.mtimeMs > activeThresholdMs) return null;
@@ -331,12 +331,12 @@ describe('pi adapter', () => {
         try {
           const projectDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isDirectory());
           const dirResults = await Promise.all(projectDirs.map(async (projectDir) => {
-            const projectPath = path.join(dir, projectDir.name);
+            const sessionDirPath = path.join(dir, projectDir.name);
             try {
-              const sessionFiles = await fs.promises.readdir(projectPath);
+              const sessionFiles = await fs.promises.readdir(sessionDirPath);
               const jsonlFiles = sessionFiles.filter(f => f.endsWith('.jsonl'));
               const fileResults = await Promise.all(jsonlFiles.map(async (file) => {
-                const filePath = path.join(projectPath, file);
+                const filePath = path.join(sessionDirPath, file);
                 try {
                   const stat = await fs.promises.stat(filePath);
                   if (now - stat.mtimeMs > activeThresholdMs) return null;
