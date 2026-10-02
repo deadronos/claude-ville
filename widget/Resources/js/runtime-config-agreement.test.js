@@ -19,11 +19,10 @@ import { describe, expect, it } from 'vitest';
 
 // shared/hub-auth.ts is three levels up from widget/Resources/js (js ->
 // Resources -> widget -> repo root), so this specifier is depth-correct and
-// resolves without help. Do not shorten it to '../../shared/': that lands on
-// widget/shared/, which does not exist, and it only appears to work inside a
-// worktree because vitest.config.ts's repo-wide '../../shared/' alias rewrites
-// the specifier before resolution — which then resolves out to the *parent*
-// checkout's shared/ and masks the mistake.
+// resolves on its own. Do not shorten it to '../../shared/': from here that
+// lands on widget/shared/, which does not exist, and it fails everywhere —
+// including inside a worktree, where it is easy to mistake a green run for a
+// working one.
 import { DEV_HUB_AUTH_TOKEN, resolveHubAuthToken } from '../../../shared/hub-auth.js';
 import { buildRuntimeConfig, getHubWsUrl } from './runtime-config.js';
 
