@@ -27,9 +27,11 @@ const FORBIDDEN = /\bprojectPath\b/g;
 
 function collectSourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    // claudeville/shared is a tracked symlink to ../shared. Following it would
-    // report every shared file twice, which is how vitest already collects
-    // shared/*.test.ts twice. Skip symlinks rather than fix the fixture.
+    // claudeville/shared is a tracked symlink to ../shared, which vitest also
+    // collects twice. These Dirent use lstat semantics, so a symlinked dir
+    // reports isDirectory() === false and is never descended into anyway;
+    // skipping it keeps that explicit rather than an accident of lstat, and
+    // loses no real file because shared/ is its own SOURCE_ROOT.
     if (entry.isSymbolicLink()) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
