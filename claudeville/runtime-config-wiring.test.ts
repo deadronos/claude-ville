@@ -8,9 +8,10 @@
  * legacy server's endpoint was never requested. A production bundle therefore
  * booted with no config at all — see #128.
  *
- * These are assertions about files, not behaviour, because the failure mode is
- * an unimported module and a missing script tag — neither of which any runtime
- * test can observe.
+ * The static-hosting half is also covered behaviourally in runtime-config.test.ts.
+ * These file assertions cover what no runtime test can observe: an unimported
+ * module, a missing script tag, a script tag made non-blocking, and a config
+ * field that buildRuntimeConfig() emits but the build-time path drops.
  */
 import fs from 'fs';
 import path from 'path';
@@ -37,39 +38,67 @@ describe('runtime config delivery wiring', () => {
 
     it.each(entryPoints)('%s imports the fallback before its app import', (entry, appImport) => {
       const source = read(entry);
-      const importIndex = source.indexOf('runtime-config.js');
-      expect(importIndex, `${entry} must import the runtime-config module`).toBeGreaterThan(-1);
+      // Match the import statement, not a substring: a prose comment naming
+      // /runtime-config.js would satisfy a bare indexOf and make this test pass
+      // with the import deleted — which is the exact regression it guards.
+      const match = source.match(/^\s*import\s+['"][^'"]*runtime-config\.js['"];?\s*$/m);
+      expect(match, `${entry} must import the runtime-config module`).not.toBeNull();
+      const importIndex = match!.index ?? -1;
       expect(importIndex, `${entry} must import it before ${appImport}`).toBeLessThan(
         source.indexOf(appImport),
       );
     });
 
     it('falls back to a token, not to undefined', () => {
-      expect(read('runtime-config.ts')).toContain('hubAuthToken: import.meta.env.VITE_HUB_AUTH_TOKEN');
+      const module = read('runtime-config.ts');
+      expect(module).toMatch(/hubAuthToken:\s*import\.meta\.env\.VITE_HUB_AUTH_TOKEN/);
     });
 
-    it('has a define entry for every field the fallback reads', () => {
+it('has a define entry for every field the fallback reads', () => {
       const viteConfig = fs.readFileSync(path.join(REPO_ROOT, 'vite.config.ts'), 'utf-8');
       const module = read('runtime-config.ts');
-      for (const key of [...module.matchAll(/import\.meta\.env\.(VITE_HUB_\w+)/g)].map((m) => m[1])) {
+      for (const key of [...module.matchAll(/import\.meta\.env\.(VITE_\w+)/g)].map((m) => m[1])) {
         expect(viteConfig, `vite.config.ts must define ${key}`).toContain(`import.meta.env.${key}`);
+      }
+    });
+
+    // The check that would have caught the four fields this fallback silently
+    // dropped: anything buildRuntimeConfig() emits must survive into the
+    // static-hosting path, or that deployment loses it with no error.
+    it('carries every field buildRuntimeConfig() emits', () => {
+      const shared = fs.readFileSync(path.join(REPO_ROOT, 'runtime-config.shared.ts'), 'utf-8');
+      const returnBlock = shared.slice(shared.indexOf('return {', shared.indexOf('buildRuntimeConfig')));
+      const fields = [...returnBlock.matchAll(/^\s{4}(\w+)[,:]/gm)].map((m) => m[1]);
+      expect(fields.length).toBeGreaterThan(3);
+
+      const module = read('runtime-config.ts');
+      for (const field of fields) {
+        expect(module, `runtime-config.ts fallback must carry ${field}`).toMatch(
+          new RegExp(`^\\s{2}${field}:`, 'm'),
+        );
       }
     });
   });
 
   describe('dynamic injection (legacy server)', () => {
-    it('loads /runtime-config.js from index.html', () => {
-      expect(read('index.html')).toContain('<script src="/runtime-config.js">');
+    const htmlEntries = ['index.html', 'pixijs.html', 'voxel.html'] as const;
+
+    // All three app entry points reach the hub through HubDataSource, which
+    // reads the config lazily per call — so every page needs the dynamic path,
+    // or it resolves the hub URL to whatever was baked at build time instead of
+    // the serving server's own bound port.
+    it.each(htmlEntries)('%s loads /runtime-config.js', (entry) => {
+      expect(read(entry)).toContain('<script src="/runtime-config.js">');
     });
 
-    it('loads it before the module entrypoint', () => {
-      const html = read('index.html');
-      expect(html.indexOf('/runtime-config.js')).toBeLessThan(html.indexOf('/src/main.tsx'));
-    });
-
-    it('is served by the legacy server at that exact path', () => {
-      const server = fs.readFileSync(path.join(CLAUDEVILLE_DIR, 'server.ts'), 'utf-8');
-      expect(server).toContain("pathname === '/runtime-config.js'");
+    it.each(htmlEntries)('%s loads it before its module entrypoint', (entry) => {
+      const html = read(entry);
+      const tagIndex = html.indexOf('/runtime-config.js');
+      expect(tagIndex).toBeGreaterThan(-1);
+      // Ordering is load-bearing: only a non-deferred classic script blocks the
+      // parser and beats the deferred module entry.
+      expect(tagIndex).toBeLessThan(html.indexOf('/src/'));
+      expect(read(entry)).not.toMatch(/<script[^>]*runtime-config\.js[^>]*\b(?:defer|async|type="module")/);
     });
   });
 });
