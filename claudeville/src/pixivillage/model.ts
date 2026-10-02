@@ -15,7 +15,6 @@ export interface HubSession {
   agentName?: string | null;
   agentType?: string | null;
   project?: string | null;
-  projectPath?: string | null;
   tokens?: { input?: number; output?: number } | null;
   tokenUsage?: { input?: number; output?: number; totalInput?: number; totalOutput?: number } | null;
   estimatedCost?: number | null;
@@ -196,8 +195,8 @@ export function resolveBuildingId(session: HubSession): string {
 }
 
 export function mapSessionToVillageAgent(session: HubSession, now = Date.now()): VillageAgent {
-  const projectPath = session.project || session.projectPath || '';
-  const projectName = projectPath.split('/').filter(Boolean).at(-1) || 'local session';
+  const project = session.project || '';
+  const projectName = project.split('/').filter(Boolean).at(-1) || 'local session';
   const provider = session.provider || 'unknown';
   const latestMessage = session.lastMessage || session.detail?.messages?.at(-1)?.text || null;
   const latestTool = session.lastTool || session.detail?.toolHistory?.at(-1)?.tool || null;

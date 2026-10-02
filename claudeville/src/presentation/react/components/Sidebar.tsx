@@ -25,15 +25,15 @@ export function Sidebar({ agents, selectedAgentId, onFocus, isOpen = true }: { a
         </span>
       </div>
       <div id="agentList" className="sidebar__list" role="list">
-        {projectKeys.map((projectPath) => {
-          const groupAgents = groups.get(projectPath) || [];
-          const accentIndex = colors.get(projectPath) ?? 0;
+        {projectKeys.map((projectKey) => {
+          const groupAgents = groups.get(projectKey) || [];
+          const accentIndex = colors.get(projectKey) ?? 0;
 
           return (
-            <div key={projectPath} className={`sidebar__project-group project-accent--${accentIndex}`} role="group" aria-labelledby={`sidebar-project-${projectPath}`}>
-              <div className="sidebar__project-header" id={`sidebar-project-${projectPath}`}>
+            <div key={projectKey} className={`sidebar__project-group project-accent--${accentIndex}`} role="group" aria-labelledby={`sidebar-project-${projectKey}`}>
+              <div className="sidebar__project-header" id={`sidebar-project-${projectKey}`}>
                 <span className="sidebar__project-dot" aria-hidden="true" />
-                <span className="sidebar__project-name">{shortProjectName(projectPath, i18n.t('unknownProject'))}</span>
+                <span className="sidebar__project-name">{shortProjectName(projectKey, i18n.t('unknownProject'))}</span>
                 <span className="sidebar__project-count tabular-nums">{groupAgents.length}</span>
               </div>
               {groupAgents.map((agent) => (

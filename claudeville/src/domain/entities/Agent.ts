@@ -57,7 +57,7 @@ interface AgentParams {
     usage?: { contextPercent?: number } | null;
     messages?: AgentMessage[];
     teamName?: string | null;
-    projectPath?: string | null;
+    project?: string | null;
     lastTool?: string | null;
     lastToolInput?: string | null;
     lastMessage?: string | null;
@@ -78,7 +78,7 @@ export class Agent {
     usage: { contextPercent?: number } | null;
     messages: AgentMessage[];
     teamName: string | null;
-    projectPath: string | null;
+    project: string | null;
     provider: string;
     currentTool: string | null;
     currentToolInput: string | null;
@@ -89,7 +89,7 @@ export class Agent {
     walkFrame: number;
     lastActive: number;
 
-    constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, usage, messages, teamName, projectPath, lastTool, lastToolInput, lastMessage, provider }: AgentParams) {
+    constructor({ id, name, nameSeed = null, nameKind = 'session', nameMode = 'autodetected', nameHint = null, model, status, role, tokens, usage, messages, teamName, project, lastTool, lastToolInput, lastMessage, provider }: AgentParams) {
         this.id = id;
         this.nameSeed = nameSeed || id;
         this.nameKind = nameKind;
@@ -103,7 +103,7 @@ export class Agent {
         this.usage = usage ?? null;
         this.messages = messages || [];
         this.teamName = teamName ?? null;
-        this.projectPath = projectPath ?? null;
+        this.project = project ?? null;
         this.provider = provider || 'claude';
         this.currentTool = lastTool || null;
         this.currentToolInput = lastToolInput || null;

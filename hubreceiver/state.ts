@@ -59,15 +59,16 @@ interface SnapshotInput {
 }
 
 /**
- * Reads a session's project path.
+ * Reads a session's project identifier.
  *
- * The `Session` contract in shared/types.ts declares `projectPath`, but the
- * collector emits the adapter summary's `project` (normalizeSession spreads it),
- * and the frontend reads `projectPath`. Accept both spellings so this stays
- * correct whichever side produces the snapshot.
+ * Snapshots arrive verbatim from a collector, so this stays a runtime guard
+ * rather than a compile-time one: `AnyRecord` is untyped and the value may be
+ * absent or not a string. The field is spelled `project` end to end —
+ * `Session.project` in shared/types.ts is its only declaration, and
+ * shared/project-field-contract.test.ts enforces the spelling.
  */
 function readProject(session: AnyRecord): string | null {
-  const value = session.project ?? session.projectPath;
+  const value = session.project;
   return typeof value === 'string' ? value : null;
 }
 

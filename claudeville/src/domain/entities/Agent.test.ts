@@ -18,7 +18,7 @@ const makeProps = (overrides: Record<string, any> = {}) => ({
   tokens: { input: 1000, output: 500 },
   messages: [],
   teamName: null,
-  projectPath: '/test/project',
+  project: '/test/project',
   provider: 'claude',
   lastTool: null,
   lastToolInput: null,

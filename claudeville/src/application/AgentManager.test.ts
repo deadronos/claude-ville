@@ -367,7 +367,7 @@ describe('AgentManager', () => {
     await manager.loadInitialData();
 
     const call = mockWorld.addAgent.mock.calls[0][0];
-    expect(call.projectPath).toBeNull();
+    expect(call.project).toBeNull();
     expect(call.teamName).toBeNull();
   });
 

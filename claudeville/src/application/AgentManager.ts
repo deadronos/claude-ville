@@ -171,7 +171,7 @@ export class AgentManager {
                 teamName,
                 tokens: agentData.tokens,
                 usage: agentData.usage,
-                projectPath: session.project || null,
+                project: session.project || null,
                 lastTool: agentData.currentTool,
                 lastToolInput: agentData.currentToolInput,
                 lastMessage: agentData._lastMessage,

@@ -141,6 +141,10 @@ describe('adapter registry fixtures', () => {
     // The openclaw session (from fixture) should be first or near first (most recent mtime)
     const openclawSession = sessions.find((s: any) => s.provider === 'openclaw');
     expect(openclawSession).toBeDefined();
+    // `project` must survive sanitizeSessionSummary in the real registry pipeline.
+    // The openclaw fixture's key is synthetic (`openclaw:<agentId>`), not a path,
+    // which is exactly the value shape the contract is about.
+    expect(openclawSession.project).toBe('openclaw:agent-alpha');
     expect(openclawSession.estimatedCost).toEqual(expect.any(Number));
     expect(openclawSession.detail.messages.length).toBeGreaterThan(0);
 

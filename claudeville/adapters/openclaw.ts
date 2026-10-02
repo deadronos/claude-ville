@@ -209,11 +209,11 @@ function buildSessionId(agentId: string, rawId: string) {
   return `openclaw:${encodeSessionKey(agentId)}:${encodeSessionKey(sessionId)}`;
 }
 
-function buildProjectKey(agentId: string | null, projectPath: string | null) {
+function buildProjectKey(agentId: string | null, project: string | null) {
   if (agentId) {
     return `openclaw:${agentId}`;
   }
-  return projectPath || null;
+  return project || null;
 }
 
 function parseSessionId(sessionId: string) {

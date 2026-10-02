@@ -14,7 +14,7 @@ function makeAgent(overrides: Record<string, unknown> = {}) {
     status: 'idle',
     model: 'claude-sonnet-4-5',
     provider: 'claude',
-    projectPath: '/Users/openclaw/Github/claude-ville',
+    project: '/Users/openclaw/Github/claude-ville',
     regenerateName: vi.fn(),
     ...overrides,
   };

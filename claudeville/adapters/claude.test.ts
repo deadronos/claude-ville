@@ -811,7 +811,7 @@ describe('claude adapter', () => {
       const os = require('os');
       const path = require('path');
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
-      // Note: projectPath '/home/user/test' encodes to '-home-user-test' via replace(/\//g, '-')
+      // Note: project '/home/user/test' encodes to '-home-user-test' via replace(/\//g, '-')
       const projPath = '/home/user/test';
       const encodedProjDir = projPath.replace(/\//g, '-');
       const projDir = path.join(tmp, 'projects', encodedProjDir);
@@ -832,10 +832,10 @@ describe('claude adapter', () => {
       fs.writeFileSync(sessionFile, entry + '\n');
       const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getSessionDetail = (sessionId, projectPath) => {
+      const getSessionDetail = (sessionId, project) => {
         const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
-        if (!projectPath) return detail;
-        const encoded = projectPath.replace(/\//g, '-');
+        if (!project) return detail;
+        const encoded = project.replace(/\//g, '-');
         const sessionFile = path.join(tmp, 'projects', encoded, `${sessionId}.jsonl`);
         if (!fs.existsSync(sessionFile)) return detail;
         try {
@@ -890,10 +890,10 @@ describe('claude adapter', () => {
       fs.writeFileSync(sessionFile, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: longText }] }, timestamp: 1 }) + '\n');
       const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getSessionDetail = (sessionId, projectPath) => {
+      const getSessionDetail = (sessionId, project) => {
         const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
-        if (!projectPath) return detail;
-        const encoded = projectPath.replace(/\//g, '-');
+        if (!project) return detail;
+        const encoded = project.replace(/\//g, '-');
         const sessionFile = path.join(tmp, 'projects', encoded, `${sessionId}.jsonl`);
         if (!fs.existsSync(sessionFile)) return detail;
         try {
@@ -946,10 +946,10 @@ describe('claude adapter', () => {
       fs.writeFileSync(sessionFile, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: longCmd } }] }, timestamp: 1 }) + '\n');
       const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
       const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getSessionDetail = (sessionId, projectPath) => {
+      const getSessionDetail = (sessionId, project) => {
         const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
-        if (!projectPath) return detail;
-        const encoded = projectPath.replace(/\//g, '-');
+        if (!project) return detail;
+        const encoded = project.replace(/\//g, '-');
         const sessionFile = path.join(tmp, 'projects', encoded, `${sessionId}.jsonl`);
         if (!fs.existsSync(sessionFile)) return detail;
         try {
