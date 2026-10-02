@@ -12,7 +12,7 @@
     "dev:frontend-voxel": "vite --open /voxel.html",
     "build:frontend": "vite build",
     "widget:build": "cd widget && bash build.sh",
-    "widget": "open widget/ClaudeVilleWidget.app",
+    "widget": "npm run widget:build && open widget/ClaudeVilleWidget.app",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

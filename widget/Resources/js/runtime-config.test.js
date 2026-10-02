@@ -11,7 +11,7 @@ describe('buildRuntimeConfig', () => {
     expect(buildRuntimeConfig({})).toEqual({
       hubHttpUrl: 'http://localhost:3030',
       hubWsUrl: 'ws://localhost:3030/ws',
-      hubAuthToken: '',
+      hubAuthToken: 'dev-secret',
     });
   });
 
@@ -36,6 +36,24 @@ describe('buildRuntimeConfig', () => {
     });
 
     expect(config.hubWsUrl).toBe('wss://socket.example.test/custom');
+  });
+
+  // The widget's only hub path is the WebSocket upgrade, where the token
+  // travels as ?access_token. An empty default meant hubreceiver rejected the
+  // upgrade with 401 and the widget never showed sessions.
+  describe('hub auth token', () => {
+    it('defaults to the shared dev token rather than empty', () => {
+      expect(buildRuntimeConfig({}).hubAuthToken).toBe('dev-secret');
+    });
+
+    it('uses an explicit token when one is supplied', () => {
+      expect(buildRuntimeConfig({ HUB_AUTH_TOKEN: 'real-token' }).hubAuthToken).toBe('real-token');
+    });
+
+    it('puts the token on the websocket url', () => {
+      const config = buildRuntimeConfig({ HUB_AUTH_TOKEN: 'real-token' });
+      expect(getHubWsUrl(config)).toBe('ws://localhost:3030/ws?access_token=real-token');
+    });
   });
 });
 
