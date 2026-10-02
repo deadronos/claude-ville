@@ -28,6 +28,13 @@ android/local.properties
 # copy had drifted from source and still contained code removed in earlier
 # phases, so anyone building the APK was packaging a stale app.
 android/app/src/main/assets/www/
+
+# macOS menu bar widget bundle, produced by `bash widget/build.sh`.
+# The committed copy had drifted from widget/Resources — it still carried the
+# empty hub-auth-token default fixed in #127 — so anyone launching the built app
+# was running stale JS. It also bakes this machine's absolute path into
+# project_path, which is wrong for anyone else.
+widget/ClaudeVilleWidget.app/
 android/.idea/caches/
 android/.idea/libraries/
 android/.idea/workspace.xml

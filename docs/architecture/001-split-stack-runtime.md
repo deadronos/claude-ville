@@ -33,6 +33,14 @@ Support `HUB_URL` as a convenience alias for `HUB_HTTP_URL` so existing setups c
 
 Split-stack auth uses `HUB_AUTH_TOKEN` as a shared bearer token for collector snapshot uploads, browser HTTP reads, and browser WebSocket connections. Local development defaults to `dev-secret`; public or remote deployments should set an explicit value in `.env.local` or the process environment for every split-stack process.
 
+Four processes resolve that default, and they must agree or auth fails silently:
+
+- `hubreceiver/server.ts` and `collector/index.ts` — both via `resolveHubAuthToken()` in `shared/hub-auth.ts`
+- the React frontend — indirectly, via `buildRuntimeConfig()` in `runtime-config.shared.ts`
+- the macOS widget — via `widget/Resources/js/runtime-config.js`
+
+The widget is the exception. It is a deliberately reduced config module (three fields, none of the name-pool or provider-mode settings) loading plain `.js` ES modules straight from `widget/Resources/`, so it **cannot** import the TypeScript helper and repeats the literal. `widget/Resources/js/runtime-config-agreement.test.js` fails if the two ever drift, so change them in one commit; the durable fix is to have `widget/build.sh` generate that module from `shared/hub-auth.ts`. Its only hub path is the WebSocket upgrade, where the token travels as `?access_token`.
+
 ## Consequences
 
 - ClaudeVille can be used locally or remotely with the same UI code.

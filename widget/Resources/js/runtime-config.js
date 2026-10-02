@@ -4,12 +4,12 @@ const DEFAULT_HUB_WS_URL = 'ws://localhost:3030/ws';
 // Must match DEV_HUB_AUTH_TOKEN in shared/hub-auth.ts, which hubreceiver and the
 // collector resolve. This module cannot import that (the widget bundle loads
 // plain .js ES modules straight from Resources), so the literal is repeated here
-// and runtime-config-agreement.test.ts fails if the two ever diverge.
+// and runtime-config-agreement.test.js fails if the two ever diverge.
 //
 // The value is a local-development default, not a credential: hubreceiver
 // refuses to bind a public interface while it is in use. Defaulting to empty
-// here instead would leave the widget unauthenticated against an authenticated
-// hub, which is what this previously did.
+// here instead meant the widget's WebSocket upgrade carried no access_token and
+// hubreceiver rejected it, which is what this previously did.
 const DEFAULT_HUB_AUTH_TOKEN = 'dev-secret';
 
 function stripTrailingSlash(value) {

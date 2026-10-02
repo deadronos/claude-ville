@@ -5,48 +5,59 @@
  * safe while something checks it. This file is that check.
  *
  * The failure it guards is #127: hubreceiver, the collector, and the React
- * frontend all defaulted to `dev-secret`, while the widget defaulted to empty,
- * so with HUB_AUTH_TOKEN unset the widget sent no Authorization header and no
- * access_token — 401 on every read, rejected WebSocket upgrade.
+ * frontend all defaulted to `dev-secret`, while the widget defaulted to empty.
+ * With HUB_AUTH_TOKEN unset the widget's only hub path — the WebSocket upgrade,
+ * which carries the token as ?access_token — was rejected by hubreceiver with
+ * 401, so the widget never showed sessions. (The widget makes no authenticated
+ * HTTP calls; its one fetch is a local sprite manifest.)
  *
- * If this ever fails, either the widget literal or shared/hub-auth.ts drifted.
- * The real fix is to regenerate the widget module from the shared source (see
- * #127), not to loosen this assertion.
+ * If this ever fails, the widget literal and shared/hub-auth.ts have drifted.
+ * The durable fix is to have widget/build.sh generate the widget module from the
+ * shared source; until then, change both in one commit.
  */
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
+// shared/hub-auth.ts is three levels up from widget/Resources/js/. The
+// '../../shared/' prefix resolves via the vitest alias in vitest.config.ts,
+// which exists for claudeville/ imports — so this import depends on that alias
+// staying repo-wide. If it is ever scoped, use an explicit alias instead.
 import { DEV_HUB_AUTH_TOKEN, resolveHubAuthToken } from '../../shared/hub-auth.js';
-import { buildRuntimeConfig } from './runtime-config.js';
-
-// The widget module sits next to this test; the shared source is two levels up.
-const WIDGET_MODULE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'runtime-config.js');
+import { buildRuntimeConfig, getHubWsUrl } from './runtime-config.js';
 
 describe('widget / server hub auth token agreement', () => {
-  it('resolves the same token as hubreceiver and the collector', () => {
-    expect(buildRuntimeConfig({}).hubAuthToken).toBe(resolveHubAuthToken({}));
+  // One-sided drift: the widget stops agreeing, behaviour changes, these fail.
+  // Covers unset and empty-string env, the two states a local dev hits.
+  it.each([
+    ['unset', {}],
+    ['empty', { HUB_AUTH_TOKEN: '' }],
+  ])('resolves the same token as hubreceiver and the collector when %s', (_label, env) => {
+    expect(buildRuntimeConfig(env).hubAuthToken).toBe(resolveHubAuthToken(env));
   });
 
-  it('resolves the same token when the env var is empty', () => {
-    expect(buildRuntimeConfig({ HUB_AUTH_TOKEN: '' }).hubAuthToken)
-      .toBe(resolveHubAuthToken({ HUB_AUTH_TOKEN: '' }));
-  });
-
-  it('resolves the same literal the shared module exports', () => {
-    // The widget repeats the literal rather than importing it, so compare the
-    // module's own default against the exported constant for every input.
-    for (const env of [{}, { HUB_AUTH_TOKEN: '' }, { HUB_AUTH_TOKEN: 'x' }]) {
-      expect(buildRuntimeConfig(env).hubAuthToken).toBe(resolveHubAuthToken(env));
+  it('never resolves to an empty token, which would drop auth entirely', () => {
+    for (const env of [{}, { HUB_AUTH_TOKEN: '' }, { HUB_AUTH_TOKEN: undefined }]) {
+      expect(buildRuntimeConfig(env).hubAuthToken).not.toBe('');
     }
+  });
+
+  // The pin that behavioural comparison alone cannot give: a *coordinated*
+  // rename of both copies leaves runtime behaviour identical, so only checking
+  // the declared value against the shared constant catches someone silently
+  // changing the local-development default itself.
+  it('keeps the shared local-development default from changing silently', () => {
     expect(DEV_HUB_AUTH_TOKEN).toBe('dev-secret');
   });
 
-  it('keeps the widget source literal in step with the shared constant', () => {
-    const source = fs.readFileSync(WIDGET_MODULE, 'utf-8');
-    const declared = source.match(/const DEFAULT_HUB_AUTH_TOKEN\s*=\s*'([^']*)'/);
-    expect(declared, 'runtime-config.js must declare DEFAULT_HUB_AUTH_TOKEN').not.toBeNull();
-    expect(declared ? declared[1] : null).toBe(DEV_HUB_AUTH_TOKEN);
+  // The #127 symptom, end to end: the widget's own WS URL must carry the token.
+  it('puts the default token on the widget websocket url', () => {
+    expect(getHubWsUrl(buildRuntimeConfig({}))).toBe(
+      'ws://localhost:3030/ws?access_token=dev-secret',
+    );
+  });
+
+  it('resolves the same token when the widget reads its injected config', () => {
+    expect(buildRuntimeConfig({ HUB_AUTH_TOKEN: 'x' }).hubAuthToken).toBe(
+      resolveHubAuthToken({ HUB_AUTH_TOKEN: 'x' }),
+    );
   });
 });
