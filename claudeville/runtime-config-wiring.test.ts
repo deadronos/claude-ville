@@ -32,8 +32,9 @@ function read(filePath: string): string {
 describe('runtime config delivery wiring', () => {
   describe('build-time fallback (static hosting)', () => {
     // All three entry points reach the hub through HubDataSource, which reads
-    // window.__CLAUDEVILLE_CONFIG__ on construction, so each must load the
-    // fallback module before its app import.
+    // window.__CLAUDEVILLE_CONFIG__ lazily on each call. So the fallback has to
+    // have run before any read — and because nothing else imports it, that means
+    // before the app import in each entry point.
     const entryPoints = [
       ['src/main.tsx', './presentation/react/ClaudeVilleApp.js'],
       ['src/pixivillage/main.tsx', './PixiVillageApp.js'],
@@ -58,7 +59,7 @@ describe('runtime config delivery wiring', () => {
       expect(module).toMatch(/hubAuthToken:\s*import\.meta\.env\.VITE_HUB_AUTH_TOKEN/);
     });
 
-it('has a define entry for every field the fallback reads', () => {
+    it('has a define entry for every field the fallback reads', () => {
       const viteConfig = fs.readFileSync(path.join(REPO_ROOT, 'vite.config.ts'), 'utf-8');
       const module = read('runtime-config.ts');
       for (const key of [...module.matchAll(/import\.meta\.env\.(VITE_\w+)/g)].map((m) => m[1])) {
