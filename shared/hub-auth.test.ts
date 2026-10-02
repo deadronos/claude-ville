@@ -31,9 +31,9 @@ describe('hub auth token', () => {
     // value the collector would then send. If these ever drift, a public bind
     // would silently accept a well-known token.
     //
-    // Scope: this covers hubreceiver ↔ collector only. The browser's token
-    // comes from the runtime-injected config and still defaults to empty, so
-    // the two are not covered here — see the follow-up on that default.
+    // Scope: this covers hubreceiver ↔ collector. The browser reaches the same
+    // helper indirectly, through buildRuntimeConfig() in
+    // runtime-config.shared.ts — see that file's own tests.
     expect(isDevFallbackToken(resolveHubAuthToken({} as NodeJS.ProcessEnv))).toBe(true);
   });
 });

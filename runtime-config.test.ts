@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { DEV_HUB_AUTH_TOKEN } from './shared/hub-auth.js';
 
 // Test the logic directly since module uses CommonJS exports
 // This tests the actual behavior patterns
@@ -348,6 +349,40 @@ describe('runtime config', () => {
       expect(result).toHaveProperty('providerNameModes');
       expect(result).toHaveProperty('agentNamePool');
       expect(result).toHaveProperty('sessionNamePool');
+    });
+  });
+  // The suites above re-implement buildRuntimeConfig inline rather than
+  // importing it, so the real function's token default had no coverage at all
+  // — which is how it drifted to '' while hubreceiver and collector used
+  // 'dev-secret'. These cases import the real module.
+  describe('buildRuntimeConfig (real module)', () => {
+    it('defaults the hub auth token to the shared dev default', async () => {
+      const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
+      expect(real({}).hubAuthToken).toBe(DEV_HUB_AUTH_TOKEN);
+    });
+
+    it('falls back when HUB_AUTH_TOKEN is empty', async () => {
+      const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
+      expect(real({ HUB_AUTH_TOKEN: '' }).hubAuthToken).toBe(DEV_HUB_AUTH_TOKEN);
+    });
+
+    it('uses the environment token when set', async () => {
+      const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
+      expect(real({ HUB_AUTH_TOKEN: 'real-token' }).hubAuthToken).toBe('real-token');
+    });
+
+    it('never resolves to an empty token, which would suppress the auth header', async () => {
+      // The concrete failure this guards: an empty token makes
+      // getHubAuthHeaders() return undefined, so the browser sends no
+      // Authorization header and every read 401s. Comparing against the
+      // exported constant is the real assertion — comparing against
+      // resolveHubAuthToken would just be f(env) === f(env), since
+      // buildRuntimeConfig now calls that same helper.
+      const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
+      for (const env of [{}, { HUB_AUTH_TOKEN: '' }, { HUB_AUTH_TOKEN: undefined }]) {
+        expect(real(env).hubAuthToken).toBe(DEV_HUB_AUTH_TOKEN);
+        expect(real(env).hubAuthToken).not.toBe('');
+      }
     });
   });
 });

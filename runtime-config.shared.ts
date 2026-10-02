@@ -1,4 +1,5 @@
 import { DEFAULT_AGENT_NAME_POOL, DEFAULT_SESSION_NAME_POOL, toList } from './shared/name-pools.js';
+import { resolveHubAuthToken } from './shared/hub-auth.js';
 
 export function normalizeAgentNamePool(rawPool = '') {
   const pool = toList(rawPool);
@@ -38,7 +39,7 @@ export function buildRuntimeConfig(env = process.env) {
   // value) so the same default works for both runtimes.
   const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:3030';
   const hubWsUrl = env.HUB_WS_URL || `${hubHttpUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws`;
-  const hubAuthToken = env.HUB_AUTH_TOKEN || '';
+  const hubAuthToken = resolveHubAuthToken(env);
 
   return {
     hubHttpUrl,
