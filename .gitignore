@@ -18,6 +18,7 @@ demo-server.js
 runtime-config.shared.js
 
 .worktrees/
+.playwright-mcp/
 
 # Android build artifacts
 android/.gradle/
