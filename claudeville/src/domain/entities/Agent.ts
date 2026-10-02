@@ -6,10 +6,12 @@ import { estimateClaudeCost } from '../../config/costs.js';
 import { formatToolLabel, normalizeBubbleSnippet, parseToolDetail } from '../../config/toolFormatting.js';
 
 /**
- * A message as the adapters supply it. Structurally the item type of
- * AdapterSessionDetail['messages'], redeclared here so the domain layer does not
- * reach out to shared/ for a field it only reads. Strings are tolerated because
- * some adapters summarise rather than carry a message object.
+ * A message as the adapters supply it: a widening of
+ * AdapterSessionDetail['messages'][number], which it must stay assignable from.
+ * Redeclared here so the domain layer does not reach out to shared/ for a field
+ * it only reads. Strings are tolerated because some adapters summarise rather
+ * than carry a message object. The two are not linked by any check, so a rename
+ * on the shared side would compile here and silently stop matching.
  */
 export type AgentMessage = string | { role?: string; text?: string; ts?: number };
 

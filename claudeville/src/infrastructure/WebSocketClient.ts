@@ -2,7 +2,7 @@ import { eventBus } from '../domain/events/DomainEvent.js';
 import { WS_RECONNECT_INTERVAL } from '../config/constants.js';
 import { getHubWsUrl } from '../config/runtime.js';
 
-interface WsMessage {
+export interface WsMessage {
     type: string;
     usage?: unknown;
     [key: string]: unknown;
