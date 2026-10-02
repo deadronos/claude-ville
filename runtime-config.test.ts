@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { DEV_HUB_AUTH_TOKEN } from './shared/hub-auth.js';
 
 // Test the logic directly since module uses CommonJS exports
 // This tests the actual behavior patterns
@@ -348,6 +349,34 @@ describe('runtime config', () => {
       expect(result).toHaveProperty('providerNameModes');
       expect(result).toHaveProperty('agentNamePool');
       expect(result).toHaveProperty('sessionNamePool');
+    });
+  });
+  // The suites above re-implement buildRuntimeConfig inline rather than
+  // importing it, so the real function's token default had no coverage at all
+  // — which is how it drifted to '' while hubreceiver and collector used
+  // 'dev-secret'. These cases import the real module.
+  describe('buildRuntimeConfig (real module)', () => {
+    it('defaults the hub auth token to the shared dev default', async () => {
+      const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
+      expect(real({}).hubAuthToken).toBe(DEV_HUB_AUTH_TOKEN);
+    });
+
+    it('falls back when HUB_AUTH_TOKEN is empty', async () => {
+      const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
+      expect(real({ HUB_AUTH_TOKEN: '' }).hubAuthToken).toBe(DEV_HUB_AUTH_TOKEN);
+    });
+
+    it('uses the environment token when set', async () => {
+      const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
+      expect(real({ HUB_AUTH_TOKEN: 'real-token' }).hubAuthToken).toBe('real-token');
+    });
+
+    it('agrees with the hubreceiver/collector resolver on every input', async () => {
+      const { buildRuntimeConfig: real } = await import('./runtime-config.shared.js');
+      const { resolveHubAuthToken } = await import('./shared/hub-auth.js');
+      for (const env of [{}, { HUB_AUTH_TOKEN: '' }, { HUB_AUTH_TOKEN: 'x' }]) {
+        expect(real(env).hubAuthToken).toBe(resolveHubAuthToken(env as NodeJS.ProcessEnv));
+      }
     });
   });
 });
