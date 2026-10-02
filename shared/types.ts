@@ -23,6 +23,17 @@ export interface Session {
   startedAt?: number;
 }
 
+/**
+ * Payload of the hub's WebSocket frame: a tagged envelope with untyped extras.
+ * Lives here rather than beside WebSocketClient so domain/ can name it without
+ * depending on infrastructure/.
+ */
+export interface WsMessage {
+  type: string;
+  usage?: unknown;
+  [key: string]: unknown;
+}
+
 export interface WatchPath {
   type: 'file' | 'directory';
   path: string;

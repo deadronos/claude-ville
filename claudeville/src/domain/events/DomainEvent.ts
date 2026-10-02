@@ -1,5 +1,5 @@
 import type { Agent } from '../entities/Agent.js';
-import type { WsMessage } from '../../infrastructure/WebSocketClient.js';
+import type { WsMessage } from '../../../shared/types.js';
 
 /**
  * Payload of the hub's WebSocket frame. The hub is an untyped snapshot source
@@ -27,31 +27,34 @@ export interface DomainEventMap {
 
 export type DomainEventName = keyof DomainEventMap;
 
-/** A subscriber for any event, mapped or not. */
-type AnySubscriber = (data: any) => void;
+/**
+ * Subscriber as stored. One map holds every event, so a Set cannot preserve each
+ * entry's payload type; entries are kept erased at the storage layer only. This
+ * alias is never part of a public signature - `on`/`off`/`emit` are the checked
+ * boundary.
+ */
+type StoredSubscriber = (data: any) => void;
 
 // Singleton event bus (observer pattern)
 class DomainEvent {
-    /**
-     * One map holds every event, so a single Set cannot preserve each entry's
-     * payload type; entries are stored erased. `emit` and the first `on`
-     * overload below are the checked boundary - this erasure is not what makes
-     * them type safe.
-     */
-    listeners: Map<string, Set<AnySubscriber>>;
+    listeners: Map<string, Set<StoredSubscriber>>;
 
     constructor() {
         this.listeners = new Map();
     }
 
     /**
-     * Known events are payload-checked. The fallback overload keeps the bus's
-     * real runtime contract - open string keys - for subscribing to an event
-     * this map does not cover yet.
+     * Deliberately closed, matching emit. An earlier version had a
+     * `(event: string, callback: AnySubscriber)` fallback so unmapped names could
+     * still be subscribed, but it made the payload check bypassable: any
+     * annotated callback selected the fallback, so `on('agent:added', (d: Wrong)
+     * => ...)` compiled. `Exclude<string, DomainEventName>` is not a fix -
+     * string is not a union of literals, so it excludes nothing. No production
+     * code subscribes to an unmapped name; tests emit fixture names such as
+     * `test:basic`, and they are not typechecked because tsconfig excludes
+     * *.test.ts.
      */
-    on<K extends DomainEventName>(event: K, callback: (data: DomainEventMap[K]) => void): () => void;
-    on(event: string, callback: AnySubscriber): () => void;
-    on(event: string, callback: AnySubscriber) {
+    on<K extends DomainEventName>(event: K, callback: (data: DomainEventMap[K]) => void) {
         if (!this.listeners.has(event)) {
             this.listeners.set(event, new Set());
         }
@@ -59,7 +62,7 @@ class DomainEvent {
         return () => this.off(event, callback);
     }
 
-    off(event: string, callback: AnySubscriber) {
+    off<K extends DomainEventName>(event: K, callback: (data: DomainEventMap[K]) => void) {
         const callbacks = this.listeners.get(event);
         if (callbacks) {
             callbacks.delete(callback);
@@ -70,14 +73,10 @@ class DomainEvent {
     }
 
     /**
-     * Deliberately closed: emitting an event this map does not declare is a
-     * bug, and the variadic form lets a `void` payload be emitted with no
-     * argument while every other event still requires its payload. There is no
-     * string-keyed fallback on purpose - adding one makes every payload check
-     * vanish, because `(event: string, data?: unknown)` accepts any argument.
-     *
-     * Tests emit fixture names such as `test:basic` that no production code
-     * emits; they are not typechecked because tsconfig excludes *.test.ts.
+     * Closed for the same reason as `on`: emitting an event this map does not
+     * declare is a bug, and a string-keyed fallback would accept any argument.
+     * The variadic form lets a `void` payload be emitted with no argument while
+     * every other event still requires its payload.
      */
     emit<K extends DomainEventName>(
         event: K,

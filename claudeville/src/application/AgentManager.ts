@@ -113,12 +113,14 @@ export class AgentManager {
      */
     _upsertAgent(session: AgentSessionSummary & { messages?: AdapterSessionDetail['messages'] }, teamMembers: Map<string, TeamMember>) {
         const id = session.sessionId;
-        // agentId is optional on the summary. The nullish-map guard is kept as
-        // written: _teamMembers is always a real Map today, but dropping it would
-        // turn a nullish map into a TypeError thrown out of the emit loop, and
-        // the agentId guard keeps the result TeamMember | null as
-        // resolveAgentDisplayName expects.
-        const teamInfo = teamMembers && session.agentId
+        // agentId is optional on the summary, and Map.get requires a string, so
+        // the nullish case is stated. `!= null` rather than a truthiness test, so
+        // an empty-string agentId would still be looked up as it was before. The
+        // nullish-map guard is kept because dropping it turns a nullish map into
+        // a TypeError thrown out of the emit loop; _teamMembers is always a real
+        // Map today. `?? null` normalises a miss from undefined to null, which is
+        // inert - every consumer below reads teamInfo with ?. or ||.
+        const teamInfo = teamMembers && session.agentId != null
             ? (teamMembers.get(session.agentId) ?? null)
             : null;
         const resolvedName = resolveAgentDisplayName(session, teamInfo);

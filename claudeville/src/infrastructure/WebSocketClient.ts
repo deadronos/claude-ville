@@ -1,12 +1,7 @@
 import { eventBus } from '../domain/events/DomainEvent.js';
 import { WS_RECONNECT_INTERVAL } from '../config/constants.js';
+import type { WsMessage } from '../../../shared/types.js';
 import { getHubWsUrl } from '../config/runtime.js';
-
-export interface WsMessage {
-    type: string;
-    usage?: unknown;
-    [key: string]: unknown;
-}
 
 export class WebSocketClient {
     ws: WebSocket | null;
