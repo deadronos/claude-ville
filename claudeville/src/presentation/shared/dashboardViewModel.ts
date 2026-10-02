@@ -1,3 +1,14 @@
+/**
+ * The identity the hub's /api/session-detail lookup needs. Distinct from
+ * ProjectAgentLike, whose `id` is optional because grouping tolerates partial
+ * rows; a detail fetch cannot, since it has no session to ask for otherwise.
+ */
+export type AgentDetailRef = {
+  id: string;
+  projectPath?: string | null;
+  provider?: string | null;
+};
+
 export type ProjectAgentLike = {
   id?: string;
   name?: string;

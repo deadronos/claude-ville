@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import type { SessionDetailData } from '../../../infrastructure/sessionDetailApi.js';
 import { fetchSessionDetail } from '../../../infrastructure/sessionDetailApi.js';
+import type { AgentDetailRef } from '../../shared/dashboardViewModel.js';
 
-type DashboardDetailState = Record<string, { toolHistory: any[] }>;
+type DashboardDetailState = Record<string, Pick<SessionDetailData, 'toolHistory'>>;
 
-export function useDashboardDetails(agents: any[], enabled: boolean) {
+export function useDashboardDetails(agents: readonly AgentDetailRef[], enabled: boolean) {
   const [details, setDetails] = useState<DashboardDetailState>({});
   const agentRequests = useMemo(
     () => agents.map((agent) => ({

@@ -53,6 +53,12 @@ export interface AgentSessionSummary extends Omit<Session, 'displayName'> {
   agentType?: string | null;
   displayName?: string | null;
   parentSessionId?: string | null;
+  /**
+   * Computed in adapters/index.ts from the session's token usage. It was
+   * produced and consumed (AgentManager, DashboardView, ActivityPanel) while
+   * declared nowhere, so it only typechecked because the session was `any`.
+   */
+  contextPercent?: number;
 }
 
 export interface AgentAdapter {

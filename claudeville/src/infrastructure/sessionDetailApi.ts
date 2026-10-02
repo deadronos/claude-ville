@@ -1,9 +1,13 @@
+import type { AdapterSessionDetail } from '../../../shared/types.js';
+
 import { getHubApiUrl, getHubAuthHeaders } from '../config/runtime.js';
 
-export type SessionDetailData = {
-  toolHistory: any[];
-  messages: any[];
-};
+/**
+ * The subset of AdapterSessionDetail the hub's /api/session-detail returns.
+ * The hub normalises absent collections to [], but an older or partial hub may
+ * omit them, so these stay defaulted rather than asserted.
+ */
+export type SessionDetailData = Pick<AdapterSessionDetail, 'toolHistory' | 'messages'>;
 
 export async function fetchSessionDetail(
   sessionId: string,

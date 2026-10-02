@@ -6,6 +6,7 @@ import { BUILDING_DEFS } from '../config/buildings.js';
 import { resolveAgentDisplayName } from '../config/agentNames.js';
 import { HubDataSource } from '../infrastructure/HubDataSource.js';
 import { normalizeTokens } from '../../../shared/session-utils.js';
+import type { AdapterSessionDetail, AgentSessionSummary } from '../../../shared/types.js';
 
 interface TeamMember {
     agentId?: string;
@@ -15,7 +16,7 @@ interface TeamMember {
     model?: string;
 }
 
-interface Team {
+export interface Team {
     members?: TeamMember[];
     teamName?: string;
     name?: string;
@@ -68,7 +69,13 @@ export class AgentManager {
         }
     }
 
-    handleWebSocketMessage(data: { sessions?: any[]; teams?: Team[] }) {
+    /**
+     * `sessions` must stay optional and must NOT be defaulted to []: an absent
+     * field returns early and leaves agents alone, whereas an empty array means
+     * "the hub reported no active agents" and retires them. Collapsing the two
+     * would wipe the world on a malformed frame.
+     */
+    handleWebSocketMessage(data: { sessions?: AgentSessionSummary[]; teams?: Team[] }) {
         if (!data.sessions) return;
 
         if (data.teams) {
@@ -97,9 +104,19 @@ export class AgentManager {
         }
     }
 
-    _upsertAgent(session: any, teamMembers: Map<string, TeamMember>) {
+    /**
+     * `messages` is read defensively but no producer sets it: the adapter path
+     * adds only detail/tokenUsage/tokens/estimatedCost/contextPercent, and the
+     * hub relays collector snapshots verbatim. Detail messages are the real
+     * source, so this branch is a tolerance for an undeclared extra field
+     * rather than a supported path.
+     */
+    _upsertAgent(session: AgentSessionSummary & { messages?: AdapterSessionDetail['messages'] }, teamMembers: Map<string, TeamMember>) {
         const id = session.sessionId;
-        const teamInfo = teamMembers ? teamMembers.get(session.agentId) : null;
+        // agentId is optional on the summary. Map.get(null|undefined) already
+        // returned undefined, but stating it keeps the lookup typed as
+        // TeamMember | null to match resolveAgentDisplayName.
+        const teamInfo = (session.agentId ? teamMembers.get(session.agentId) : null) ?? null;
         const resolvedName = resolveAgentDisplayName(session, teamInfo);
         const tokenUsage = session.tokenUsage || null;
         const detailToolHistory = Array.isArray(session.detail?.toolHistory) ? session.detail.toolHistory : [];
@@ -113,7 +130,7 @@ export class AgentManager {
         const teamName: string | null = teamInfo?.teamName
             || (session.project ? session.project.split('/').filter(Boolean).pop() || null : null);
 
-        const agentData: Record<string, any> = {
+        const agentData: Partial<Agent> = {
             model: String(teamInfo?.model || session.model || 'unknown'),
             status: this._resolveStatus(session),
             role: teamInfo?.agentType || session.agentType || 'general',
@@ -160,7 +177,7 @@ export class AgentManager {
         }
     }
 
-    _resolveActivityPosition(agentId: string, currentTool: string | null) {
+    _resolveActivityPosition(agentId: string, currentTool: string | null | undefined) {
         const buildingType = resolveTargetBuildingType(currentTool) || 'command';
         const building = BUILDING_DEFS.find((candidate) => candidate.type === buildingType) || BUILDING_DEFS[0];
         const xOffset = 0.25 + stableUnit(`${agentId}:x`) * 0.5;
