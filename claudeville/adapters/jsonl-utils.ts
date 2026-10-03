@@ -131,3 +131,73 @@ export async function collectJsonl<T>(
   if (typeof maxItems !== 'number') return out;
   return maxItems <= 0 ? [] : out.slice(-maxItems);
 }
+
+/**
+ * Fold parsed entries into an accumulator, optionally stopping early.
+ *
+ * `onEntry` receives the accumulator and mutates it in place; its return value is
+ * ignored, so an `onEntry` that returns a fresh object instead of mutating has
+ * no effect. After `onEntry` runs, `until` is consulted with the accumulator and
+ * that entry; returning true stops the walk. That ordering is what lets `codex`
+ * set its `fallback` on the way past an `info.total_token_usage` entry and still
+ * stop at the first `thread_token_usage` entry — its loop returns the thread
+ * reading immediately and returns `fallback` only if it never sees one.
+ */
+export function foldEntries<T>(
+  entries: unknown[],
+  {
+    init,
+    onEntry,
+    until,
+  }: {
+    init: T;
+    onEntry: (acc: T, entry: any) => T;
+    until?: (acc: T, entry: any) => boolean;
+  },
+): T {
+  const acc = init;
+  for (const entry of entries) {
+    onEntry(acc, entry);
+    if (until?.(acc, entry)) break;
+  }
+  return acc;
+}
+
+/**
+ * Read a JSONL file and fold it. `order: 'end'` walks entries newest-first,
+ * which `codex`'s token lookup depends on — it takes the LAST
+ * `thread_token_usage` in the file, not the first.
+ *
+ * Swallows and debug-logs read/parse errors, returning the untouched `init`.
+ * NOTE: `codex`'s current `getTokenUsage` swallows errors with a bare
+ * `catch {}` and logs nothing, so converting it makes `DEBUG=1` output
+ * slightly noisier. Behaviour and return values are unchanged.
+ */
+export async function foldJsonl<T>(
+  filePath: string,
+  {
+    scope,
+    operation,
+    count = 50,
+    order = 'start',
+    init,
+    onEntry,
+    until,
+  }: {
+    scope: string;
+    operation: string;
+    count?: number;
+    order?: 'start' | 'end';
+    init: T;
+    onEntry: (acc: T, entry: any) => T;
+    until?: (acc: T, entry: any) => boolean;
+  },
+): Promise<T> {
+  try {
+    const entries = await readJsonlEntries(filePath, { from: order === 'end' ? 'end' : 'start', count, scope });
+    return foldEntries(order === 'end' ? entries.slice().reverse() : entries, { init, onEntry, until });
+  } catch (err) {
+    debugAdapterError(scope, operation, err, filePath);
+    return init;
+  }
+}

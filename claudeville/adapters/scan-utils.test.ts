@@ -144,6 +144,76 @@ describe('collectScanByMtime', () => {
     expect(idsOf(result)).toEqual(['present']);
   });
 
+  it('builds one record per path when fileFor returns an array, in the order returned', async () => {
+    // pi's shape: one child directory holding many *.jsonl files. The two paths
+    // are returned in REVERSE alphabetical order on purpose, so a helper that
+    // re-derived the order from readdir (or sorted it) shows up as a mismatch
+    // rather than coinciding with what is asserted.
+    makeSession('multi');
+    const events = eventsFile('multi');
+    const second = path.join(sessionDir(), 'multi', 'second.jsonl');
+    fs.writeFileSync(second, '{}\n');
+
+    const result = await collectScanByMtime<ScanRecord>(scanOptions({
+      fileFor: () => [second, events],
+    }));
+
+    expect(result.map((r) => r.filePath)).toEqual([second, events]);
+    // Both belong to the same child, and both carry that child's name.
+    expect(result.map((r) => r.sessionId)).toEqual(['multi', 'multi']);
+    expect(result.every((r) => r.mtime > 0)).toBe(true);
+  });
+
+  it('yields no records and never calls build when fileFor returns an empty array', async () => {
+    // A directory that exists but holds no matching file — pi's empty project dir.
+    makeSession('none');
+    const build = vi.fn(() => ({ sessionId: 'x', filePath: '', mtime: 0 }));
+
+    const result = await collectScanByMtime<ScanRecord>(scanOptions({ fileFor: () => [], build }));
+
+    expect(result).toEqual([]);
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it('labels a throwing fileFor as resolve, not stat', async () => {
+    // pi's inner readdir failing inside fileFor. Before this helper gave fileFor
+    // its own try, that throw was caught by the stat catch and reported as a stat
+    // failure — pointing at a path that was never statted.
+    makeSession('boom');
+
+    const { result, lines } = await withDebug(() => collectScanByMtime<ScanRecord>(scanOptions({
+      fileFor: () => { throw new Error('readdir exploded'); },
+    })));
+
+    expect(result).toEqual([]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('scanAllSessions resolve');
+    expect(lines[0]).not.toContain('scanAllSessions stat');
+    expect(lines[0]).toContain('readdir exploded');
+    // The context names the child that failed, which is the directory, not a file.
+    expect(lines[0]).toContain(path.join(sessionDir(), 'boom'));
+  });
+
+  it('keeps a valid sibling when another child throws in fileFor', async () => {
+    // The whole point of confining the throw to one child: without its own try,
+    // the rejection escapes children.map, Promise.all rejects, the outer catch
+    // swallows the entire scan, and even the healthy child is lost.
+    makeSession('good');
+    makeSession('bad');
+
+    const { result, lines } = await withDebug(() => collectScanByMtime<ScanRecord>(scanOptions({
+      fileFor: (name) => {
+        if (name === 'bad') throw new Error('readdir exploded');
+        return eventsFile(name);
+      },
+    })));
+
+    expect(idsOf(result)).toEqual(['good']);
+    expect(result[0].filePath).toBe(eventsFile('good'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('scanAllSessions resolve');
+  });
+
   it('ignores plain files sitting in the scanned dir', async () => {
     // fileFor resolves a `*.jsonl` name to that name's own path — the shape an
     // adapter would use if its sessions were `.jsonl` files sitting directly in
