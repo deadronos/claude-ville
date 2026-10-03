@@ -21,6 +21,12 @@
 - Open PRs against `origin/main` (the fork), never upstream. Squash-merge.
 - Commit after every task; each task ends green.
 
+## Two traps B2a established — read before writing B2b/B2c
+
+1. **`onEntry` is typed `=> void` and the accumulator must be MUTATED IN PLACE.** TypeScript cannot stop you writing `onEntry: (acc, e) => ({ ...acc, thread })` — it typechecks against a `void` signature and silently discards the result, so the fold returns `init`. Every `onEntry` in B2b/B2c must assign onto `acc` and return nothing. This is not enforced by the type; it is only documented.
+
+2. **`foldJsonl`'s `from` defaults to `'end'` (the tail) and `reverse` defaults to `false`.** These are separate knobs: `from` picks which end of the file to read, `reverse` picks the walk direction over what was read. A former version conflated them into one `order` option defaulting to `'start'` — which meant a caller who omitted it silently read the file's *head*. `codex`'s token lookup is the only consumer that needs `reverse: true`.
+
 ## Slicing
 
 | PR | Branch | Work |
@@ -88,7 +94,7 @@ export function foldEntries<T>(
     until,
   }: {
     init: T;
-    onEntry: (acc: T, entry: any) => T;
+    onEntry: (acc: T, entry: any) => void;
     until?: (acc: T, entry: any) => boolean;
   },
 ): T {
@@ -109,7 +115,9 @@ export function foldEntries<T>(
 
 ```ts
 /**
- * Read a JSONL file and fold it. `order: 'end'` walks entries newest-first,
+ * Read a JSONL file and fold it. `from` picks which end of the file to read
+ * (default `'end'`, the tail — every real caller reads the tail). `reverse`
+ * walks the parsed entries newest-first,
  * which `codex`'s token lookup depends on — it takes the LAST
  * `thread_token_usage` in the file, not the first.
  *
@@ -124,7 +132,8 @@ export async function foldJsonl<T>(
     scope,
     operation,
     count = 50,
-    order = 'start',
+    from = 'end',
+    reverse = false,
     init,
     onEntry,
     until,
@@ -132,15 +141,16 @@ export async function foldJsonl<T>(
     scope: string;
     operation: string;
     count?: number;
-    order?: 'start' | 'end';
+    from?: 'start' | 'end';
+    reverse?: boolean;
     init: T;
-    onEntry: (acc: T, entry: any) => T;
+    onEntry: (acc: T, entry: any) => void;
     until?: (acc: T, entry: any) => boolean;
   },
 ): Promise<T> {
   try {
-    const entries = await readJsonlEntries(filePath, { from: order === 'end' ? 'end' : 'start', count, scope });
-    return foldEntries(order === 'end' ? entries.slice().reverse() : entries, { init, onEntry, until });
+    const entries = await readJsonlEntries(filePath, { from, count, scope });
+    return foldEntries(reverse ? entries.slice().reverse() : entries, { init, onEntry, until });
   } catch (err) {
     debugAdapterError(scope, operation, err, filePath);
     return init;
@@ -228,7 +238,7 @@ These were measured, not assumed. Any of them differing from a copilot-shaped gu
 - `foldEntries` returns `init` for an empty array.
 - `foldEntries` accumulates across entries in order.
 - `foldEntries` stops when `until` returns true, **and `until` is consulted after `onEntry`** — assert this by having `onEntry` record the order of calls for an array where the third entry triggers `until`, and assert entries 1-3 were visited and 4 was not.
-- `foldJsonl` with `order: 'end'` visits entries newest-first — assert against a 3-line fixture.
+- `foldJsonl`'s DEFAULT window is the tail: with a 5-line file and `count: 2`, the default returns the LAST two entries. Then `reverse: true` walks those two newest-first.
 - `foldJsonl` on a missing file returns `init` and does not throw.
 - `foldJsonl` propagates `until` (assert the walk stopped early).
 
@@ -366,11 +376,11 @@ verified against the pre-conversion source rather than assumed from copilot."
 `codex.ts` computes its root from `os.homedir()` at load. The fixture writes a rollout JSONL under `~/.codex/sessions/<y>/<m>/<d>/rollout-*.jsonl` and must pin, against **current** behaviour:
 - `getActiveSessions` field set, `sessionId`, `project` (from `payload.cwd`), model fallback;
 - the `getToolHistory` / `getRecentMessages` caps and slices read from `codex.ts`, not assumed;
-- **the token fold's two-tier behaviour, which is the whole point**: a file with both `info.total_token_usage` and `thread_token_usage` entries must return the **thread** reading (newest-first, first match wins), and a file with only `total_token_usage` must return that. A file where the newest `total_token_usage` entry comes AFTER an older `thread_token_usage` must return the **thread** one — that is exactly the reverse-order early-return that `foldJsonl`'s `order: 'end'` + `until` has to reproduce.
+- **the token fold's two-tier behaviour, which is the whole point**: a file with both `info.total_token_usage` and `thread_token_usage` entries must return the **thread** reading (newest-first, first match wins), and a file with only `total_token_usage` must return that. A file where the newest `total_token_usage` entry comes AFTER an older `thread_token_usage` must return the **thread** one — that is exactly the newest-first early-return that `foldJsonl`'s `reverse: true` + `until` has to reproduce.
 
 - [ ] **Step 2: Convert `codex`**
 
-`getTokenUsage` becomes `foldJsonl` with `order: 'end'`, `count: 300`, an accumulator holding `{thread, fallback}`, `onEntry` mirroring the current branch order (thread first, else total), and `until` returning true once an entry carries a numeric `thread_token_usage.input_tokens`. Return `acc.thread ?? acc.fallback`. The surrounding `catch { return null }` is replaced by `foldJsonl`'s own handling, which also logs — see the note in B2a Step 2.
+`getTokenUsage` becomes `foldJsonl` with `reverse: true`, `count: 300` (the default `from: 'end'` window is what codex already reads), an accumulator holding `{thread, fallback}`, `onEntry` mirroring the current branch order (thread first, else total), and `until` returning true once an entry carries a numeric `thread_token_usage.input_tokens`. Return `acc.thread ?? acc.fallback`. The surrounding `catch { return null }` is replaced by `foldJsonl`'s own handling, which also logs — see the note in B2a Step 2.
 
 Convert `getToolHistory` / `getRecentMessages` to `collectJsonl` and `scanRecentRollouts` only if `fileFor` can express it; **`scanRecentRollouts` is four levels deep with per-level `.sort().reverse().slice()` pruning and is NOT expected to fit** — if it does not fit cleanly, leave it and say so in the docs, rather than distorting the helper.
 
@@ -390,7 +400,7 @@ git commit -m "refactor(codex,gemini): fold onto the shared adapter helpers
 
 codex's token lookup walks entries newest-first and returns the first
 thread_token_usage it sees, falling back to the last info.total_token_usage —
-foldJsonl's order:'end' plus until reproduces that exactly. gemini collapses
+foldJsonl's reverse:true plus until reproduces that exactly. gemini collapses
 four copy-pasted JSONL-or-JSON loaders into one local helper and folds its
 token accumulator with foldEntries."
 ```
