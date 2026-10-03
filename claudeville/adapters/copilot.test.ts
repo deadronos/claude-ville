@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CopilotAdapter } from './copilot';
 import { extractText } from './text-utils';
 const fs = require('fs');
@@ -603,6 +603,119 @@ describe('copilot adapter', () => {
       const sessions = await adapter.getActiveSessions(120000);
       for (let i = 1; i < sessions.length; i++) {
         expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
+      }
+    });
+
+    // The test above has no teeth: it runs against the real $HOME, so on a
+    // machine with no copilot sessions `sessions` is empty and the loop body
+    // never executes. Reversing copilot.ts's comparator leaves it green, and
+    // copilot.fixture.test.ts cannot host a multi-session assertion (it is
+    // frozen, and its test 1 asserts getActiveSessions() has length 1). Nor can
+    // index.fixture.test.ts: it writes no ~/.copilot fixture, so copilot is not
+    // available there, and the registry re-sorts by lastActivity at
+    // index.ts:65 — which would mask a reversed copilot comparator entirely.
+    // These two cases drive the shipped adapter directly against a private
+    // tmpHome so the comparator is observable. Each creates and removes its own
+    // tmpHome and restores HOME in a finally, so it leaves no residue for the
+    // real-HOME tests above and does not depend on declaration order.
+    it('getActiveSessions returns multiple sessions ordered by lastActivity descending', async () => {
+      const fs = require('fs');
+      const os = require('os');
+      const path = require('path');
+      const originalHome = process.env.HOME;
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-order-'));
+      const stateDir = path.join(tmp, '.copilot', 'session-state');
+
+      // Names ascend lexicographically oldest→newest, so a result that merely
+      // followed readdir order would be the exact reverse of what is asserted:
+      // this case fails if the sort is reversed AND if it is dropped entirely.
+      const names = ['copilot-order-01', 'copilot-order-02', 'copilot-order-03'];
+      const now = Date.now();
+      for (let i = 0; i < names.length; i++) {
+        const dir = path.join(stateDir, names[i]);
+        fs.mkdirSync(dir, { recursive: true });
+        const eventsFile = path.join(dir, 'events.jsonl');
+        fs.writeFileSync(eventsFile, JSON.stringify({
+          type: 'session.start',
+          data: { sessionId: names[i], selectedModel: 'gpt-5-mini', context: { cwd: '/tmp/' + names[i] } },
+        }) + '\n');
+        // Oldest first: -3min, -2min, -1min. All inside the 1h threshold below.
+        const stamp = new Date(now - (names.length - i) * 60_000);
+        fs.utimesSync(eventsFile, stamp, stamp);
+      }
+
+      try {
+        process.env.HOME = tmp;
+        vi.resetModules();
+        const { CopilotAdapter: OrderedAdapter } = await import('./copilot');
+        const adapter = new OrderedAdapter();
+        expect(adapter.isAvailable()).toBe(true);
+
+        const sessions = await adapter.getActiveSessions(60 * 60 * 1000);
+        expect(sessions).toHaveLength(3);
+        expect(sessions.map((s: any) => s.sessionId)).toEqual([
+          'copilot-copilot-order-03',
+          'copilot-copilot-order-02',
+          'copilot-copilot-order-01',
+        ]);
+        // The pinned order and the numbers behind it must agree.
+        expect(sessions.map((s: any) => s.lastActivity)).toEqual(
+          [...sessions.map((s: any) => s.lastActivity)].sort((a, b) => b - a),
+        );
+        expect(sessions[0].lastActivity).toBeGreaterThan(sessions[2].lastActivity);
+      } finally {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    // Hazard 4: Array.prototype.sort is stable, so sessions sharing an mtime keep
+    // the input order, which is readdir order. collectScanByMtime preserves it via
+    // Promise.all (resolution order does not reorder results). B2's adapters lean
+    // on this too, so it is pinned here rather than left implicit.
+    it('getActiveSessions keeps readdir order for sessions sharing an mtime', async () => {
+      const fs = require('fs');
+      const os = require('os');
+      const path = require('path');
+      const originalHome = process.env.HOME;
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-tie-'));
+      const stateDir = path.join(tmp, '.copilot', 'session-state');
+
+      const names = ['copilot-tie-a', 'copilot-tie-b', 'copilot-tie-c'];
+      const stamp = new Date(Date.now() - 60_000);
+      for (const name of names) {
+        const dir = path.join(stateDir, name);
+        fs.mkdirSync(dir, { recursive: true });
+        const eventsFile = path.join(dir, 'events.jsonl');
+        fs.writeFileSync(eventsFile, JSON.stringify({
+          type: 'session.start',
+          data: { sessionId: name, selectedModel: 'gpt-5-mini', context: { cwd: '/tmp/' + name } },
+        }) + '\n');
+        // Identical mtime for all three — the tie is the point.
+        fs.utimesSync(eventsFile, stamp, stamp);
+      }
+
+      try {
+        // Derive the expectation from the same readdir the adapter uses, rather
+        // than assuming the OS returns names sorted.
+        const readdirOrder = fs.readdirSync(stateDir).map((n: string) => 'copilot-' + n);
+
+        process.env.HOME = tmp;
+        vi.resetModules();
+        const { CopilotAdapter: TiedAdapter } = await import('./copilot');
+        const adapter = new TiedAdapter();
+
+        const sessions = await adapter.getActiveSessions(60 * 60 * 1000);
+        expect(sessions).toHaveLength(3);
+        expect(sessions.map((s: any) => s.sessionId)).toEqual(readdirOrder);
+        // Precondition: the tie really is a tie, so this is not passing by luck.
+        const mtimes = new Set(sessions.map((s: any) => s.lastActivity));
+        expect(mtimes.size).toBe(1);
+      } finally {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+        fs.rmSync(tmp, { recursive: true, force: true });
       }
     });
 
