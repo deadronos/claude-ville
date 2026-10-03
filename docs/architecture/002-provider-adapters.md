@@ -65,9 +65,10 @@ Three helpers landed, `copilot` the reference consumer (321 → 281 lines):
 `sanitize` owns `summarizeToolInput`. A fourth, `buildSessionSummary`, was
 measured against all nine summary literals and deferred — they are not uniform:
 `openclaw` and `pi` add `displayName`, `agentType` is `'main'` / `'sub-agent'` /
-`'team-member'`, and `hermes` / `openclaw` / `opencode` each emit two records
-(a SQLite path and a file fallback), so a `fields => ({ ...fields })` builder would
-collapse nothing. Revisit once `codex`, `pi` and `gemini` are on the helpers.
+`'team-member'`, and `hermes` / `openclaw` / `opencode` each build records at two
+separate sites (a SQLite path and a file fallback) that derive fields differently,
+so a `fields => ({ ...fields })` builder would collapse nothing. Revisit once
+`codex`, `pi` and `gemini` are on the helpers.
 
 Caveats for anyone converting an adapter:
 
@@ -85,9 +86,16 @@ Caveats for anyone converting an adapter:
     - `pi` and `gemini` nest a level deeper than copilot — project dir → session
       files (`pi.ts:249`, `gemini.ts:320`) — and `gemini` also carries
       `projectHash` through into each record.
-    - `opencode`'s walk (`opencode.ts:42`) recursively descends files *and*
-      directories with **no mtime filter and no threshold**, so `thresholdMs` has
-      nothing to do; it is not a candidate for this helper at all.
+    - `opencode` **does** apply a threshold: `getSessionFiles(activeThresholdMs)`
+      (`opencode.ts:205`) stats each candidate and drops anything older
+      (`opencode.ts:212`), fed live from `getActiveSessions` (`opencode.ts:412`).
+      What does not fit is the *shape*, not the absence of a threshold —
+      discovery and filtering are **two separate phases**. `collectJsonFiles`
+      (`opencode.ts:42`) is an unbounded recursive walk that never stats and
+      yields arbitrary `.json` paths at any depth; the stat runs afterwards as a
+      second pass over that result. `collectScanByMtime` fuses readdir → stat →
+      build across child *directories* in one pass, so it cannot express a
+      walk-then-filter pipeline.
     - `codex` (`codex.ts:193`) is four levels deep — years → months → days →
       `rollout-*.jsonl` — pruning each level with `.sort().reverse().slice(0, 3)`
       / `6` / `14`. That is inexpressible in a one-directory helper; it needs a

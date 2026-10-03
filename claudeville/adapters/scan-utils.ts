@@ -10,8 +10,9 @@
  *
  * Copilot is the only adapter converted so far. The rest still carry their own
  * envelope and their scan shapes differ from copilot's materially — some scan
- * two or four directory levels, some group or filter by name, one has no
- * mtime filter at all — so do not assume a drop-in fit. The per-adapter
+ * two or four directory levels, some group or filter by name, and `opencode`
+ * separates discovery from filtering (an unbounded recursive walk, then a
+ * separate stat pass) — so do not assume a drop-in fit. The per-adapter
  * differences are listed in `docs/architecture/002-provider-adapters.md`.
  */
 import fs from 'fs';

@@ -33,9 +33,9 @@
 | --- | --- | --- |
 | `readJsonlEntries` (jsonl-utils) | yes | The `readLines`+`parseJsonLines` pair is in 8 of the 9 adapters; only `opencode` lacks it (whole `.json` files via its own `readJson`, plus SQLite). |
 | `collectJsonl` (jsonl-utils) | yes | The fold+catch+slice envelope is in 4+ adapters (copilot, codex, pi, openclaw). |
-| `collectScanByMtime` (scan-utils, new) | yes | The readdir→stat→mtime-filter envelope recurs in copilot, pi, gemini, openclaw, codex, claude, vscode, hermes — but only **copilot** is converted, and the shapes are not uniform (`opencode` has no mtime filter, `codex` walks four levels, `gemini`/`claude` nest, `pi`/`hermes`/`openclaw` scan files rather than dirs). See the caveat list in `docs/architecture/002-provider-adapters.md`. |
+| `collectScanByMtime` (scan-utils, new) | yes | The readdir→stat→mtime-filter envelope recurs in copilot, pi, gemini, openclaw, codex, claude, vscode, hermes — but only **copilot** is converted, and the shapes are not uniform (`opencode` separates its unbounded recursive walk from its stat pass, `codex` walks four levels, `gemini`/`claude` nest, `pi`/`hermes`/`openclaw` scan files rather than dirs). See the caveat list in `docs/architecture/002-provider-adapters.md`. |
 | `summarizeToolInput` (sanitize) | yes | The `typeof x === 'string' ? x : JSON.stringify(x)` pattern is in copilot×4, codex, pi, openclaw, vscode. |
-| `buildSessionSummary` (session-summary, new) | **deferred** | Measured: the 9 summary literals are NOT uniform. `openclaw`/`pi` add `displayName`; `agentType` is `'main'`/`'sub-agent'`/`'team-member'` across adapters; `hermes`/`openclaw`/`opencode` each emit two records. A `fields => ({...fields})` builder would not collapse the declarations. Revisit in B2 once copilot/codex/pi/gemini are on the new helpers. |
+| `buildSessionSummary` (session-summary, new) | **deferred** | Measured: the 9 summary literals are NOT uniform. `openclaw`/`pi` add `displayName`; `agentType` is `'main'`/`'sub-agent'`/`'team-member'` across adapters; `hermes`/`openclaw`/`opencode` each carry two record-construction sites (a DB-backed path and a file-backed one) whose field derivations differ. A `fields => ({...fields})` builder would not collapse the declarations. Revisit in B2 once copilot/codex/pi/gemini are on the new helpers. |
 
 ## File Structure
 
