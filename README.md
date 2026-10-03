@@ -50,7 +50,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 | GitHub Copilot CLI | `~/.copilot/` | 🔵 Cyan |
 | VS Code / VS Code Insiders Copilot Chat | `~/Library/Application Support/Code*/User/workspaceStorage/.../GitHub.copilot-chat/debug-logs/.../main.jsonl` | 🩵 Light Blue |
 | Pi Coding Agent | `~/.pi/agent/sessions/` | 🟡 Yellow |
-| OpenCode | `~/.opencode/` | 🔴 Red |
+| OpenCode | `~/.local/share/opencode/` (override with `OPENCODE_DATA_DIR`) | 🔴 Red |
 | Hermes | `~/.hermes/` | 🟢 Green |
 
 > The VS Code / Insiders adapter uses provider key `vscode` (shared for stable UI grouping). Session IDs are namespaced as `vscode:<channel>:<workspaceId>:<sessionId>`.
