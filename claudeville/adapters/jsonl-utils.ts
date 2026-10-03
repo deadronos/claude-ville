@@ -131,3 +131,91 @@ export async function collectJsonl<T>(
   if (typeof maxItems !== 'number') return out;
   return maxItems <= 0 ? [] : out.slice(-maxItems);
 }
+
+/**
+ * Fold parsed entries into an accumulator, optionally stopping early.
+ *
+ * `onEntry` mutates the accumulator in place and is typed `=> void` precisely so
+ * that returning a fresh object is not mistaken for a supported pattern — the
+ * return value is discarded, so a non-mutating `onEntry` silently does nothing.
+ * After `onEntry` runs, `until` is consulted with the accumulator and that entry;
+ * returning true stops the walk. That ordering is what lets `codex` set its
+ * `fallback` on the way past an `info.total_token_usage` entry and still stop at
+ * the first `thread_token_usage` entry — its loop returns the thread reading
+ * immediately and returns `fallback` only if it never sees one.
+ */
+export function foldEntries<T>(
+  entries: unknown[],
+  {
+    init,
+    onEntry,
+    until,
+  }: {
+    init: T;
+    onEntry: (acc: T, entry: any) => void;
+    until?: (acc: T, entry: any) => boolean;
+  },
+): T {
+  const acc = init;
+  for (const entry of entries) {
+    onEntry(acc, entry);
+    if (until?.(acc, entry)) break;
+  }
+  return acc;
+}
+
+/**
+ * Read a JSONL file and fold it.
+ *
+ * `from` picks WHICH WINDOW of the file is read — `'end'` (the default) reads the
+ * last `count` lines, `'start'` the first — and `reverse` picks which direction
+ * that window is WALKED. They are independent, and `reverse` only reorders the
+ * window that was read; it never reaches beyond it. `reverse: true` walks
+ * newest-first, which is what `codex`'s token lookup needs: it takes the LAST
+ * `thread_token_usage` in the file, not the first.
+ *
+ * The `from: 'end'` default is deliberate — every JSONL read in `pi`, `codex`,
+ * `gemini` and `copilot` wants the tail, so omitting `from` yields the tail rather
+ * than silently handing back the head of the file. Pass `from: 'start'` for a head
+ * read.
+ *
+ * What the catch below actually covers: a throw from `onEntry` or `until`, i.e.
+ * from adapter logic. It is debug-logged under `scope`/`operation` and `init` is
+ * returned, so a faulty fold degrades to "no data" rather than propagating.
+ *
+ * Read and parse failures do NOT reach this catch. `readLines` and
+ * `parseJsonLines` each swallow and log their own failures first, under their own
+ * labels (`readLines(from)` and `parseJsonLines`), so a missing or unreadable file
+ * simply yields an empty entry list. Such a failure is therefore NEVER logged
+ * under `operation` — there is no `operation`-labelled line for it to assert.
+ */
+export async function foldJsonl<T>(
+  filePath: string,
+  {
+    scope,
+    operation,
+    count = 50,
+    from = 'end',
+    reverse = false,
+    init,
+    onEntry,
+    until,
+  }: {
+    scope: string;
+    operation: string;
+    count?: number;
+    from?: 'start' | 'end';
+    reverse?: boolean;
+    init: T;
+    onEntry: (acc: T, entry: any) => void;
+    until?: (acc: T, entry: any) => boolean;
+  },
+): Promise<T> {
+  try {
+    const entries = await readJsonlEntries(filePath, { from, count, scope });
+    return foldEntries(reverse ? entries.slice().reverse() : entries, { init, onEntry, until });
+  } catch (err) {
+    debugAdapterError(scope, operation, err, filePath);
+    return init;
+  }
+}

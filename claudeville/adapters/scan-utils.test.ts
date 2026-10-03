@@ -98,6 +98,38 @@ describe('collectScanByMtime', () => {
     expect(result[0].filePath).toBe(fresh);
   });
 
+  it('keeps a file whose age is exactly thresholdMs, and drops one a millisecond older', async () => {
+    // `now - stat.mtimeMs > thresholdMs` is a STRICT comparison: a file sitting
+    // exactly at the threshold is KEPT, and only strictly-older files are dropped.
+    // Rewriting `>` as `>=` would drop the boundary file and turn this red.
+    //
+    // The helper captures `now = Date.now()` internally, so the boundary is only
+    // reachable with the clock pinned — otherwise the file drifts a few ms into
+    // the past while the test runs and the outcome is decided by timing rather
+    // than by the operator. utimesSync round-trips an exact integer ms, so
+    // `age === thresholdMs` holds precisely rather than approximately.
+    //
+    // This test is self-validating: if the Date.now spy silently stopped working,
+    // the real clock would put both files far past the threshold and the result
+    // would be [] — a failure, not a vacuous pass.
+    const FIXED_NOW = 1700000000000;
+    const atBoundary = makeSession('at-boundary');
+    const justPast = makeSession('just-past');
+    fs.utimesSync(atBoundary, new Date(FIXED_NOW - HOUR_MS), new Date(FIXED_NOW - HOUR_MS));
+    fs.utimesSync(justPast, new Date(FIXED_NOW - HOUR_MS - 1), new Date(FIXED_NOW - HOUR_MS - 1));
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
+    let result: ScanRecord[];
+    try {
+      result = await collectScanByMtime<ScanRecord>(scanOptions({ thresholdMs: HOUR_MS }));
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(idsOf(result)).toEqual(['at-boundary']);
+    expect(result[0].mtime).toBe(FIXED_NOW - HOUR_MS);
+  });
+
   it('skips a child whose fileFor returns null without ever stat-ing it', async () => {
     // Two children: one fileFor rejects, one points at a file that is not there.
     // The `!filePath` guard returns before stat and therefore logs nothing; only
@@ -142,6 +174,107 @@ describe('collectScanByMtime', () => {
     const result = await collectScanByMtime<ScanRecord>(scanOptions());
 
     expect(idsOf(result)).toEqual(['present']);
+  });
+
+  it('builds one record per path when fileFor returns an array, in the order returned', async () => {
+    // pi's shape: one child directory holding many *.jsonl files. The two paths
+    // are returned in REVERSE alphabetical order on purpose, so a helper that
+    // re-derived the order from readdir (or sorted it) shows up as a mismatch
+    // rather than coinciding with what is asserted.
+    makeSession('multi');
+    const events = eventsFile('multi');
+    const second = path.join(sessionDir(), 'multi', 'second.jsonl');
+    fs.writeFileSync(second, '{}\n');
+
+    const result = await collectScanByMtime<ScanRecord>(scanOptions({
+      fileFor: () => [second, events],
+    }));
+
+    expect(result.map((r) => r.filePath)).toEqual([second, events]);
+    // Both belong to the same child, and both carry that child's name.
+    expect(result.map((r) => r.sessionId)).toEqual(['multi', 'multi']);
+    expect(result.every((r) => r.mtime > 0)).toBe(true);
+  });
+
+  it('yields no records and never calls build when fileFor returns an empty array', async () => {
+    // A directory that exists but holds no matching file — pi's empty project dir.
+    makeSession('none');
+    const build = vi.fn(() => ({ sessionId: 'x', filePath: '', mtime: 0 }));
+
+    const result = await collectScanByMtime<ScanRecord>(scanOptions({ fileFor: () => [], build }));
+
+    expect(result).toEqual([]);
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it('treats null from fileFor as a skip, but a bare empty string as a path to stat', async () => {
+    // `null` (like `[]`) means "skip this child" and never touches the filesystem.
+    // An empty string is NOT a skip — it is a path, so it reaches
+    // fs.promises.stat and fails there, surfacing as a `stat` log rather than a
+    // `resolve` one. Pinned because neither shape is obviously correct and a
+    // future truthiness filter over the resolved paths would silently turn one
+    // into the other.
+    makeSession('child');
+
+    const nullBuild = vi.fn(() => ({ sessionId: 'x', filePath: '', mtime: 0 }));
+    const { result: nullResult, lines: nullLines } = await withDebug(() => collectScanByMtime<ScanRecord>(
+      scanOptions({ fileFor: () => null, build: nullBuild }),
+    ));
+
+    expect(nullResult).toEqual([]);
+    expect(nullLines).toEqual([]);
+    expect(nullBuild).not.toHaveBeenCalled();
+
+    const emptyBuild = vi.fn(() => ({ sessionId: 'x', filePath: '', mtime: 0 }));
+    const { result: emptyResult, lines: emptyLines } = await withDebug(() => collectScanByMtime<ScanRecord>(
+      scanOptions({ fileFor: () => '', build: emptyBuild }),
+    ));
+
+    expect(emptyResult).toEqual([]);
+    expect(emptyBuild).not.toHaveBeenCalled();
+    // The empty string got as far as stat, which is where it fails.
+    expect(emptyLines).toHaveLength(1);
+    expect(emptyLines[0]).toContain('scanAllSessions stat');
+    expect(emptyLines[0]).not.toContain('scanAllSessions resolve');
+  });
+
+  it('labels a throwing fileFor as resolve, not stat', async () => {
+    // pi's inner readdir failing inside fileFor. Before this helper gave fileFor
+    // its own try, that throw was caught by the stat catch and reported as a stat
+    // failure — pointing at a path that was never statted.
+    makeSession('boom');
+
+    const { result, lines } = await withDebug(() => collectScanByMtime<ScanRecord>(scanOptions({
+      fileFor: () => { throw new Error('readdir exploded'); },
+    })));
+
+    expect(result).toEqual([]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('scanAllSessions resolve');
+    expect(lines[0]).not.toContain('scanAllSessions stat');
+    expect(lines[0]).toContain('readdir exploded');
+    // The context names the child that failed, which is the directory, not a file.
+    expect(lines[0]).toContain(path.join(sessionDir(), 'boom'));
+  });
+
+  it('keeps a valid sibling when another child throws in fileFor', async () => {
+    // The whole point of confining the throw to one child: without its own try,
+    // the rejection escapes children.map, Promise.all rejects, the outer catch
+    // swallows the entire scan, and even the healthy child is lost.
+    makeSession('good');
+    makeSession('bad');
+
+    const { result, lines } = await withDebug(() => collectScanByMtime<ScanRecord>(scanOptions({
+      fileFor: (name) => {
+        if (name === 'bad') throw new Error('readdir exploded');
+        return eventsFile(name);
+      },
+    })));
+
+    expect(idsOf(result)).toEqual(['good']);
+    expect(result[0].filePath).toBe(eventsFile('good'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('scanAllSessions resolve');
   });
 
   it('ignores plain files sitting in the scanned dir', async () => {
