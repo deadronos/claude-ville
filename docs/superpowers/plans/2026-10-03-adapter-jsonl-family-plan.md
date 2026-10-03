@@ -101,7 +101,9 @@ export function foldEntries<T>(
 }
 ```
 
-`onEntry` receives the accumulator and may mutate and return it, or return a replacement. `until` runs **after** `onEntry`, never before — see the doc comment; getting this backwards silently breaks `codex`.
+`onEntry` receives the accumulator and is expected to **mutate it in place**; its return value is ignored. `until` runs **after** `onEntry`, never before — see the doc comment; getting this backwards silently breaks `codex`.
+
+> **Corrected after B2a.** An earlier draft said `onEntry` could "return a replacement". The implementation ignores the return value, and the B2b/B2c call sites are written against mutation semantics. The doc comment in `jsonl-utils.ts` says the same. Do not "fix" one to match the other without reading both call sites.
 
 - [ ] **Step 2: Add `foldJsonl` to `jsonl-utils.ts`**
 
@@ -148,6 +150,11 @@ export async function foldJsonl<T>(
 
 `entries.slice().reverse()` rather than `entries.reverse()` so the parsed array is not mutated in place.
 
+> **Corrected after B2a — this changes what B2c may assert.** The `catch` around the read is **unreachable for read and parse errors**, because `readLines` already swallows them and logs under its own `readLines(from)` label; `parseJsonLines` likewise. Only a throw from `onEntry`/`until` reaches it. Consequences:
+> - Do **not** write a B2c test expecting a `getTokenUsage` debug line for a bad file. The label that appears is `readLines(...)`, from `jsonl-utils.ts`, not `foldJsonl`'s `operation`.
+> - The doc comment on `foldJsonl` overstates what the `catch` does. It has been corrected in `jsonl-utils.ts`.
+> - `entries.slice().reverse()` is honoured by inspection only — the array is built fresh per call, so in-place mutation is unobservable and a test for it would be vacuous. No test was written for it.
+
 - [ ] **Step 3: Let `fileFor` return many files, and label its errors**
 
 In `scan-utils.ts`, change the `fileFor` type and the candidate loop. Replace the `ScanCandidate` export and the `fileFor`/`build` lines in the options type:
@@ -160,7 +167,7 @@ stays as-is — `pi` needs the project directory (`candidate.name`) and the file
 Change the options type to `fileFor: (name: string) => string | string[] | null`, and replace the body of the per-child `map` callback with:
 
 ```ts
-    const built = await Promise.all(children.map(async (child): Promise<T | null> => {
+    const built = await Promise.all(children.map(async (child) => {
       let filePaths: string[] | null;
       try {
         const resolved = fileFor(child.name);
@@ -171,7 +178,7 @@ Change the options type to `fileFor: (name: string) => string | string[] | null`
       }
       if (!filePaths || filePaths.length === 0) return null;
 
-      const perFile = await Promise.all(filePaths.map(async (filePath): Promise<T | null> => {
+      const perFile: (T | null)[] = await Promise.all(filePaths.map(async (filePath): Promise<T | null> => {
         try {
           const stat = await fs.promises.stat(filePath);
           if (now - stat.mtimeMs > thresholdMs) return null;
@@ -185,6 +192,8 @@ Change the options type to `fileFor: (name: string) => string | string[] | null`
     }));
     results.push(...built.flat().filter((r): r is T => r !== null));
 ```
+
+> **Corrected after B2a.** The per-child callback in the snippet below must NOT be annotated `Promise<T | null>`: it returns `(T | null)[]` for `.flat()` to consume, which does not compile against an unresolved `T`. The shipped version uses a `PerChild<T>` alias plus an explicit annotation on the inner `Promise.all`, which also retired the pre-existing `as (T | null)[]` cast that B1 introduced (that cast is unsound under nesting).
 
 Three changes, each load-bearing:
 - `filePaths` may hold many entries, and `build` runs **once per file**, which is what `pi` needs.
