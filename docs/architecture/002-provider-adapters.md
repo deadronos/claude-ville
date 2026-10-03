@@ -69,8 +69,8 @@ measured against all nine summary literals and deferred — they are not uniform
 `openclaw` and `pi` add `displayName`, `agentType` is `'main'` / `'sub-agent'` /
 `'team-member'`, and `hermes` / `openclaw` / `opencode` each build records at two
 separate sites (a SQLite path and a file fallback) that derive fields differently,
-so a `fields => ({ ...fields })` builder would collapse nothing. Revisit once
-`codex` and `gemini` are on the helpers (`copilot` and `pi` already are).
+so a `fields => ({ ...fields })` builder would collapse nothing. Revisit once more
+adapters are on the helpers: `copilot`, `pi` and `gemini` are, `codex` fold-only.
 
 Caveats for anyone converting an adapter:
 
@@ -87,10 +87,19 @@ Caveats for anyone converting an adapter:
     - `onEntry` must mutate the accumulator in place. It is typed `=> void` and
       its return value is discarded, so a non-mutating `onEntry` silently does
       nothing.
-- `collectScanByMtime` fits **copilot's shape, and `pi` is the second adapter
-  converted onto it**. The envelope recurs across the JSONL adapters, but each one
-  scans a different shape and most still do not fit a single `child name → one
-  file` mapping. Before writing B2–B4, check these:
+- Walk **direction** is a per-reader decision no field name reveals, and `codex`
+  is the worked example: its two readers walk OPPOSITE ways over the same tail
+  window. `getTokenUsage` takes `reverse: true` because it wants the LAST
+  `thread_token_usage` in the file, while `parseRollout` walks forward and so
+  fills `lastTool` / `lastMessage` from the FIRST match in that window — the
+  names contradict the direction. Reversing either is green on any
+  single-candidate fixture and wrong on every real rollout, so the trap is
+  pinned from both sides in `codex.fixture.test.ts` and repeated in the comment
+  on `getTokenUsage` (`codex.ts:274`) rather than left to be rediscovered.
+- `collectScanByMtime` fits **copilot's shape, and `pi` and `gemini` are the
+  other two converted onto it**. The envelope recurs across the JSONL adapters,
+  but each one scans a different shape and most still do not fit a single
+  `child name → one file` mapping. Before writing B2–B4, check these:
     - `pi` nests a level deeper than copilot — project dir → session files
       (`pi.ts:249`) — so one child directory has no single file to hand back and
       can contribute many records. That is what widened `fileFor` from one path to
@@ -101,9 +110,13 @@ Caveats for anyone converting an adapter:
       `hermes.ts:240`), so `fileFor` still has nothing to map there and the
       `isDirectory()` filter would drop every candidate.
     - `gemini` nests one level deeper than `pi`: project dir → `chats/` →
-      session files (`gemini.ts:323` joins the `chats` subdirectory before
-      reading). What is outstanding for it is carrying `projectHash` through into
-      each record, which `collectScanByMtime` does not supply.
+      session files (`gemini.ts:333` joins the `chats` subdirectory before
+      reading). It **is** converted, on `pi`'s many-paths `fileFor` — the project
+      directory is the child and `fileFor` hands back the whole `session-*`
+      listing beneath it, which is also how `projectHash` reaches the record,
+      since `build` receives the child directory as `name`. `fileFor` is called
+      synchronously, so that listing is a `readdirSync` (`gemini.ts:337`); see the
+      Compliance note below.
     - `opencode` **does** apply a threshold: `getSessionFiles(activeThresholdMs)`
       (`opencode.ts:205`) stats each candidate and drops anything older
       (`opencode.ts:212`), fed live from `getActiveSessions` (`opencode.ts:412`).
@@ -114,10 +127,16 @@ Caveats for anyone converting an adapter:
       second pass over that result. `collectScanByMtime` fuses readdir → stat →
       build across child *directories* in one pass, so it cannot express a
       walk-then-filter pipeline.
-    - `codex` (`codex.ts:193`) is four levels deep — years → months → days →
+    - `codex` (`codex.ts:197`) is four levels deep — years → months → days →
       `rollout-*.jsonl` — pruning each level with `.sort().reverse().slice(0, 3)`
-      / `6` / `14`. That is inexpressible in a one-directory helper; it needs a
-      deeper abstraction, not an adapter tweak.
+      / `6` / `14`, and a helper shaped `readdir → isDirectory → hand the child
+      back` has nowhere to put a per-level prune. That is inexpressible here; it
+      needs a deeper abstraction, not an adapter tweak. `codex` is therefore
+      **fold-only**: its three readers are on `collectJsonl` / `foldJsonl`, while
+      `scanRecentRollouts` (`codex.ts:183`) was left alone on purpose. That is
+      also why `codex.ts` GREW where `gemini.ts` shrank — the converted logic is
+      3 lines shorter, against four added `type` aliases and a dozen comment lines
+      carrying the direction trap above.
     - `vscode` has three candidate shapes per workspace (debug-log dir →
       `main.jsonl`, transcript file, resource dir → newest `content.txt` across
       its tool dirs) across four storage roots, then dedupes by
@@ -144,10 +163,10 @@ Every adapter method that performs file or network I/O must be implemented as an
 - **Synchronous `fileFor` (the one sanctioned exception)**: `collectScanByMtime`
   calls `fileFor` synchronously (`scan-utils.ts:74`), so an adapter that has to
   enumerate a directory in order to answer must do so with `fs.readdirSync`.
-  `pi.ts:262` is the case in the tree today. This exception is bounded by the
-  helper rather than open-ended: a throw is caught, logged as `<operation> resolve`,
-  and confined to that one child directory, so a failing enumeration cannot take
-  down its siblings.
+  `pi.ts:262` and `gemini.ts:337` are the cases in the tree today. This exception
+  is bounded by the helper rather than open-ended: a throw is caught, logged as
+  `<operation> resolve`, and confined to that one child directory, so a failing
+  enumeration cannot take down its siblings.
 - **`getWatchPaths()` is synchronous by interface contract**, not by choice:
   `shared/types.ts:89` declares it as `getWatchPaths(): WatchPath[]` and the
   registry calls it without awaiting (`adapters/index.ts:91`). The three adapters
@@ -162,19 +181,19 @@ Every adapter method that performs file or network I/O must be implemented as an
 Note that the rules above are not uniformly held, and the eight remaining
 `fs.readdirSync` sites breach them in two different ways:
 
-- `claude.ts:493`, `gemini.ts:465`, `openclaw.ts:599` — inside `getWatchPaths()`,
+- `claude.ts:493`, `gemini.ts:460`, `openclaw.ts:599` — inside `getWatchPaths()`,
   so they cannot be async at all without an interface change.
 - `openclaw.ts:276` — inside the synchronous helper `findAgentDatabases()`, called
   from async paths.
-- `gemini.ts:91,109` — inside synchronous project-path resolution, called from
+- `gemini.ts:92,110` — inside synchronous project-path resolution, called from
   async paths.
 - `openclaw.ts:465,519` — inside async methods, so these breach the "use
   `fs.promises`" rule without breaching the "must be async" rule. `openclaw.ts:519`
   additionally has no try of its own.
 
 All are pre-existing and unconverted; converting those adapters is what retires
-them. Widening `fileFor` to accept a promise would likewise retire `pi.ts:262` —
-it is a real option, but it belongs in its own change with its own concurrency
-tests rather than in an adapter conversion.
+them. Widening `fileFor` to accept a promise would likewise retire `pi.ts:262`
+and `gemini.ts:337` — it is a real option, but it belongs in its own change with
+its own concurrency tests rather than in an adapter conversion.
 
 The `getAllSessions` function in `adapters/index.ts` calls all adapters concurrently. If any adapter blocks on synchronous I/O, it blocks the entire scan for all providers.
