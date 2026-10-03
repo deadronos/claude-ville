@@ -481,6 +481,122 @@ describe('PiAdapter fixtures', () => {
     }
   });
 
+  // Pins parseSession's `until` GATE (pi.ts:107-110) — the one line of the fold
+  // conversion that is not a mechanical translation.
+  //
+  // The pre-conversion loop's early `break` sat INSIDE the message branch, so it
+  // could only ever fire after a message had been folded. `foldJsonl` consults
+  // `until` after EVERY entry, so the naive translation —
+  // `until: (detail) => !!(detail.lastMessage && detail.model && detail.project)`
+  // — can complete the triple on a NON-message entry and stop one entry early.
+  // The gate re-checks the entry (`pi.ts:108`) and ignores that entry, which is
+  // the entire difference between the two versions.
+  //
+  // This file's shape is the one that tells them apart: the `session` line
+  // carrying `cwd` is NOT first, so `project` is the LAST field the reverse walk
+  // completes, and the file's only toolCall sits in an EARLIER message than the
+  // one that completes the message/model pair. Walking newest-first:
+  //
+  //   3  session (cwd)     → project. Triple still missing lastMessage and model.
+  //   2  message (text)    → lastMessage. Triple still missing model.
+  //   1  model_change      → model. TRIPLE COMPLETE, on a non-message entry:
+  //                             ↑ the naive `until` stops HERE, lastTool stays null
+  //   0  message (toolCall)→ lastTool 'bash'. The gate is the only reason the
+  //                             walk is still running when it reaches this entry.
+  //
+  // Every other fixture here puts the `session` line first and its toolCall in a
+  // message newer than the completing one, so gated and naive stop at the same
+  // entry and all 8 of them pass either way. Deleting this case would leave the
+  // gate unpinned, and a naive re-translation of any adapter with a
+  // break-inside-a-branch would then pass review and pass this file.
+  //
+  // Written in-body and removed in the finally, for the same reason as the gamma
+  // case above: the listing case asserts a length of exactly 1, so a directory
+  // left behind would make this file order-dependent and --sequence.shuffle
+  // would fail.
+  it('records a toolCall that sits behind the entry completing the field triple', async () => {
+    const epsilonDir = '--Users-test-Github-epsilon--';
+    const workspaceEpsilon = path.join(tmpHome, 'workspace', 'epsilon');
+    fs.mkdirSync(workspaceEpsilon, { recursive: true });
+
+    // Annotated in reverse-walk order (newest first) above, which is the opposite
+    // of the order they are written in here.
+    const epsilonFile = writeSession(epsilonDir, 'epsilon-1.jsonl', [
+      {
+        // Oldest entry, and the file's ONLY toolCall. Reachable only because the
+        // gate declines to stop on the `model_change` line above it in the walk.
+        type: 'message',
+        timestamp: at(0),
+        message: {
+          role: 'assistant',
+          content: [{ type: 'toolCall', name: 'bash', arguments: { command: 'ls' } }],
+        },
+      },
+      // Supplies `model`, and completes the triple on a non-message entry — the
+      // exact entry the naive `until` stops on.
+      { type: 'model_change', provider: 'minimax', modelId: 'MiniMax-M2.7', timestamp: at(1) },
+      {
+        // Supplies `lastMessage`. Its text block carries no toolCall, so folding
+        // it leaves lastTool null and the walk has to continue past the
+        // model_change to fill that in.
+        type: 'message',
+        timestamp: at(2),
+        message: { role: 'assistant', content: [{ type: 'text', text: 'epsilon output' }] },
+      },
+      {
+        // Deliberately LAST, so `cwd` is the last field the reverse walk
+        // completes. Moving this line to the top of the file — where every other
+        // fixture puts it — collapses the case: nothing would distinguish gated
+        // from naive any more. With the naive `until`, `lastTool` and
+        // `lastToolInput` below both come back null.
+        type: 'session', version: 3, id: 'epsilon-1', timestamp: at(3), cwd: workspaceEpsilon,
+      },
+    ]);
+    const epsilonMtime = backdate(epsilonFile, MINUTE);
+
+    vi.resetModules();
+    const reimported: any = await import('./pi.js');
+    const adapter = new reimported.PiAdapter();
+
+    try {
+      const sessions = await adapter.getActiveSessions(5 * MINUTE);
+      const session = sessions.find((s: any) => s.sessionId === sessionIdOf(epsilonDir, 'epsilon-1.jsonl'));
+      expect(session).toBeDefined();
+
+      // The whole field set, so a regression names the field that moved rather
+      // than just failing a count.
+      expect(session).toEqual({
+        sessionId: sessionIdOf(epsilonDir, 'epsilon-1.jsonl'),
+        provider: 'pi',
+        agentId: null,
+        displayName: null,
+        agentType: 'main',
+        model: 'MiniMax-M2.7',
+        status: 'active',
+        lastActivity: epsilonMtime,
+        project: workspaceEpsilon,
+        lastMessage: 'epsilon output',
+        // The two fields the gate is load-bearing for. Both are null if the fold
+        // stops on the model_change line.
+        lastTool: 'bash',
+        lastToolInput: '{"command":"ls"}',
+        parentSessionId: null,
+        filePath: epsilonFile,
+      });
+
+      // The toolCall is in the file either way — getToolHistory walks forward with
+      // no gate — so a null lastTool above means the reverse walk stopped early,
+      // not that this fixture failed to write the tool. Short `arguments`, so
+      // neither 60-char nor 80-char truncation applies and the string is exact.
+      const detail = await adapter.getSessionDetail(session.sessionId, session.project, epsilonFile);
+      expect(detail.toolHistory).toEqual([
+        { tool: 'bash', detail: '{"command":"ls"}', ts: new Date(at(0)).getTime() },
+      ]);
+    } finally {
+      removeProjectDir(epsilonDir);
+    }
+  });
+
   // pi.ts:361 returns a bare `{ toolHistory: [], messages: [] }` on the miss
   // path — no tokenUsage, no sessionId. As in copilot.fixture.test.ts, only the
   // interface guarantee is asserted: shared/types.ts documents that unknown
