@@ -59,6 +59,9 @@
     "ws": "^8.22.0"
   },
   "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=24"
+  },
   "allowScripts": {
     "@swc/core@1.16.12": true,
     "better-sqlite3@13.0.3": true,

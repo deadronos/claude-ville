@@ -1,0 +1,64 @@
+name: CI
+
+# The lint and typecheck gates were both silently off until #135 re-enabled
+# them, and nothing enforced them for the life of the repo. This workflow is
+# what stops them rotting again.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref — a push to a PR branch makes the
+# previous run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck, lint, test
+    runs-on: ubuntu-latest
+    # Integration tests spawn `tsx` subprocesses and bind ephemeral ports, which
+    # is slower and flakier than a unit-only run. Give them room rather than
+    # letting a hang burn the full limit.
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Pinned to the major the suite is verified against locally. The
+          # adapter concurrency test in claudeville/adapters/scan-utils.test.ts
+          # counts event-loop turns, so a Node major change is not a silent
+          # no-op for this suite.
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # `--sequence.shuffle` is deliberately NOT used here.
+      # `copilot.fixture.test.ts` writes extra session directories from inside
+      # individual tests, so it is sensitive to WITHIN-FILE declaration order:
+      # test 1 asserts `getActiveSessions` has length 1. That hazard is designed
+      # out by construction (each case removes its directory in a `finally`),
+      # and the file's own header comment records it. A shuffled CI run would
+      # add flakiness without adding coverage.
+      - name: Test
+        run: npm test
+
+      # `tsc` cannot resolve `?url` / asset / CSS imports, and vitest only
+      # collects `*.test.*`, so a broken asset import in an untested file passes
+      # typecheck, lint and the whole suite. vite is the only gate that catches
+      # bundler-resolution failures. Costs ~0.3s.
+      - name: Build frontend
+        run: npm run build:frontend
