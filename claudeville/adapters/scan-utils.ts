@@ -8,12 +8,16 @@
  * supplies only the format-specific part (which filename to look for, what to
  * put in the record).
  *
- * Copilot is the only adapter converted so far. The rest still carry their own
- * envelope and their scan shapes differ from copilot's materially — some scan
- * two or four directory levels, some group or filter by name, and `opencode`
- * separates discovery from filtering (an unbounded recursive walk, then a
- * separate stat pass) — so do not assume a drop-in fit. The per-adapter
- * differences are listed in `docs/architecture/002-provider-adapters.md`.
+ * Copilot and `pi` are the adapters converted so far. `pi` is what forced
+ * `fileFor` to return many paths for one child rather than a single file — it
+ * nests project dir → session files — and a throwing callback is therefore
+ * reported under `<operation> resolve` rather than the stat/build labels. The
+ * rest still carry their own envelope and their scan shapes differ from
+ * copilot's materially — some scan two or four directory levels, some group or
+ * filter by name, and `opencode` separates discovery from filtering (an
+ * unbounded recursive walk, then a separate stat pass) — so do not assume a
+ * drop-in fit. The per-adapter differences are listed in
+ * `docs/architecture/002-provider-adapters.md`.
  */
 import fs from 'fs';
 import path from 'path';

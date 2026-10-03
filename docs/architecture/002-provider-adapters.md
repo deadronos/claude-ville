@@ -75,17 +75,23 @@ Caveats for anyone converting an adapter:
 - `summarizeToolInput` is not a guard-free drop-in: given `0` it returns `'0'`
   where copilot's `tc.input ? … : ''` returns `''`. Callers keep their own guard.
 - `maxItems: 0` or negative returns `[]`; it is not `no limit`.
-- `collectScanByMtime` fits **copilot's shape only**, and one converted adapter is
-  all that has been done. The envelope recurs across the JSONL adapters, but each
-  one scans a different shape and most do not fit a single `child name → one
+- `collectScanByMtime` fits **copilot's shape, and `pi` is the second adapter
+  converted onto it**. The envelope recurs across the JSONL adapters, but each one
+  scans a different shape and most still do not fit a single `child name → one
   file` mapping. Before writing B2–B4, check these:
-    - `pi`, `openclaw`, `hermes` enumerate **files** in the session directory, not
-      one file per child directory (`openclaw.ts:245`, `hermes.ts:240`), so
-      `fileFor` has nothing to map and the `isDirectory()` filter would drop every
-      candidate.
-    - `pi` and `gemini` nest a level deeper than copilot — project dir → session
-      files (`pi.ts:249`, `gemini.ts:320`) — and `gemini` also carries
-      `projectHash` through into each record.
+    - `pi` nests a level deeper than copilot — project dir → session files
+      (`pi.ts:249`) — so one child directory has no single file to hand back and
+      can contribute many records. That is what widened `fileFor` from one path to
+      `string[]`, and what added the `<operation> resolve` label for a throwing
+      callback (`pi.ts:260`).
+    - `openclaw` and `hermes` enumerate **files** in the session directory
+      directly, with no project-dir level to descend through (`openclaw.ts:245`,
+      `hermes.ts:240`), so `fileFor` still has nothing to map there and the
+      `isDirectory()` filter would drop every candidate.
+    - `gemini` has the same project-dir → session-files nesting `pi` has
+      (`gemini.ts:320`) and would fit for that reason alone; what is still
+      outstanding for it is carrying `projectHash` through into each record, which
+      `collectScanByMtime` does not supply.
     - `opencode` **does** apply a threshold: `getSessionFiles(activeThresholdMs)`
       (`opencode.ts:205`) stats each candidate and drops anything older
       (`opencode.ts:212`), fed live from `getActiveSessions` (`opencode.ts:412`).
@@ -117,8 +123,22 @@ Caveats for anyone converting an adapter:
 Every adapter method that performs file or network I/O must be implemented as an `async` function using non-blocking primitives. Specific requirements:
 
 - **File I/O**: Use `fs.promises` instead of `fs.readFileSync`, `fs.readdirSync`, or `fs.statSync`.
+- **Synchronous `fileFor` (the one sanctioned exception)**: `collectScanByMtime`
+  calls `fileFor` synchronously (`scan-utils.ts:74`), so an adapter that has to
+  enumerate a directory in order to answer must do so with `fs.readdirSync`.
+  `pi.ts:262` is the case in the tree today. This exception is bounded by the
+  helper rather than open-ended: a throw is caught, logged as `<operation> resolve`,
+  and confined to that one child directory, so a failing enumeration cannot take
+  down its siblings.
 - **Concurrent scans**: When iterating over multiple directories or files, use `Promise.all` to run operations in parallel rather than sequential `for` loops.
 - **Detail fetching**: When a session scan must fetch detail data per-session, fan out with `Promise.all` — do not fetch sequentially.
 - **Availability checks**: `isAvailable()` may use synchronous `fs.existsSync` as a one-time check; all other I/O must be async.
+
+Note that the `File I/O` rule is not yet uniformly held: `fs.readdirSync` also
+appears in `claude.ts:493`, `gemini.ts:91,109,465` and
+`openclaw.ts:276,465,519,599`. Those are pre-existing and unconverted; converting
+those adapters is what retires them. Widening `fileFor` to accept a promise would
+likewise retire `pi.ts:262` — it is a real option, but it belongs in its own change
+with its own concurrency tests rather than in an adapter conversion.
 
 The `getAllSessions` function in `adapters/index.ts` calls all adapters concurrently. If any adapter blocks on synchronous I/O, it blocks the entire scan for all providers.

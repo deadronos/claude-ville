@@ -62,9 +62,10 @@ function writeSession(projectDir: string, fileName: string, entries: unknown[]) 
   return file;
 }
 
-// pi.ts:264 filters on `now - stat.mtimeMs > activeThresholdMs`, where `now` is
-// captured inside the scan. An offset of hours/days against a threshold of
-// minutes leaves no boundary to race, while still pinning the comparison's
+// pi.ts:254 supplies the threshold; the comparison itself is the helper's
+// `now - stat.mtimeMs > thresholdMs` (scan-utils.ts:90), with `now` captured
+// once up front (scan-utils.ts:67). An offset of hours/days against a threshold
+// of minutes leaves no boundary to race, while still pinning the comparison's
 // sign: `mtimeMs - now > threshold` would admit the stale fixtures.
 function backdate(file: string, msAgo: number) {
   const when = new Date(Date.now() - msAgo);
@@ -86,9 +87,9 @@ const BETA_AGE_MS = 10 * 60 * MINUTE;
 // Shared across the truncation and maxItems cases. JSON-stringifies to 108
 // chars — longer than both the 60-char cap parseSession applies to
 // lastToolInput (pi.ts:92) and the 80-char cap getToolHistory applies to a tool
-// detail (pi.ts:125), so the exact prefix and its length pin which site produced
-// the string. `z` padding is longer than lastMessage's 80-char cap (pi.ts:78)
-// and getRecentMessages' 200-char cap (pi.ts:158).
+// detail (pi.ts:133), so the exact prefix and its length pin which site
+// produced the string. `z` padding is longer than lastMessage's 80-char cap
+// (pi.ts:80) and getRecentMessages' 200-char cap (pi.ts:161).
 const LONG_ARGS = { path: 'p'.repeat(30), q: 'q'.repeat(60) };
 const LONG_ARGS_JSON = JSON.stringify(LONG_ARGS);
 const LONG_TEXT = 'z'.repeat(260);
@@ -104,12 +105,14 @@ describe('PiAdapter fixtures', () => {
     }
 
     fs.mkdirSync(sessionsRoot(), { recursive: true });
-    // A loose file at the top of the sessions root. pi.ts:250 keeps only
-    // `d.isDirectory()` children, so this must not be read as a project dir —
-    // though note that deleting that filter is NOT observable through the
-    // adapter: readdir on a file raises ENOTDIR, which the per-project-dir
-    // catch (pi.ts:278) already discards. The filter is defence in depth, not a
-    // behaviour with an observable difference, so no assertion here can pin it.
+    // A loose file at the top of the sessions root. pi.ts:251 hands
+    // SESSIONS_DIR to the helper, which keeps only `d.isDirectory()` children
+    // (scan-utils.ts:70), so this must not be read as a project dir — though
+    // note that deleting that filter is NOT observable through the adapter:
+    // readdir on a file raises ENOTDIR, which the per-child catch
+    // (scan-utils.ts:76, logged as `scanAllSessionFiles resolve`) already
+    // discards. The filter is defence in depth, not a behaviour with an
+    // observable difference, so no assertion here can pin it.
     fs.writeFileSync(path.join(sessionsRoot(), 'README.md'), 'not a project dir\n');
 
     alphaFile = writeSession(PROJ_ALPHA, `${ALPHA_ID}.jsonl`, [
@@ -121,9 +124,9 @@ describe('PiAdapter fixtures', () => {
         message: { role: 'user', content: [{ type: 'text', text: 'please run the tests' }] },
       },
       {
-        // No top-level timestamp: pi.ts:130 falls back to ts 0, and pi.ts:159
+        // No top-level timestamp: pi.ts:134 falls back to ts 0, and pi.ts:162
         // does the same for messages. The arguments are a STRING, not an
-        // object, so this also pins the string branch of pi.ts:90/123 — handed
+        // object, so this also pins the string branch of pi.ts:92/133 — handed
         // to JSON.stringify instead it would gain two quote characters and the
         // 80-char prefix would shift.
         type: 'message',
@@ -143,7 +146,7 @@ describe('PiAdapter fixtures', () => {
         },
       },
       {
-        // No `role`: pi.ts:157 defaults it to 'assistant'. Dropping that default
+        // No `role`: pi.ts:160 defaults it to 'assistant'. Dropping that default
         // makes this entry's role `undefined`.
         type: 'message',
         timestamp: at(4),
@@ -162,7 +165,7 @@ describe('PiAdapter fixtures', () => {
         },
       },
     ]);
-    // pi.ts:257 keeps only names ending in `.jsonl`. `alpha-1.jsonl.bak`
+    // pi.ts:263 keeps only names ending in `.jsonl`. `alpha-1.jsonl.bak`
     // contains ".jsonl" but does not END with it, so an `includes` filter would
     // pick it up and produce a second session.
     fs.writeFileSync(path.join(path.dirname(alphaFile), `${ALPHA_ID}.jsonl.bak`), 'not jsonl\n');
@@ -171,9 +174,9 @@ describe('PiAdapter fixtures', () => {
 
     // Straddles the two thresholds: outside getActiveSessions' 5-minute argument
     // below, inside the 30-minute window getSessionDetail hard-codes for its
-    // own id-only scan (pi.ts:343). That second constant is otherwise invisible.
+    // own id-only scan (pi.ts:323). That second constant is otherwise invisible.
     // Deliberately carries no model_change and no message-level `model`, so its
-    // summary resolves through pi.ts:318's `detail.model || 'unknown'` fallback.
+    // summary resolves through pi.ts:298's `detail.model || 'unknown'` fallback.
     deltaFile = writeSession(PROJ_DELTA, `${DELTA_ID}.jsonl`, [
       { type: 'session', version: 3, id: DELTA_ID, timestamp: at(0), cwd: workspaceDelta },
       {
@@ -185,7 +188,7 @@ describe('PiAdapter fixtures', () => {
     deltaMtime = backdate(deltaFile, DELTA_AGE_MS);
 
     // No `message.usage` entries anywhere, so getTokenUsage's `found` flag stays
-    // false and pi.ts:202 returns null rather than {input: 0, output: 0}.
+    // false and pi.ts:209 returns null rather than {input: 0, output: 0}.
     betaFile = writeSession(PROJ_BETA, `${BETA_ID}.jsonl`, [
       { type: 'session', version: 3, id: BETA_ID, timestamp: at(0), cwd: workspaceBeta },
       {
@@ -265,14 +268,14 @@ describe('PiAdapter fixtures', () => {
 
     const detail = await adapter.getSessionDetail(sessionIdOf(PROJ_ALPHA, `${ALPHA_ID}.jsonl`), workspaceAlpha, alphaFile);
 
-    // pi.ts:184-203 — 100 + 300 in, 20 + 80 out. The string-valued and
+    // pi.ts:197-206 — 100 + 300 in, 20 + 80 out. The string-valued and
     // cache-only entries contribute nothing.
     expect(detail.tokenUsage).toEqual({ input: 400, output: 100 });
     expect(detail.sessionId).toBe(sessionIdOf(PROJ_ALPHA, `${ALPHA_ID}.jsonl`));
 
     // Both toolCall blocks survive in file order; the string-argument one is
-    // capped at 80 (pi.ts:125) and its missing timestamp becomes ts 0
-    // (pi.ts:130).
+    // capped at 80 (pi.ts:133) and its missing timestamp becomes ts 0
+    // (pi.ts:134).
     expect(detail.toolHistory).toEqual([
       { tool: 'read_file', detail: 's'.repeat(80), ts: 0 },
       { tool: 'bash', detail: '{"command":"npm test"}', ts: new Date(at(3)).getTime() },
@@ -280,7 +283,7 @@ describe('PiAdapter fixtures', () => {
 
     // Text blocks only: the two toolCall-only messages yield no text
     // (extractText returns '' for them). No role on the middle entry defaults
-    // to 'assistant' (pi.ts:157).
+    // to 'assistant' (pi.ts:160).
     expect(detail.messages).toEqual([
       { role: 'user', text: 'please run the tests', ts: new Date(at(1)).getTime() },
       { role: 'assistant', text: 'checking usage guards', ts: new Date(at(4)).getTime() },
@@ -288,8 +291,8 @@ describe('PiAdapter fixtures', () => {
     ]);
   });
 
-  // Two paths through getSessionDetail: the filePath short-circuit (pi.ts:334)
-  // and the id-only rescan (pi.ts:343). The id-only path is also the only place
+  // Two paths through getSessionDetail: the filePath short-circuit (pi.ts:314)
+  // and the id-only rescan (pi.ts:323). The id-only path is also the only place
   // the encoded sessionId is decoded, so it is where the encoder above earns its
   // keep.
   it('round-trips the encoded sessionId when resolving without a filePath', async () => {
@@ -303,7 +306,7 @@ describe('PiAdapter fixtures', () => {
     expect(viaId.messages).toHaveLength(3);
 
     // A wrong id in an EXISTING project dir must not match on fileId alone.
-    // pi.ts:350 requires both the file id and the project dir to line up.
+    // pi.ts:328-331 requires both the file id and the project dir to line up.
     await expect(adapter.getSessionDetail(sessionIdOf(PROJ_BETA, `${ALPHA_ID}.jsonl`), workspaceBeta)).resolves.toMatchObject({
       toolHistory: [],
       messages: [],
@@ -321,7 +324,7 @@ describe('PiAdapter fixtures', () => {
     ]);
 
     // BETA is 10 hours old, so getSessionDetail's own 30-minute scan
-    // (pi.ts:343) cannot find it and the id-only lookup misses.
+    // (pi.ts:323) cannot find it and the id-only lookup misses.
     await expect(adapter.getSessionDetail(sessionId, workspaceBeta)).resolves.toMatchObject({
       toolHistory: [],
       messages: [],
@@ -333,8 +336,8 @@ describe('PiAdapter fixtures', () => {
   // hard-coded one. Widening or dropping that constant changes these results.
   //
   // This is also the only case that widens the activity window, which is what
-  // makes it the place two behaviours become observable: pi.ts:318's
-  // `model || 'unknown'` fallback (DELTA names no model) and pi.ts:330's
+  // makes it the place two behaviours become observable: pi.ts:298's
+  // `model || 'unknown'` fallback (DELTA names no model) and pi.ts:310's
   // lastActivity-descending sort (ALPHA is newer than DELTA). ALPHA is written
   // in beforeAll and never removed, so this stays order-independent.
   it("uses a 30-minute activity window for getSessionDetail's own scan", async () => {
@@ -448,7 +451,7 @@ describe('PiAdapter fixtures', () => {
       expect(session.lastTool).toBe('tool_19');
       expect(session.lastToolInput).toBe('{"path":"' + 'p'.repeat(30) + '","q":"' + 'q'.repeat(14));
       expect(session.lastToolInput).toHaveLength(60);
-      // pi.ts:78 — parseSession's lastMessage cap of 80.
+      // pi.ts:80 — parseSession's lastMessage cap of 80.
       expect(session.lastMessage).toBe('z'.repeat(80));
       expect(session.model).toBe('claude-sonnet-4');
 
@@ -460,7 +463,7 @@ describe('PiAdapter fixtures', () => {
         Array.from({ length: 15 }, (_, i) => `tool_${String(i + 5).padStart(2, '0')}`),
       );
       expect(detail.toolHistory[0].detail).toBe('{"n":5}');
-      // pi.ts:125 — toolHistory's own cap is 80, not 60, from the same payload.
+      // pi.ts:133 — toolHistory's own cap is 80, not 60, from the same payload.
       expect(detail.toolHistory[14].detail).toBe('{"path":"' + 'p'.repeat(30) + '","q":"' + 'q'.repeat(34));
       expect(detail.toolHistory[14].detail).toHaveLength(80);
 
@@ -597,7 +600,7 @@ describe('PiAdapter fixtures', () => {
     }
   });
 
-  // pi.ts:361 returns a bare `{ toolHistory: [], messages: [] }` on the miss
+  // pi.ts:341 returns a bare `{ toolHistory: [], messages: [] }` on the miss
   // path — no tokenUsage, no sessionId. As in copilot.fixture.test.ts, only the
   // interface guarantee is asserted: shared/types.ts documents that unknown
   // sessions resolve to empty arrays and that the optional fields "may
