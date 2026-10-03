@@ -68,7 +68,7 @@ measured against all nine summary literals and deferred — they are not uniform
 `'team-member'`, and `hermes` / `openclaw` / `opencode` each build records at two
 separate sites (a SQLite path and a file fallback) that derive fields differently,
 so a `fields => ({ ...fields })` builder would collapse nothing. Revisit once
-`codex`, `pi` and `gemini` are on the helpers.
+`codex` and `gemini` are on the helpers (`copilot` and `pi` already are).
 
 Caveats for anyone converting an adapter:
 
