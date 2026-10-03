@@ -217,8 +217,18 @@ describe('collectScanByMtime', () => {
     // The watchdog exists so the sequential mutant FAILS instead of hanging. It
     // releases the barrier after `WATCHDOG_TURNS` idle event-loop turns, letting
     // the scan complete so the peak assertion can report the real peak of 1. A
-    // concurrent scan needs ~3-6 turns (measured), so the two cases are three
-    // orders of magnitude apart; this is a liveness backstop, not a race.
+    // concurrent scan needs ~3-4 turns (measured, max 4 across idle / 2.4x /
+    // 6.4x CPU load), so the two cases are roughly 25x apart — about 1.5 orders
+    // of magnitude, not the 1000x first claimed. The watchdog counts event-loop
+    // iterations rather than elapsed time: libuv dispatches completed threadpool
+    // requests in the poll phase of each iteration, so a queued `stat` lands
+    // within ~1 turn. 100 turns would need 100 consecutive poll phases with no
+    // fs callback completing. This is a liveness backstop, not a race.
+    //
+    // This pins UNBOUNDED concurrency: a deliberate move to bounded concurrency
+    // (e.g. LIMIT=8, to avoid EMFILE on a 10k-child session dir) turns this red
+    // even though it would improve wall-clock. That is intentional — the hazard
+    // being guarded is silent serialization — but be aware before changing it.
     const children = ['s1', 's2', 's3', 's4', 's5', 's6'];
     for (const name of children) makeSession(name);
 
