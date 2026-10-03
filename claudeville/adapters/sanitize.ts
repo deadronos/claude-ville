@@ -80,3 +80,14 @@ export function sanitizeSessionSummary(session: any = {}) {
     lastToolInput: summarizeText(session?.lastToolInput || '', 80) || null,
   };
 }
+
+/**
+ * Render a tool input for display: pass strings through, JSON-stringify
+ * anything else, then cap. The cap is an explicit argument because adapters
+ * disagree on it (copilot 60 in parseSession, 80 in getToolHistory) and
+ * unifying it would silently change output.
+ */
+export function summarizeToolInput(value: unknown, maxLen: number): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return (text ?? '').substring(0, maxLen);
+}

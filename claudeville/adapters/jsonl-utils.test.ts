@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readLines, parseJsonLines } from './jsonl-utils';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { readLines, parseJsonLines, readJsonlEntries, collectJsonl } from './jsonl-utils';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -105,6 +105,188 @@ describe('jsonl-utils', () => {
 
       const result = await readLines(dirPath);
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('readJsonlEntries / collectJsonl', () => {
+    let tmpDir: string;
+
+    const write = (name: string, content: string) => {
+      const filePath = path.join(tmpDir, name);
+      fs.writeFileSync(filePath, content);
+      return filePath;
+    };
+
+    beforeAll(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudeville-jsonl-utils-'));
+    });
+
+    afterAll(() => {
+      if (fs.existsSync(tmpDir)) {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    describe('readJsonlEntries', () => {
+      it('returns parsed objects and skips a malformed line', async () => {
+        const filePath = write('mixed.jsonl', '{"id":1}\nnot valid json\n{"id":2}\n');
+
+        const result = await readJsonlEntries(filePath);
+
+        expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+      });
+
+      it('returns only the first entry with from: start and count: 1', async () => {
+        const filePath = write('first-only.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+
+        const result = await readJsonlEntries(filePath, { from: 'start', count: 1 });
+
+        expect(result).toEqual([{ id: 1 }]);
+      });
+    });
+
+    describe('collectJsonl', () => {
+      it('forwards from and count to the reader', async () => {
+        // Hardcoding { from: 'end', count: 50 } inside collectJsonl would make
+        // every other case here still pass, so this pins the extra hop through
+        // readJsonlEntries — the parameter adapters care most about (copilot
+        // reads 100 lines for tool history but 60 for messages).
+        const filePath = write('forwarded.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+        const options = {
+          scope: 'test',
+          operation: 'forwarded',
+          onEntry: (entry: any, out: { id: number }[]) => out.push({ id: entry.id }),
+        };
+
+        const firstOnly = await collectJsonl<{ id: number }>(filePath, { ...options, from: 'start', count: 1 });
+        const everything = await collectJsonl<{ id: number }>(filePath, options);
+
+        expect(firstOnly).toEqual([{ id: 1 }]);
+        expect(everything).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      });
+
+      it('logs scope and operation when folding throws', async () => {
+        const filePath = write('logged.jsonl', '{"id":1}\n');
+        const lines: string[] = [];
+        const original = process.env.DEBUG;
+        const spy = vi.spyOn(console, 'debug').mockImplementation((...args: unknown[]) => {
+          lines.push(args.map(String).join(' '));
+        });
+        process.env.DEBUG = '1';
+
+        try {
+          await collectJsonl(filePath, {
+            scope: 'my-adapter',
+            operation: 'getToolHistory',
+            onEntry: () => { throw new Error('boom'); },
+          });
+        } finally {
+          spy.mockRestore();
+          if (original === undefined) delete process.env.DEBUG;
+          else process.env.DEBUG = original;
+        }
+
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toContain('my-adapter');
+        expect(lines[0]).toContain('getToolHistory');
+        expect(lines[0]).toContain('boom');
+      });
+
+      it('folds entries and returns them in order', async () => {
+        const filePath = write('fold.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'fold',
+          count: 10,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      });
+
+      it('keeps only the last N entries when maxItems is set', async () => {
+        const filePath = write('capped.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n{"id":4}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'capped',
+          count: 10,
+          maxItems: 2,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([{ id: 3 }, { id: 4 }]);
+      });
+
+      it('returns every entry when maxItems is omitted', async () => {
+        const filePath = write('uncapped.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'uncapped',
+          count: 10,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      });
+
+      it('returns [] when maxItems is 0, even with entries to fold', async () => {
+        const filePath = write('zero.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'zero',
+          count: 10,
+          maxItems: 0,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([]);
+      });
+
+      it('returns [] when maxItems is negative', async () => {
+        // Five entries and maxItems -2: the old `out.slice(-maxItems)` behaviour
+        // would have computed slice(2) and returned three of them.
+        const filePath = write('negative.jsonl', '{"id":1}\n{"id":2}\n{"id":3}\n{"id":4}\n{"id":5}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'negative',
+          count: 10,
+          maxItems: -2,
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([]);
+      });
+
+      it('returns [] for a nonexistent file without throwing', async () => {
+        const result = await collectJsonl<{ id: number }>(path.join(tmpDir, 'nope.jsonl'), {
+          scope: 'test',
+          operation: 'missing',
+          onEntry: (entry, out) => out.push({ id: entry.id }),
+        });
+
+        expect(result).toEqual([]);
+      });
+
+      it('keeps entries folded before an onEntry throw', async () => {
+        const filePath = write('throwing.jsonl', '{"id":1}\n{"id":2}\n');
+
+        const result = await collectJsonl<{ id: number }>(filePath, {
+          scope: 'test',
+          operation: 'throwing',
+          count: 10,
+          onEntry: (entry, out) => {
+            if (entry.id === 2) throw new Error('boom');
+            out.push({ id: entry.id });
+          },
+        });
+
+        expect(result).toEqual([{ id: 1 }]);
+      });
     });
   });
 });

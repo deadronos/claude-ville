@@ -15,14 +15,13 @@ import path from 'path';
 import os from 'os';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
-import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { debugAdapterError, readLines, parseJsonLines, collectJsonl } from './jsonl-utils.js';
+import { collectScanByMtime } from './scan-utils.js';
+import { summarizeToolInput } from './sanitize.js';
 import { extractText } from './text-utils.js';
 
 const COPILOT_DIR = path.join(os.homedir(), '.copilot');
 const SESSION_STATE_DIR = path.join(COPILOT_DIR, 'session-state');
-
-// Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Utility ─────────────────────────────────────────────
 
@@ -87,9 +86,7 @@ async function parseSession(filePath: string) {
         for (const tc of msg.toolCalls) {
           detail.lastTool = tc.name || 'tool_call';
           if (tc.input) {
-            detail.lastToolInput = (typeof tc.input === 'string'
-              ? tc.input : JSON.stringify(tc.input)
-            ).substring(0, 60);
+            detail.lastToolInput = summarizeToolInput(tc.input, 60);
           }
           break;
         }
@@ -103,9 +100,7 @@ async function parseSession(filePath: string) {
       const tc = entry.data;
       detail.lastTool = tc.name || 'tool_call';
       if (tc.input) {
-        detail.lastToolInput = (typeof tc.input === 'string'
-          ? tc.input : JSON.stringify(tc.input)
-        ).substring(0, 60);
+        detail.lastToolInput = summarizeToolInput(tc.input, 60);
       }
     }
   }
@@ -116,12 +111,12 @@ async function parseSession(filePath: string) {
 // ─── Tool history ────────────────────────────────────
 
 async function getToolHistory(filePath: string, maxItems = 15) {
-  const tools = [];
-  try {
-    const lines = await readLines(filePath, { from: 'end', count: 100, scope: 'copilot' });
-    const entries = parseJsonLines(lines, 'copilot');
-
-    for (const entry of entries) {
+  return collectJsonl<{ tool: string; detail: string; ts: number }>(filePath, {
+    scope: 'copilot',
+    operation: 'getToolHistory',
+    count: 100,
+    maxItems,
+    onEntry: (entry, out) => {
       let toolName = null;
       let toolInput = null;
       let ts = 0;
@@ -131,9 +126,7 @@ async function getToolHistory(filePath: string, maxItems = 15) {
         if (msg.toolCalls && Array.isArray(msg.toolCalls)) {
           for (const tc of msg.toolCalls) {
             toolName = tc.name || 'tool_call';
-            toolInput = tc.input
-              ? (typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input)).substring(0, 80)
-              : '';
+            toolInput = tc.input ? summarizeToolInput(tc.input, 80) : '';
             ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0;
             break;
           }
@@ -142,47 +135,39 @@ async function getToolHistory(filePath: string, maxItems = 15) {
 
       if (!toolName && entry.type === 'tool_call' && entry.data) {
         toolName = entry.data.name || 'tool_call';
-        toolInput = entry.data.input
-          ? (typeof entry.data.input === 'string' ? entry.data.input : JSON.stringify(entry.data.input)).substring(0, 80)
-          : '';
+        toolInput = entry.data.input ? summarizeToolInput(entry.data.input, 80) : '';
         ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0;
       }
 
       if (toolName) {
-        tools.push({ tool: toolName, detail: toolInput || '', ts });
+        out.push({ tool: toolName, detail: toolInput || '', ts });
       }
-    }
-  } catch (err) {
-    debugAdapterError('copilot', 'getToolHistory', err, filePath);
-  }
-  return tools.slice(-maxItems);
+    },
+  });
 }
 
 // ─── Recent messages ──────────────────────────────────────
 
 async function getRecentMessages(filePath: string, maxItems = 5) {
-  const messages = [];
-  try {
-    const lines = await readLines(filePath, { from: 'end', count: 60, scope: 'copilot' });
-    const entries = parseJsonLines(lines, 'copilot');
-
-    for (const entry of entries) {
-      if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue;
-      if (!entry.data || !entry.data.content) continue;
+  return collectJsonl<{ role: string; text: string; ts: number }>(filePath, {
+    scope: 'copilot',
+    operation: 'getRecentMessages',
+    count: 60,
+    maxItems,
+    onEntry: (entry, out) => {
+      if (entry.type !== 'user.message' && entry.type !== 'assistant.message') return;
+      if (!entry.data || !entry.data.content) return;
 
       const text = extractText(entry.data.content);
-      if (!text) continue;
+      if (!text) return;
 
-      messages.push({
+      out.push({
         role: entry.type === 'user.message' ? 'user' : 'assistant',
         text: text.substring(0, 200),
         ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
       });
-    }
-  } catch (err) {
-    debugAdapterError('copilot', 'getRecentMessages', err, filePath);
-  }
-  return messages.slice(-maxItems);
+    },
+  });
 }
 
 // ─── Token usage ────────────────────────────────────────────
@@ -216,39 +201,14 @@ async function getTokenUsage(filePath: string): Promise<{ input: number; output:
 // ─── Session scan ────────────────────────────────────────
 
 async function scanAllSessions(activeThresholdMs: number) {
-  type ScanResult = { filePath: string; mtime: number; sessionId: string };
-  const results: ScanResult[] = [];
-  if (!fs.existsSync(SESSION_STATE_DIR)) return results;
-
-  const now = Date.now();
-
-  try {
-    const sessionDirs = (await fs.promises.readdir(SESSION_STATE_DIR, { withFileTypes: true }))
-      .filter((d: Dirent) => d.isDirectory());
-    const dirResults = await Promise.all(sessionDirs.map(async (sessionDir: Dirent): Promise<ScanResult | null> => {
-      const eventsFile = path.join(SESSION_STATE_DIR, sessionDir.name, 'events.jsonl');
-      if (!fs.existsSync(eventsFile)) return null;
-
-      try {
-        const stat = await fs.promises.stat(eventsFile);
-        if (now - stat.mtimeMs > activeThresholdMs) return null;
-        return {
-          filePath: eventsFile,
-          mtime: stat.mtimeMs,
-          sessionId: sessionDir.name,
-        };
-      } catch (err) {
-        debugAdapterError('copilot', 'scanAllSessions stat', err, eventsFile);
-        return null;
-      }
-    }));
-
-    results.push(...dirResults.filter((result): result is ScanResult => result !== null));
-  } catch (err) {
-    debugAdapterError('copilot', 'scanAllSessions', err, SESSION_STATE_DIR);
-  }
-
-  return results;
+  return collectScanByMtime<{ filePath: string; mtime: number; sessionId: string }>({
+    dir: SESSION_STATE_DIR,
+    scope: 'copilot',
+    operation: 'scanAllSessions',
+    thresholdMs: activeThresholdMs,
+    fileFor: (name) => path.join(SESSION_STATE_DIR, name, 'events.jsonl'),
+    build: ({ name, filePath, mtimeMs }) => ({ filePath, mtime: mtimeMs, sessionId: name }),
+  });
 }
 
 // ─── Adapter class ─────────────────────────────────────

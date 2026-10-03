@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanText, summarizeText, sanitizeSessionDetail, sanitizeSessionSummary } from './sanitize';
+import { cleanText, summarizeText, sanitizeSessionDetail, sanitizeSessionSummary, summarizeToolInput } from './sanitize';
 
 describe('sanitize', () => {
   describe('cleanText', () => {
@@ -222,6 +222,90 @@ describe('sanitize', () => {
         messages: [],
       });
       expect(result.toolHistory[0].tool).toBe('unknown');
+    });
+  });
+
+  describe('summarizeToolInput', () => {
+    it('passes a string through and caps it at maxLen', () => {
+      expect(summarizeToolInput('short input', 60)).toBe('short input');
+      expect(summarizeToolInput('x'.repeat(200), 60)).toBe('x'.repeat(60));
+    });
+
+    it('JSON-stringifies non-string values before capping', () => {
+      expect(summarizeToolInput({ a: 1 }, 60)).toBe('{"a":1}');
+      expect(summarizeToolInput({ a: 1 }, 4)).toBe('{"a"');
+      expect(summarizeToolInput(42, 60)).toBe('42');
+    });
+
+    it('respects maxLen exactly', () => {
+      const long = 'abcdefghij';
+      expect(summarizeToolInput(long, 3)).toBe(long.substring(0, 3));
+      expect(summarizeToolInput(long, 0)).toBe('');
+      // A cap wider than the input is a no-op, not padding.
+      expect(summarizeToolInput(long, 50)).toBe(long);
+    });
+
+    it('returns an empty string when the value has no string form', () => {
+      expect(summarizeToolInput(undefined, 60)).toBe('');
+      expect(summarizeToolInput(null, 60)).toBe('null');
+    });
+
+    // ─── Falsy-input contract (load-bearing for every caller) ────
+    //
+    // summarizeToolInput does NOT perform a truthiness guard, and must not be
+    // "fixed" to. Adapters guard at the call site because their shipped
+    // behaviour depends on it: copilot renders a tool input as
+    //   tc.input ? summarizeToolInput(tc.input, N) : ''
+    // (and `if (tc.input) { … }` in parseSession), so a falsy-but-present input
+    // yields '' (getToolHistory) or leaves lastToolInput null (parseSession)
+    // today. Handing the same value straight to this helper yields '0' /
+    // 'false' / 'null' instead — observable in copilot's output. B2 applies
+    // this helper to codex/pi/gemini: any adapter that drops its own guard
+    // regresses silently, because nothing in the helper signals that the guard
+    // is the caller's job.
+    //
+    // The next block states the divergence explicitly; these assertions exist so
+    // that changing the helper's falsy handling to `return ''` fails here.
+    it('renders falsy-but-present input rather than collapsing it to empty', () => {
+      expect(summarizeToolInput(0, 60)).toBe('0');
+      expect(summarizeToolInput(false, 60)).toBe('false');
+      expect(summarizeToolInput('', 60)).toBe('');
+      expect(summarizeToolInput(null, 60)).toBe('null');
+      // NaN is falsy-but-present too, and JSON.stringify(NaN) is the string 'null'.
+      expect(summarizeToolInput(NaN, 60)).toBe('null');
+    });
+
+    it('is not a drop-in for a caller-side truthiness guard', () => {
+      // The exact divergence B2 must not inherit: copilot's guard is falsy, the
+      // helper is not. `guard ? helper(v) : ''` and a bare `helper(v)` disagree
+      // for every falsy-but-present input except ''.
+      const guarded = (v: unknown) => (v ? summarizeToolInput(v, 60) : '');
+      const unguarded = (v: unknown) => summarizeToolInput(v, 60);
+
+      expect(guarded(0)).toBe('');
+      expect(unguarded(0)).toBe('0');
+      expect(guarded(false)).toBe('');
+      expect(unguarded(false)).toBe('false');
+      expect(guarded(null)).toBe('');
+      expect(unguarded(null)).toBe('null');
+
+      // They agree on truthy values, so the divergence is easy to miss in review.
+      expect(unguarded({ file_path: '/tmp/a' })).toBe(guarded({ file_path: '/tmp/a' }));
+      expect(unguarded('literal')).toBe(guarded('literal'));
+
+      // '' is the one falsy input where the two coincide — which is why a
+      // hand-written test using an empty string as "the falsy case" proves nothing.
+      expect(unguarded('')).toBe(guarded(''));
+    });
+
+    it('still caps falsy-but-present input, it does not bypass the cap', () => {
+      // A truncation-driven '' is a different thing from a guard-driven '':
+      // summarizeToolInput(0, 0) is '' because the cap ate the character, not
+      // because 0 was treated as absent.
+      expect(summarizeToolInput(0, 0)).toBe('');
+      expect(summarizeToolInput(0, 1)).toBe('0');
+      expect(summarizeToolInput('null', 2)).toBe('nu');
+      expect(summarizeToolInput(null, 2)).toBe('nu');
     });
   });
 });

@@ -1,7 +1,8 @@
 /**
  * Shared JSONL file utilities.
- * readLines + parseJsonLines are duplicated verbatim in openclaw, copilot, codex, vscode.
- * Extract once; adapters import from here.
+ * `readLines` + `parseJsonLines` were duplicated across the adapters and were
+ * extracted here (1d80b24); all eight JSONL-reading adapters now import both
+ * from this module, `opencode` excepted. See `readJsonlEntries` below.
  */
 import fs from 'fs';
 
@@ -74,4 +75,59 @@ export function parseJsonLines(lines: string[], scope = 'jsonl-utils') {
     }
   }
   return results;
+}
+
+/**
+ * Read + parse in one step. Eight of the nine adapters call this pair back to
+ * back — `claude`, `codex`, `copilot`, `gemini`, `hermes`, `openclaw`, `pi`,
+ * `vscode` — and this is where that pairing is expressed once. `opencode` is
+ * the exception and never calls either: it stores whole `.json` documents, so
+ * it reads them with its own `readJson` (`opencode.ts:58`) and takes its index
+ * from SQLite rather than from a JSONL stream.
+ */
+export async function readJsonlEntries(
+  filePath: string,
+  { from = 'end', count = 50, scope = 'jsonl-utils' }: { from?: 'start' | 'end'; count?: number; scope?: string } = {},
+) {
+  return parseJsonLines(await readLines(filePath, { from, count, scope }), scope);
+}
+
+/**
+ * Read a JSONL file, fold each entry through `onEntry`, and keep the last
+ * `maxItems`. Swallows and debug-logs read/parse/fold errors, returning
+ * whatever was accumulated — the contract every adapter's getToolHistory /
+ * getRecentMessages already had.
+ *
+ * `maxItems` is applied as a real limit: `0` or a negative value returns an
+ * empty array rather than the whole file. Omit it (or pass `undefined`) to keep
+ * every entry.
+ */
+export async function collectJsonl<T>(
+  filePath: string,
+  {
+    scope,
+    operation,
+    from = 'end',
+    count = 50,
+    maxItems,
+    onEntry,
+  }: {
+    scope: string;
+    operation: string;
+    from?: 'start' | 'end';
+    count?: number;
+    maxItems?: number;
+    onEntry: (entry: any, out: T[]) => void;
+  },
+): Promise<T[]> {
+  const out: T[] = [];
+  try {
+    for (const entry of await readJsonlEntries(filePath, { from, count, scope })) {
+      onEntry(entry, out);
+    }
+  } catch (err) {
+    debugAdapterError(scope, operation, err, filePath);
+  }
+  if (typeof maxItems !== 'number') return out;
+  return maxItems <= 0 ? [] : out.slice(-maxItems);
 }
