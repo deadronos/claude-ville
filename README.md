@@ -20,7 +20,7 @@
 Watch your AI agent teams come alive in an isometric pixel world
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20R3F-61dafb)]()
 
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Supported-a78bfa?logo=anthropic&logoColor=white)](https://docs.anthropic.com/en/docs/claude-code)
@@ -55,7 +55,7 @@ Each CLI stores session logs locally. ClaudeVille can run as a legacy all-in-one
 
 > The VS Code / Insiders adapter uses provider key `vscode` (shared for stable UI grouping). Session IDs are namespaced as `vscode:<channel>:<workspaceId>:<sessionId>`.
 
-> Only installed CLIs are detected. You don't need all three — ClaudeVille works with whichever ones you have.
+> Only installed CLIs are detected. You don't need all nine — ClaudeVille works with whichever ones you have.
 
 ## Features
 
@@ -115,19 +115,17 @@ The browser app uses the configured hub HTTP base for session, detail, usage, an
 
 ### Manual live E2E
 
-To verify the split stack against a real Claude Code session in a real browser, run:
+To verify the split stack end to end in a real browser, run:
 
 ```bash
 npm run test:e2e
 ```
 
-This manual-only test is intentionally separate from `npm test`. It boots `npm run dev:hubreceiver`, `npm run dev:collector`, and `npm run dev:frontend`, opens Chromium via Playwright, spawns fresh `claude -p ...` prompts in temporary project directories, and verifies that the sidebar updates without a manual browser refresh.
+This manual-only test is intentionally separate from `npm test`. It boots `npm run dev:hubreceiver`, `npm run dev:collector`, and `npm run dev:frontend` on ephemeral ports with a throwaway `HOME`, opens Chromium via Playwright, writes synthetic OpenClaw session logs into temporary project directories, and verifies that sessions appear in — and later leave — the sidebar without a manual browser refresh. No real CLI agent is started; the generated logs stand in for one.
 
 Requirements:
 
-- Claude Code CLI available on your `PATH` (override with `CLAUDEVILLE_E2E_CLAUDE_BIN` if needed)
 - Playwright Chromium installed once via `npx playwright install chromium`
-- A working Claude Code login/session, since the test uses real prompts
 
 ### Display name pools
 
@@ -178,16 +176,16 @@ The widget:
 - Auto-starts the ClaudeVille server if not running
 - Click "Open Dashboard" to launch the full browser UI
 
-> `build.sh` auto-detects your project path and Node.js location. No manual configuration needed.
+> `build.sh` auto-detects your project path. No manual configuration needed.
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) v18+
+- [Node.js](https://nodejs.org/) v24+
 - At least one of:
   - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`~/.claude/`)
   - [Codex CLI](https://github.com/openai/codex) (`~/.codex/`)
   - [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`~/.gemini/`)
-- **OpenCode adapter**: `sqlite3` system binary (pre-installed on macOS, install via `apt-get install sqlite3` or similar on Linux)
+- **SQLite-backed adapters** (OpenClaw, OpenCode, Hermes): nothing extra to install — they read provider databases through the `better-sqlite3` npm package, so no system `sqlite3` binary is required
 - **Widget only**: macOS + Xcode Command Line Tools (`xcode-select --install`)
 
 ## How It Works
@@ -232,37 +230,40 @@ Each CLI stores session logs in its own directory. ClaudeVille uses an **adapter
 claude-ville/
 ├── claudeville/                # Legacy all-in-one app (serves UI + API)
 │   ├── index.html              #   HTML shell
-│   ├── server.js               #   Node.js server (HTTP + WebSocket)
-│   ├── runtime-config.js      #   Runtime config loader
-│   ├── adapters/              #   Provider adapters (CommonJS)
-│   │   ├── index.js           #   Adapter registry
-│   │   ├── claude.js          #   Claude Code adapter
-│   │   ├── codex.js           #   Codex CLI adapter
-│   │   ├── gemini.js          #   Gemini CLI adapter
-│   │   ├── copilot.js         #   Copilot CLI adapter
-│   │   ├── openclaw.js        #   OpenClaw adapter
-│   │   ├── vscode.js          #   VS Code / Insiders adapter
-│   │   ├── pi.js              #   Pi Coding Agent adapter
-│   │   ├── opencode.js        #   OpenCode adapter
-│   │   └── hermes.js          #   Hermes adapter
-│   ├── services/              #   Backend services
-│   │   └── usageQuota.js      #   Account & usage data
-│   ├── css/                   #   Stylesheets
-│   └── src/                   #   Application source (ES modules)
-│       ├── config/            #   Theme, buildings, i18n, constants, costs
-│       ├── domain/            #   Entities, value objects, events
-│       ├── infrastructure/    #   Data source, WebSocket client
+│   ├── server.ts               #   Node.js server (HTTP + WebSocket)
+│   ├── runtime-config.ts       #   Runtime config loader
+│   ├── adapters/               #   Provider adapters (ES modules)
+│   │   ├── index.ts            #   Adapter registry
+│   │   ├── claude.ts           #   Claude Code adapter
+│   │   ├── codex.ts            #   Codex CLI adapter
+│   │   ├── gemini.ts           #   Gemini CLI adapter
+│   │   ├── copilot.ts          #   Copilot CLI adapter
+│   │   ├── openclaw.ts         #   OpenClaw adapter
+│   │   ├── vscode.ts           #   VS Code / Insiders adapter
+│   │   ├── pi.ts               #   Pi Coding Agent adapter
+│   │   ├── opencode.ts         #   OpenCode adapter
+│   │   └── hermes.ts           #   Hermes adapter
+│   ├── services/               #   Backend services
+│   │   └── usageQuota.ts       #   Account & usage data
+│   ├── css/                    #   Stylesheets
+│   └── src/                    #   Application source (ES modules)
+│       ├── main.tsx            #   React entry point
+│       ├── config/             #   Theme, buildings, i18n, constants, costs
+│       ├── domain/             #   Entities, value objects, events
+│       ├── infrastructure/     #   Data source, WebSocket client
 │       ├── application/        #   Managers, session watcher
-│       └── presentation/       #   UI renderers (world / dashboard)
-├── collector/                 #   Remote file watcher + snapshot publisher
-├── hubreceiver/               #   Snapshot ingestion + state/API server
-├── frontend/                  #   Static server for remote browser UI
-│   └── server.js              #   Serves claudeville/ static files
-├── widget/                    #   macOS menu bar widget
-│   ├── Sources/main.swift     #   Swift app (NSStatusItem + WKWebView)
-│   ├── Resources/             #   HTML/CSS for popover UI
-│   ├── build.sh               #   Build script -> ClaudeVilleWidget.app (gitignored)
-├── runtime-config.shared.js   #   Shared runtime config builder
+│       ├── presentation/       #   UI renderers (world / dashboard)
+│       ├── pixivillage/        #   PixiJS frontend variant (/pixijs.html)
+│       └── voxelvillage/       #   Voxel frontend variant (/voxel.html)
+├── collector/                  #   Remote file watcher + snapshot publisher
+├── hubreceiver/                #   Snapshot ingestion + state/API server
+├── widget/                     #   macOS menu bar widget
+│   ├── Sources/main.swift      #   Swift app (NSStatusItem + WKWebView)
+│   ├── Resources/              #   HTML/CSS/JS for popover + pet UI
+│   │   ├── js/                 #     Widget scripts (hub-client.js, sprite-animator.js, ...)
+│   │   └── pets/prism/         #     Sprite assets for the pet view
+│   ├── build.sh                #   Build script -> ClaudeVilleWidget.app (gitignored)
+├── runtime-config.shared.ts    #   Shared runtime config builder
 └── package.json
 ```
 
@@ -272,8 +273,8 @@ claude-ville/
 |---|---|
 | Frontend | React 19 + Vite |
 | Rendering | React Three Fiber / Three.js (orthographic isometric pixel-art scene) |
-| Server | Node.js built-in modules only |
-| Real-time | WebSocket (RFC 6455, hand-rolled) |
+| Server | Node.js built-in modules + the `ws` package |
+| Real-time | WebSocket (RFC 6455, via the `ws` package) |
 | Data | Local CLI session files (read-only) |
 
 ## API
@@ -291,7 +292,7 @@ claude-ville/
 
 ### Android App (Optional)
 
-A lightweight Android wrapper embeds the built frontend into a WebView and ships it as an APK. Requirements: Android Studio (recommended) or the Android SDK + command-line tools, JDK 11+, Android SDK platform 34 (compileSdk 34), minSdk 26.
+A lightweight Android wrapper embeds the built frontend into a WebView and ships it as an APK. Requirements: Android Studio (recommended) or the Android SDK + command-line tools, JDK 17+, Android SDK platform 34 (compileSdk 34), minSdk 26.
 
 Quick build (from the repository root):
 
