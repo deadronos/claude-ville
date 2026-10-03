@@ -16,7 +16,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 | `claudeville/src/presentation/react/state/ClaudeVilleController.ts` | External store and behavior | Boots the app, exposes a snapshot with `useSyncExternalStore`, owns mode/selection/settings/toasts, and projects world-facing state into `useWorldStore` through a single selection writer. |
 | `claudeville/src/presentation/react/world/state/useWorldStore.ts` | World hot-path projection | Strict projection of agents, buildings, and `selectedAgentId` for the render-hot world slice using a tiny local `useSyncExternalStore` store; selection is only written through `ClaudeVilleController._setSelection`. |
 | `claudeville/src/presentation/react/world/WorldView.tsx` | World viewport wrapper | Measures the canvas container, manages pointer and zoom input, keeps camera refs, reads from `useWorldStore`, and places the `SelectionOverlay` component that renders both the selected-agent marker and the focus badge. |
-| `claudeville/src/presentation/react/world/hooks/useWorldSprites.ts` | Sprite cache | Reuses `AgentSprite` instances so the scene can mutate them every frame without recreating objects. |
+| `claudeville/src/presentation/react/world/hooks/useWorldSprites.ts` | Sprite cache | Reuses `AgentSprite` instances across renders through a `spritesRef` map so the DOM overlays read stable objects instead of newly constructed ones; it is not a per-frame motion path — motion runs on ECS entities. |
 | `claudeville/src/presentation/react/world/components/*` | R3F scene primitives | Terrain, buildings, agents, text, minimap, camera, and world-adjacent overlays. |
 | `claudeville/src/presentation/react/components/DashboardView.tsx` | Dashboard surface | Renders project-grouped cards and owns dashboard detail hooks and card open state. |
 | `claudeville/src/presentation/react/components/ActivityPanel.tsx` | Selection detail surface | Renders the selected agent’s metadata, tool history, token usage, and messages. |
@@ -44,7 +44,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 4. `ClaudeVilleApp.tsx` renders the shell from that snapshot while `WorldView` reads agents, buildings, and selection from `useWorldStore`.
 5. Sidebar selection calls `controller.focusAgent(agentId)`, which selects the agent, projects the selection into `useWorldStore`, and forces character mode.
 6. World clicks and dashboard card clicks call `controller.selectAgent(agentId)`, while empty-space clicks and activity-panel close call `controller.clearSelection()`.
-7. The activity panel, dashboard, and world are siblings inside the same flex layout; none of them should directly own camera state.
+7. The activity panel, dashboard, and world are siblings inside the same flex layout. `WorldView` legitimately owns the camera ref it hands to the scene and the overlays; the activity panel and dashboard must not touch camera state.
 
 ## Layout and selection rules
 

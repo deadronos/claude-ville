@@ -6,12 +6,14 @@ Accepted
 
 ## Context
 
-The UI presents token counts, activity, and estimated costs in multiple places:
+The session contract carries token counts, activity, and an estimated cost, and the UI presents them here:
 
-- the top bar
 - the activity panel
-- dashboard cards
-- the macOS widget
+
+In practice the activity panel is the only surface that renders cost and token
+figures today. The top bar shows only working / idle / waiting counts,
+dashboard cards show no token or cost values, and the macOS widget
+(`widget/Resources/popover.html`) shows session counts only.
 
 To remain trustworthy, these values need a clear ownership model and compatible data shape across all renderers.
 
@@ -28,7 +30,7 @@ Define a shared session contract that includes:
 - `lastTool`
 - `lastToolInput`
 
-Centralize Claude cost estimation in `claudeville/src/config/costs.js` and have the domain world plus UI surfaces reuse that helper instead of maintaining separate formulas.
+Centralize Claude cost estimation in `shared/cost.ts` (`estimateCost`) and have the domain world reuse that helper instead of maintaining separate formulas. `claudeville/src/config/costs.ts` is a one-line re-export that exists only to keep existing import paths working; UI surfaces format the `cost` value the domain `Agent` already computed (`Agent.ts`) rather than re-deriving it.
 
 Treat the split hubreceiver as the canonical source for merged session detail data, while also keeping `/api/history` available in the legacy server for parity.
 
@@ -37,6 +39,6 @@ Keep the legacy server responsible for the local all-in-one APIs, while the spli
 ## Consequences
 
 - the UI can render the same session data in multiple places without provider-specific branching
-- cost calculations remain comparable across dashboard, widget, and activity views
+- cost calculations stay in one place — the activity panel today — so any surface that starts rendering cost reads the same domain value rather than its own formula
 - the API contract becomes explicit enough to document and test
 - call sites must use the correct base URL for their deployment mode

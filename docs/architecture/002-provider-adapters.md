@@ -59,8 +59,10 @@ roots across four editor channels (`vscode`, `vscode-insiders`, `cursor`,
 `offset` — `vscode.ts:23`) and cannot honestly reach 400 by removing boilerplate.
 
 Three helpers landed, `copilot` the reference consumer (321 → 281 lines):
-`jsonl-utils` owns `readJsonlEntries` and `collectJsonl` (the read → parse → fold
-→ catch → slice envelope behind `getToolHistory` / `getRecentMessages`);
+`jsonl-utils` owns `readJsonlEntries`, `collectJsonl` (the read → parse → fold
+→ catch → slice envelope behind `getToolHistory` / `getRecentMessages`),
+`foldEntries` (`jsonl-utils.ts:147`) and `foldJsonl` (`:192`), the two
+accumulator folders;
 `scan-utils` owns `collectScanByMtime` (readdir → stat → mtime-filter); and
 `sanitize` owns `summarizeToolInput`. A fourth, `buildSessionSummary`, was
 measured against all nine summary literals and deferred — they are not uniform:
@@ -75,6 +77,16 @@ Caveats for anyone converting an adapter:
 - `summarizeToolInput` is not a guard-free drop-in: given `0` it returns `'0'`
   where copilot's `tc.input ? … : ''` returns `''`. Callers keep their own guard.
 - `maxItems: 0` or negative returns `[]`; it is not `no limit`.
+- The folding helpers carry four contract details that are easy to get wrong:
+    - `from` defaults to `'end'`, so an omitted `from` reads the **tail** of the
+      file. Pass `from: 'start'` for a head read.
+    - `reverse` defaults to `false` and only reorders the window that was read —
+      it never reaches beyond it. `reverse` and `from` are independent.
+    - `until` is consulted **after** `onEntry` has run for that entry, so a fold
+      can set state on the entry it stops at.
+    - `onEntry` must mutate the accumulator in place. It is typed `=> void` and
+      its return value is discarded, so a non-mutating `onEntry` silently does
+      nothing.
 - `collectScanByMtime` fits **copilot's shape, and `pi` is the second adapter
   converted onto it**. The envelope recurs across the JSONL adapters, but each one
   scans a different shape and most still do not fit a single `child name → one
@@ -88,10 +100,10 @@ Caveats for anyone converting an adapter:
       directly, with no project-dir level to descend through (`openclaw.ts:245`,
       `hermes.ts:240`), so `fileFor` still has nothing to map there and the
       `isDirectory()` filter would drop every candidate.
-    - `gemini` has the same project-dir → session-files nesting `pi` has
-      (`gemini.ts:320`) and would fit for that reason alone; what is still
-      outstanding for it is carrying `projectHash` through into each record, which
-      `collectScanByMtime` does not supply.
+    - `gemini` nests one level deeper than `pi`: project dir → `chats/` →
+      session files (`gemini.ts:323` joins the `chats` subdirectory before
+      reading). What is outstanding for it is carrying `projectHash` through into
+      each record, which `collectScanByMtime` does not supply.
     - `opencode` **does** apply a threshold: `getSessionFiles(activeThresholdMs)`
       (`opencode.ts:205`) stats each candidate and drops anything older
       (`opencode.ts:212`), fed live from `getActiveSessions` (`opencode.ts:412`).
@@ -116,7 +128,13 @@ Caveats for anyone converting an adapter:
   `build` is logged as `"<operation> stat"` — latent while `build` is a pure
   object literal (it is for `pi`, `gemini`, `codex`, `openclaw`, `hermes`),
   live for `vscode`, whose per-candidate `hasRealActivity` + `parseSession` calls
-  already sit inside its own stat try.
+  already sit inside its own stat try **on two of its three shapes** — the
+  debug-log candidates wrap them in a try opened at `vscode.ts:437` (calls at
+  `:442` and `:451`) and the transcript candidates in one opened at `:477`
+  (calls at `:480` and `:490`). The resource shape does not: its
+  `hasRealActivity` (`vscode.ts:548`) and `parseSession` (`:558`) calls sit
+  outside any try, because the enclosing try blocks have already closed after the
+  readdir and stat steps.
 
 ## Compliance
 
@@ -130,15 +148,33 @@ Every adapter method that performs file or network I/O must be implemented as an
   helper rather than open-ended: a throw is caught, logged as `<operation> resolve`,
   and confined to that one child directory, so a failing enumeration cannot take
   down its siblings.
+- **`getWatchPaths()` is synchronous by interface contract**, not by choice:
+  `shared/types.ts:89` declares it as `getWatchPaths(): WatchPath[]` and the
+  registry calls it without awaiting (`adapters/index.ts:91`). The three adapters
+  that must enumerate a directory to answer it therefore use `fs.readdirSync`
+  inside it — `claude.ts:493`, `gemini.ts:465`, `openclaw.ts:599`. That is a
+  structural consequence of the interface, not the "must be async" rule being
+  deliberately broken; converting these needs an interface change first.
 - **Concurrent scans**: When iterating over multiple directories or files, use `Promise.all` to run operations in parallel rather than sequential `for` loops.
 - **Detail fetching**: When a session scan must fetch detail data per-session, fan out with `Promise.all` — do not fetch sequentially.
 - **Availability checks**: `isAvailable()` may use synchronous `fs.existsSync` as a one-time check; all other I/O must be async.
 
-Note that the `File I/O` rule is not yet uniformly held: `fs.readdirSync` also
-appears in `claude.ts:493`, `gemini.ts:91,109,465` and
-`openclaw.ts:276,465,519,599`. Those are pre-existing and unconverted; converting
-those adapters is what retires them. Widening `fileFor` to accept a promise would
-likewise retire `pi.ts:262` — it is a real option, but it belongs in its own change
-with its own concurrency tests rather than in an adapter conversion.
+Note that the rules above are not uniformly held, and the eight remaining
+`fs.readdirSync` sites breach them in two different ways:
+
+- `claude.ts:493`, `gemini.ts:465`, `openclaw.ts:599` — inside `getWatchPaths()`,
+  so they cannot be async at all without an interface change.
+- `openclaw.ts:276` — inside the synchronous helper `findAgentDatabases()`, called
+  from async paths.
+- `gemini.ts:91,109` — inside synchronous project-path resolution, called from
+  async paths.
+- `openclaw.ts:465,519` — inside async methods, so these breach the "use
+  `fs.promises`" rule without breaching the "must be async" rule. `openclaw.ts:519`
+  additionally has no try of its own.
+
+All are pre-existing and unconverted; converting those adapters is what retires
+them. Widening `fileFor` to accept a promise would likewise retire `pi.ts:262` —
+it is a real option, but it belongs in its own change with its own concurrency
+tests rather than in an adapter conversion.
 
 The `getAllSessions` function in `adapters/index.ts` calls all adapters concurrently. If any adapter blocks on synchronous I/O, it blocks the entire scan for all providers.
