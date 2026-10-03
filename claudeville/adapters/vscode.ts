@@ -9,7 +9,7 @@ import path from 'path';
 import os from 'os';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
-import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { debugAdapterError, readLines, readJsonlEntries, foldEntries, foldJsonl } from './jsonl-utils.js';
 
 const VSCODE_USER_DIR = process.env.VSCODE_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User');
@@ -140,14 +140,90 @@ function extractAssistantText(responseRaw: string) {
   return '';
 }
 
+type SessionDetail = {
+  model: string | null;
+  lastTool: string | null;
+  lastToolInput: string | null;
+  lastMessage: string | null;
+  tokens: { input: number; output: number } | null;
+};
+
+/**
+ * The one window every JSONL reader below reads: the LAST 300 lines.
+ *
+ * `parseSession`, `getToolHistory` and `getRecentMessages` share it, and a drift
+ * between them is invisible in review and subtle in the UI — a shorter window
+ * drops old records from one pane and not the other. The fixture pins `300`
+ * exactly for all three. `from: 'end'` is also the `readLines` default, so it is
+ * stated rather than relied on.
+ */
+const SESSION_TAIL = { from: 'end', count: 300, scope: 'vscode' } as const;
+
+/**
+ * The activity probe reads the HEAD — the opposite window from every other read
+ * in this file — and `readLines` DEFAULTS `from` to `'end'`. That default is why
+ * this is a named constant and not an inline option bag: dropping `from` is a
+ * one-token edit that looks like a no-op and reclassifies every blank-tab
+ * session as active. Pinned from both directions.
+ */
+const ACTIVITY_HEAD = { from: 'start', count: 5, scope: 'vscode-activity' } as const;
+
+/**
+ * The accumulator step for `parseSession`. It mutates `detail` in place and
+ * returns nothing: `foldEntries` discards an `onEntry` return value, so the
+ * tempting `(acc, e) => ({ ...acc, model: e.model })` typechecks against a
+ * `=> void` signature and silently returns `init` — an all-null session.
+ *
+ * The `!detail.lastX` guards are per-field, not a global stop: the walk
+ * continues past the first match to fill the OTHER fields.
+ */
+function foldSessionEntry(detail: SessionDetail, entry: any) {
+  if (!detail.model && entry.type === 'llm_request' && entry.attrs && entry.attrs.model) {
+    detail.model = entry.attrs.model;
+  }
+
+  if (!detail.model && entry.type === 'session.start' && entry.data && entry.data.vscodeVersion) {
+    detail.model = `copilot-chat@${entry.data.vscodeVersion}`;
+  }
+
+  if (!detail.tokens && entry.type === 'llm_request' && entry.attrs) {
+    detail.tokens = {
+      input: Number(entry.attrs.inputTokens || 0),
+      output: Number(entry.attrs.outputTokens || 0),
+    };
+  }
+
+  if (!detail.lastTool && entry.type === 'tool_call') {
+    detail.lastTool = entry.name || 'tool_call';
+    detail.lastToolInput = summarizeJson(entry.attrs && entry.attrs.args, 60);
+  }
+
+  if (!detail.lastTool && entry.type === 'tool.execution_start' && entry.data) {
+    detail.lastTool = entry.data.toolName || 'tool.execution_start';
+    detail.lastToolInput = summarizeJson(entry.data.arguments, 60);
+  }
+
+  if (!detail.lastTool && entry.type === 'assistant.message' && entry.data && Array.isArray(entry.data.toolRequests)) {
+    const req = entry.data.toolRequests[0];
+    if (req) {
+      detail.lastTool = req.name || 'tool_request';
+      detail.lastToolInput = summarizeJson(req.arguments, 60);
+    }
+  }
+
+  if (!detail.lastMessage && entry.type === 'agent_response' && entry.attrs) {
+    const text = extractAssistantText(entry.attrs.response);
+    if (text) detail.lastMessage = text.substring(0, 120);
+  }
+
+  if (!detail.lastMessage && entry.type === 'assistant.message' && entry.data && typeof entry.data.content === 'string') {
+    const text = entry.data.content.trim();
+    if (text) detail.lastMessage = text.substring(0, 120);
+  }
+}
+
 async function parseSession(filePath: string) {
-  const detail: {
-    model: string | null;
-    lastTool: string | null;
-    lastToolInput: string | null;
-    lastMessage: string | null;
-    tokens: { input: number; output: number } | null;
-  } = {
+  const detail: SessionDetail = {
     model: null,
     lastTool: null,
     lastToolInput: null,
@@ -155,6 +231,10 @@ async function parseSession(filePath: string) {
     tokens: null,
   };
 
+// A `content.txt` is not JSONL at all: the whole file is one message, so it is
+  // read as text — whole, trimmed, head-capped — and there is nothing to fold. A
+  // >300-line `content.txt` therefore reports its HEAD, unlike the JSONL path, so
+  // routing this branch through a JSONL helper would silently take its tail.
   if (filePath.endsWith('content.txt')) {
     try {
       const text = await fs.promises.readFile(filePath, 'utf-8');
@@ -168,63 +248,51 @@ async function parseSession(filePath: string) {
     return detail;
   }
 
-  const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'vscode' });
-  const entries = parseJsonLines(lines, 'vscode');
+  // `readJsonlEntries` + `foldEntries`, deliberately NOT `foldJsonl`: that helper
+  // wraps the fold in a catch and returns `init` on a throw, and this reader has
+  // never had a catch. `scanAllSessions` relies on the throw — it wraps
+  // `(await parseSession(file)).tokens` in its own try and DROPS the candidate —
+  // so swallowing here would silently change which sessions it returns. The
+  // fixture pins it: removing any `entry.data`/`entry.attrs` guard in
+  // `foldSessionEntry` is red, and goes green under `foldJsonl` for that reason.
+  const entries = await readJsonlEntries(filePath, { ...SESSION_TAIL });
 
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-
-    if (!detail.model && entry.type === 'llm_request' && entry.attrs && entry.attrs.model) {
-      detail.model = entry.attrs.model;
-    }
-
-    if (!detail.model && entry.type === 'session.start' && entry.data && entry.data.vscodeVersion) {
-      detail.model = `copilot-chat@${entry.data.vscodeVersion}`;
-    }
-
-    if (!detail.tokens && entry.type === 'llm_request' && entry.attrs) {
-      detail.tokens = {
-        input: Number(entry.attrs.inputTokens || 0),
-        output: Number(entry.attrs.outputTokens || 0),
-      };
-    }
-
-    if (!detail.lastTool && entry.type === 'tool_call') {
-      detail.lastTool = entry.name || 'tool_call';
-      detail.lastToolInput = summarizeJson(entry.attrs && entry.attrs.args, 60);
-    }
-
-    if (!detail.lastTool && entry.type === 'tool.execution_start' && entry.data) {
-      detail.lastTool = entry.data.toolName || 'tool.execution_start';
-      detail.lastToolInput = summarizeJson(entry.data.arguments, 60);
-    }
-
-    if (!detail.lastTool && entry.type === 'assistant.message' && entry.data && Array.isArray(entry.data.toolRequests)) {
-      const req = entry.data.toolRequests[0];
-      if (req) {
-        detail.lastTool = req.name || 'tool_request';
-        detail.lastToolInput = summarizeJson(req.arguments, 60);
-      }
-    }
-
-    if (!detail.lastMessage && entry.type === 'agent_response' && entry.attrs) {
-      const text = extractAssistantText(entry.attrs.response);
-      if (text) detail.lastMessage = text.substring(0, 120);
-    }
-
-    if (!detail.lastMessage && entry.type === 'assistant.message' && entry.data && typeof entry.data.content === 'string') {
-      const text = entry.data.content.trim();
-      if (text) detail.lastMessage = text.substring(0, 120);
-    }
-
-    if (detail.model && detail.lastMessage && detail.lastTool) break;
-  }
-
-  return detail;
+  // NEWEST-FIRST, and load-bearing. This walk has always been
+  // `for (let i = entries.length - 1; i >= 0; i--)`, so under the
+  // `!detail.lastX` guards the first match is the genuinely LATEST tool and
+  // message — which is what the field names claim. Do NOT harmonise this with
+  // `getToolHistory`/`getRecentMessages`, which walk FORWARD on purpose.
+  return foldEntries<SessionDetail>([...entries].reverse(), {
+    init: detail,
+    onEntry: foldSessionEntry,
+    // The old `break`. `foldEntries` consults `until` after every entry, exactly
+    // where the `break` sat. A pure optimisation — every write sits behind a
+    // guard — but kept so the early exit stays visible.
+    until: acc => Boolean(acc.model && acc.lastMessage && acc.lastTool),
+  });
 }
 
+
+type ToolEvent = { tool: string; detail: string; ts: number };
+
+/**
+ * The two buckets `getToolHistory` accumulates, and the reason they exist.
+ *
+ * The reader this replaces ran TWO forward passes over the same entries — one
+ * for `tool_call`, one for `tool.execution_start` — pushing into ONE list. The
+ * emitted order is therefore GROUPED BY RECORD TYPE, not file order: an
+ * `tool.execution_start` sitting between two `tool_call` records is still listed
+ * after both. A one-pass `collectJsonl` or `foldJsonl` emits in FILE order, which
+ * interleaves the two types and — the result is then `slice(-maxItems)` — changes
+ * which records survive at all. A different list, not merely a different order.
+ *
+ * Hence one fold pass filling two buckets, with the concatenation reapplied at
+ * the call site: one file read, grouping intact.
+ */
+type ToolBuckets = { toolCall: ToolEvent[]; executionStart: ToolEvent[] };
+
 async function getToolHistory(filePath: string, maxItems = 15) {
-  const tools = [];
+  const tools: ToolEvent[] = [];
 
   if (filePath.endsWith('content.txt')) {
     const entries = await scanResourceSessionContents(filePath);
@@ -238,37 +306,49 @@ async function getToolHistory(filePath: string, maxItems = 15) {
     return tools.slice(-maxItems);
   }
 
-  try {
-    const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'vscode' });
-    const entries = parseJsonLines(lines, 'vscode');
-
-    for (const entry of entries) {
-      if (entry.type !== 'tool_call') continue;
-      tools.push({
-        tool: entry.name || 'tool_call',
-        detail: summarizeJson(entry.attrs && entry.attrs.args, 120),
-        ts: typeof entry.ts === 'number' ? entry.ts : 0,
-      });
-    }
-
-    for (const entry of entries) {
-      if (entry.type === 'tool.execution_start' && entry.data) {
-        tools.push({
+  const buckets = await foldJsonl<ToolBuckets>(filePath, {
+    operation: 'getToolHistory',
+    ...SESSION_TAIL,  // scope: 'vscode'
+    // FORWARD, unlike `parseSession`: both passes this replaces were
+    // `for (const entry of entries)` and each bucket must stay in file order.
+    // Do NOT "harmonise" this with the detail read above by reversing the walk.
+    init: { toolCall: [], executionStart: [] },
+    onEntry: (acc, entry) => {
+      if (entry.type === 'tool_call') {
+        acc.toolCall.push({
+          tool: entry.name || 'tool_call',
+          detail: summarizeJson(entry.attrs && entry.attrs.args, 120),
+          ts: typeof entry.ts === 'number' ? entry.ts : 0,
+        });
+      } else if (entry.type === 'tool.execution_start' && entry.data) {
+        acc.executionStart.push({
           tool: entry.data.toolName || 'tool.execution_start',
           detail: summarizeJson(entry.data.arguments, 120),
           ts: typeof entry.timestamp === 'number' ? entry.timestamp : 0,
         });
       }
-    }
-  } catch (err) {
-    debugAdapterError('vscode', 'getToolHistory', err, filePath);
-  }
+    },
+  });
+
+  // GROUPED BY TYPE, in the order the two old passes appended: tool_call rows
+  // first, then tool.execution_start rows. Deliberately NOT file order.
+  tools.push(...buckets.toolCall, ...buckets.executionStart);
 
   return tools.slice(-maxItems);
 }
 
+type ChatMessage = { role: string; text: string; ts: number };
+
+/**
+ * Same two-bucket problem as `ToolBuckets`, same fix, same reason: two forward
+ * passes — `agent_response` then `assistant.message` — into one list, so the
+ * order is grouped by record type and `slice(-maxItems)` is applied to the
+ * concatenation.
+ */
+type MessageBuckets = { agentResponse: ChatMessage[]; assistantMessage: ChatMessage[] };
+
 async function getRecentMessages(filePath: string, maxItems = 5) {
-  const messages = [];
+  const messages: ChatMessage[] = [];
 
   if (filePath.endsWith('content.txt')) {
     const entries = await scanResourceSessionContents(filePath);
@@ -282,6 +362,9 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
     }
 
     // preserve file text if messages are empty
+    // (unreachable — the file being read is always one of the siblings listed
+    // above. Left exactly as shipped: dead, but not this commit's to delete, and
+    // its observable outcome — [] for a whitespace-only file — is pinned.)
     if (messages.length === 0) {
       try {
         const text = (await fs.promises.readFile(filePath, 'utf-8')).trim();
@@ -300,34 +383,37 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
     return messages.slice(-maxItems);
   }
 
-  try {
-    const lines = await readLines(filePath, { from: 'end', count: 300, scope: 'vscode' });
-    const entries = parseJsonLines(lines, 'vscode');
+  const buckets = await foldJsonl<MessageBuckets>(filePath, {
+    operation: 'getRecentMessages',
+    ...SESSION_TAIL,  // scope: 'vscode'
+    // FORWARD, as both replaced passes were. See `ToolBuckets`.
+    init: { agentResponse: [], assistantMessage: [] },
+    onEntry: (acc, entry) => {
+      if (entry.type === 'agent_response' && entry.attrs) {
+        const text = extractAssistantText(entry.attrs.response);
+        if (text) {
+          acc.agentResponse.push({
+            role: 'assistant',
+            text: text.substring(0, 200),
+            ts: typeof entry.ts === 'number' ? entry.ts : 0,
+          });
+        }
+      } else if (entry.type === 'assistant.message' && entry.data && typeof entry.data.content === 'string') {
+        const text = entry.data.content.trim();
+        if (text) {
+          acc.assistantMessage.push({
+            role: 'assistant',
+            text: text.substring(0, 200),
+            ts: typeof entry.timestamp === 'number' ? entry.timestamp : 0,
+          });
+        }
+      }
+    },
+  });
 
-    for (const entry of entries) {
-      if (entry.type !== 'agent_response' || !entry.attrs) continue;
-      const text = extractAssistantText(entry.attrs.response);
-      if (!text) continue;
-      messages.push({
-        role: 'assistant',
-        text: text.substring(0, 200),
-        ts: typeof entry.ts === 'number' ? entry.ts : 0,
-      });
-    }
-
-    for (const entry of entries) {
-      if (entry.type !== 'assistant.message' || !entry.data || typeof entry.data.content !== 'string') continue;
-      const text = entry.data.content.trim();
-      if (!text) continue;
-      messages.push({
-        role: 'assistant',
-        text: text.substring(0, 200),
-        ts: typeof entry.timestamp === 'number' ? entry.timestamp : 0,
-      });
-    }
-  } catch (err) {
-    debugAdapterError('vscode', 'getRecentMessages', err, filePath);
-  }
+  // GROUPED BY TYPE — agent_response rows, then assistant.message rows — not
+  // file order. See `MessageBuckets`.
+  messages.push(...buckets.agentResponse, ...buckets.assistantMessage);
 
   return messages.slice(-maxItems);
 }
@@ -376,8 +462,10 @@ async function hasRealActivity(filePath: string): Promise<boolean> {
     const stat = await fs.promises.stat(filePath);
     if (stat.size === 0) return false;
 
-    // Optimize: Read only the first 5 lines to check for content/metadata
-    const lines = await readLines(filePath, { from: 'start', count: 5, scope: 'vscode-activity' });
+    // Optimize: Read only the first 5 lines to check for content/metadata.
+    // Stays on `readLines` rather than a fold because it counts RAW lines: it
+    // has to see unparseable ones that a JSONL parse would drop on the floor.
+    const lines = await readLines(filePath, ACTIVITY_HEAD);
     const nonEmptyLines = lines.filter(ln => ln.trim().length > 0);
 
     // JSONL files (debug logs, transcripts): require session_start + at least one real event
