@@ -13,156 +13,156 @@ import path from 'path';
 import os from 'os';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
-import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { debugAdapterError, collectJsonl, foldJsonl } from './jsonl-utils.js';
+import { collectScanByMtime } from './scan-utils.js';
+import { summarizeToolInput } from './sanitize.js';
 import { extractText } from './text-utils.js';
 
 const PI_DIR = path.join(os.homedir(), '.pi');
 const SESSIONS_DIR = path.join(PI_DIR, 'agent', 'sessions');
 
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
-
 // ─── Utility ─────────────────────────────────────────────
 
 // ─── Session parsing ──────────────────────────────────────
 
-export async function parseSession(filePath: string) {
-  const detail: {
-    model: string | null;
-    provider: string | null;
-    project: string | null;
-    lastTool: string | null;
-    lastToolInput: string | null;
-    lastMessage: string | null;
-  } = {
-    model: null,
-    provider: null,
-    project: null,
-    lastTool: null,
-    lastToolInput: null,
-    lastMessage: null,
-  };
+type SessionDetail = {
+  model: string | null;
+  provider: string | null;
+  project: string | null;
+  lastTool: string | null;
+  lastToolInput: string | null;
+  lastMessage: string | null;
+};
 
-  const lines = await readLines(filePath, { from: 'end', count: 80, scope: 'pi' });
-  const entries = parseJsonLines(lines, 'pi');
-
-  // Iterate in reverse from the end
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-
-    // Extract cwd/project from session start
-    if (!detail.project && entry.type === 'session' && entry.cwd) {
-      detail.project = entry.cwd;
-    }
-
-    // Model change
-    if (!detail.model && entry.type === 'model_change') {
-      detail.model = entry.modelId || null;
-      detail.provider = entry.provider || null;
-    }
-
-    // Message
-    if (entry.type === 'message' && entry.message) {
-      const msg = entry.message;
-
-      // Model
-      if (!detail.model && msg.model) {
-        detail.model = msg.model;
-      }
-      if (!detail.provider && msg.provider) {
-        detail.provider = msg.provider;
+export async function parseSession(filePath: string): Promise<SessionDetail> {
+  // `reverse: true` walks the tail window newest-first, which is the direction
+  // this scan always ran in; `from` stays at its `'end'` default.
+  return foldJsonl<SessionDetail>(filePath, {
+    scope: 'pi',
+    operation: 'parseSession',
+    count: 80,
+    reverse: true,
+    init: {
+      model: null,
+      provider: null,
+      project: null,
+      lastTool: null,
+      lastToolInput: null,
+      lastMessage: null,
+    },
+    onEntry: (detail, entry) => {
+      // Extract cwd/project from session start
+      if (!detail.project && entry.type === 'session' && entry.cwd) {
+        detail.project = entry.cwd;
       }
 
-      // Last text message
-      if (!detail.lastMessage && msg.content) {
-        const text = extractText(msg.content);
-        const msgText: string | null = text ? text.substring(0, 80) : null;
-        if (msgText !== null) {
-          detail.lastMessage = msgText;
+      // Model change
+      if (!detail.model && entry.type === 'model_change') {
+        detail.model = entry.modelId || null;
+        detail.provider = entry.provider || null;
+      }
+
+      // Message
+      if (entry.type === 'message' && entry.message) {
+        const msg = entry.message;
+
+        // Model
+        if (!detail.model && msg.model) {
+          detail.model = msg.model;
         }
-      }
+        if (!detail.provider && msg.provider) {
+          detail.provider = msg.provider;
+        }
 
-      // Tool usage (toolCall block in content)
-      if (!detail.lastTool && msg.content) {
-        for (const block of msg.content) {
-          if (block.type === 'toolCall' || block.name) {
-            detail.lastTool = block.name || 'toolCall';
-            if (block.arguments) {
-              detail.lastToolInput = (typeof block.arguments === 'string'
-                ? block.arguments : JSON.stringify(block.arguments)
-              ).substring(0, 60);
+        // Last text message
+        if (!detail.lastMessage && msg.content) {
+          const text = extractText(msg.content);
+          const msgText: string | null = text ? text.substring(0, 80) : null;
+          if (msgText !== null) {
+            detail.lastMessage = msgText;
+          }
+        }
+
+        // Tool usage (toolCall block in content)
+        if (!detail.lastTool && msg.content) {
+          for (const block of msg.content) {
+            if (block.type === 'toolCall' || block.name) {
+              detail.lastTool = block.name || 'toolCall';
+              if (block.arguments) {
+                detail.lastToolInput = summarizeToolInput(block.arguments, 60);
+              }
+              break;
             }
-            break;
           }
         }
       }
-
-      if (detail.lastMessage && detail.model && detail.project) break;
-    }
-  }
-
-  return detail;
+    },
+    // The early break this replaces sat INSIDE the message branch, so it fired
+    // only after a message had been folded — not whenever the three fields
+    // happened to be set. The fields can be completed by a non-message entry: a
+    // trailing `type: 'session'` line supplies `project` after the last text
+    // message and the last `model_change` have already been seen, and in that
+    // case the original loop kept walking and could still pick up `lastTool`
+    // from an earlier message. Gating on the entry keeps that reachable.
+    until: (detail, entry) => {
+      if (entry?.type !== 'message' || !entry?.message) return false;
+      return !!(detail.lastMessage && detail.model && detail.project);
+    },
+  });
 }
 
 // ─── Tool history ───────────────────────────────────
 
-async function getToolHistory(filePath: string, maxItems = 15) {
-  const tools = [];
-  try {
-    const lines = await readLines(filePath, { from: 'end', count: 100, scope: 'pi' });
-    const entries = parseJsonLines(lines, 'pi');
+type ToolEvent = { tool: string; detail: string; ts: number };
 
-    for (const entry of entries) {
-      if (entry.type !== 'message' || !entry.message) continue;
+async function getToolHistory(filePath: string, maxItems = 15) {
+  return collectJsonl<ToolEvent>(filePath, {
+    scope: 'pi',
+    operation: 'getToolHistory',
+    count: 100,
+    maxItems,
+    onEntry: (entry, out) => {
+      if (entry.type !== 'message' || !entry.message) return;
       const msg = entry.message;
-      if (!msg.content) continue;
+      if (!msg.content) return;
 
       for (const block of msg.content) {
         if (block.type !== 'toolCall' && !block.name) continue;
-        let detail = '';
-        if (block.arguments) {
-          detail = (typeof block.arguments === 'string'
-            ? block.arguments : JSON.stringify(block.arguments)
-          ).substring(0, 80);
-        }
-        tools.push({
+        out.push({
           tool: block.name || 'toolCall',
-          detail,
+          detail: block.arguments ? summarizeToolInput(block.arguments, 80) : '',
           ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
         });
       }
-    }
-  } catch (err) {
-    debugAdapterError('pi', 'getToolHistory', err, filePath);
-  }
-  return tools.slice(-maxItems);
+    },
+  });
 }
 
 // ─── Recent messages ──────────────────────────────────────
 
-async function getRecentMessages(filePath: string, maxItems = 5) {
-  const messages = [];
-  try {
-    const lines = await readLines(filePath, { from: 'end', count: 60, scope: 'pi' });
-    const entries = parseJsonLines(lines, 'pi');
+type ChatMessage = { role: string; text: string; ts: number };
 
-    for (const entry of entries) {
-      if (entry.type !== 'message' || !entry.message) continue;
+async function getRecentMessages(filePath: string, maxItems = 5) {
+  return collectJsonl<ChatMessage>(filePath, {
+    scope: 'pi',
+    operation: 'getRecentMessages',
+    count: 60,
+    maxItems,
+    onEntry: (entry, out) => {
+      if (entry.type !== 'message' || !entry.message) return;
       const msg = entry.message;
-      if (!msg.content) continue;
+      if (!msg.content) return;
 
       const text = extractText(msg.content);
-      if (!text) continue;
+      if (!text) return;
 
-      messages.push({
+      out.push({
         role: msg.role || 'assistant',
         text: text.substring(0, 200),
         ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0,
       });
-    }
-  } catch (err) {
-    debugAdapterError('pi', 'getRecentMessages', err, filePath);
-  }
-  return messages.slice(-maxItems);
+    },
+  });
 }
 
 function encodeProjectKey(value: string) {
@@ -181,25 +181,32 @@ function buildSessionId(projectDir: string, fileName: string) {
   return `pi:${encodeProjectKey(projectDir)}:${encodeProjectKey(sessionId)}`;
 }
 
-async function getTokenUsage(filePath: string) {
-  const lines = await readLines(filePath, { from: 'end', count: 2000, scope: 'pi' });
-  const entries = parseJsonLines(lines, 'pi');
-  let input = 0;
-  let output = 0;
-  let found = false;
-  for (const entry of entries) {
-    const usage = entry?.message?.usage;
-    if (!usage) continue;
-    if (typeof usage.input === 'number') {
-      input += usage.input;
-      found = true;
-    }
-    if (typeof usage.output === 'number') {
-      output += usage.output;
-      found = true;
-    }
-  }
-  return found ? { input, output } : null;
+type TokenFold = { input: number; output: number; found: boolean };
+
+async function getTokenUsage(filePath: string): Promise<{ input: number; output: number } | null> {
+  const fold = await foldJsonl<TokenFold>(filePath, {
+    scope: 'pi',
+    operation: 'getTokenUsage',
+    count: 2000,
+    init: { input: 0, output: 0, found: false },
+    onEntry: (acc, entry) => {
+      // Deliberately NOT gated on `entry.type === 'message'`, and deliberately
+      // NOT `Number(...)` coercion: this reads any entry carrying a
+      // `message.usage`, and the typeof guards are what keep a string-valued
+      // `input`/`output` out of the sum. Coercing would fold '7' into it.
+      const usage = entry?.message?.usage;
+      if (!usage) return;
+      if (typeof usage.input === 'number') {
+        acc.input += usage.input;
+        acc.found = true;
+      }
+      if (typeof usage.output === 'number') {
+        acc.output += usage.output;
+        acc.found = true;
+      }
+    },
+  });
+  return fold.found ? { input: fold.input, output: fold.output } : null;
 }
 
 function parseSessionId(sessionId: string) {
@@ -240,56 +247,29 @@ export function resolveProjectPath(detail: { project: string | null }, projectDi
 interface ScanResult { filePath: string; mtime: number; fileName: string; projectDir: string }
 
 async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResult[]> {
-  const results: ScanResult[] = [];
-  if (!fs.existsSync(SESSIONS_DIR)) return results;
-
-  const now = Date.now();
-
-  try {
-    const projectDirs = (await fs.promises.readdir(SESSIONS_DIR, { withFileTypes: true }))
-      .filter((d: Dirent) => d.isDirectory());
-
-    const dirResults = await Promise.all(
-      projectDirs.map(async (projectDir: Dirent) => {
-        const sessionDirPath = path.join(SESSIONS_DIR, projectDir.name);
-        try {
-          const sessionFiles = await fs.promises.readdir(sessionDirPath);
-          const jsonlFiles = sessionFiles.filter((f: string) => f.endsWith('.jsonl'));
-
-          const fileResults = await Promise.all(
-            jsonlFiles.map(async (file: string) => {
-              const filePath = path.join(sessionDirPath, file);
-              try {
-                const stat = await fs.promises.stat(filePath);
-                if (now - stat.mtimeMs > activeThresholdMs) return null;
-                return {
-                  filePath,
-                  mtime: stat.mtimeMs,
-                  fileName: file,
-                  projectDir: projectDir.name,
-                } as ScanResult;
-              } catch (err) {
-                debugAdapterError('pi', 'scanAllSessionFiles stat', err, filePath);
-                return null;
-              }
-            })
-          );
-          return fileResults.filter((r: ScanResult | null): r is ScanResult => r !== null);
-        } catch (err) {
-          debugAdapterError('pi', 'scanAllSessionFiles readdir project', err, sessionDirPath);
-          return [];
-        }
-      })
-    );
-
-    for (const group of dirResults) {
-      results.push(...group);
-    }
-  } catch (err) {
-    debugAdapterError('pi', 'scanAllSessionFiles', err, SESSIONS_DIR);
-  }
-
-  return results;
+  return collectScanByMtime<ScanResult>({
+    dir: SESSIONS_DIR,
+    scope: 'pi',
+    operation: 'scanAllSessionFiles',
+    thresholdMs: activeThresholdMs,
+    // Synchronous by necessity: `fileFor` is called synchronously, so listing
+    // the project directory has to be `readdirSync`. A throw here is what the
+    // old `'scanAllSessionFiles readdir project'` catch used to absorb, and
+    // `collectScanByMtime` confines it to this one project directory under its
+    // `resolve` label.
+    fileFor: (projectDir) => {
+      const dirPath = path.join(SESSIONS_DIR, projectDir);
+      return fs.readdirSync(dirPath)
+        .filter((f: string) => f.endsWith('.jsonl'))
+        .map((f: string) => path.join(dirPath, f));
+    },
+    build: ({ name, filePath, mtimeMs }) => ({
+      filePath,
+      mtime: mtimeMs,
+      fileName: path.basename(filePath),
+      projectDir: name,
+    }),
+  });
 }
 
 // ─── Adapter class ─────────────────────────────────────
