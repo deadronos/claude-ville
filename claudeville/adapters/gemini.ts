@@ -23,7 +23,8 @@ import crypto from 'crypto';
 import type { Dirent } from 'fs';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
-import { readLines, parseJsonLines } from './jsonl-utils.js';
+import { readLines, parseJsonLines, foldEntries } from './jsonl-utils.js';
+import { collectScanByMtime } from './scan-utils.js';
 import { extractText } from './text-utils.js';
 
 const GEMINI_DIR = path.join(os.homedir(), '.gemini');
@@ -135,6 +136,35 @@ async function readJsonFile(filePath: string) {
 }
 
 /**
+ * Load a session's records from EITHER of the two shapes gemini writes.
+ *
+ * A `.jsonl` session is a stream of records, one per line, so only the last
+ * `count` of them are read. A `.json` session is ONE document whose `messages`
+ * array holds the same records; it is parsed whole, so `count` does not apply to
+ * it and that reader sees every record the session has. This asymmetry is real and
+ * observable — a `.jsonl` session whose last 20 lines are all tool calls reports
+ * no conversation at all, while the `.json` twin of it reports five messages.
+ *
+ * This is the ONE place that knows about the split, and it is why the fold that
+ * consumes these records is `foldEntries` over the returned array and NOT
+ * `foldJsonl`: `foldJsonl` reads lines, so in a `.json` document every chunk
+ * fails `JSON.parse` and the fold sees nothing. `collectJsonl` is unusable here
+ * for the same reason.
+ *
+ * `count` stays per call site because the four readers genuinely disagree —
+ * 50 / 100 / 20 / 2000 — and each of those numbers is pinned by
+ * gemini.fixture.test.ts. Do not hoist it to a default.
+ */
+async function loadSessionMessages(filePath: string, count: number): Promise<any[]> {
+  if (filePath.endsWith('.jsonl')) {
+    const lines = await readLines(filePath, { count, scope: 'gemini-adapter' });
+    return parseJsonLines(lines, 'gemini-adapter');
+  }
+  const session = await readJsonFile(filePath);
+  return session && Array.isArray(session.messages) ? session.messages : [];
+}
+
+/**
  * Extract model/tools/messages from Gemini session JSON
  * Actual format: {sessionId, projectHash, messages: [{type, content, model, ...}]}
  */
@@ -152,16 +182,7 @@ async function parseSession(filePath: string) {
   };
 
   try {
-    let messages: any[] = [];
-    if (filePath.endsWith('.jsonl')) {
-      const lines = await readLines(filePath, { count: 50, scope: 'gemini-adapter' });
-      messages = parseJsonLines(lines, 'gemini-adapter');
-    } else {
-      const session = await readJsonFile(filePath);
-      if (session && Array.isArray(session.messages)) {
-        messages = session.messages;
-      }
-    }
+    const messages = await loadSessionMessages(filePath, 50);
 
     if (messages.length === 0) return detail;
 
@@ -223,16 +244,7 @@ async function getToolHistory(filePath: string, maxItems = 15) {
   type ToolEntry = { tool: string; detail: string; ts: number };
   const tools: ToolEntry[] = [];
   try {
-    let messages: any[] = [];
-    if (filePath.endsWith('.jsonl')) {
-      const lines = await readLines(filePath, { count: 100, scope: 'gemini-adapter' });
-      messages = parseJsonLines(lines, 'gemini-adapter');
-    } else {
-      const session = await readJsonFile(filePath);
-      if (session && Array.isArray(session.messages)) {
-        messages = session.messages;
-      }
-    }
+    const messages = await loadSessionMessages(filePath, 100);
 
     for (const msg of messages) {
       // Check toolCalls in gemini type
@@ -278,16 +290,7 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
   type MsgEntry = { role: string; text: string; ts: number };
   const msgList: MsgEntry[] = [];
   try {
-    let messages: any[] = [];
-    if (filePath.endsWith('.jsonl')) {
-      const lines = await readLines(filePath, { count: 20, scope: 'gemini-adapter' });
-      messages = parseJsonLines(lines, 'gemini-adapter');
-    } else {
-      const session = await readJsonFile(filePath);
-      if (session && Array.isArray(session.messages)) {
-        messages = session.messages;
-      }
-    }
+    const messages = await loadSessionMessages(filePath, 20);
 
     for (const msg of messages) {
       if (msg.type === 'info') continue; // Skip info messages
@@ -305,90 +308,82 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
   return msgList.slice(-maxItems);
 }
 
+type ScanResult = { filePath: string; mtime: number; fileName: string; projectHash: string };
+
 /**
  * Scan active session files
  * ~/.gemini/tmp/<project_hash>/chats/session-*.json
+ *
+ * This fits `collectScanByMtime` without flattening anything: the project
+ * directory is the child, and `fileFor` is the `chats` subdirectory beneath it —
+ * the "one child, many files" case the helper was widened for. What is preserved
+ * exactly: the single `now` taken before the readdir, the mtime comparison and
+ * its sign, the `isDirectory` filter on the root, the per-child `existsSync`
+ * guard, the `session-` name filter, readdir order, and the fact that a
+ * DIRECTORY named `session-x.json` still stats through as a session (the readdir
+ * here has no `withFileTypes`, exactly as before — see the report).
  */
 async function scanActiveSessions(activeThresholdMs: number) {
-  type ScanResult = { filePath: string; mtime: number; fileName: string; projectHash: string };
-  const results: ScanResult[] = [];
-  if (!fs.existsSync(TMP_DIR)) return results;
-
-  const now = Date.now();
-
-  try {
-    const projectDirs = (await fs.promises.readdir(TMP_DIR, { withFileTypes: true }))
-      .filter((d: Dirent) => d.isDirectory());
-    const projectResults = await Promise.all(projectDirs.map(async (projDir: Dirent) => {
-      const chatsDir = path.join(TMP_DIR, projDir.name, 'chats');
-      if (!fs.existsSync(chatsDir)) return [];
-
-      try {
-        const sessionFiles = await fs.promises.readdir(chatsDir);
-        const jsonFiles = sessionFiles.filter((f: string) => f.startsWith('session-') && (f.endsWith('.json') || f.endsWith('.jsonl')));
-        const fileResults = await Promise.all(jsonFiles.map(async (file: string): Promise<ScanResult | null> => {
-          const filePath = path.join(chatsDir, file);
-          try {
-            const stat = await fs.promises.stat(filePath);
-            if (now - stat.mtimeMs > activeThresholdMs) return null;
-            return {
-              filePath,
-              mtime: stat.mtimeMs,
-              fileName: file,
-              projectHash: projDir.name,
-            };
-          } catch {
-            return null;
-          }
-        }));
-        return fileResults.filter((result): result is ScanResult => result !== null);
-      } catch {
-        return [];
-      }
-    }));
-
-    for (const group of projectResults) {
-      results.push(...(group as ScanResult[]));
-    }
-  } catch { /* ignore */ }
-
-  return results;
+  return collectScanByMtime<ScanResult>({
+    dir: TMP_DIR,
+    scope: 'gemini-adapter',
+    operation: 'scanActiveSessions',
+    thresholdMs: activeThresholdMs,
+    fileFor: (projectDirName) => {
+      const chatsDir = path.join(TMP_DIR, projectDirName, 'chats');
+      if (!fs.existsSync(chatsDir)) return null;
+      // CALLED SYNCHRONOUSLY, so this is a readdirSync. Same list, same order.
+      return fs
+        .readdirSync(chatsDir)
+        .filter((f: string) => f.startsWith('session-') && (f.endsWith('.json') || f.endsWith('.jsonl')))
+        .map((f: string) => path.join(chatsDir, f));
+    },
+    build: ({ name, filePath, mtimeMs }) => ({
+      filePath,
+      mtime: mtimeMs,
+      fileName: path.basename(filePath),
+      projectHash: name,
+    }),
+  });
 }
 
 // ─── Adapter class ────────────────────────────────────
 
+/** The accumulator `getTokenUsage` folds over. `found` is what makes the
+ *  no-reading answer `null` rather than `{ input: 0, output: 0 }`. */
+type TokenFold = { input: number; output: number; found: boolean };
+
 /**
  * Sum per-response `tokens` records into session totals.
+ *
+ * `foldEntries` over the ALREADY-LOADED records, not `foldJsonl` over the file:
+ * a `.json` session is one parsed document, and `foldJsonl` would find no lines
+ * in it. `onEntry` is `=> void` and the return value is discarded, so `acc` is
+ * mutated in place — `(acc, e) => ({ ...acc, input: e.x })` would typecheck and
+ * sum nothing at all.
+ *
+ * The two `typeof` guards are independent, as they have always been: a record
+ * whose `input` is a string still contributes its numeric `output`. gemini
+ * guards where codex coerces, and that difference is deliberate.
  */
 async function getTokenUsage(filePath: string) {
   try {
-    let messages: any[] = [];
-    if (filePath.endsWith('.jsonl')) {
-      const lines = await readLines(filePath, { count: 2000, scope: 'gemini-adapter' });
-      messages = parseJsonLines(lines, 'gemini-adapter');
-    } else {
-      const session = await readJsonFile(filePath);
-      if (session && Array.isArray(session.messages)) {
-        messages = session.messages;
-      }
-    }
-
-    let input = 0;
-    let output = 0;
-    let found = false;
-    for (const msg of messages) {
-      const tokens = msg?.tokens;
-      if (!tokens) continue;
-      if (typeof tokens.input === 'number') {
-        input += tokens.input;
-        found = true;
-      }
-      if (typeof tokens.output === 'number') {
-        output += tokens.output;
-        found = true;
-      }
-    }
-    return found ? { input, output } : null;
+    const fold = foldEntries<TokenFold>(await loadSessionMessages(filePath, 2000), {
+      init: { input: 0, output: 0, found: false },
+      onEntry: (acc, msg) => {
+        const tokens = msg?.tokens;
+        if (!tokens) return;
+        if (typeof tokens.input === 'number') {
+          acc.input += tokens.input;
+          acc.found = true;
+        }
+        if (typeof tokens.output === 'number') {
+          acc.output += tokens.output;
+          acc.found = true;
+        }
+      },
+    });
+    return fold.found ? { input: fold.input, output: fold.output } : null;
   } catch {
     return null;
   }
