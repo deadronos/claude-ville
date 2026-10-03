@@ -5,7 +5,7 @@ import { createFileWatchers } from '../shared/watch-utils.js';
 import { resolveHubAuthToken } from '../shared/hub-auth.js';
 import type { WatchPath } from '../shared/types.js';
 import { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } from '../claudeville/adapters/index.js';
-import { buildCollectorSnapshot, normalizeSession } from './snapshot.js';
+import { buildCollectorSnapshot } from './snapshot.js';
 import type { CollectorSnapshotDeps } from './snapshot.js';
 import { createCollectorPublisher } from './publisher.js';
 

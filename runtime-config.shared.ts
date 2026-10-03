@@ -1,4 +1,4 @@
-import { DEFAULT_AGENT_NAME_POOL, DEFAULT_SESSION_NAME_POOL, toList } from './shared/name-pools.js';
+import { DEFAULT_AGENT_NAME_POOL, toList } from './shared/name-pools.js';
 import { resolveHubAuthToken } from './shared/hub-auth.js';
 
 export function normalizeAgentNamePool(rawPool = '') {
