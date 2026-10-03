@@ -73,8 +73,8 @@ The inverse helpers follow the same convention:
 
 - `useWorldSprites` keeps stable `AgentSprite` objects tied to domain agents.
 - `useEcsWorld()` converts agent tile positions into isometric scene `x` / `y` values and keeps stable ECS entities across renders.
-- `AgentActor` positions each entity at `entity.x`, `entity.y`, and uses a local `scale={[entity.facingLeft ? -1 : 1, selected ? 1.12 : 1, 1]}` for facing and selection emphasis.
-- **Animations**: Implements squash-and-stretch walk cycles and hopping via vertex-based sine scaling.
+- `AgentActor` positions each entity at `entity.x`, `entity.y`, and uses a local `scale={[entity.facingLeft ? -stretch : stretch, selected ? 1.12 * squash : squash, 1]}` on the character `<group>` for facing and selection emphasis, where `stretch` / `squash` come from the walk-cycle values below.
+- **Animations**: Implements squash-and-stretch walk cycles and hopping as JS-computed scale and offset on that `<group>` — `swing`, `hop`, `squash`, and `stretch` are all derived from `Math.sin(entity.walkFrame * 4)`. There is no vertex shader involved.
 - **Dynamic Shadows**: Elliptical gradient shadows that respond to agent height (scaling/fading during hops).
 - **Status Indicators**: Floating pixel-art emoji icons (⚙️, ⏳, 💬) rendered above agent bubbles.
 - Agent UI bubbles and labels scale with `inverseZoom = 1 / camera.zoom` so they remain readable at any zoom level.
@@ -85,7 +85,7 @@ The inverse helpers follow the same convention:
 - `SelectionOverlay` renders both the projected marker (ring + name) and the "Following" badge from one hook; the marker position is written imperatively and the badge is plain DOM.
 - `useSelectedAgentOverlay` subscribes to the shared frame ticker only while active and selected; camera follow is set from the same hook.
 - `BubbleDebugOverlay` and `MinimapOverlay` subscribe to the same ticker only while visible/active, so hidden overlays schedule no frames.
-- `MinimapOverlay` uses `screenToTile()` and the viewport dimensions to show the visible rectangle and to navigate back into the world.
+- `MinimapOverlay` uses `screenToTile()` and the viewport dimensions to draw the visible rectangle. Navigation is separate: the click handler converts its own minimap-local pixels to a tile (`:95-99`), and `WorldView.navigateToTile` converts that tile to a camera target with `worldToIso`.
 
 ## Frame model
 
@@ -106,14 +106,14 @@ The old imperative renderer was removed in Phase 2 (git history preserves it). T
 
 - `claudeville/src/domain/value-objects/iso.ts` is the canonical isometric projection.
 - `world/utils.ts` exposes the camera-relative transforms and `getCameraFocusPosition()` centering helper.
-- `character-mode/AgentSprite.ts` remains the screen-space motion model and facing flip reference used by the React world.
+- `character-mode/AgentSprite.ts` remains the facing-flip reference (`ctx.scale(facingLeft ? -1 : 1, 1)`), mirrored by `AgentActor`'s negative-x scale. It is no longer the screen-space motion model: `AgentSprite.update()` has no production callers, and per-frame motion lives in the ECS systems above.
 
 ## Invariants
 
 - Do not rotate the root scene or swap the camera to a centered y-up frustum.
 - Do not let R3F auto-resize the orthographic camera.
 - Do not move zoom back onto `ScreenSpaceCamera`; the camera stays at `zoom={1}` and the root group absorbs pan and zoom.
-- Do not duplicate follow math outside `getCameraFocusPosition()`.
+- Do not duplicate follow easing outside `createCameraFollowSystem()` (`ecs/systems.ts`); `getCameraFocusPosition()` is the pure centring half and holds no easing.
 - Do not duplicate selected-agent marker projection math outside `SelectionOverlay` and `getCameraFocusPosition()`.
 - Do not replace the instanced terrain path with ad-hoc per-tile meshes unless profiling justifies it.
 - Sibling panels (like the sidebar) may animate width if the world container uses `ResizeObserver` to trigger smooth updates.

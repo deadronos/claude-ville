@@ -30,11 +30,11 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 - `npm run typecheck` — TypeScript check (`tsc --noEmit`)
 - `npm run test` — Vitest suite
 - `npm run test:coverage` — Vitest coverage run
-- `node --test claudeville/**/*.test.js` only for older Node-test coverage that still exists in the repo, if needed
+- There is no `node --test` step: `claudeville/` contains no `.test.js` files (all 64 there are `.test.ts`), and the widget's `.test.js` files run under Vitest too via `**/*.test.js` in `vitest.config.ts`.
 
 ## Architecture
 
-- `claudeville/server.ts` serves the legacy UI, REST API, `/runtime-config.js`, widget assets, and WebSocket updates.
+- `claudeville/server.ts` serves the legacy UI, REST API, `/runtime-config.js`, and WebSocket updates. It does not serve widget assets — the macOS widget is a separate bundle under `widget/`.
 - `collector/index.ts` watches provider files and publishes snapshots to the hub.
 - `hubreceiver/server.ts` accepts snapshots, merges state, and exposes the canonical remote API/WebSocket surface.
 - `vite.config.ts` serves the browser UI from `claudeville/`, injects runtime config during dev, proxies API/WebSocket traffic to the hub, and builds to `dist/frontend` for remote deployments.
@@ -45,13 +45,13 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 
 - Keep provider parsing inside `claudeville/adapters/` and normalize data before it reaches the UI.
 - `claudeville/src/**` uses ES modules; Node entrypoints and adapter files may use Node-friendly module loading as needed.
-- Keep shared runtime config in `runtime-config.shared.js`; entrypoints auto-load `.env.local` from the repo root.
+- Keep shared runtime config in `runtime-config.shared.ts`; entrypoints auto-load `.env.local` from the repo root.
 - Preserve stable IDs and grouping semantics. OpenClaw uses `openclaw:<agentId>` project keys and `openclaw:<agentId>:<fileId>` session IDs.
 - Use the world-camera rules from `docs/architecture/006-r3f-components.md`: `ScreenSpaceCamera` stays manual, `WorldScene` pans/zooms the root group, and `WorldText` flips Y for upright labels.
 - The browser chrome is flexbox-based: top bar, left sidebar, center content, optional right activity panel. Avoid `position: fixed` except for modal/toast overlays.
 - Side panels should animate with transforms/opacity rather than width so the R3F viewport stays stable.
 - Dashboard mode scrolls inside the content area; world mode fills the remaining viewport.
-- Keep cost/token presentation centralized; reuse `claudeville/src/config/costs.js` and the shared session shape instead of duplicating formulas.
+- Keep cost/token presentation centralized; reuse `shared/cost.ts` (re-exported as `claudeville/src/config/costs.ts`) and the shared session shape instead of duplicating formulas.
 
 ## Default ports
 

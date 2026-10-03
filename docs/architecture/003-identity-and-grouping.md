@@ -12,7 +12,7 @@ At the same time, the dashboard needs to group sessions into meaningful project 
 
 ## Decision
 
-Use the naming pipeline in `claudeville/src/config/agentNames.js` to resolve readable names with these rules:
+Use the naming pipeline in `claudeville/src/config/agentNames.ts` to resolve readable names with these rules:
 
 - prefer autodetected names when they already look human-friendly
 - fall back to pooled short names when needed

@@ -56,7 +56,6 @@ Pure domain entities and value objects:
 
 - `Agent`
 - `Building`
-- `Task`
 - `World`
 - `AgentStatus`, `Position`, `Appearance`
 
@@ -110,13 +109,17 @@ The value is a grouping key, not necessarily a filesystem path. OpenClaw uses
 `openclaw:<agentId>` and VS Code falls back to `vscode:<channel>:<workspaceId>`,
 so no layer may assume it is a filesystem path or resolve it as one. Splitting it
 on `/` is legitimate only for display-label fallbacks (`AgentManager.ts:137`,
-`pixivillage/model.ts:199`), where a synthetic key simply yields the whole string.
+`pixivillage/model.ts:199`, `shortProjectName` in
+`presentation/shared/dashboardViewModel.ts:128`), where a synthetic key simply
+yields the whole string.
 
 `shared/project-field-contract.test.ts` enforces the spelling. The check exists
 because the type system cannot: the collector's `SessionSummary` carries
 `[key: string]: unknown` and `hubreceiver/state.ts` casts snapshots to
 `AnyRecord`, so a half-finished rename compiles and fails at runtime instead.
-That gap is what required `readProject()` to accept two spellings in #111.
+That gap is what required `readProject()` to accept two spellings in #111. It now
+reads the single `project` spelling, and its docstring records why it stays a
+runtime guard.
 
 ## Data flow
 
@@ -192,8 +195,8 @@ The current codebase centers on:
 - an import-safe collector runtime in `collector/index.ts` and a side-effecting CLI entrypoint in `collector/start.ts`
 - short stable display names, configurable name pools, and provider-specific name modes
 - project grouping and provider-aware dashboard rendering
-- shared cost and token presentation helpers reused across world, dashboard, activity panel, and widget surfaces
-- a React presentation shell with a controller snapshot plus a mirrored Zustand world store for the render-hot path
+- cost estimation centralized in `shared/cost.ts` and reused by the domain `Agent`; token and cost *formatting* helpers live in `presentation/shared/dashboardViewModel.ts` and are imported by the activity panel only, not the world, dashboard, or widget surfaces
+- a React presentation shell with a controller snapshot plus a mirrored world store for the render-hot path
 - an R3F world scene built around a manual screen-space camera, ECS system helpers, instanced terrain, and DOM overlays
 - API parity between the legacy server and split stack for history and session-detail views
 
