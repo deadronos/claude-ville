@@ -431,18 +431,18 @@ flip to them in one reviewable step."
 Replace line 18:
 
 ```ts
-import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { debugAdapterError, readLines, collectJsonl } from './jsonl-utils.js';
 ```
 
 with:
 
 ```ts
-import { debugAdapterError, readLines, collectJsonl } from './jsonl-utils.js';
+import { debugAdapterError, readLines, parseJsonLines, collectJsonl } from './jsonl-utils.js';
 import { collectScanByMtime } from './scan-utils.js';
 import { summarizeToolInput } from './sanitize.js';
 ```
 
-Keep `readLines` and `debugAdapterError`: `parseSession` and `getTokenUsage` still read files directly and this is the pilot — only the two `collectJsonl`-shaped functions move first.
+`readLines`, `parseJsonLines` and `debugAdapterError` all stay: `parseSession` (two reads) and `getTokenUsage` still read files directly, and this is the pilot — only the two `collectJsonl`-shaped functions move first. Dropping `parseJsonLines` here would not compile.
 
 - [ ] **Step 2: Rewrite `getToolHistory` on `collectJsonl`**
 
