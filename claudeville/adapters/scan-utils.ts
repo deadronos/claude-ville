@@ -8,9 +8,10 @@
  * supplies only the format-specific part (which filename to look for, what to
  * put in the record).
  *
- * Copilot and `pi` are the adapters converted so far. `pi` is what forced
- * `fileFor` to return many paths for one child rather than a single file — it
- * nests project dir → session files — and a throwing callback is therefore
+ * Copilot, `pi` and `gemini` are the adapters converted so far. `pi` is what
+ * forced `fileFor` to return many paths for one child rather than a single
+ * file — it nests project dir → session files — and a throwing callback is
+ * therefore
  * reported under `<operation> resolve` rather than the stat/build labels. The
  * rest still carry their own envelope and their scan shapes differ from
  * copilot's materially — some scan two or four directory levels, some group or
