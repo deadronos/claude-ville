@@ -175,9 +175,9 @@ export function foldEntries<T>(
  * `thread_token_usage` in the file, not the first.
  *
  * The `from: 'end'` default is deliberate — every JSONL read in `pi`, `codex`,
- * `gemini` and `copilot` wants the tail, so omitting `from` yields the tail rather
- * than silently handing back the head of the file. Pass `from: 'start'` for a head
- * read.
+ * `gemini`, `copilot` and `claude` wants the tail, so omitting `from` yields the
+ * tail rather than silently handing back the head of the file. Pass
+ * `from: 'start'` for a head read.
  *
  * What the catch below actually covers: a throw from `onEntry` or `until`, i.e.
  * from adapter logic. It is debug-logged under `scope`/`operation` and `init` is

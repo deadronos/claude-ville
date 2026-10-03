@@ -7,7 +7,7 @@ import path from 'path';
 import os from 'os';
 
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
-import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
+import { debugAdapterError, readLines, parseJsonLines, collectJsonl, foldJsonl } from './jsonl-utils.js';
 
 // Type for directory entries from readdirSync with withFileTypes: true
 type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
@@ -25,88 +25,118 @@ function resolveProjectDisplayPath(projectPathMap: Map<string, string>, encodedP
   return `claude:projects:${encodedProjectDirName}`;
 }
 
-// ─── Session parsing ─────────────────────────────────────
-
 // ─── Shared session detail extraction ─────────────────────
 
-type SessionDetail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null } | {
+type SessionDetail = {
   model: string | null;
   lastTool: string | null;
   lastMessage: string | null;
   lastToolInput: string | null;
 };
 
-function extractDetailFromEntries(entries: any[]): SessionDetail {
-  const detail: SessionDetail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const msg = entries[i].message;
-    if (!msg || msg.role !== 'assistant') continue;
+function newSessionDetail(): SessionDetail {
+  return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+}
 
-    if (!detail.model && msg.model) detail.model = msg.model;
+/**
+ * The accumulator step for every detail read below. It mutates `detail` in
+ * place and returns nothing: `foldJsonl` discards an `onEntry` return value, so
+ * the tempting `(acc, e) => ({ ...acc, lastTool: e.x })` typechecks and silently
+ * leaves the detail all-null. The direction and the absence of an `until` are
+ * documented on `foldNewestFirstDetail`.
+ */
+function foldDetailEntry(detail: SessionDetail, entry: any) {
+  const msg = entry.message;
+  if (!msg || msg.role !== 'assistant') return;
 
-    const content = msg.content;
-    if (!Array.isArray(content)) continue;
+  if (!detail.model && msg.model) detail.model = msg.model;
 
-    for (const block of content) {
-      if (!detail.lastTool && block.type === 'tool_use') {
-        detail.lastTool = block.name || null;
-        if (block.input) {
-          if (block.input.command) detail.lastToolInput = block.input.command.substring(0, 60);
-          else if (block.input.file_path) detail.lastToolInput = block.input.file_path.split('/').pop();
-          else if (block.input.pattern) detail.lastToolInput = block.input.pattern;
-          else if (block.input.query) detail.lastToolInput = block.input.query.substring(0, 40);
-          else if (block.input.recipient) detail.lastToolInput = block.input.recipient;
-        }
-      }
-      if (!detail.lastMessage && block.type === 'text' && block.text) {
-        const text = block.text.trim();
-        if (text.length > 0) detail.lastMessage = text.substring(0, 80);
+  const content = msg.content;
+  if (!Array.isArray(content)) return;
+
+  for (const block of content) {
+    if (!detail.lastTool && block.type === 'tool_use') {
+      detail.lastTool = block.name || null;
+      if (block.input) {
+        if (block.input.command) detail.lastToolInput = block.input.command.substring(0, 60);
+        else if (block.input.file_path) detail.lastToolInput = block.input.file_path.split('/').pop();
+        else if (block.input.pattern) detail.lastToolInput = block.input.pattern;
+        else if (block.input.query) detail.lastToolInput = block.input.query.substring(0, 40);
+        else if (block.input.recipient) detail.lastToolInput = block.input.recipient;
       }
     }
-    if (detail.model && detail.lastTool && detail.lastMessage) break;
+    if (!detail.lastMessage && block.type === 'text' && block.text) {
+      const text = block.text.trim();
+      if (text.length > 0) detail.lastMessage = text.substring(0, 80);
+    }
   }
-  return detail;
+}
+
+/**
+ * The single place this file's detail read decides its DIRECTION.
+ *
+ * `reverse: true` is load-bearing and must NOT be harmonised with `codex`. This
+ * walk has always been NEWEST-FIRST (`claude.ts:41` was
+ * `for (let i = entries.length - 1; i >= 0; i--)`), so under the `!detail.lastX`
+ * guards the first match is the genuinely LATEST tool and message — which is
+ * what the field names claim. `codex`'s `parseRollout` walks FORWARD under the
+ * same guards, so its first match is the OLDEST and it reports the wrong tool
+ * on every session row; that is a real defect there, deliberately left unfixed.
+ * Neither direction should be copied into the other.
+ *
+ * Both readers share this one flag rather than each declaring its own: every
+ * sub-agent and orphan fixture file holds a single assistant turn, so a second,
+ * independently-set `reverse` at the `getSubAgentDetail` call site would be
+ * observable by nothing. One direction, one place to get it wrong.
+ *
+ * No `until` is passed here either, deliberately. The `!detail.lastX` guards in
+ * `foldDetailEntry` are per-field, not a global stop, so the walk keeps going
+ * after the first match to fill the OTHER fields — the `break` this replaces was
+ * provably a no-op, since every write sat behind a guard. That is the opposite of
+ * `pi`'s `until`, which B2b proved load-bearing.
+ */
+function foldNewestFirstDetail(filePath: string, count: number, operation: string) {
+  return foldJsonl<SessionDetail>(filePath, {
+    scope: 'claude',
+    operation,
+    count,
+    reverse: true, // newest-first — see above
+    init: newSessionDetail(),
+    onEntry: foldDetailEntry,
+  });
 }
 
 // ─── Session parsing ─────────────────────────────────────
 
 async function getSessionDetail(sessionId: string, project: string | null) {
-  if (!project) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+  if (!project) return newSessionDetail();
 
   const encoded = project.replace(/\//g, '-');
   const sessionFile = path.join(CLAUDE_DIR, 'projects', encoded, `${sessionId}.jsonl`);
-  if (!fs.existsSync(sessionFile)) return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+  if (!fs.existsSync(sessionFile)) return newSessionDetail();
 
-  try {
-    const lines = await readLines(sessionFile, { count: 30, scope: 'claude' });
-    return extractDetailFromEntries(parseJsonLines(lines, 'claude'));
-  } catch (err) {
-    debugAdapterError('claude', 'getSessionDetail', err, sessionFile);
-    return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
-  }
+  return foldNewestFirstDetail(sessionFile, 30, 'getSessionDetail');
 }
 
 async function getSubAgentDetail(filePath: string) {
-  try {
-    const lines = await readLines(filePath, { count: 20, scope: 'claude' });
-    return extractDetailFromEntries(parseJsonLines(lines, 'claude'));
-  } catch (err) {
-    debugAdapterError('claude', 'getSubAgentDetail', err, filePath);
-    return { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
-  }
+  return foldNewestFirstDetail(filePath, 20, 'getSubAgentDetail');
 }
 
-async function getToolHistory(sessionFilePath: string, maxItems = 15) {
-  const tools = [];
-  try {
-    const lines = await readLines(sessionFilePath, { count: 100, scope: 'claude' });
-    const entries = parseJsonLines(lines, 'claude');
+// ─── Tool history ───────────────────────────────────
 
-    for (const entry of entries) {
+type ToolEvent = { tool: string; detail: string; ts: number };
+
+async function getToolHistory(sessionFilePath: string, maxItems = 15) {
+  return collectJsonl<ToolEvent>(sessionFilePath, {
+    scope: 'claude',
+    operation: 'getToolHistory',
+    count: 100,
+    maxItems,
+    onEntry: (entry, out) => {
       const msg = entry.message;
-      if (!msg || msg.role !== 'assistant') continue;
+      if (!msg || msg.role !== 'assistant') return;
       const content = msg.content;
-      if (!Array.isArray(content)) continue;
+      if (!Array.isArray(content)) return;
 
       for (const block of content) {
         if (block.type !== 'tool_use') continue;
@@ -120,77 +150,84 @@ async function getToolHistory(sessionFilePath: string, maxItems = 15) {
           else if (block.input.url) detail = block.input.url;
           else if (block.input.description) detail = block.input.description.substring(0, 60);
         }
-        tools.push({ tool: block.name || 'unknown', detail, ts: entry.timestamp || 0 });
+        out.push({ tool: block.name || 'unknown', detail, ts: entry.timestamp || 0 });
       }
-    }
-  } catch (err) {
-    debugAdapterError('claude', 'getToolHistory', err, sessionFilePath);
-  }
-  return tools.slice(-maxItems);
+    },
+  });
 }
 
-async function getRecentMessages(sessionFilePath: string, maxItems = 5) {
-  const messages = [];
-  try {
-    const lines = await readLines(sessionFilePath, { count: 60, scope: 'claude' });
-    const entries = parseJsonLines(lines, 'claude');
+// ─── Recent messages ──────────────────────────────────────
 
-    for (const entry of entries) {
+type ChatMessage = { role: string; text: string; ts: number };
+
+async function getRecentMessages(sessionFilePath: string, maxItems = 5) {
+  return collectJsonl<ChatMessage>(sessionFilePath, {
+    scope: 'claude',
+    operation: 'getRecentMessages',
+    count: 60,
+    maxItems,
+    onEntry: (entry, out) => {
       const msg = entry.message;
-      if (!msg) continue;
+      if (!msg) return;
       const content = msg.content;
-      if (!Array.isArray(content)) continue;
+      if (!Array.isArray(content)) return;
 
       for (const block of content) {
         if (block.type !== 'text' || !block.text) continue;
         const text = block.text.trim();
         if (text.length === 0) continue;
-        messages.push({ role: msg.role, text: text.substring(0, 200), ts: entry.timestamp || 0 });
+        // No role fallback (unlike `pi`): an entry with array content and no
+        // `role` yields `role: undefined`. Recorded, deliberately unchanged.
+        out.push({ role: msg.role, text: text.substring(0, 200), ts: entry.timestamp || 0 });
       }
-    }
-  } catch (err) {
-    debugAdapterError('claude', 'getRecentMessages', err, sessionFilePath);
-  }
-  return messages.slice(-maxItems);
+    },
+  });
 }
 
-async function getTokenUsage(sessionFilePath: string) {
-  const usage = {
-    totalInput: 0,
-    totalOutput: 0,
-    cacheRead: 0,
-    cacheCreate: 0,
-    contextWindow: 0,  // last turn context size
-    turnCount: 0,
-  };
-  try {
-    const lines = await readLines(sessionFilePath, { count: 200, scope: 'claude' });
-    const entries = parseJsonLines(lines, 'claude');
+type TokenFold = {
+  totalInput: number;
+  totalOutput: number;
+  cacheRead: number;
+  cacheCreate: number;
+  turnCount: number;
+  lastUsage: any | null;
+};
 
-    let lastUsage = null;
-    for (const entry of entries) {
+async function getTokenUsage(sessionFilePath: string) {
+  const usage = await foldJsonl<TokenFold>(sessionFilePath, {
+    scope: 'claude',
+    operation: 'getTokenUsage',
+    count: 200,
+    init: { totalInput: 0, totalOutput: 0, cacheRead: 0, cacheCreate: 0, turnCount: 0, lastUsage: null },
+    // FORWARD, unlike codex's token lookup: the sums are order-independent and
+    // `contextWindow` must come from the LAST turn in the window, so this must
+    // NOT gain `reverse: true`.
+    onEntry: (usage, entry) => {
       const msg = entry.message;
-      if (!msg || !msg.usage) continue;
+      if (!msg || !msg.usage) return;
       const u = msg.usage;
       usage.totalInput += u.input_tokens || 0;
       usage.totalOutput += u.output_tokens || 0;
       usage.cacheRead += u.cache_read_input_tokens || 0;
       usage.cacheCreate += u.cache_creation_input_tokens || 0;
       usage.turnCount++;
-      lastUsage = u;
-    }
-
+      usage.lastUsage = u;
+    },
+  });
+  const lastUsage = usage.lastUsage;
+  return {
+    totalInput: usage.totalInput,
+    totalOutput: usage.totalOutput,
+    cacheRead: usage.cacheRead,
+    cacheCreate: usage.cacheCreate,
     // last turn context = input + cache_read + cache_create
-    if (lastUsage) {
-      usage.contextWindow =
-        (lastUsage.input_tokens || 0) +
+    contextWindow: lastUsage
+      ? (lastUsage.input_tokens || 0) +
         (lastUsage.cache_read_input_tokens || 0) +
-        (lastUsage.cache_creation_input_tokens || 0);
-    }
-  } catch (err) {
-    debugAdapterError('claude', 'getTokenUsage', err, sessionFilePath);
-  }
-  return usage;
+        (lastUsage.cache_creation_input_tokens || 0)
+      : 0,
+    turnCount: usage.turnCount,
+  };
 }
 
 async function resolveSessionFilePath(sessionId: string, project: string | null) {

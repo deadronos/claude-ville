@@ -70,7 +70,9 @@ measured against all nine summary literals and deferred — they are not uniform
 `'team-member'`, and `hermes` / `openclaw` / `opencode` each build records at two
 separate sites (a SQLite path and a file fallback) that derive fields differently,
 so a `fields => ({ ...fields })` builder would collapse nothing. Revisit once more
-adapters are on the helpers: `copilot`, `pi` and `gemini` are, `codex` fold-only.
+adapters are on the helpers: `copilot`, `pi` and `gemini` are converted whole;
+`claude` and `codex` are readers-only, each blocked by its own four-level scan
+and for a different reason.
 
 Caveats for anyone converting an adapter:
 
@@ -96,6 +98,16 @@ Caveats for anyone converting an adapter:
   single-candidate fixture and wrong on every real rollout, so the trap is
   pinned from both sides in `codex.fixture.test.ts` and repeated in the comment
   on `getTokenUsage` (`codex.ts:274`) rather than left to be rediscovered.
+- The direction trap is not confined to one file, and the two occurrences point
+  opposite ways. `claude`'s detail read has always walked NEWEST-FIRST under the
+  same `!detail.lastX` guards, so its first match is the genuinely LAST tool and
+  the field names are honest; `codex`'s `parseRollout` uses the **identical guard
+  structure** walking FORWARD, so its first match is the OLDEST and every
+  session row reports a stale tool. Same guards, opposite direction, opposite
+  correctness — codex's is a real defect, deliberately unfixed. Anyone copying
+  either reader verbatim needs to know which way round it is, so the contrast is
+  now written into both files (`claude.ts:78`, `codex.ts:274`) rather than left
+  to be re-derived from the fold helpers' defaults.
 - `collectScanByMtime` fits **copilot's shape, and `pi` and `gemini` are the
   other two converted onto it**. The envelope recurs across the JSONL adapters,
   but each one scans a different shape and most still do not fit a single
@@ -137,6 +149,20 @@ Caveats for anyone converting an adapter:
       also why `codex.ts` GREW where `gemini.ts` shrank — the converted logic is
       3 lines shorter, against four added `type` aliases and a dozen comment lines
       carrying the direction trap above.
+    - `claude` is readers-only too, and **not** for `codex`'s reason. Its scan is
+      also four levels — `projects/` → session dir → `subagents/` →
+      `agent-*.jsonl` (`claude.ts:383`) — so the shapes look alike, but the
+      blocking difference is **async**. `collectScanByMtime` calls `fileFor`
+      SYNCHRONOUSLY (`scan-utils.ts:74`, the sanctioned exception in Compliance
+      below), and every `fs` call in claude's scan is async, fanning out with a
+      `Promise.all` at each of its three levels. Converting means answering
+      `fileFor` with `readdirSync` and flattening those nested fan-outs into the
+      helper's single one, trading away per-level concurrency that the Compliance
+      note requires. `codex` prunes each level with `.sort().reverse().slice()`;
+      `claude` fans out at each. The shared shape is superficial — keep the two
+      explanations apart. `claude.ts` GREW for the same reason `codex.ts` did, and
+      more: 589 → 626 total while code-only went 487 → 486, the growth being
+      explanatory prose about the direction trap rather than logic.
     - `vscode` has three candidate shapes per workspace (debug-log dir →
       `main.jsonl`, transcript file, resource dir → newest `content.txt` across
       its tool dirs) across four storage roots, then dedupes by
