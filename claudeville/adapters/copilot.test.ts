@@ -679,11 +679,15 @@ describe('copilot adapter', () => {
     // What it does NOT pin: input order vs completion order. An earlier version
     // of this comment claimed it pinned collectScanByMtime's `Promise.all`, which
     // was false — replacing `Promise.all` with a sequential push loop preserves
-    // readdir order just as well, and the suite stays green (verified). That
-    // mutant is benign for ordering but serializes the scans, which matters for
-    // wall-clock on a large session directory; it is protected by review, not by
-    // a test, because pinning it would require injecting async latency into
-    // `build`.
+    // readdir order just as well, so this case stays green under that mutant.
+    //
+    // That mutant is now covered elsewhere, by a deterministic test rather than
+    // by this ordering case: 'builds every candidate concurrently rather than one
+    // at a time' in scan-utils.test.ts counts in-flight `build` invocations
+    // behind a barrier, so a sequential scan fails it (peak 1 instead of 6). No
+    // latency injection or wall-clock threshold is needed. Until that test
+    // existed, the sequential swap was protected by review alone; the hazard
+    // note above is about ordering only, and ordering is unaffected by the swap.
     it('getActiveSessions keeps readdir order for sessions sharing an mtime', async () => {
       const fs = require('fs');
       const os = require('os');

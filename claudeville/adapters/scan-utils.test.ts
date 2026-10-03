@@ -192,6 +192,73 @@ describe('collectScanByMtime', () => {
     expect([...result].reverse().map((r) => r.sessionId)).not.toEqual(expectedOrder);
   });
 
+  it('builds every candidate concurrently rather than one at a time', async () => {
+    // `Promise.all` is load-bearing for wall-clock: a sequential loop would stat
+    // and build one session directory at a time, serialising every adapter's scan.
+    // Nothing else in this file objects to that — the readdir-order case above
+    // still passes, because a sequential push loop preserves readdir order just
+    // as well as a concurrent one. This is the case that catches it.
+    //
+    // Concurrency is OBSERVED, not timed: no wall-clock threshold appears here.
+    //
+    // The naive version of this check — bump a counter on entry, `await
+    // setImmediate`, and assert the peak equals the child count — is NOT
+    // deterministic, and was measured failing here: with 6 children the peak
+    // reached 6 in only 6 of 40 runs (most often 4 or 5), because libuv's fs
+    // threadpool completes the `stat` calls in waves and the first `setImmediate`
+    // reaches the loop's check phase as soon as one wave has drained. With 2
+    // children the peak was 1 — indistinguishable from a sequential scan — in 31
+    // of 40 runs. So the peak is made provable instead of merely observed: a
+    // barrier means no build can finish until all `children` have started, so the
+    // peak in-flight count can ONLY be `children` if the implementation genuinely
+    // began them all before awaiting any. A sequential loop blocks inside the
+    // first build and never enters the second, so its peak is stuck at 1.
+    //
+    // The watchdog exists so the sequential mutant FAILS instead of hanging. It
+    // releases the barrier after `WATCHDOG_TURNS` idle event-loop turns, letting
+    // the scan complete so the peak assertion can report the real peak of 1. A
+    // concurrent scan needs ~3-6 turns (measured), so the two cases are three
+    // orders of magnitude apart; this is a liveness backstop, not a race.
+    const children = ['s1', 's2', 's3', 's4', 's5', 's6'];
+    for (const name of children) makeSession(name);
+
+    const WATCHDOG_TURNS = 100;
+    let inFlight = 0;
+    let peakInFlight = 0;
+    let entered = 0;
+    let idleTurns = 0;
+    let releaseBarrier!: () => void;
+    const allEntered = new Promise<void>((resolve) => { releaseBarrier = resolve; });
+
+    const watchdog = (async () => {
+      while (entered < children.length && idleTurns < WATCHDOG_TURNS) {
+        await new Promise((resolve) => setImmediate(resolve));
+        idleTurns += 1;
+      }
+      releaseBarrier();
+    })();
+
+    const result = await collectScanByMtime<ScanRecord>(scanOptions({
+      build: async (candidate) => {
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        entered += 1;
+        idleTurns = 0; // a new entrant means the scan is making progress
+        if (entered === children.length) releaseBarrier();
+        await allEntered;
+        inFlight -= 1;
+        return { sessionId: candidate.name, filePath: candidate.filePath, mtime: candidate.mtimeMs };
+      },
+    }));
+    await watchdog;
+
+    // Every child still produced its record — the barrier delays finishing, it
+    // does not change what is produced or its order.
+    expect(idsOf(result)).toEqual([...children].sort());
+    // All six were in flight together. A sequential loop holds this at 1.
+    expect(peakInFlight).toBe(children.length);
+  });
+
   it('returns [] and logs when dir is a file rather than a directory', async () => {
     // existsSync passes for a plain file, so readdir is reached and throws
     // ENOTDIR — the only way to cover the outer catch without mocking fs.
