@@ -24,6 +24,8 @@ const originalHome = process.env.HOME;
 const SESSION_UUID = '11111111-2222-3333-4444-555555555555';
 const LONG_SESSION_UUID = '99999999-8888-7777-6666-555555555555';
 const ASSISTANT_TOOLS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const FALSY_TOOL_CALL_UUID = 'bbbbbbbb-1111-2222-3333-444444444444';
+const FALSY_ASSISTANT_UUID = 'cccccccc-1111-2222-3333-444444444444';
 
 function sessionDir(uuid: string) {
   return path.join(tmpHome, '.copilot', 'session-state', uuid);
@@ -291,6 +293,115 @@ describe('CopilotAdapter fixtures', () => {
       // depend on Vitest's declaration order and --sequence.shuffle would fail.
       removeSession(LONG_SESSION_UUID);
       removeSession(ASSISTANT_TOOLS_UUID);
+    }
+  });
+
+  // Hazard 1: `summarizeToolInput` is NOT a drop-in for copilot's inline
+  // expression. copilot guards every call site with `if (tc.input)` /
+  // `tc.input ? … : ''`, so a falsy-but-present input (0, false, '') renders as
+  // absent: lastToolInput stays null on the session summary, and toolHistory's
+  // detail is ''. Handed the same value unguarded, the helper renders 0 as '0'
+  // and false as 'false'. All four guards in copilot.ts (:88, :102, :129, :138)
+  // are load-bearing, and until this case existed deleting every one of them
+  // left the whole suite green. sanitize.test.ts pins the helper's half of the
+  // contract; this pins copilot's half, in both output paths.
+  //
+  // Two session directories are needed for the same reason the truncation case
+  // needs two: parseSession's reverse scan is gated on `!detail.lastTool`, so
+  // one file can only ever reach ONE of its two tool-bearing branches.
+  // getToolHistory walks forward with no such gate, so each of these two files
+  // also covers both of getToolHistory's sites.
+  //
+  // Both directories are written in-body and removed in the finally, which is
+  // what keeps this file shuffle-safe — test 1's toHaveLength(1) is the reason
+  // that idiom exists, so nothing here may outlive the test that wrote it.
+  it('renders a falsy-but-present tool input as absent rather than as its JSON form', async () => {
+    const at = (i: number) => new Date(Date.UTC(2024, 0, 1, 0, 0, i)).toISOString();
+
+    // parseSession's tool_call branch. `false` rides along in the same file to
+    // widen the pin without a third directory: getToolHistory keeps both
+    // entries, and with the guard deleted this one becomes 'false' rather than
+    // ''. ('' would NOT discriminate — the helper passes '' through unchanged.)
+    writeEvents(
+      [
+        {
+          type: 'session.start',
+          data: { sessionId: FALSY_TOOL_CALL_UUID, selectedModel: 'gpt-5-mini', context: { cwd: workspaceDir } },
+        },
+        { type: 'tool_call', data: { name: 'falsy_false', input: false }, timestamp: at(1) },
+        { type: 'tool_call', data: { name: 'falsy_zero', input: 0 }, timestamp: at(2) },
+      ],
+      FALSY_TOOL_CALL_UUID,
+    );
+
+    // parseSession's assistant.message branch — the shape copilot's own header
+    // comment calls the real one.
+    writeEvents(
+      [
+        {
+          type: 'session.start',
+          data: { sessionId: FALSY_ASSISTANT_UUID, selectedModel: 'gpt-5-mini', context: { cwd: workspaceDir } },
+        },
+        {
+          type: 'assistant.message',
+          data: {
+            selectedModel: 'gpt-5-mini',
+            content: [{ type: 'text', text: 'zero input' }],
+            toolCalls: [{ name: 'falsy_assistant_zero', input: 0 }],
+          },
+          timestamp: at(1),
+        },
+      ],
+      FALSY_ASSISTANT_UUID,
+    );
+
+    vi.resetModules();
+    const reimported: any = await import('./copilot.js');
+    const adapter = new reimported.CopilotAdapter();
+
+    try {
+      const sessions = await adapter.getActiveSessions(5 * 60 * 1000);
+
+      // copilot.ts:102 — parseSession's tool_call branch. The reverse scan
+      // reaches the LAST tool-bearing entry first, so input 0 is the one pinned
+      // on the summary. Delete the guard and this becomes '0'.
+      const toolCallSession = sessions.find((s: any) => s.sessionId === `copilot-${FALSY_TOOL_CALL_UUID}`);
+      expect(toolCallSession).toBeDefined();
+      expect(toolCallSession.lastTool).toBe('falsy_zero');
+      expect(toolCallSession.lastToolInput).toBeNull();
+
+      // copilot.ts:88 — parseSession's OTHER branch, reachable only via an
+      // assistant.message toolCalls entry. Delete the guard and this is '0'.
+      const assistantSession = sessions.find((s: any) => s.sessionId === `copilot-${FALSY_ASSISTANT_UUID}`);
+      expect(assistantSession).toBeDefined();
+      expect(assistantSession.lastTool).toBe('falsy_assistant_zero');
+      expect(assistantSession.lastToolInput).toBeNull();
+
+      // copilot.ts:138 — getToolHistory's tool_call site.
+      const toolCallDetail = await adapter.getSessionDetail(
+        toolCallSession.sessionId,
+        toolCallSession.project,
+        toolCallSession.filePath,
+      );
+      expect(toolCallDetail.toolHistory).toEqual([
+        expect.objectContaining({ tool: 'falsy_false', detail: '' }),
+        expect.objectContaining({ tool: 'falsy_zero', detail: '' }),
+      ]);
+
+      // copilot.ts:129 — getToolHistory's assistant.message site.
+      const assistantDetail = await adapter.getSessionDetail(
+        assistantSession.sessionId,
+        assistantSession.project,
+        assistantSession.filePath,
+      );
+      expect(assistantDetail.toolHistory).toEqual([
+        expect.objectContaining({ tool: 'falsy_assistant_zero', detail: '' }),
+      ]);
+    } finally {
+      // Same reason as the truncation case: test 1 asserts a single session, so
+      // these directories must not survive this test under any ordering.
+      removeSession(FALSY_TOOL_CALL_UUID);
+      removeSession(FALSY_ASSISTANT_UUID);
     }
   });
 });

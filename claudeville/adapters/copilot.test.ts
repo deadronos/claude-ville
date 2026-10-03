@@ -670,10 +670,20 @@ describe('copilot adapter', () => {
       }
     });
 
-    // Hazard 4: Array.prototype.sort is stable, so sessions sharing an mtime keep
-    // the input order, which is readdir order. collectScanByMtime preserves it via
-    // Promise.all (resolution order does not reorder results). B2's adapters lean
-    // on this too, so it is pinned here rather than left implicit.
+    // Hazard 4: Array.prototype.sort is stable, so sessions sharing an mtime
+    // resolve to INPUT order — which for this adapter is readdir order, with no
+    // secondary key. That is what this case pins: adding a tiebreaker such as
+    // `|| b.sessionId.localeCompare(a.sessionId)` to copilot.ts's comparator
+    // turns it red.
+    //
+    // What it does NOT pin: input order vs completion order. An earlier version
+    // of this comment claimed it pinned collectScanByMtime's `Promise.all`, which
+    // was false — replacing `Promise.all` with a sequential push loop preserves
+    // readdir order just as well, and the suite stays green (verified). That
+    // mutant is benign for ordering but serializes the scans, which matters for
+    // wall-clock on a large session directory; it is protected by review, not by
+    // a test, because pinning it would require injecting async latency into
+    // `build`.
     it('getActiveSessions keeps readdir order for sessions sharing an mtime', async () => {
       const fs = require('fs');
       const os = require('os');
