@@ -12,6 +12,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": true,
+    "noUnusedLocals": true,
     "noEmit": false
   },
   "include": [
