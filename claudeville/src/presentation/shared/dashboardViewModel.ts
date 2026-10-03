@@ -38,6 +38,9 @@ export const PROVIDER_LABELS: Record<string, string> = {
   openclaw: 'OpenClaw',
   copilot: 'Copilot',
   vscode: 'VS Code',
+  pi: 'Pi',
+  opencode: 'OpenCode',
+  hermes: 'Hermes',
 };
 
 export const PROVIDER_ICONS: Record<string, string> = {
@@ -47,6 +50,9 @@ export const PROVIDER_ICONS: Record<string, string> = {
   openclaw: 'O',
   copilot: 'P',
   vscode: 'V',
+  pi: 'π',
+  opencode: 'OC',
+  hermes: 'H',
 };
 
 export const PROVIDER_COLORS: Record<string, string> = {
@@ -56,6 +62,9 @@ export const PROVIDER_COLORS: Record<string, string> = {
   openclaw: '#f97316',
   copilot: '#22d3ee',
   vscode: '#7dd3fc',
+  pi: '#e8d44d',
+  opencode: '#f43f5e',
+  hermes: '#34d399',
 };
 
 export const TOOL_ICONS: Record<string, string> = {

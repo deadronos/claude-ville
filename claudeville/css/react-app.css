@@ -59,6 +59,9 @@
 .provider-icon--openclaw { color: #f97316; }
 .provider-icon--copilot { color: #22d3ee; }
 .provider-icon--vscode { color: #7dd3fc; }
+.provider-icon--pi { color: #e8d44d; }
+.provider-icon--opencode { color: #f43f5e; }
+.provider-icon--hermes { color: #34d399; }
 .provider-icon--unknown { color: #8b8b9e; }
 
 .provider-badge--claude { color: #a78bfa; background: rgba(167, 139, 250, 0.15); }
@@ -67,6 +70,9 @@
 .provider-badge--openclaw { color: #f97316; background: rgba(249, 115, 22, 0.15); }
 .provider-badge--copilot { color: #22d3ee; background: rgba(34, 211, 238, 0.15); }
 .provider-badge--vscode { color: #7dd3fc; background: rgba(125, 211, 252, 0.15); }
+.provider-badge--pi { color: #e8d44d; background: rgba(232, 212, 77, 0.15); }
+.provider-badge--opencode { color: #f43f5e; background: rgba(244, 63, 94, 0.15); }
+.provider-badge--hermes { color: #34d399; background: rgba(52, 211, 153, 0.15); }
 .provider-badge--unknown { color: #8b8b9e; background: rgba(139, 139, 158, 0.15); }
 
 
