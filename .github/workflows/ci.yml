@@ -1,0 +1,55 @@
+name: CI
+
+# The lint and typecheck gates were both silently off until #135 re-enabled
+# them, and nothing enforced them for the life of the repo. This workflow is
+# what stops them rotting again.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref — a push to a PR branch makes the
+# previous run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck, lint, test
+    runs-on: ubuntu-latest
+    # Integration tests spawn `tsx` subprocesses and bind ephemeral ports, which
+    # is slower and flakier than a unit-only run. Give them room rather than
+    # letting a hang burn the full limit.
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Pinned to the major the suite is verified against locally. The
+          # adapter concurrency test in claudeville/adapters/scan-utils.test.ts
+          # counts event-loop turns, so a Node major change is not a silent
+          # no-op for this suite.
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # `--sequence.shuffle` is deliberately NOT used here. Three separate
+      # adapter fixtures have been order-sensitive in this repo's history
+      # (`copilot.fixture.test.ts` leaked a session directory once and broke
+      # `toHaveLength(1)` under a different order). Those are fixed, but a
+      # shuffled run in CI would add flakiness without adding coverage.
+      - name: Test
+        run: npm test
