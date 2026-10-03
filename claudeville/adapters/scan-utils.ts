@@ -41,8 +41,15 @@ export async function collectScanByMtime<T>(
     /**
      * Given a child dir name, return the file(s) to stat — one path, or many for
      * an adapter that enumerates files inside each child — or null to skip it.
-     * Its own errors are labelled `<operation> resolve` and confined to that one
-     * child, so a throwing enumeration cannot take down its siblings.
+     *
+     * CALLED SYNCHRONOUSLY. An adapter that has to list a directory to answer
+     * must do so with `fs.readdirSync`; returning a promise would make the
+     * resolved value a Promise, not a path. This keeps the helper free of a
+     * second async path, and a sync throw is caught identically.
+     *
+     * A throwing `fileFor` is caught, logged as `<operation> resolve` with the
+     * child directory as context, and confined to that one child — so a failing
+     * enumeration cannot take down its siblings.
      */
     fileFor: (name: string) => string | string[] | null;
     /** Build the record for a candidate that passed the mtime filter. */
@@ -69,9 +76,10 @@ export async function collectScanByMtime<T>(
       if (!filePaths || filePaths.length === 0) return null;
 
       // Annotated rather than cast: Promise.all re-applies Awaited<T>, which TS
-      // cannot relate back to the unresolved generic T. Every call site passes a
-      // plain record type, never an array — `flat()` below would otherwise eat a
-      // nested record that happened to be an array.
+      // cannot relate back to the unresolved generic T. The annotation is sound
+      // for array-shaped T too — `.flat()` below unwraps only the one level this
+      // map introduces (null | (T | null)[] per child), leaving a T that is
+      // itself an array intact.
       const perFile: (T | null)[] = await Promise.all(filePaths.map(async (filePath): Promise<T | null> => {
         try {
           const stat = await fs.promises.stat(filePath);

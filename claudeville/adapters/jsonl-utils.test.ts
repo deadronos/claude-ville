@@ -320,7 +320,6 @@ describe('jsonl-utils', () => {
         onEntry: (acc, entry) => {
           acc.visited.push(entry.n);
           acc.total += entry.n;
-          return acc;
         },
       });
 
@@ -349,7 +348,6 @@ describe('jsonl-utils', () => {
           byOnEntry.push(entry.n);
           acc.visited.push(entry.n);
           acc.total += entry.n;
-          return acc;
         },
         until: (acc, entry) => {
           byUntil.push(entry.n);
@@ -381,7 +379,6 @@ describe('jsonl-utils', () => {
             acc.visited.push(entry.kind);
             if (entry.kind === 'thread') acc.thread = entry.value;
             else acc.fallback = entry.value;
-            return acc;
           },
           until: (_acc, entry) => entry.kind === 'thread',
         },
@@ -397,7 +394,6 @@ describe('jsonl-utils', () => {
         init: { total: 0, visited: [] },
         onEntry: (acc, entry) => {
           acc.visited.push(entry.n);
-          return acc;
         },
       });
 
@@ -424,69 +420,91 @@ describe('jsonl-utils', () => {
       }
     });
 
-    it('folds in file order when order is omitted', async () => {
-      const filePath = write('forward.jsonl', '{"n":1}\n{"n":2}\n{"n":3}\n');
+    const FIVE_LINES = '{"n":1}\n{"n":2}\n{"n":3}\n{"n":4}\n{"n":5}\n';
+
+    it('folds the HEAD when from is start', async () => {
+      const filePath = write('head.jsonl', FIVE_LINES);
 
       const result = await foldJsonl<{ visited: number[] }>(filePath, {
         scope: 'test',
-        operation: 'forward',
-        count: 10,
+        operation: 'head',
+        from: 'start',
+        count: 2,
         init: { visited: [] },
         onEntry: (acc, entry) => {
           acc.visited.push(entry.n);
-          return acc;
         },
       });
 
-      expect(result.visited).toEqual([1, 2, 3]);
+      expect(result.visited).toEqual([1, 2]);
     });
 
-    it('folds newest-first when order is end', async () => {
+    it('defaults to the TAIL when from is omitted', async () => {
+      // count 2 over a 5-line file: the tail window is entries 4 and 5, the head
+      // window is 1 and 2. These are different lists, so this pins which one a
+      // caller gets by saying nothing — which is every real caller, since all 12
+      // token reads in pi/codex/gemini want the tail. Flipping the default back to
+      // 'start' turns this red.
+      const filePath = write('tail-default.jsonl', FIVE_LINES);
+
+      const result = await foldJsonl<{ visited: number[] }>(filePath, {
+        scope: 'test',
+        operation: 'tail-default',
+        count: 2,
+        init: { visited: [] },
+        onEntry: (acc, entry) => {
+          acc.visited.push(entry.n);
+        },
+      });
+
+      expect(result.visited).toEqual([4, 5]);
+    });
+
+    it('walks newest-first when reverse is set', async () => {
       const filePath = write('reverse.jsonl', '{"n":1}\n{"n":2}\n{"n":3}\n');
 
       const result = await foldJsonl<{ visited: number[] }>(filePath, {
         scope: 'test',
-        operation: 'order-end',
+        operation: 'reverse',
         count: 10,
-        order: 'end',
+        reverse: true,
         init: { visited: [] },
         onEntry: (acc, entry) => {
           acc.visited.push(entry.n);
-          return acc;
         },
       });
 
       expect(result.visited).toEqual([3, 2, 1]);
     });
 
-    it('reads the TAIL when order is end, so count bounds the newest entries', async () => {
-      // `order:'end'` must forward `from:'end'` to the reader AND reverse what
-      // comes back. Forgetting either half is a different list: reading from the
-      // start yields [1, 2] and reading the tail without reversing yields [2, 3].
-      // Only both together give [3, 2].
-      const filePath = write('tail.jsonl', '{"n":1}\n{"n":2}\n{"n":3}\n');
+    it('reverse reorders only the window from chose, not the whole file', async () => {
+      // Same window as the default-tail case above ([4, 5]), walked the other way.
+      // `reverse` must compose with `from` rather than replace it: a `reverse`
+      // that also flipped `from` to 'start' would yield [2, 1], and one that
+      // reversed before applying `count` would yield all five, [5, 4, 3, 2, 1].
+      const filePath = write('reverse-window.jsonl', FIVE_LINES);
 
       const result = await foldJsonl<{ visited: number[] }>(filePath, {
         scope: 'test',
-        operation: 'tail',
+        operation: 'reverse-window',
         count: 2,
-        order: 'end',
+        reverse: true,
         init: { visited: [] },
         onEntry: (acc, entry) => {
           acc.visited.push(entry.n);
-          return acc;
         },
       });
 
-      expect(result.visited).toEqual([3, 2]);
+      expect(result.visited).toEqual([5, 4]);
     });
 
-    it('order:end plus until reproduces the reverse early-return codex needs', async () => {
-      // Written oldest-first: thread, then total. `order:'end'` reverses the
-      // tail, so the walk sees the NEWER total first — accumulating the fallback
-      // — and the thread entry second. Because `until` runs after `onEntry`, the
-      // thread reading is recorded before the walk stops. Reversing the walk, or
-      // consulting `until` first, each breaks one of the two assertions.
+    it('reverse plus until reproduces the reverse early-return codex needs', async () => {
+      // Written oldest-first: thread, then total. The default tail window covers
+      // the whole file, and `reverse` walks it newest-first, so the walk sees the
+      // NEWER total first — accumulating the fallback — and the thread entry
+      // second. Because `until` runs after `onEntry`, the thread reading is
+      // recorded before the walk stops. Dropping the reverse, or consulting
+      // `until` first, each breaks one of the two value assertions.
       type TwoTier = { thread: number | null; fallback: number | null; visited: string[] };
       const filePath = write('codex-shape.jsonl', '{"kind":"thread","value":99}\n{"kind":"total","value":11}\n');
 
@@ -494,13 +512,12 @@ describe('jsonl-utils', () => {
         scope: 'test',
         operation: 'codex-shape',
         count: 10,
-        order: 'end',
+        reverse: true,
         init: { thread: null, fallback: null, visited: [] },
         onEntry: (acc, entry) => {
           acc.visited.push(entry.kind);
           if (entry.kind === 'thread') acc.thread = entry.value;
           else acc.fallback = entry.value;
-          return acc;
         },
         until: (_acc, entry) => entry.kind === 'thread',
       });
@@ -516,11 +533,11 @@ describe('jsonl-utils', () => {
       const result = await foldJsonl<{ visited: number[] }>(filePath, {
         scope: 'test',
         operation: 'until',
+        from: 'start',
         count: 10,
         init: { visited: [] },
         onEntry: (acc, entry) => {
           acc.visited.push(entry.n);
-          return acc;
         },
         until: (acc) => acc.visited.length >= 2,
       });
@@ -533,7 +550,7 @@ describe('jsonl-utils', () => {
 
       const { result, lines } = await withDebug(() => foldJsonl<{ total: number; visited: number[] }>(
         path.join(tmpDir, 'no-such-file.jsonl'),
-        { scope: 'test', operation: 'missing', init, onEntry: (acc) => acc },
+        { scope: 'test', operation: 'missing', init, onEntry: () => {} },
       ));
 
       expect(result).toBe(init);
@@ -543,12 +560,13 @@ describe('jsonl-utils', () => {
       expect(lines).toEqual([]);
     });
 
-    it('returns init when the path cannot be read, and does not throw', async () => {
-      // A directory in the file's place makes existsSync pass but read fail. The
-      // log line is emitted by readLines, under its OWN label, because readLines
-      // swallows and logs before foldJsonl ever sees a throw — so `operation`
-      // (here getTokenUsage) is deliberately NOT asserted. foldJsonl's own catch
-      // is reachable only from a fold/throw, which the next test covers.
+    it('logs a read failure under readLines, never under operation', async () => {
+      // A directory in the file's place makes existsSync pass but read fail. This
+      // pins the doc comment's central claim: readJsonlEntries does not throw,
+      // because readLines swallows and logs first under its own label. So there is
+      // NO `operation`-labelled line for a read failure — an adapter cannot assert
+      // one, and folding a read error into foldJsonl's own catch would be a
+      // behaviour change to readLines.
       const notAFile = path.join(tmpDir, 'a-directory.jsonl');
       fs.mkdirSync(notAFile, { recursive: true });
       const init = { total: 0 };
@@ -557,34 +575,42 @@ describe('jsonl-utils', () => {
         scope: 'my-adapter',
         operation: 'getTokenUsage',
         init,
-        onEntry: (acc) => acc,
+        onEntry: () => {},
       }));
 
       expect(result).toBe(init);
       expect(lines).toHaveLength(1);
       expect(lines[0]).toContain('my-adapter');
+      expect(lines[0]).toContain('readLines(');
       expect(lines[0]).toContain(notAFile);
+      expect(lines[0]).not.toContain('getTokenUsage');
     });
 
-    it('keeps what the fold accumulated before an onEntry throw', async () => {
-      // foldEntries returns the same accumulator reference throughout, and the
-      // catch hands that reference back, so partial accumulation survives a throw
-      // — the same contract collectJsonl already has.
+    it('logs an onEntry throw under scope and operation', async () => {
+      // The only failure that reaches foldJsonl's own catch. Distinguishes the
+      // catch's real coverage from the read path above: here `operation` IS the
+      // label, because the throw came from adapter logic.
       const filePath = write('throwing.jsonl', '{"n":1}\n{"n":2}\n');
 
-      const { result } = await withDebug(() => foldJsonl<{ visited: number[] }>(filePath, {
-        scope: 'test',
-        operation: 'throwing',
+      const { result, lines } = await withDebug(() => foldJsonl<{ visited: number[] }>(filePath, {
+        scope: 'my-adapter',
+        operation: 'getTokenUsage',
+        from: 'start',
         count: 10,
         init: { visited: [] },
         onEntry: (acc, entry) => {
           if (entry.n === 2) throw new Error('boom');
           acc.visited.push(entry.n);
-          return acc;
         },
       }));
 
+      // The accumulator is the same reference the catch hands back, so what was
+      // folded before the throw survives — the contract collectJsonl already has.
       expect(result.visited).toEqual([1]);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('my-adapter');
+      expect(lines[0]).toContain('getTokenUsage');
+      expect(lines[0]).toContain('boom');
     });
   });
 });

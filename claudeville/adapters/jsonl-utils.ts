@@ -135,13 +135,14 @@ export async function collectJsonl<T>(
 /**
  * Fold parsed entries into an accumulator, optionally stopping early.
  *
- * `onEntry` receives the accumulator and mutates it in place; its return value is
- * ignored, so an `onEntry` that returns a fresh object instead of mutating has
- * no effect. After `onEntry` runs, `until` is consulted with the accumulator and
- * that entry; returning true stops the walk. That ordering is what lets `codex`
- * set its `fallback` on the way past an `info.total_token_usage` entry and still
- * stop at the first `thread_token_usage` entry — its loop returns the thread
- * reading immediately and returns `fallback` only if it never sees one.
+ * `onEntry` mutates the accumulator in place and is typed `=> void` precisely so
+ * that returning a fresh object is not mistaken for a supported pattern — the
+ * return value is discarded, so a non-mutating `onEntry` silently does nothing.
+ * After `onEntry` runs, `until` is consulted with the accumulator and that entry;
+ * returning true stops the walk. That ordering is what lets `codex` set its
+ * `fallback` on the way past an `info.total_token_usage` entry and still stop at
+ * the first `thread_token_usage` entry — its loop returns the thread reading
+ * immediately and returns `fallback` only if it never sees one.
  */
 export function foldEntries<T>(
   entries: unknown[],
@@ -151,7 +152,7 @@ export function foldEntries<T>(
     until,
   }: {
     init: T;
-    onEntry: (acc: T, entry: any) => T;
+    onEntry: (acc: T, entry: any) => void;
     until?: (acc: T, entry: any) => boolean;
   },
 ): T {
@@ -164,14 +165,29 @@ export function foldEntries<T>(
 }
 
 /**
- * Read a JSONL file and fold it. `order: 'end'` walks entries newest-first,
- * which `codex`'s token lookup depends on — it takes the LAST
+ * Read a JSONL file and fold it.
+ *
+ * `from` picks WHICH WINDOW of the file is read — `'end'` (the default) reads the
+ * last `count` lines, `'start'` the first — and `reverse` picks which direction
+ * that window is WALKED. They are independent, and `reverse` only reorders the
+ * window that was read; it never reaches beyond it. `reverse: true` walks
+ * newest-first, which is what `codex`'s token lookup needs: it takes the LAST
  * `thread_token_usage` in the file, not the first.
  *
- * Swallows and debug-logs read/parse errors, returning the untouched `init`.
- * NOTE: `codex`'s current `getTokenUsage` swallows errors with a bare
- * `catch {}` and logs nothing, so converting it makes `DEBUG=1` output
- * slightly noisier. Behaviour and return values are unchanged.
+ * The `from: 'end'` default is deliberate — every JSONL read in `pi`, `codex`,
+ * `gemini` and `copilot` wants the tail, so omitting `from` yields the tail rather
+ * than silently handing back the head of the file. Pass `from: 'start'` for a head
+ * read.
+ *
+ * What the catch below actually covers: a throw from `onEntry` or `until`, i.e.
+ * from adapter logic. It is debug-logged under `scope`/`operation` and `init` is
+ * returned, so a faulty fold degrades to "no data" rather than propagating.
+ *
+ * Read and parse failures do NOT reach this catch. `readLines` and
+ * `parseJsonLines` each swallow and log their own failures first, under their own
+ * labels (`readLines(from)` and `parseJsonLines`), so a missing or unreadable file
+ * simply yields an empty entry list. Such a failure is therefore NEVER logged
+ * under `operation` — there is no `operation`-labelled line for it to assert.
  */
 export async function foldJsonl<T>(
   filePath: string,
@@ -179,7 +195,8 @@ export async function foldJsonl<T>(
     scope,
     operation,
     count = 50,
-    order = 'start',
+    from = 'end',
+    reverse = false,
     init,
     onEntry,
     until,
@@ -187,15 +204,16 @@ export async function foldJsonl<T>(
     scope: string;
     operation: string;
     count?: number;
-    order?: 'start' | 'end';
+    from?: 'start' | 'end';
+    reverse?: boolean;
     init: T;
-    onEntry: (acc: T, entry: any) => T;
+    onEntry: (acc: T, entry: any) => void;
     until?: (acc: T, entry: any) => boolean;
   },
 ): Promise<T> {
   try {
-    const entries = await readJsonlEntries(filePath, { from: order === 'end' ? 'end' : 'start', count, scope });
-    return foldEntries(order === 'end' ? entries.slice().reverse() : entries, { init, onEntry, until });
+    const entries = await readJsonlEntries(filePath, { from, count, scope });
+    return foldEntries(reverse ? entries.slice().reverse() : entries, { init, onEntry, until });
   } catch (err) {
     debugAdapterError(scope, operation, err, filePath);
     return init;

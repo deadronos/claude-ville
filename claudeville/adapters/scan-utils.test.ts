@@ -98,6 +98,38 @@ describe('collectScanByMtime', () => {
     expect(result[0].filePath).toBe(fresh);
   });
 
+  it('keeps a file whose age is exactly thresholdMs, and drops one a millisecond older', async () => {
+    // `now - stat.mtimeMs > thresholdMs` is a STRICT comparison: a file sitting
+    // exactly at the threshold is KEPT, and only strictly-older files are dropped.
+    // Rewriting `>` as `>=` would drop the boundary file and turn this red.
+    //
+    // The helper captures `now = Date.now()` internally, so the boundary is only
+    // reachable with the clock pinned — otherwise the file drifts a few ms into
+    // the past while the test runs and the outcome is decided by timing rather
+    // than by the operator. utimesSync round-trips an exact integer ms, so
+    // `age === thresholdMs` holds precisely rather than approximately.
+    //
+    // This test is self-validating: if the Date.now spy silently stopped working,
+    // the real clock would put both files far past the threshold and the result
+    // would be [] — a failure, not a vacuous pass.
+    const FIXED_NOW = 1700000000000;
+    const atBoundary = makeSession('at-boundary');
+    const justPast = makeSession('just-past');
+    fs.utimesSync(atBoundary, new Date(FIXED_NOW - HOUR_MS), new Date(FIXED_NOW - HOUR_MS));
+    fs.utimesSync(justPast, new Date(FIXED_NOW - HOUR_MS - 1), new Date(FIXED_NOW - HOUR_MS - 1));
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
+    let result: ScanRecord[];
+    try {
+      result = await collectScanByMtime<ScanRecord>(scanOptions({ thresholdMs: HOUR_MS }));
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(idsOf(result)).toEqual(['at-boundary']);
+    expect(result[0].mtime).toBe(FIXED_NOW - HOUR_MS);
+  });
+
   it('skips a child whose fileFor returns null without ever stat-ing it', async () => {
     // Two children: one fileFor rejects, one points at a file that is not there.
     // The `!filePath` guard returns before stat and therefore logs nothing; only
@@ -173,6 +205,37 @@ describe('collectScanByMtime', () => {
 
     expect(result).toEqual([]);
     expect(build).not.toHaveBeenCalled();
+  });
+
+  it('treats null from fileFor as a skip, but a bare empty string as a path to stat', async () => {
+    // `null` (like `[]`) means "skip this child" and never touches the filesystem.
+    // An empty string is NOT a skip — it is a path, so it reaches
+    // fs.promises.stat and fails there, surfacing as a `stat` log rather than a
+    // `resolve` one. Pinned because neither shape is obviously correct and a
+    // future truthiness filter over the resolved paths would silently turn one
+    // into the other.
+    makeSession('child');
+
+    const nullBuild = vi.fn(() => ({ sessionId: 'x', filePath: '', mtime: 0 }));
+    const { result: nullResult, lines: nullLines } = await withDebug(() => collectScanByMtime<ScanRecord>(
+      scanOptions({ fileFor: () => null, build: nullBuild }),
+    ));
+
+    expect(nullResult).toEqual([]);
+    expect(nullLines).toEqual([]);
+    expect(nullBuild).not.toHaveBeenCalled();
+
+    const emptyBuild = vi.fn(() => ({ sessionId: 'x', filePath: '', mtime: 0 }));
+    const { result: emptyResult, lines: emptyLines } = await withDebug(() => collectScanByMtime<ScanRecord>(
+      scanOptions({ fileFor: () => '', build: emptyBuild }),
+    ));
+
+    expect(emptyResult).toEqual([]);
+    expect(emptyBuild).not.toHaveBeenCalled();
+    // The empty string got as far as stat, which is where it fails.
+    expect(emptyLines).toHaveLength(1);
+    expect(emptyLines[0]).toContain('scanAllSessions stat');
+    expect(emptyLines[0]).not.toContain('scanAllSessions resolve');
   });
 
   it('labels a throwing fileFor as resolve, not stat', async () => {
