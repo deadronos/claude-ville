@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 async function getFreshState() {
   vi.resetModules();
@@ -59,7 +59,7 @@ describe('hubreceiver state', () => {
   // ─── applySnapshot ───────────────────────────────────────────────
   describe('applySnapshot()', () => {
     it('registers a collector and returns merged state', async () => {
-      const { applySnapshot, getCurrentState } = await getFreshState();
+      const { applySnapshot } = await getFreshState();
       const now = Date.now();
       const snapshot = {
         collectorId: 'apply-test-1',

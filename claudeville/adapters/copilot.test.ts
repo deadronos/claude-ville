@@ -2,8 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { CopilotAdapter } from './copilot';
 import { extractText } from './text-utils';
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
 
 describe('copilot adapter', () => {
   // ─── readLines utility ─────────────────────────────────────

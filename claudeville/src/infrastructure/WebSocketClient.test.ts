@@ -25,7 +25,7 @@ class MockWebSocket {
     this.readyState = MockWebSocket.CONNECTING;
   }
 
-  send(_data: string) {}
+  send() {}
   close() {
     this.readyState = MockWebSocket.CLOSED;
     if (this.onclose) this.onclose({});
@@ -80,7 +80,6 @@ describe('WebSocketClient', () => {
       client.connect();
       const ws = client.ws as any;
       ws._simulateOpen();
-      const originalClose = ws.close.bind(ws);
       client.connect(); // should not re-create
       expect(client.ws).toBe(ws);
     });

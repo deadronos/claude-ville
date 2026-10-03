@@ -20,7 +20,7 @@ const mockWorld = {
     const idx = entities.indexOf(entity);
     if (idx !== -1) entities.splice(idx, 1);
   }),
-  with: vi.fn((..._components: string[]) => ({ entities })),
+  with: vi.fn(() => ({ entities })),
   reset: () => { entities.length = 0; },
 };
 
