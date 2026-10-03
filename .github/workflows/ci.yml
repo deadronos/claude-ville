@@ -26,9 +26,9 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Pinned to the major the suite is verified against locally. The
           # adapter concurrency test in claudeville/adapters/scan-utils.test.ts
@@ -46,10 +46,19 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # `--sequence.shuffle` is deliberately NOT used here. Three separate
-      # adapter fixtures have been order-sensitive in this repo's history
-      # (`copilot.fixture.test.ts` leaked a session directory once and broke
-      # `toHaveLength(1)` under a different order). Those are fixed, but a
-      # shuffled run in CI would add flakiness without adding coverage.
+      # `--sequence.shuffle` is deliberately NOT used here.
+      # `copilot.fixture.test.ts` writes extra session directories from inside
+      # individual tests, so it is sensitive to WITHIN-FILE declaration order:
+      # test 1 asserts `getActiveSessions` has length 1. That hazard is designed
+      # out by construction (each case removes its directory in a `finally`),
+      # and the file's own header comment records it. A shuffled CI run would
+      # add flakiness without adding coverage.
       - name: Test
         run: npm test
+
+      # `tsc` cannot resolve `?url` / asset / CSS imports, and vitest only
+      # collects `*.test.*`, so a broken asset import in an untested file passes
+      # typecheck, lint and the whole suite. vite is the only gate that catches
+      # bundler-resolution failures. Costs ~0.3s.
+      - name: Build frontend
+        run: npm run build:frontend
