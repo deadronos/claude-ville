@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CLAUDE_RATE_TABLE, estimateCost } from '../../shared/cost.js';
+import { estimateCost } from '../../shared/cost.js';
 
 describe('adapter registry logic', () => {
   describe('estimateCost', () => {

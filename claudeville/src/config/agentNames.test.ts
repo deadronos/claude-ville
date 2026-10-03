@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 beforeEach(() => {
   (window as any).__CLAUDEVILLE_CONFIG__ = {};
@@ -9,7 +9,6 @@ import {
   generateAgentDisplayName,
   resolveAgentDisplayName,
   getNameMode,
-  setNameMode,
 } from './agentNames.js';
 
 // Inline helper: mirrors getNameMode logic from agentNames.ts

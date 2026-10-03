@@ -46,7 +46,6 @@ describe('claude adapter', () => {
       const paths = adapter.getWatchPaths();
       // The adapter may or may not have history.jsonl depending on setup
       // Just verify structure
-      const hasHistory = paths.some(p => p.path.includes('history.jsonl'));
       // This is informational - test structure regardless
       expect(paths.length).toBeGreaterThanOrEqual(0);
     });

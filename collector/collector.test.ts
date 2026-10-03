@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import fs from 'fs';
+import { describe, it, expect } from 'vitest';
 import os from 'os';
-import { CLAUDE_RATE_TABLE, estimateCost } from '../shared/cost.js';
+import { estimateCost } from '../shared/cost.js';
 
 // We test the collector concepts directly here.
 

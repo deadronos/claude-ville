@@ -75,13 +75,13 @@ const utilsMocks = vi.hoisted(() => ({
     x: Math.round(viewport.width / 2 - targetX * zoom),
     y: Math.round(viewport.height / 2 - targetZ * zoom),
   })),
-  worldToScreen: vi.fn((worldX: number, worldZ: number, camera: { targetX: number; targetZ: number; zoom: number }, viewport: { width: number; height: number }) => ({
+  worldToScreen: vi.fn((worldX: number, worldZ: number, camera: { targetX: number; targetZ: number; zoom: number }) => ({
     x: worldX * camera.zoom + camera.targetX,
     y: worldZ * camera.zoom + camera.targetZ,
   })),
   worldToIso: vi.fn((worldX: number, worldZ: number) => ({ x: worldX * 32, y: worldZ * 16 })),
   isoToWorld: vi.fn((isoX: number, isoY: number) => ({ x: isoX / 32, z: isoY / 16 })),
-  screenToTile: vi.fn((screenX: number, screenY: number, camera: any, viewport: any) => ({
+  screenToTile: vi.fn((screenX: number, screenY: number) => ({
     tileX: Math.floor(screenX / 32),
     tileZ: Math.floor(screenY / 16),
   })),
@@ -90,7 +90,7 @@ const utilsMocks = vi.hoisted(() => ({
 vi.mock('./utils.js', () => utilsMocks);
 
 import { WorldView } from './WorldView.js';
-import { createCenteredCamera, isoToScreen, screenToIso, worldToScreen, worldToIso, isoToWorld, screenToTile } from './utils.js';
+import { createCenteredCamera, screenToIso, worldToIso } from './utils.js';
 
 beforeEach(() => {
   worldViewMocks.canvasProps = null;

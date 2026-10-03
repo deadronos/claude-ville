@@ -59,7 +59,6 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
-      '@typescript-eslint/no-unused-vars': 'off',
       'no-case-declarations': 'off',
       'prefer-const': 'off',
       'no-prototype-builtins': 'off',
@@ -78,7 +77,6 @@ export default tseslint.config(
   {
     files: ['**/*.test.{ts,tsx}'],
     rules: {
-      '@typescript-eslint/no-unused-vars': 'off',
       'no-prototype-builtins': 'off',
     },
   },

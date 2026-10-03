@@ -85,7 +85,7 @@ describe('bubbleConfig (real module, jsdom)', () => {
 
     it('handles invalid localStorage gracefully', async () => {
       localStorage.setItem('claudeville_bubble', 'bad json');
-      const { updateBubbleConfig, getBubbleConfig } = await getFreshBubble();
+      const { updateBubbleConfig } = await getFreshBubble();
       // module loaded with bad data, so getBubbleConfig returns defaults
       expect(() => updateBubbleConfig({ statusFontSize: 12 })).not.toThrow();
     });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { estimateCost } from '../shared/cost.js';
 
 // Test collector logic patterns directly.
@@ -174,13 +174,10 @@ describe('collector logic', () => {
 
     it('dirty set to false after successful send', () => {
       let dirty = true;
-      let sending = false;
 
       // Simulate successful send
-      sending = true;
       dirty = true; // stays true during send
 
-      sending = false;
       dirty = false; // cleared after send
 
       expect(dirty).toBe(false);
@@ -188,13 +185,11 @@ describe('collector logic', () => {
 
     it('dirty stays true on send failure', () => {
       let dirty = true;
-      let sending = true;
 
       // During send
       expect(dirty).toBe(true);
 
       // After failure
-      sending = false;
       dirty = true; // stays true on failure
 
       expect(dirty).toBe(true);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Position, Agent, Selection, Building, RoofAlpha, Movement, ChatPartner } from './components';
+import { Position, Agent, Movement } from './components';
 
 describe('ECS components', () => {
   it('should define Position component with defaults', () => {

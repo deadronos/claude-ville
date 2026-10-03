@@ -191,20 +191,6 @@ function createBrowserFixtureSnapshot() {
   };
 }
 
-async function postSnapshot(hubPort: number, authToken: string, snapshot: Record<string, unknown>) {
-  const response = await fetch(`http://127.0.0.1:${hubPort}/api/collector/snapshot`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${authToken}`,
-    },
-    body: JSON.stringify(snapshot),
-  });
-
-  expect(response.status).toBe(200);
-  return await response.json();
-}
-
 async function startFrontendServer(hubPort: number, authToken: string) {
   const previousHubHttpUrl = process.env.HUB_HTTP_URL;
   const previousHubWsUrl = process.env.HUB_WS_URL;

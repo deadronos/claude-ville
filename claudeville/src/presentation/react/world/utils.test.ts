@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from '../../../config/constants.js';
+import { TILE_HEIGHT, TILE_WIDTH } from '../../../config/constants.js';
 import {
   createCenteredCamera,
   getCameraFocusPosition,
@@ -12,7 +12,6 @@ import {
   lighten,
   screenToIso,
   screenToTile,
-  screenToWorld,
   worldToIso,
 } from './utils.js';
 
