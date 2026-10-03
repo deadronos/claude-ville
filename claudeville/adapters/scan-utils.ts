@@ -1,12 +1,18 @@
 /**
  * Shared provider-directory scanning.
  *
- * Every JSONL-family adapter scans by: read the provider's session directory,
- * stat each candidate file, drop anything older than an activity threshold,
- * and build a record. The readdir → stat → mtime-filter → debugAdapterError
- * envelope was copy-pasted across copilot, pi, gemini, openclaw and opencode;
- * this is where it lives once. `build` supplies only the format-specific part
- * (which filename to look for, what to put in the record).
+ * The JSONL-family adapters share a shape: read the provider's session
+ * directory, stat each candidate file, drop anything older than an activity
+ * threshold, and build a record. `collectScanByMtime` expresses that
+ * readdir → stat → mtime-filter → debugAdapterError envelope once; `build`
+ * supplies only the format-specific part (which filename to look for, what to
+ * put in the record).
+ *
+ * Copilot is the only adapter converted so far. The rest still carry their own
+ * envelope and their scan shapes differ from copilot's materially — some scan
+ * two or four directory levels, some group or filter by name, one has no
+ * mtime filter at all — so do not assume a drop-in fit. The per-adapter
+ * differences are listed in `docs/architecture/002-provider-adapters.md`.
  */
 import fs from 'fs';
 

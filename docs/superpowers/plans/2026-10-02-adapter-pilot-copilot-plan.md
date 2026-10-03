@@ -31,9 +31,9 @@
 
 | Helper | Pilot? | Reason |
 | --- | --- | --- |
-| `readJsonlEntries` (jsonl-utils) | yes | The `readLines`+`parseJsonLines` pair is in all 9 adapters. |
+| `readJsonlEntries` (jsonl-utils) | yes | The `readLines`+`parseJsonLines` pair is in 8 of the 9 adapters; only `opencode` lacks it (whole `.json` files via its own `readJson`, plus SQLite). |
 | `collectJsonl` (jsonl-utils) | yes | The fold+catch+slice envelope is in 4+ adapters (copilot, codex, pi, openclaw). |
-| `collectScanByMtime` (scan-utils, new) | yes | The readdir→stat→mtime-filter loop is uniform across copilot, pi, gemini, openclaw, opencode. |
+| `collectScanByMtime` (scan-utils, new) | yes | The readdir→stat→mtime-filter envelope recurs in copilot, pi, gemini, openclaw, codex, claude, vscode, hermes — but only **copilot** is converted, and the shapes are not uniform (`opencode` has no mtime filter, `codex` walks four levels, `gemini`/`claude` nest, `pi`/`hermes`/`openclaw` scan files rather than dirs). See the caveat list in `docs/architecture/002-provider-adapters.md`. |
 | `summarizeToolInput` (sanitize) | yes | The `typeof x === 'string' ? x : JSON.stringify(x)` pattern is in copilot×4, codex, pi, openclaw, vscode. |
 | `buildSessionSummary` (session-summary, new) | **deferred** | Measured: the 9 summary literals are NOT uniform. `openclaw`/`pi` add `displayName`; `agentType` is `'main'`/`'sub-agent'`/`'team-member'` across adapters; `hermes`/`openclaw`/`opencode` each emit two records. A `fields => ({...fields})` builder would not collapse the declarations. Revisit in B2 once copilot/codex/pi/gemini are on the new helpers. |
 
@@ -229,10 +229,12 @@ something to be behaviour-preserving against."
   - `collectScanByMtime<T>(opts: { dir: string; scope: string; operation: string; thresholdMs: number; fileFor: (name: string) => string | null; build: (candidate: ScanCandidate) => Promise<T | null> | T | null }): Promise<T[]>` where `ScanCandidate = { name: string; filePath: string; mtimeMs: number }`
     - **Corrected after Task 2.** This line previously omitted `fileFor` entirely and gave `build` three positional parameters, contradicting the Step-3 source below and the shipped implementation. `fileFor` resolves a child directory name to the file to stat (returning `null` to skip the child); `build` receives one `ScanCandidate` object. Task 3 and the B2/B3/B4 adapters must be written against THIS shape.
   - `maxItems: 0` or a negative `maxItems` returns `[]`, it does not mean "no limit". Added after Task 2 found that `out.slice(-0)` is `out.slice(0)` (returns everything) and that a negative limit silently dropped the *first* n entries. Documented in the JSDoc and pinned by two tests.
-- `collectScanByMtime` preserves `readdir` order. **Corrected after the Task 3 fix rounds.** This line previously claimed the ordering guarantee was "pinned by a test asserting the result matches `readdir` order with mtimes deliberately set in the opposite order", which was wrong twice over: no test sets mtimes in the opposite order (the tie case sets *identical* mtimes, and the ordering case sets *distinct* mtimes and asserts `lastActivity`-descending), and nothing pins completion-order independence. What the two `copilot.test.ts` cases actually pin is:
+- `collectScanByMtime` preserves `readdir` order, and the concurrency behind that order is pinned by a test. **Corrected after the final review.** Both previous versions of this line were wrong. The earlier one claimed the guarantee was "pinned by a test asserting the result matches `readdir` order with mtimes deliberately set in the opposite order" and then, correcting itself, asserted that "no test sets mtimes in the opposite order". Both are false: `scan-utils.test.ts:165` ('returns records in readdir order, without sorting or reversing', added in `12ab37d`) does exactly that — it derives the expected order from `readdir` and then back-dates each session's mtime in **reverse** enumeration order (`scan-utils.test.ts:181-185`), with a fixture-validity assertion at `:193-195` that fails loudly if mtime order ever coincides with `readdir` order. The two `copilot.test.ts` cases pin a different thing:
   - distinct mtimes come back sorted by `lastActivity` **descending** — reversing the comparator is red;
   - tied mtimes resolve to input order with **no secondary key** — adding `|| b.sessionId.localeCompare(a.sessionId)` is red.
-  - **Not pinned:** ordering vs completion order. Replacing `Promise.all` with a sequential loop also preserves `readdir` order, so that mutant passes; it is benign for ordering but serializes the scans, which matters for wall-clock on a large session directory. Do not make that swap casually. It is protected by review, not by a test — pinning it would require injecting async latency into `build`.
+- **Concurrency IS pinned, by `scan-utils.test.ts:198`** ('builds every candidate concurrently rather than one at a time', added in `1ead68f`). Replacing `Promise.all` with a sequential loop is **red**: the test puts an in-flight counter behind a barrier, so no `build` can finish until all six children have entered, and the peak in-flight count can only reach 6 if the implementation began them all before awaiting any. A sequential loop never enters the second build and peaks at 1. The earlier claim here — that the swap was "protected by review, not by a test" and that "pinning it would require injecting async latency into `build`" — was false on both counts: concurrency is *observed*, never timed, and the barrier (plus an event-loop-turn watchdog that exists only so the mutant fails instead of hanging) needs no latency injection and no wall-clock threshold.
+  - What that test still cannot see: completion *order*. Nothing asserts results arrive in completion order, and nothing needs to — the helper pushes `Promise.all`'s output, which is input-ordered by construction.
+  - It pins **unbounded** concurrency. A deliberate move to bounded concurrency (e.g. `LIMIT=8`) turns it red even if it improves wall-clock. Intentional: the hazard being guarded is silent serialization.
 - **Implementation note:** the `Promise.all(...) as (T | null)[]` cast is required — `Promise.all` re-applies `Awaited<T>`, so the un-cast form fails with TS2345/TS2677. Casting inside the map callback does **not** work.
 - `summarizeToolInput(value: unknown, maxLen: number): string` — `maxLen` stays a required argument with no default, because copilot uses 60 in `parseSession` and 80 in `getToolHistory` and a default would invite a silent behaviour change.
 
@@ -242,8 +244,12 @@ Append after `parseJsonLines` (end of file). Do not modify the three existing ex
 
 ```ts
 /**
- * Read + parse in one step. All nine adapters use this pair back to back;
- * this is where that pairing is expressed once.
+ * Read + parse in one step. Eight of the nine adapters call this pair back to
+ * back — `claude`, `codex`, `copilot`, `gemini`, `hermes`, `openclaw`, `pi`,
+ * `vscode` — and this is where that pairing is expressed once. `opencode` is
+ * the exception and never calls either: it stores whole `.json` documents, so
+ * it reads them with its own `readJson` (`opencode.ts:58`) and takes its index
+ * from SQLite rather than from a JSONL stream.
  */
 export async function readJsonlEntries(
   filePath: string,
@@ -672,9 +678,9 @@ Iterate to a clean verdict, then open the PR against `origin/main` on the fork a
 
 ## Task 3 hazards (surfaced by the Task 2 review — read before starting)
 
-1. **`summarizeToolInput` is NOT a drop-in for copilot's inline expression.** copilot guards with `tc.input ? … : ''` at `copilot.ts:91,107,135,146`, so a falsy-but-valid input (`0`, `false`, `NaN`) currently yields `''`. The helper would yield `'0'` / `'false'` / `'null'` — a real behaviour change. Conversely copilot's raw expression throws when `JSON.stringify` returns `undefined`, where the helper returns `''`. **Keep the `if (tc.input)` / `tc.input ? … : ''` guard at every call site** and replace only the inner render expression. If the characterization test (Task 1) does not already cover a falsy-but-present input, add one before swapping.
+1. **`summarizeToolInput` is NOT a drop-in for copilot's inline expression.** copilot guards with `tc.input ? … : ''` at `copilot.ts:88,102,129,138` (corrected: the hazard previously cited `:91,107,135,146`, which were the pre-refactor positions of those same four guards), so a falsy-but-valid input (`0`, `false`, `NaN`) currently yields `''`. The helper would yield `'0'` / `'false'` / `'null'` — a real behaviour change. Conversely copilot's raw expression throws when `JSON.stringify` returns `undefined`, where the helper returns `''`. **Keep the `if (tc.input)` / `tc.input ? … : ''` guard at every call site** and replace only the inner render expression. If the characterization test (Task 1) does not already cover a falsy-but-present input, add one before swapping.
 2. **`collectScanByMtime` drops copilot's explicit `fs.existsSync(eventsFile)`** (`copilot.ts:230`) in favour of the stat-throws→null path. The return value is identical, but the helper now emits a `scanAllSessions stat …: ENOENT` debug line under `DEBUG=1` for any session dir lacking `events.jsonl`, where copilot logs nothing. Behaviour-preserving in output, noisier in debug. Acceptable; note it.
-3. **`build` runs inside the stat try/catch**, so a throwing `build` is logged as `"<operation> stat"`. Latent here (copilot's `build` is a pure object literal) but it goes live in B2 when `pi` needs I/O inside `build`. Deferred to B2 by review decision.
+3. **`build` runs inside the stat try/catch**, so a throwing `build` is logged as `"<operation> stat"`. Latent here (copilot's `build` is a pure object literal). **Corrected after the final review:** this hazard previously said it "goes live in B2 when `pi` needs I/O inside `build`" — `pi`'s candidates are a pure `{ filePath, mtime, fileName, projectDir }` literal (`pi.ts:265-270`), so it needs no I/O in `build`. The adapters that do I/O per candidate are `vscode` (`hasRealActivity` + `parseSession`, inside its stat try, `vscode.ts:442,480,548`) and `claude` (`getSubAgentDetail`, `claude.ts:371,441`, though there it sits outside the stat try). Decide before converting either.
 4. **Ordering is load-bearing.** copilot sorts by `lastActivity` desc; `Array.prototype.sort` is stable, so ties fall back to input order = `readdir` order. Do not replace `Promise.all` with sequential pushes.
 
 ## Self-Review

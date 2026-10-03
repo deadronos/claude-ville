@@ -1,7 +1,8 @@
 /**
  * Shared JSONL file utilities.
- * readLines + parseJsonLines are duplicated verbatim in openclaw, copilot, codex, vscode.
- * Extract once; adapters import from here.
+ * `readLines` + `parseJsonLines` were duplicated across the adapters and were
+ * extracted here (1d80b24); all eight JSONL-reading adapters now import both
+ * from this module, `opencode` excepted. See `readJsonlEntries` below.
  */
 import fs from 'fs';
 
@@ -77,8 +78,12 @@ export function parseJsonLines(lines: string[], scope = 'jsonl-utils') {
 }
 
 /**
- * Read + parse in one step. All nine adapters use this pair back to back;
- * this is where that pairing is expressed once.
+ * Read + parse in one step. Eight of the nine adapters call this pair back to
+ * back — `claude`, `codex`, `copilot`, `gemini`, `hermes`, `openclaw`, `pi`,
+ * `vscode` — and this is where that pairing is expressed once. `opencode` is
+ * the exception and never calls either: it stores whole `.json` documents, so
+ * it reads them with its own `readJson` (`opencode.ts:58`) and takes its index
+ * from SQLite rather than from a JSONL stream.
  */
 export async function readJsonlEntries(
   filePath: string,

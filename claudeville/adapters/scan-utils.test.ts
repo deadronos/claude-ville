@@ -145,9 +145,12 @@ describe('collectScanByMtime', () => {
   });
 
   it('ignores plain files sitting in the scanned dir', async () => {
-    // fileFor resolves a `*.jsonl` name to that name's own path, which is the
-    // shape pi will use: for a stray plain file that path EXISTS, so without the
-    // isDirectory() filter it would stat cleanly and get built as a record.
+    // fileFor resolves a `*.jsonl` name to that name's own path — the shape an
+    // adapter would use if its sessions were `.jsonl` files sitting directly in
+    // the scanned dir. (It is NOT pi's shape: pi's sessions are one level below
+    // its project dirs, `pi.ts:249`, which is why pi does not fit this helper.)
+    // For a stray plain file that path EXISTS, so without the isDirectory()
+    // filter it would stat cleanly and get built as a record.
     makeSession('real-session');
     fs.writeFileSync(path.join(sessionDir(), 'stray.jsonl'), '{}\n');
 

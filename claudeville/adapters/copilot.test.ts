@@ -608,16 +608,21 @@ describe('copilot adapter', () => {
 
     // The test above has no teeth: it runs against the real $HOME, so on a
     // machine with no copilot sessions `sessions` is empty and the loop body
-    // never executes. Reversing copilot.ts's comparator leaves it green, and
-    // copilot.fixture.test.ts cannot host a multi-session assertion (it is
-    // frozen, and its test 1 asserts getActiveSessions() has length 1). Nor can
-    // index.fixture.test.ts: it writes no ~/.copilot fixture, so copilot is not
-    // available there, and the registry re-sorts by lastActivity at
-    // index.ts:65 — which would mask a reversed copilot comparator entirely.
+    // never executes. Reversing copilot.ts's comparator leaves it green.
+    // index.fixture.test.ts cannot host the case either: it writes no
+    // ~/.copilot fixture, so copilot is not available there, and the registry
+    // re-sorts by lastActivity at index.ts:65 — which would mask a reversed
+    // copilot comparator entirely.
     // These two cases drive the shipped adapter directly against a private
     // tmpHome so the comparator is observable. Each creates and removes its own
     // tmpHome and restores HOME in a finally, so it leaves no residue for the
     // real-HOME tests above and does not depend on declaration order.
+    // (copilot.fixture.test.ts is NOT a frozen alternative: two of ITS cases are
+    // multi-session — the truncation case at copilot.fixture.test.ts:148 and the
+    // falsy-input case at copilot.fixture.test.ts:318 — and each writes its extra
+    // session dirs in-body and removes them in a `finally`, which is what keeps
+    // that file's test 1 (`toHaveLength(1)`) true under --sequence.shuffle. Do
+    // not cite it as a constraint.)
     it('getActiveSessions returns multiple sessions ordered by lastActivity descending', async () => {
       const fs = require('fs');
       const os = require('os');
