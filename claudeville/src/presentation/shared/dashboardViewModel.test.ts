@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 
 import { describe, expect, it } from 'vitest';
 
+import { adapters } from '../../../adapters/index.js';
 import {
   PROVIDER_COLORS,
   PROVIDER_ICONS,
@@ -86,12 +87,10 @@ describe('dashboardViewModel', () => {
     const keys = Object.keys(PROVIDER_COLORS);
 
     it('covers every registered adapter', () => {
-      // Keep in step with the registry at claudeville/adapters/index.ts. A new
-      // adapter must add its entries here, or this test fails and says so.
-      expect(keys.slice().sort()).toEqual([
-        'claude', 'codex', 'copilot', 'gemini', 'hermes',
-        'openclaw', 'opencode', 'pi', 'vscode',
-      ]);
+      // Derived from the registry, not hardcoded: a newly registered adapter that
+      // never touches these maps is exactly the case this must catch.
+      const registered = adapters.map((a) => a.provider).sort();
+      expect(keys.slice().sort()).toEqual(registered);
     });
 
     it.each(keys)('gives %s a label and an icon', (provider) => {
