@@ -77,8 +77,6 @@ Caveats for anyone converting an adapter:
 - `pi` needs its own extension: its `fileFor` returns a `.jsonl` file's own path,
   not a fixed filename in a directory, so the `isDirectory()` filter and the
   missing-file handling both need re-checking.
-- `collectScanByMtime` runs `build` inside the stat try/catch, so a throwing `build` is logged as `"<operation> stat"` — latent while `build` is a pure object literal, live once an adapter does I/O there, which `pi` needs.
-- `pi` needs its own extension: its `fileFor` returns a `.jsonl` file's own path, not a fixed filename in a directory, so the `isDirectory()` filter and the missing-file handling both need re-checking.
 
 ## Compliance
 
