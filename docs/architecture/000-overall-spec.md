@@ -28,7 +28,7 @@ ClaudeVille is designed to:
 
 ### Legacy mode
 
-The legacy app runs from `claudeville/server.ts` and serves:
+The legacy app runs from `claudeville/server.ts` — the entrypoint, which now holds only the bootstrap; the HTTP, WebSocket and file-watcher blocks live in sibling `server-*.ts` modules (see [Source layout](#claudevilleserverts)) — and serves:
 
 - the HTML shell
 - static CSS / JS assets or the built frontend bundle when `dist/frontend` exists
@@ -120,6 +120,49 @@ because the type system cannot: the collector's `SessionSummary` carries
 That gap is what required `readProject()` to accept two spellings in #111. It now
 reads the single `project` spelling, and its docstring records why it stays a
 runtime guard.
+
+### `claudeville/server*.ts`
+
+The legacy server is five modules. `claudeville/server.ts` is the entrypoint and
+holds only the bootstrap; the concerns around it are split by line range.
+
+| module | owns |
+| --- | --- |
+| `server.ts` | `http.createServer` handler, `upgrade` handler, `ASCII_LOGO`, `server.listen`, the `error` handler, the `process` handlers |
+| `server-config.ts` | `PORT`, `boundPort`, `ACTIVE_THRESHOLD_MS`, `claudeAdapter`, `HttpRequest`, `HttpResponse` |
+| `server-http.ts` | `parseRequestUrl`, `handleStaticFile`, `handleRuntimeConfig`, `__filename` / `__dirname`, `BUILT_FRONTEND_DIR`, `STATIC_DIR` |
+| `server-ws.ts` | `wsServer`, `wsClients`, `handleWebSocketConnection`, `handleTextMessage`, `wsSend`, `wsBroadcast`, `sendInitialData`, `broadcastUpdate` |
+| `server-watch.ts` | `startFileWatcher`, `stopFileWatcher`, `debouncedBroadcast`, `watchDebounce`, `fileWatcherCleanup`, `pollingIntervalId` |
+
+The dependency graph is a **DAG**, made acyclic by the `server-config.ts` leaf:
+
+```
+server-config.ts        (leaf)
+   ^          ^              ^
+server-http  server-ws   server-watch -> server-ws
+   ^          ^
+server.ts (bootstrap)
+```
+
+Two constraints keep it a DAG, both consequences of ESM giving each module its
+own bindings:
+
+- **`boundPort` is set through `setBoundPort()`.** It is declared in the config
+  leaf, read from `server-http.ts` (`parseRequestUrl`, `handleRuntimeConfig`) and
+  written from inside `server.ts`'s `listen` callback. ESM forbids one module
+  assigning another's binding, so the write needs a setter. This is the only
+  behavioural edit the split made.
+- **`watchDebounce` and `debouncedBroadcast` live in `server-watch.ts`, not
+  `server-ws.ts`.** Both `debouncedBroadcast` and `stopFileWatcher` assign to
+  `watchDebounce`, and `stopFileWatcher` has to stay in `server-watch.ts` because
+  the bootstrap's `SIGINT` / `SIGTERM` handlers call it. Splitting them would put
+  that assignment across a module boundary. `server-watch.ts` therefore reads
+  `wsClients` and calls `broadcastUpdate` from `server-ws.ts`, one-way; nothing
+  imports `server-watch.ts` except the bootstrap.
+
+This was a **layout change only**: same routes, ports, upgrade handling and
+startup side effects. All function bodies are byte-identical to the single-file
+version.
 
 ## Data flow
 
