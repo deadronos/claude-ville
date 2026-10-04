@@ -384,11 +384,17 @@ now a `warning` instead of a silent `lastMessage: null`.
 > A failure with **no source that answered** is `ok: false`. Anything else is
 > `ok: true`, and each failure becomes a `warning`.
 
-`hermes` states it once, in `combineSources`, over a three-state `SourceListing`
-(`absent` / `rows` / `failed`), because that is the shape every adapter needs.
-`absent` is separate from `rows` for the same reason `ok` is separate from
-`sessions`: **`[]` from a source that answered is DATA** — this install has no
-sessions — and only a source that could not be read is a failure.
+It is stated ONCE, in `combineSources` (`adapters/sources.ts`), over a three-state
+`SourceListing` (`absent` / `rows` / `failed`), because that is the shape every
+adapter needs. `absent` is separate from `rows` for the same reason `ok` is
+separate from `sessions`: **`[]` from a source that answered is DATA** — this
+install has no sessions — and only a source that could not be read is a failure.
+It started hermes-local when hermes was the only adapter on the union; the second
+adapter hoisted it, as that code said to, and eight private copies would have
+drifted, and a drifted rule is how a per-item degradation turns back into a
+whole-adapter failure. `sourceDetail(what, baseDir)` is the sibling that keeps
+absolute paths — which carry a username — out of a string that reaches a log and a
+UI: only the directory's basename is included.
 
 **Do not convert a per-item degradation into a whole-adapter failure.** That is the
 regression the union exists to prevent. It forces an adapter to either fail wholly
@@ -408,23 +414,104 @@ caller that must classify what went wrong INSIDE the callback can close the hand
 without inheriting the wrapper's "throw and could-not-open are both `null`"
 collapse.
 
-`collectFromAdapters` (`adapters/index.ts`) is the new shape at the single
-production call site: sessions, plus one entry per adapter that could not be read,
-plus one per degraded record set. `getAllSessions` is a thin wrapper returning the
-sessions alone, so the WS payload and the REST route are untouched — wiring
-`errors` / `warnings` into those payloads is the follow-up, deliberately not done
-here because it would change two payload contracts in a PR whose subject is the
-adapter contract.
+### Where the diagnostics surface
 
-**PILOT: only `hermes` is converted.** The union is declared for all nine but the
-other eight still answer a bare array, so `npm run typecheck` reports them as
-incompatible and `unwrapSessions` (`adapters/index.ts`) accepts both shapes until
-they are converted. That is deliberate: it keeps the diff to one adapter, so the
-only classifications in it are ones somebody actually reasoned about, and it keeps
-the other eight's fixtures green and untouched. Convert an adapter by moving its
-read sources into the `absent` / `rows` / `failed` shape, hoisting
-`combineSources` into a shared `adapters/` module as soon as a second adapter
-needs it, and deleting the `unwrapSessions` array branch.
+`collectFromAdapters` (`adapters/index.ts`) is the shape every live read goes
+through: `sessions`, plus one `AdapterErrorReport` per adapter that could not be
+read, plus one `AdapterWarningReport` per degraded record set. It also logs both on
+`console.error`, which stays the channel an operator without a UI sees.
+
+Four call sites consume it:
+
+| call site | what it takes |
+|---|---|
+| `/api/sessions` (`server.ts`) | sessions **+ `errors` + `warnings`** |
+| `/api/history` (`server.ts`) | the sessions alone — the diagnostics belong to the route that answers *why is this provider missing?* |
+| WS `init` frame (`server-ws.ts`) | sessions **+ `errors` + `warnings`** |
+| WS `update` frame (`server-ws.ts`) | sessions **+ `errors` + `warnings`** |
+
+Adding fields to a JSON payload is non-breaking for consumers that ignore
+unknowns, and that was verified rather than assumed: the frame is `WsMessage`, a
+tagged envelope with `[key: string]: unknown`; `WebSocketClient` reads only `type`
+and `usage`, `SessionWatcher` narrows the frame to `{ sessions, teams }`, and
+`AgentManager` reads nothing else. The REST consumer
+`HubDataSource.getSessions` returns `data.sessions || []`. So neither new field is
+read by anything today, and neither needed declaring on `WsMessage` for that
+reason.
+
+`ReadApiProvider.getSessions` widens to `SessionsPayload` (`shared/api-routes.ts`)
+with `errors` and `warnings` **optional**, so `hubreceiver` — which merges already
+collected state and has no diagnostics to report — still satisfies it unchanged.
+The route emits them only when non-empty, so a healthy server's body is
+byte-for-byte what it was before the contract existed.
+
+`getAllSessions` stays exported and array-returning. `collector/index.ts` injects
+it as `CollectorSnapshotDeps['getAllSessions']`, declared
+`Promise<SessionSummary[]>`; the collector's snapshot is merged persisted state
+rather than a live adapter pull, so it has no place to put the diagnostics.
+Changing that type is a decision about the collector's contract, not this one.
+
+All nine adapters are converted. `unwrapSessions` — the array branch that existed
+only while eight of them were unconverted — is gone.
+
+### What each adapter classifies
+
+Every adapter's answer is `combineSources` over its own read sources. What varies
+is where the line between *the provider* and *one record in the provider* falls,
+which is the only judgement in the whole contract:
+
+| adapter | `ok: false` (whole provider) | `warning` (per item, listing stands) |
+|---|---|---|
+| `claude` | `projects/` unlistable **and** no `history.jsonl` to answer | one project directory, one `subagents/`, or one session file |
+| `codex` | `sessions/` unlistable | one `YYYY/`, `MM/` or `DD/` directory; one rollout file that will not stat |
+| `copilot` | `session-state/` unlistable (one source, no fallback) | — see below |
+| `gemini` | `tmp/` unlistable | one project's `chats/` |
+| `openclaw` | **`agents/` unlistable** — no database and no legacy file could be read | one agent's database; one agent's `sessions/` directory |
+| `opencode` | `opencode.db` unreadable **and** no legacy `storage/session` file | one `message.data` / `part.data` column that will not parse (#156); one session file that will not stat |
+| `pi` | `agent/sessions/` unlistable | one project directory |
+| `vscode` | every PRESENT `workspaceStorage` root unlistable | one storage root that is locked while another answered; one chat directory below one |
+| `hermes` | `state.db` unreadable **and** the legacy files unlistable | one agent-less store failure beside readable files (#157); one session's message query |
+
+Three of these deserve their reason stated, because they are where the rule is
+easiest to get wrong:
+
+- **`openclaw`'s `agents/` root.** The loss is unavoidable — a directory that
+  cannot be read cannot be enumerated — but the silence was not defensible, and
+  `#157`'s `console.error` alone did not finish the job: the payload still said
+  "this provider has no sessions". It is `ok: false` with `root-unreadable`.
+  Each **per-agent** database failure, by contrast, is a warning and never a
+  failure, because `AGENTS_DIR` was listed and that agent's legacy JSONL scan
+  still runs. Making those failures is precisely the `#157` regression.
+- **`opencode`'s malformed column.** One unparseable `message.data` costs that one
+  session its model and provider while every sibling survives (`#156`). It is a
+  warning. It is also why `opencode`'s session query is *not* projected from
+  `tableColumns` the way `hermes`'s and `openclaw`'s are: here drift raised
+  `no such column` and the pre-contract answer was `[]` and then the legacy-file
+  fallback, so projecting would replace that fallback with a partial listing — a
+  better answer, but a behaviour change a refactor must not make.
+- **`vscode`'s four storage roots.** `workspaceStorage` is VS Code's own state and
+  is routinely absent, so absence is `absent` rather than a failure, and only a
+  root that EXISTS and cannot be listed counts. One locked channel must not blank
+  the other three, so the provider fails only when every present root failed.
+
+**Two adapters have no per-item warning, and that is not an omission.**
+`copilot`'s only per-item drop is a session directory whose `events.jsonl` does
+not exist yet — ENOENT, which is *absence*, and reporting a half-created session
+as a degradation would be worse than the silence it replaced. `pi`'s `fileFor`
+filters on `isFile()`, so a directory named `*.jsonl` never becomes a candidate at
+all (`#144`). Both are pinned by tests that assert the *absence* of a warning, so
+a later change that starts inventing one has to argue with a test.
+
+To let `copilot`, `pi` and `gemini` tell a root failure from a child failure,
+`collectScanByMtime` gained one optional `onUnreadable(scope, err, dir)` callback
+with `scope` of `'root'` or `'child'`. Its return type stays `T[]` deliberately: a
+`{ records, failures }` shape would have put a return-type change in front of all
+three adapters and every assertion in that helper's own suite for no extra
+information.
+
+`readDbDetail` (`openclaw-readers.ts`) keeps its `queryAll` swallow and gains a
+`degraded` flag instead, for the reason `hermes`'s does: it runs inside the window
+row loop, so a throw there would abort the loop and lose every sibling row.
 
 ### The known limitation: `getSessionDetail` still swallows
 
@@ -444,6 +531,38 @@ from a session that has none. Note the boundary this leaves: `getActiveSessions`
 reports instance 4 (a message read that costs one listing row its detail), while
 instances 5 and 6 live on the `getSessionDetail` path and are therefore still
 silent.
+
+**This is unchanged by converting all nine adapters, and the reason is worth
+being explicit about.** The contract covers the LISTING, and the audit's instances
+5 and 6 are on the DETAIL path: `getSessionDetail` still answers
+`{ toolHistory: [], messages: [] }` both when a session genuinely has no messages
+and when the reader failed, and it does so in `index.ts`'s catch as well as inside
+the adapters. Widening `getActiveSessions` to a union says nothing about that, and
+half-doing `getSessionDetail` in the same pass would have meant shipping a
+half-contract: two shapes named `ok` and one that still lies. The listing is now
+reportable end to end; the detail path is a separate, still-open piece of work, and
+this section is the record that it was chosen rather than forgotten.
+
+Three related mechanisms were also deliberately left alone, because each would
+have changed what an adapter returns rather than what it reports:
+
+- **`jsonl-utils.readLines` answering `[]` on any read error** (audit instance 20)
+  is what makes a single file's detail silently empty. It is shared by eight
+  adapters and every one of them relies on it not throwing. Making it report would
+  mean threading a result shape through `collectJsonl`, `foldJsonl` and every
+  caller — a change to the shared JSONL pipeline, not to the error contract.
+- **`hermes`'s per-file `stat` failure** in `discoverSessionFiles` stays a
+  `warning` but has no test: `readdir`'s `isFile()` is an `lstat`, so a candidate
+  is a regular file that existed moments ago, and `stat` needs execute — not read —
+  permission on the directory it is already listed through. Only a race removes it
+  in between, so a test would have to be a race. The branch stays because a dropped
+  file is exactly the kind of loss the audit flagged, and it costs one subtraction.
+- **`isSqliteFile`'s bare `catch`** (audit instance 16) is still silent, because
+  `isSqliteFile` has no scope to log under and its callers classify around it:
+  `hermes` and `opencode` now ask the open directly with `openReadonlySqlite`, and
+  `openclaw` gates on `isOpenableSqliteDatabase`. Every site that needed to
+  distinguish EACCES from *not a database* stopped asking `isSqliteFile` to tell
+  them apart.
 
 ## Compliance
 
