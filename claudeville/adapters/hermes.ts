@@ -17,12 +17,20 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import type { AdapterSessionDetail, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
+import type {
+  AdapterErrorCode,
+  AdapterSessionDetail,
+  AdapterSessionsResult,
+  AdapterWarning,
+  AgentAdapter,
+  AgentSessionSummary,
+  WatchPath,
+} from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import type { DbSessionRow, DbMessageRow } from './hermes-readers.js';
 import { readJson, asTimestamp, parseTranscript, parseSessionMessages, modelName, projectName, summarizeDbMessages, dbSessionTokenUsage } from './hermes-readers.js';
 import type { SqliteDb, SqliteParam } from './sqlite-utils.js';
-import { hasTable, queryAll, safeJsonParse, withReadonlySqlite } from './sqlite-utils.js';
+import { closeSqlite, hasTable, hasTableOrNull, openReadonlySqlite, queryAll, safeJsonParse, withReadonlySqlite } from './sqlite-utils.js';
 
 const HERMES_DIR = process.env.HERMES_DIR || path.join(os.homedir(), '.hermes');
 const SESSIONS_DIR = path.join(HERMES_DIR, 'sessions');
@@ -30,34 +38,104 @@ const DB_PATH = path.join(HERMES_DIR, 'state.db');
 
 type SessionFile = { filePath: string; sessionId: string; mtime: number };
 
-async function getSessionFiles(activeThresholdMs: number): Promise<SessionFile[]> {
-  if (!fs.existsSync(SESSIONS_DIR)) return [];
+// ─── The error contract ──────────────────────────────────
+//
+// `SourceListing`, `combineSources` and `sourceDetail` now live in
+// `sources.ts`, shared with all nine adapters. They were hermes-local when
+// hermes was the only adapter on the union, and the note that said so named the
+// hoist as the next step for the second adapter. `sourceDetail` is bound here
+// because hermes reports against `HERMES_DIR` and every adapter binds its own.
+import { combineSources, degradedWarnings, sourceDetail as baseDetail, type SourceListing } from './sources.js';
+
+const sourceDetail = (what: string) => baseDetail(what, HERMES_DIR);
+
+
+/**
+ * The legacy-files half. Discovery and row-building are separate phases here for
+ * the same reason they are on the DB half: the per-file `stat` must be able to
+ * degrade one file without taking the directory listing with it.
+ */
+type FileListing =
+  | { kind: 'absent' }
+  | { kind: 'files'; files: SessionFile[]; warnings: AdapterWarning[] }
+  | { kind: 'failed'; code: AdapterErrorCode; detail: string };
+
+async function discoverSessionFiles(activeThresholdMs: number): Promise<FileListing> {
+  if (!fs.existsSync(SESSIONS_DIR)) return { kind: 'absent' };
   const now = Date.now();
   try {
     const entries = await fs.promises.readdir(SESSIONS_DIR, { withFileTypes: true });
-    const files = entries
+    const candidates = entries
       .filter((entry) => entry.isFile() && entry.name.startsWith('session_') && entry.name.endsWith('.json'))
       .map((entry) => path.join(SESSIONS_DIR, entry.name));
-    const stats = await Promise.all(files.map(async (filePath) => {
+    const stats = await Promise.all(candidates.map(async (filePath) => {
       try {
         const stat = await fs.promises.stat(filePath);
         if (now - stat.mtimeMs > activeThresholdMs) return null;
         const sessionId = path.basename(filePath, '.json').replace(/^session_/, '');
         return { filePath, sessionId, mtime: stat.mtimeMs };
       } catch (err) {
-        debugAdapterError('hermes', 'getSessionFiles stat', err, filePath);
+        debugAdapterError('hermes', 'discoverSessionFiles stat', err, filePath);
         return null;
       }
     }));
-    return stats.filter((result): result is SessionFile => result !== null);
+    const files = stats.filter((result): result is SessionFile => result !== null);
+    const dropped = candidates.length - files.length;
+    return {
+      kind: 'files',
+      files,
+      // One unstattable file is a per-ITEM degradation: the listing survives, so
+      // this is a warning and never a failure. It was silent until now.
+      //
+      // NOT REACHABLE FROM A FIXTURE, and that is a property of the filter rather
+      // than a gap: `readdir`'s `isFile()` is an `lstat`, so a candidate is a
+      // regular file that existed moments ago, and `stat` needs execute — not
+      // read — permission on the DIRECTORY it is already listed through. Only a
+      // race removes it in between. The branch stays because a dropped file is
+      // exactly the kind of loss the audit flagged, and it costs one subtraction.
+      warnings: degradedWarnings(dropped, 'root-unreadable', 'session file(s)'),
+    };
   } catch (err) {
-    debugAdapterError('hermes', 'getSessionFiles readdir', err, SESSIONS_DIR);
-    return [];
+    debugAdapterError('hermes', 'discoverSessionFiles readdir', err, SESSIONS_DIR);
+    // The directory exists but could not be LISTED, so nothing inside it was
+    // looked at. `existsSync` already answered `true`, so this is not absence.
+    return { kind: 'failed', code: 'root-unreadable', detail: sourceDetail('sessions directory could not be listed') };
   }
 }
 
 function transcriptPath(sessionId: string) {
   return path.join(SESSIONS_DIR, `${sessionId}.jsonl`);
+}
+
+/** The `sessions/*.json` half of the listing, which `discoverSessionFiles` found. */
+async function readSessionFiles(files: SessionFile[]): Promise<AgentSessionSummary[]> {
+  const sessions = await Promise.all(files.map(async ({ filePath, sessionId, mtime }) => {
+    const metadata = await readJson(filePath);
+    const transcript = transcriptPath(sessionId);
+    const hasTranscript = fs.existsSync(transcript);
+    const detailResult = hasTranscript
+      ? await parseTranscript(transcript)
+      : parseSessionMessages(metadata);
+    const updated = asTimestamp(metadata?.last_updated ?? metadata?.updated_at ?? metadata?.session_start) || mtime;
+
+    return {
+      sessionId: `hermes-${metadata?.session_id || sessionId}`,
+      provider: 'hermes',
+      agentId: null,
+      agentType: 'main',
+      model: modelName(metadata),
+      status: metadata?.suspended ? 'suspended' : 'active',
+      lastActivity: Math.max(updated, mtime),
+      project: projectName(metadata),
+      lastMessage: detailResult.lastMessage,
+      lastTool: detailResult.lastTool,
+      lastToolInput: detailResult.lastToolInput,
+      parentSessionId: null,
+      filePath: hasTranscript ? transcript : filePath,
+    } satisfies AgentSessionSummary;
+  }));
+
+  return sessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
 }
 
 // ─── SQLite (current Hermes) ──────────────────────────────
@@ -163,22 +241,76 @@ function dbProjectName(row: DbSessionRow): string | null {
   return null;
 }
 
-async function getDbSessions(activeThresholdMs: number): Promise<AgentSessionSummary[]> {
+/**
+ * The per-session message read, with the failure KEPT.
+ *
+ * `queryAll` answers `[]` for "no messages" and for "the query raised" alike, and
+ * it has to keep answering that way: this runs inside `rows.map()`, so a throw
+ * would abort the enclosing map and take EVERY session with it. That swallow is
+ * load-bearing containment, and it is not what is wrong — losing the distinction
+ * is. So the try/catch moves HERE, to the one call site that can afford it, and
+ * the difference is reported instead of collapsed.
+ */
+function readSessionMessages(db: SqliteDb, rawId: string): { ok: true; rows: DbMessageRow[] } | { ok: false } {
+  try {
+    return { ok: true, rows: db.prepare(DB_MESSAGES_SQL).all(rawId, 120) as DbMessageRow[] };
+  } catch (err) {
+    debugAdapterError('hermes', 'getDbSessions messages', err, rawId);
+    return { ok: false };
+  }
+}
+
+/**
+ * The `state.db` half, classified. Every branch maps to one of the four codes,
+ * and the two that used to be indistinguishable are now apart:
+ *
+ * | branch | code |
+ * |---|---|
+ * | no `state.db`, or a database with no `sessions` table | `absent` — nothing to read |
+ * | the handle will not open, or `sqlite_master` itself will not answer | `store-unreadable` |
+ * | `sessions` has no `id` and no activity column | `schema-incompatible` |
+ * | the query planned and the READ raised | `unknown` |
+ * | one session's message query raised | a `warning`, never a failure |
+ *
+ * `openReadonlySqlite` plus an explicit `close` rather than `withReadonlySqlite`:
+ * the wrapper answers `null` for "would not open" and "the callback threw" alike,
+ * which is the very collapse this contract exists to remove.
+ */
+function readDbListing(activeThresholdMs: number): SourceListing {
+  if (!fs.existsSync(DB_PATH)) return { kind: 'absent' };
   const thresholdSeconds = (Date.now() - activeThresholdMs) / 1000;
 
-  const sessions = withReadonlySqlite(DB_PATH, 'hermes', (db) => {
-    if (!hasTable(db, 'sessions')) return null;
-    const query = dbSessionsSql(db, thresholdSeconds);
-    if (!query) return null;
-    // Deliberately not `queryAll`: at this TOP-LEVEL call site a throw is not a
-    // regression — `withReadonlySqlite` catches it and answers `null`, which
-    // `sessions || []` turns into the same file-scan fallback a missing table
-    // gives, and it logs the cause. What is left here is a real read failure.
-    const rows = db.prepare(query.sql).all(...query.params) as DbSessionRow[];
+  const db = openReadonlySqlite(DB_PATH, 'hermes');
+  if (!db) return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('state.db would not open') };
 
-    return rows.map((row) => {
-      const messageRows = queryAll<DbMessageRow>(db, DB_MESSAGES_SQL, [row.id, 120]);
-      const detail = summarizeDbMessages(messageRows, 15);
+  try {
+    // `hasTableOrNull`, not `hasTable`: `hasTable` folds "there is no such table"
+    // and "this file is not a database" into one `false`, which is how a
+    // `state.db` of plain text came to read as a provider with no sessions.
+    const hasSessions = hasTableOrNull(db, 'sessions');
+    if (hasSessions === null) {
+      return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('state.db is not a readable database') };
+    }
+    if (!hasSessions) return { kind: 'absent' };
+
+    const query = dbSessionsSql(db, thresholdSeconds);
+    if (!query) {
+      return { kind: 'failed', code: 'schema-incompatible', detail: sourceDetail('state.db sessions table is not a readable hermes schema') };
+    }
+
+    let rows: DbSessionRow[];
+    try {
+      rows = db.prepare(query.sql).all(...query.params) as DbSessionRow[];
+    } catch (err) {
+      debugAdapterError('hermes', 'getDbSessions rows', err, DB_PATH);
+      return { kind: 'failed', code: 'unknown', detail: sourceDetail('state.db sessions read failed') };
+    }
+
+    let degraded = 0;
+    const sessions = rows.map((row) => {
+      const messages = readSessionMessages(db, row.id);
+      if (!messages.ok) degraded += 1;
+      const summary = summarizeDbMessages(messages.ok ? messages.rows : [], 15);
       const updated = (row.last_activity_at ?? row.started_at ?? 0) * 1000;
       const input = Number(row.input_tokens || 0);
       const output = Number(row.output_tokens || 0);
@@ -192,17 +324,31 @@ async function getDbSessions(activeThresholdMs: number): Promise<AgentSessionSum
         status: 'active',
         lastActivity: updated,
         project: dbProjectName(row),
-        lastMessage: detail.lastMessage,
-        lastTool: detail.lastTool,
-        lastToolInput: detail.lastToolInput,
+        lastMessage: summary.lastMessage,
+        lastTool: summary.lastTool,
+        lastToolInput: summary.lastToolInput,
         parentSessionId: row.parent_session_id,
         filePath: DB_PATH,
         tokens: input || output ? { input, output } : undefined,
       } satisfies AgentSessionSummary;
     });
-  });
 
-  return sessions || [];
+    return {
+      kind: 'rows',
+      sessions,
+      // Audit instance 4. The listing survived, so this is a per-ITEM
+      // degradation: reporting it as a failure would be exactly the regression
+      // the union exists to prevent. `schema-incompatible` rather than
+      // `store-unreadable` because the store opened and answered — what failed is
+      // the SHAPE this one query expects, typically a `messages` table or column
+      // the installed install does not have. A corrupt store surfaces as
+      // `unknown` from the rows read above instead, which is why the two are not
+      // merged here.
+      warnings: degradedWarnings(degraded, 'schema-incompatible', 'session(s)'),
+    };
+  } finally {
+    closeSqlite(db);
+  }
 }
 
 /**
@@ -260,42 +406,31 @@ export class HermesAdapter implements AgentAdapter {
     return fs.existsSync(HERMES_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs: number): Promise<AgentSessionSummary[]> {
-    if (fs.existsSync(DB_PATH)) {
-      const dbSessions = await getDbSessions(activeThresholdMs);
-      if (dbSessions.length > 0) {
-        return dbSessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
-      }
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
+    const db = readDbListing(activeThresholdMs);
+    // The pinned SQLite-over-files precedence, unchanged: when the database
+    // produced a listing the legacy files are not read at all. That is also why a
+    // file-side problem must not add a warning here — nothing was degraded by not
+    // reading files the database made unnecessary.
+    if (db.kind === 'rows' && db.sessions.length > 0) {
+      return {
+        ok: true,
+        sessions: db.sessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)),
+        warnings: db.warnings,
+      };
     }
 
-    const files = await getSessionFiles(activeThresholdMs);
-    const sessions = await Promise.all(files.map(async ({ filePath, sessionId, mtime }) => {
-      const metadata = await readJson(filePath);
-      const transcript = transcriptPath(sessionId);
-      const hasTranscript = fs.existsSync(transcript);
-      const detail = hasTranscript
-        ? await parseTranscript(transcript)
-        : parseSessionMessages(metadata);
-      const updated = asTimestamp(metadata?.last_updated ?? metadata?.updated_at ?? metadata?.session_start) || mtime;
+    // Zero DB rows is DATA, not a failure, so it still takes the legacy-file path
+    // — the same gate as before. A DB that could not be read takes that path too,
+    // and becomes a `warning` there unless nothing at all could be read, which is
+    // what `combineSources` decides.
+    const files = await discoverSessionFiles(activeThresholdMs);
+    const filesListing: SourceListing =
+      files.kind === 'files'
+        ? { kind: 'rows', sessions: await readSessionFiles(files.files), warnings: files.warnings }
+        : files;
 
-      return {
-        sessionId: `hermes-${metadata?.session_id || sessionId}`,
-        provider: 'hermes',
-        agentId: null,
-        agentType: 'main',
-        model: modelName(metadata),
-        status: metadata?.suspended ? 'suspended' : 'active',
-        lastActivity: Math.max(updated, mtime),
-        project: projectName(metadata),
-        lastMessage: detail.lastMessage,
-        lastTool: detail.lastTool,
-        lastToolInput: detail.lastToolInput,
-        parentSessionId: null,
-        filePath: hasTranscript ? transcript : filePath,
-      } satisfies AgentSessionSummary;
-    }));
-
-    return sessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
+    return combineSources([db, filesListing]);
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterSessionDetail> {

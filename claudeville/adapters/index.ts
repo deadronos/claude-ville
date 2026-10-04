@@ -5,7 +5,15 @@
 import { estimateCost } from '../../shared/cost.js';
 import { normalizeTokens } from '../../shared/session-utils.js';
 import { computeSessionContextPercent } from '../../shared/context-window.js';
-import type { AdapterSessionDetail, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
+import type {
+  AdapterErrorReport,
+  AdapterSessionsResult,
+  AdapterSessionDetail,
+  AdapterWarningReport,
+  AgentAdapter,
+  AgentSessionSummary,
+  WatchPath,
+} from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import { sanitizeSessionDetail, sanitizeSessionSummary } from './sanitize.js';
 import { ClaudeAdapter } from './claude.js';
@@ -30,39 +38,102 @@ export const adapters: AgentAdapter[] = [
   new HermesAdapter(),
 ];
 
+/** What one adapter contributed to a collection, failures included. */
+export interface AdapterCollection {
+  sessions: AgentSessionSummary[];
+  /** One per adapter that could not be read at all. NEVER empty-bolstered into sessions. */
+  errors: AdapterErrorReport[];
+  /** One per degraded record set. The listing still stands. */
+  warnings: AdapterWarningReport[];
+}
+
 /**
- * Collect sessions from all active adapters
+ * Collect sessions from all active adapters.
+ *
+ * The narrowed union is what makes an adapter failure REPORTABLE here rather than
+ * indistinguishable from an idle provider: an `ok: false` adapter contributes
+ * zero sessions AND an `errors` entry naming one of the four codes, so the caller
+ * can say "hermes could not be read (store-unreadable)" instead of "hermes has
+ * no sessions". Warnings ride alongside the sessions they qualify.
+ *
+ * A THROW is still handled, because that is a different failure from the four the
+ * contract defines — an adapter that rejects rather than answering `ok: false` is
+ * a bug in the adapter, and it is reported as `unknown` rather than swallowed.
  */
-export async function getAllSessions(activeThresholdMs: number) {
-  const adapterResults = await Promise.all(adapters.map(async (adapter) => {
-    if (!adapter.isAvailable()) return [];
+export async function collectFromAdapters(activeThresholdMs: number): Promise<AdapterCollection> {
+  const collected = await Promise.all(adapters.map(async (adapter): Promise<AdapterCollection> => {
+    const empty: AdapterCollection = { sessions: [], errors: [], warnings: [] };
+    if (!adapter.isAvailable()) return empty;
+
+    let answer: AdapterSessionsResult;
     try {
-      const sessions = await adapter.getActiveSessions(activeThresholdMs);
-      return await Promise.all(sessions.map(async (session: AgentSessionSummary) => {
-        const detailRaw = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
-        const detail = sanitizeSessionDetail(detailRaw || {});
-        const tokens = normalizeTokens(detailRaw?.tokenUsage ?? null, session.tokens || null);
-
-        const sanitizedSession = sanitizeSessionSummary(session);
-        const contextPercent = await computeSessionContextPercent(sanitizedSession, detailRaw?.tokenUsage ?? null);
-        const contextFields = contextPercent === null ? {} : { contextPercent };
-
-        return {
-          ...sanitizedSession,
-          detail,
-          tokenUsage: detailRaw?.tokenUsage || null,
-          tokens,
-          estimatedCost: estimateCost(sanitizedSession.model, tokens),
-          ...contextFields,
-        };
-      }));
+      answer = await adapter.getActiveSessions(activeThresholdMs);
     } catch (err) {
-      console.error(`[${adapter.name}] session query failed:`, err instanceof Error ? err.message : err);
-      return [];
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[${adapter.name}] session query threw:`, message);
+      return { ...empty, errors: [{ provider: adapter.provider, error: { code: 'unknown', message } }] };
     }
+
+    const result = answer;
+    if (!result.ok) {
+      // The point of the union. Before it, this branch was indistinguishable from
+      // an install with no sessions.
+      console.error(`[${adapter.name}] session query failed: ${result.error.code}: ${result.error.message}`);
+      return { ...empty, errors: [{ provider: adapter.provider, error: result.error }] };
+    }
+
+    const warnings = result.warnings.map((warning) => ({ provider: adapter.provider, warning }));
+    for (const { warning } of warnings) {
+      console.error(`[${adapter.name}] partial read: ${warning.code}: ${warning.detail}`);
+    }
+
+    const sessions = await Promise.all(result.sessions.map(async (session: AgentSessionSummary) => {
+      const detailRaw = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
+      const detail = sanitizeSessionDetail(detailRaw || {});
+      const tokens = normalizeTokens(detailRaw?.tokenUsage ?? null, session.tokens || null);
+
+      const sanitizedSession = sanitizeSessionSummary(session);
+      const contextPercent = await computeSessionContextPercent(sanitizedSession, detailRaw?.tokenUsage ?? null);
+      const contextFields = contextPercent === null ? {} : { contextPercent };
+
+      return {
+        ...sanitizedSession,
+        detail,
+        tokenUsage: detailRaw?.tokenUsage || null,
+        tokens,
+        estimatedCost: estimateCost(sanitizedSession.model, tokens),
+        ...contextFields,
+      };
+    }));
+
+    return { sessions, errors: [], warnings };
   }));
 
-  return adapterResults.flat().sort((a, b) => b.lastActivity - a.lastActivity);
+  return {
+    // `?? 0` because `AgentSessionSummary.lastActivity` is optional. Every adapter
+    // sets it to a number, and this only decides what an absent value sorts as.
+    sessions: collected.flatMap((entry) => entry.sessions).sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)),
+    errors: collected.flatMap((entry) => entry.errors),
+    warnings: collected.flatMap((entry) => entry.warnings),
+  };
+}
+
+/**
+ * Collect sessions from all active adapters — the sessions alone.
+ *
+ * KEPT, and still array-returning, because `collector/index.ts` injects it as
+ * `CollectorSnapshotDeps['getAllSessions']`, whose declared type is
+ * `Promise<SessionSummary[]>`. The collector's snapshot is a merged, persisted
+ * state rather than a live adapter pull, so it has no place to put the
+ * diagnostics; changing that type is a separate decision about the collector's
+ * contract, not this one.
+ *
+ * Every LIVE read now goes through {@link collectFromAdapters} directly — the
+ * REST route and both WebSocket frames — so no consumer is left holding only the
+ * sessions.
+ */
+export async function getAllSessions(activeThresholdMs: number) {
+  return (await collectFromAdapters(activeThresholdMs)).sessions;
 }
 
 /**

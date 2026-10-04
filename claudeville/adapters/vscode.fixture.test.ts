@@ -96,6 +96,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 const ACTIVE_WINDOW_MS = 60 * 1000;
 
@@ -768,7 +769,7 @@ describe('vscode readers', () => {
         JSON.stringify({ type: 'agent_response', attrs: { response: assistantReply('NEW-MESSAGE') }, ts: 4 }),
       ]);
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(sessions.map((s: any) => s.sessionId)).toEqual(['vscode:vscode:ws-dir:dir-session']);
       expect(sessions[0]).toEqual({
         sessionId: 'vscode:vscode:ws-dir:dir-session',
@@ -820,7 +821,7 @@ describe('vscode readers', () => {
       // `hasRealActivity` sees real activity and the row exists at all.
       writeDebugLog(userDir, 'ws-window', 'model-control', [filler(1), llm('CONTROL-MODEL')]);
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       const row = (id: string) => sessions.find((s: any) => s.sessionId === `vscode:vscode:ws-window:${id}`);
       const ids = sessions.map((s: any) => s.sessionId).sort();
       expect(ids).toEqual([
@@ -864,7 +865,7 @@ describe('vscode readers', () => {
         JSON.stringify({ type: 'session.start', attrs: { vscodeVersion: '1.95.0' } }),
       ]);
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(sessions.map((s: any) => s.sessionId).sort()).toEqual([
         'vscode:vscode:ws-ver:from-version',
         'vscode:vscode:ws-ver:model-wins',
@@ -897,7 +898,7 @@ describe('vscode readers', () => {
         JSON.stringify({ type: 'assistant.message', data: { content: TEXT150 }, timestamp: 3 }),
       ]);
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       const row = (id: string) => sessions.find((s: any) => s.sessionId === `vscode:vscode:ws-caps:${id}`);
       expect(sessions.map((s: any) => s.sessionId).sort()).toEqual([
         'vscode:vscode:ws-caps:dir-assistant-msg',
@@ -971,7 +972,7 @@ describe('vscode readers', () => {
         writeDebugLog(userDir, 'ws-tools', id, [filler(0), JSON.stringify(record)]);
       }
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(sessions).toHaveLength(cases.length);
       for (const [id, , tool, input] of cases) {
         const row = sessions.find((s: any) => s.sessionId === `vscode:vscode:ws-tools:${id}`);
@@ -1010,7 +1011,7 @@ describe('vscode readers', () => {
       expect(HEAD_MARKER.length).toBe(205);
       expect(JSON_LLM_REQUEST_LINE.length).toBe(86);
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       const row = (id: string) => sessions.find((s: any) => s.sessionId === `vscode:vscode:ws-res:${id}`);
 
       const head = row('res-head');
@@ -1049,7 +1050,7 @@ describe('vscode readers', () => {
       writeResourceContent(userDir, 'ws-ws', 'res-space', 'call_a', '\n\n   padded text   \n\n', 1000);
       writeResourceContent(userDir, 'ws-ws', 'res-long', 'call_b', `${TEXT150}\n`, 2000);
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(sessions.map((s: any) => s.sessionId)).toEqual([
         'vscode:vscode:ws-ws:res-space',
         'vscode:vscode:ws-ws:res-long',
@@ -1082,7 +1083,7 @@ describe('vscode readers', () => {
         JSON.stringify({ type: 'llm_request', attrs: { model: 'tail-model' } }),
       ]);
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(sessions.map((s: any) => s.sessionId)).toEqual(['vscode:vscode:ws-head:head-session']);
       expect(sessions[0].filePath).toBe(file);
       // Same file, opposite window: hasRealActivity decided membership from the
@@ -1110,7 +1111,7 @@ describe('vscode readers', () => {
         JSON.stringify({ type: 'llm_request', attrs: { model: 'a' } }),
         JSON.stringify({ type: 'tool_call', name: 'T2', attrs: { args: {} }, ts: 2 }),
       ]);
-      const low = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const low = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(low.map((s: any) => s.sessionId)).toEqual(['vscode:vscode:ws-count:count-low']);
     });
 
@@ -1123,7 +1124,7 @@ describe('vscode readers', () => {
         ' ',
         JSON.stringify({ type: 'llm_request', attrs: { model: 'beyond-the-window' } }),
       ]);
-      expect(await Adapter.getActiveSessions(ACTIVE_WINDOW_MS)).toEqual([]);
+      expect(await sessionsOf(Adapter, ACTIVE_WINDOW_MS)).toEqual([]);
     });
   });
 
@@ -1145,7 +1146,7 @@ describe('vscode readers', () => {
       // Two non-empty lines in a content.txt is still just text.
       writeResourceContent(userDir, 'ws-act', 'two-text', 'call_d', 'line one\nline two\n', 4000);
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(sessions.map((s: any) => s.sessionId)).toEqual([
         'vscode:vscode:ws-act:one-text',
         'vscode:vscode:ws-act:two-text',
@@ -1178,7 +1179,7 @@ describe('vscode readers', () => {
       fs.utimesSync(older, new Date(olderAt), new Date(olderAt));
       expect(mtimeOf(newer)).toBeGreaterThan(mtimeOf(older));
 
-      const sessions = await Adapter.getActiveSessions(ACTIVE_WINDOW_MS);
+      const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(sessions.map((s: any) => s.sessionId)).toEqual([
         'vscode:vscode:ws-sort:newer',
         'vscode:vscode:ws-sort:older',
@@ -1219,7 +1220,7 @@ describe('vscode readers', () => {
       const decoy = path.join(transcriptsDir, 'dirdecoy.jsonl');
       fs.mkdirSync(decoy, { recursive: true });
 
-      const { result, lines } = await withDebug(() => Adapter.getActiveSessions(ACTIVE_WINDOW_MS));
+      const { result, lines } = await withDebug(() => sessionsOf(Adapter, ACTIVE_WINDOW_MS));
 
       expect(result.map((s: any) => s.sessionId)).toEqual(['vscode:vscode:ws-dir:real1']);
       // No `readLines(start)` envelope from the `vscode-activity` scope for ANY

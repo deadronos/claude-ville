@@ -4,6 +4,8 @@ import path from 'path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { sessionsOf } from './fixtureHelpers.js';
+
 const originalHermesDir = process.env.HERMES_DIR;
 
 function writeJson(filePath: string, value: unknown) {
@@ -58,7 +60,7 @@ describe('hermes adapter', () => {
     fs.utimesSync(transcriptFile, new Date(now - 500), new Date(now - 500));
 
     const adapter = await loadAdapter(tmp);
-    const sessions = await adapter.getActiveSessions(60_000);
+    const sessions = await sessionsOf(adapter, 60_000);
 
     fs.rmSync(tmp, { recursive: true, force: true });
     expect(sessions).toHaveLength(1);

@@ -6,11 +6,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import type { AgentAdapter, AdapterSessionDetail, AgentSessionSummary, WatchPath } from '../../shared/types.js';
+import type { AdapterErrorCode, AdapterSessionDetail, AdapterSessionsResult, AdapterWarning, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import type { DbMessage } from './opencode-readers.js';
 import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession } from './opencode-readers.js';
-import { queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import { closeSqlite, hasTableOrNull, openReadonlySqlite, queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import { combineSources, degradedWarnings, sourceDetail, type SourceListing } from './sources.js';
 import type { Dirent } from './scan-utils.js';
 
 const OPENCODE_DIR = process.env.OPENCODE_DATA_DIR || path.join(os.homedir(), '.local', 'share', 'opencode');
@@ -52,10 +53,23 @@ async function queryDb<T>(sql: string, params: string[] = []): Promise<T[]> {
   return withReadonlySqlite(DB_FILE, 'opencode', (db) => queryAll<T>(db, sql, params)) ?? [];
 }
 
-async function getSessionFiles(activeThresholdMs: number): Promise<SessionFile[]> {
-  if (!fs.existsSync(SESSION_DIR)) return [];
+/**
+ * The legacy-file half, classified.
+ *
+ * `collectJsonFiles` walks `storage/session` recursively and its `readdir` catch
+ * answered `[]`, so a `session/` that cannot be listed was indistinguishable from
+ * a `session/` holding no files — reported only through `debugAdapterError`, a
+ * no-op unless `DEBUG` is set. A per-file `stat` failure was the same.
+ *
+ * The `isFile()` guard in `collectJsonFiles` is already the correct shape (#144):
+ * a DIRECTORY named `*.json` is skipped rather than parsed, so it is not a
+ * degradation to report here.
+ */
+async function getSessionFiles(activeThresholdMs: number): Promise<{ files: SessionFile[]; rootUnreadable: boolean; filesUnstattable: number }> {
+  if (!fs.existsSync(SESSION_DIR)) return { files: [], rootUnreadable: false, filesUnstattable: 0 };
   const now = Date.now();
   const files = await collectJsonFiles(SESSION_DIR);
+  let filesUnstattable = 0;
   const stats = await Promise.all(files.map(async (filePath) => {
     try {
       const stat = await fs.promises.stat(filePath);
@@ -65,13 +79,43 @@ async function getSessionFiles(activeThresholdMs: number): Promise<SessionFile[]
       return { filePath, sessionId, projectKey, mtime: stat.mtimeMs };
     } catch (err) {
       debugAdapterError('opencode', 'getSessionFiles stat', err, filePath);
+      filesUnstattable += 1;
       return null;
     }
   }));
-  return stats.filter((result): result is SessionFile => result !== null);
+  return {
+    files: stats.filter((result): result is SessionFile => result !== null),
+    rootUnreadable: files.length === 0 && !isReadableDir(SESSION_DIR),
+    filesUnstattable,
+  };
 }
 
-async function getDbMessages(sessionId: string, limit = 30): Promise<DbMessage[]> {
+/**
+ * Whether a directory can be LISTED, as distinct from existing. `collectJsonFiles`
+ * has already collapsed "could not read" into `[]`, so this is the probe that
+ * recovers the distinction — and it is the same two calls `readdir` makes, so it
+ * cannot disagree with one.
+ */
+function isReadableDir(dir: string): boolean {
+  try {
+    fs.readdirSync(dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The per-session message read.
+ *
+ * `queryDb` answers `[]` for "this session has no messages" and for "the query
+ * raised" alike, which cost this one session its whole detail. That swallow is
+ * load-bearing containment — the call sits inside a `.map()`, so a throw would
+ * abort the map and take EVERY session with it (#156) — so it stays, and the
+ * difference is reported instead of collapsed. Same shape as `hermes`'s
+ * `readSessionMessages`, and for the same reason.
+ */
+async function getDbMessages(sessionId: string, limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
   const rows = await queryDb<{
     message_id: string;
     message_time_created: number;
@@ -100,10 +144,15 @@ async function getDbMessages(sessionId: string, limit = 30): Promise<DbMessage[]
   );
 
   const messageMap = new Map<string, DbMessage>();
+  // A `message.data` or `part.data` column that does not parse arrives as its raw
+  // string. That is audit instance 1's condition and #156's fix: the bad ROW
+  // degrades, the listing does not. It is counted, not thrown.
+  let unparsedRows = 0;
   for (const row of rows) {
     let message = messageMap.get(row.message_id);
     if (!message) {
       const messageData = normalizeDbJson(row.message_data) as any;
+      if (typeof messageData === 'string') unparsedRows += 1;
       message = {
         id: row.message_id,
         role: messageData?.role || 'assistant',
@@ -117,6 +166,7 @@ async function getDbMessages(sessionId: string, limit = 30): Promise<DbMessage[]
     }
 
     if (row.part_id && row.part_data) {
+      if (typeof normalizeDbJson(row.part_data) === 'string') unparsedRows += 1;
       message.parts.push({
         id: row.part_id,
         time_created: row.part_time_created || row.message_time_created,
@@ -125,56 +175,124 @@ async function getDbMessages(sessionId: string, limit = 30): Promise<DbMessage[]
     }
   }
 
-  return Array.from(messageMap.values());
+  return { messages: Array.from(messageMap.values()), degraded: unparsedRows > 0 };
 }
 
-async function getDbSessions(activeThresholdMs: number): Promise<DbSession[]> {
-  // queryDb already guards existence via the read-only SQLite helper.
-  const cutoff = Date.now() - activeThresholdMs;
-  // The latest message's `data` is selected RAW and parsed per row below. It must
-  // not be projected with `json_extract(m.data, '$.modelID')`: SQLite RAISES
-  // `malformed JSON` on a column that does not parse (it does not answer NULL),
-  // `queryAll` swallows that into `[]`, and one malformed row then removed EVERY
-  // session from the listing rather than its own. `normalizeDbJson` is what the
-  // sibling `getDbMessages` above already uses on the same column.
-  const rows = await queryDb<DbSession & { message_data: string | null }>(
-    `SELECT
-       s.id,
-       s.project_id,
-       s.parent_id,
-       s.directory,
-       s.title,
-       s.time_created,
-       s.time_updated,
-       (
-         SELECT m.data
-         FROM message m
-         WHERE m.session_id = s.id
-         ORDER BY m.time_created DESC
-         LIMIT 1
-       ) AS message_data
-     FROM session s
-     WHERE s.time_updated >= ?
-       AND s.time_archived IS NULL
-     ORDER BY s.time_updated DESC`,
-    [String(cutoff)],
-  );
+type DbSessionRow = DbSession & { message_data: string | null };
 
-  return rows.map((row) => {
-    const messageData = normalizeDbJson(row.message_data);
-    // A malformed column arrives as the raw string and parses to nothing, so only
-    // this one session loses its model and provider.
-    const data = (typeof messageData === 'object' && messageData !== null ? messageData : {}) as {
-      modelID?: unknown;
-      providerID?: unknown;
-    };
+/**
+ * The `opencode.db` half, classified. Same three states as every other adapter's
+ * source, with `DbSession` rows in place of summaries because the summary needs
+ * the per-session message read, which `getActiveSessions` does.
+ */
+type DbSource =
+  | { kind: 'absent' }
+  | { kind: 'rows'; sessions: DbSession[]; warnings: AdapterWarning[] }
+  | { kind: 'failed'; code: AdapterErrorCode; detail: string };
+
+/**
+ * The `opencode.db` half, classified.
+ *
+ * `queryDb` folded four states into `[]`: no database, a database that will not
+ * open, a file that is not a database, and a query that raised. Only the first is
+ * "no sessions here"; the other three all read as an idle provider, which is
+ * audit instance 14 at the adapter level.
+ *
+ * `openReadonlySqlite` plus `hasTableOrNull` plus an explicit `close` are used
+ * rather than `withReadonlySqlite`, because that wrapper answers `null` for "would
+ * not open" and "the callback threw" alike — the very collapse being undone.
+ *
+ * | branch | state |
+ * * |---|---|
+ * * | no `opencode.db` | `absent` |
+ * * | will not open, or `sqlite_master` will not answer | `store-unreadable` |
+ * * | no `session` table | `absent` — a database from a different tool |
+ * * | the query planned and the READ raised | `unknown` |
+ * * | one session's message column would not parse | a `warning`, never a failure |
+ */
+function readDbListing(activeThresholdMs: number): DbSource {
+  const absent: DbSource = { kind: 'absent' };
+  if (!fs.existsSync(DB_FILE)) return absent;
+
+  const db = openReadonlySqlite(DB_FILE, 'opencode');
+  if (!db) return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db would not open', OPENCODE_DIR) };
+
+  try {
+    const hasSession = hasTableOrNull(db, 'session');
+    if (hasSession === null) {
+      return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db is not a readable database', OPENCODE_DIR) };
+    }
+    if (!hasSession) return absent;
+
+    // The latest message's `data` is selected RAW and parsed per row below. It
+    // must not be projected with `json_extract(m.data, '$.modelID')`: SQLite
+    // RAISES `malformed JSON` on a column that does not parse (it does not answer
+    // NULL), `queryAll` swallowed that into `[]`, and one malformed row then
+    // removed EVERY session from the listing rather than its own (#156).
+    // `normalizeDbJson` is what the sibling `getDbMessages` above already uses on
+    // the same column.
+    let rows: DbSessionRow[];
+    try {
+      rows = db.prepare(DB_SESSIONS_SQL).all(String(Date.now() - activeThresholdMs)) as DbSessionRow[];
+    } catch (err) {
+      debugAdapterError('opencode', 'getDbSessions rows', err, DB_FILE);
+      return { kind: 'failed', code: 'unknown', detail: sourceDetail('opencode.db session read failed', OPENCODE_DIR) };
+    }
+
     return {
-      ...row,
-      modelID: (data.modelID || null) as string | null,
-      providerID: (data.providerID || null) as string | null,
+      kind: 'rows',
+      sessions: rows.map((row) => {
+        const messageData = normalizeDbJson(row.message_data);
+        // A malformed column arrives as the raw string and parses to nothing, so
+        // only this one session loses its model and provider.
+        const data = (typeof messageData === 'object' && messageData !== null ? messageData : {}) as {
+          modelID?: unknown;
+          providerID?: unknown;
+        };
+        return {
+          ...row,
+          modelID: (data.modelID || null) as string | null,
+          providerID: (data.providerID || null) as string | null,
+        };
+      }),
+      warnings: [],
     };
-  });
+  } finally {
+    closeSqlite(db);
+  }
 }
+
+/**
+ * The session query, as a named constant so the classified reader above can hand
+ * it straight to `db.prepare`.
+ *
+ * Deliberately NOT projected from `tableColumns`, unlike `hermes`'s and
+ * `openclaw`'s: here a drifted schema made SQLite raise `no such column`, and the
+ * pre-contract behaviour of that raise was `[]` and then the legacy-file fallback.
+ * Projecting would replace that fallback with a partial listing — a better answer,
+ * but a behaviour change this refactor must not make. So the raise is classified
+ * (`unknown`) and the fallback still runs.
+ */
+const DB_SESSIONS_SQL = `
+  SELECT
+    s.id,
+    s.project_id,
+    s.parent_id,
+    s.directory,
+    s.title,
+    s.time_created,
+    s.time_updated,
+    (
+      SELECT m.data
+      FROM message m
+      WHERE m.session_id = s.id
+      ORDER BY m.time_created DESC
+      LIMIT 1
+    ) AS message_data
+  FROM session s
+  WHERE s.time_updated >= ?
+    AND s.time_archived IS NULL
+  ORDER BY s.time_updated DESC`;
 
 function resolveMessageFile(projectKey: string, sessionId: string) {
   return path.join(MESSAGE_DIR, projectKey, `${sessionId}.json`);
@@ -189,11 +307,17 @@ export class OpenCodeAdapter implements AgentAdapter {
     return fs.existsSync(OPENCODE_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs: number): Promise<AgentSessionSummary[]> {
-    const dbSessions = await getDbSessions(activeThresholdMs);
-    if (dbSessions.length > 0) {
-      const sessions = await Promise.all(dbSessions.map(async (session) => {
-        const messages = await getDbMessages(session.id);
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
+    // The pinned SQLite-over-files precedence, unchanged: a database that produced
+    // rows means the legacy files are not read at all. That is also why a file
+    // -side problem cannot add a warning here — nothing was degraded by not
+    // reading files the database made unnecessary.
+    const db = readDbListing(activeThresholdMs);
+    if (db.kind === 'rows' && db.sessions.length > 0) {
+      let unparsed = 0;
+      const sessions = await Promise.all(db.sessions.map(async (session) => {
+        const { messages, degraded } = await getDbMessages(session.id);
+        if (degraded) unparsed += 1;
         const detail = extractDbDetail(messages);
         return {
           sessionId: `opencode-${session.id}`,
@@ -211,10 +335,23 @@ export class OpenCodeAdapter implements AgentAdapter {
           filePath: `opencode-db:${session.id}`,
         };
       }));
-      return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+      return {
+        ok: true,
+        sessions: sessions.sort((a, b) => b.lastActivity - a.lastActivity),
+        // Audit instance 1 / #156: the listing survived, so this is a per-ITEM
+        // degradation. Reporting it as a failure would be exactly the regression
+        // the union exists to prevent. `schema-incompatible` because the columns
+        // this one query reads hold data of a shape we cannot parse — the store
+        // itself opened and answered.
+        warnings: [...db.warnings, ...degradedWarnings(unparsed, 'schema-incompatible', 'session(s)')],
+      };
     }
 
-    const files = await getSessionFiles(activeThresholdMs);
+    // Zero DB rows is DATA, not a failure, so it still takes the legacy-file path
+    // — the same gate as before. A DB that could not be read takes that path too,
+    // and becomes a `warning` there unless nothing at all could be read, which is
+    // what `combineSources` decides.
+    const { files, rootUnreadable, filesUnstattable } = await getSessionFiles(activeThresholdMs);
     const sessions = await Promise.all(files.map(async ({ filePath, sessionId, projectKey, mtime }) => {
       const [session, rawMessages] = await Promise.all([
         readJson(filePath),
@@ -241,13 +378,27 @@ export class OpenCodeAdapter implements AgentAdapter {
       };
     }));
 
-    return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+    const dbListing: SourceListing = db.kind === 'rows'
+      ? { kind: 'rows', sessions: [], warnings: db.warnings }
+      : db;
+
+    const filesListing: SourceListing = rootUnreadable
+      ? { kind: 'failed', code: 'root-unreadable', detail: sourceDetail('session directory could not be listed', OPENCODE_DIR) }
+      : fs.existsSync(SESSION_DIR)
+        ? {
+          kind: 'rows',
+          sessions: sessions.sort((a, b) => b.lastActivity - a.lastActivity),
+          warnings: degradedWarnings(filesUnstattable, 'root-unreadable', 'session file(s)'),
+        }
+        : { kind: 'absent' };
+
+    return combineSources([dbListing, filesListing]);
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterSessionDetail> {
     if (filePath?.startsWith('opencode-db:')) {
       const dbSessionId = filePath.replace('opencode-db:', '');
-      const detail = extractDbDetail(await getDbMessages(dbSessionId, 60));
+      const detail = extractDbDetail((await getDbMessages(dbSessionId, 60)).messages);
       return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId };
     }
 
@@ -258,7 +409,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     }
 
     const cleanId = sessionId.replace(/^opencode-/, '');
-    const files = await getSessionFiles(30 * 60 * 1000);
+    const { files } = await getSessionFiles(30 * 60 * 1000);
     const match = files.find((file) => file.sessionId === cleanId);
     const resolved = match ? resolveMessageFile(match.projectKey, cleanId) : null;
     // Re-resolving is how a moved session file is recovered, so it stays — but the

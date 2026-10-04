@@ -73,6 +73,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let workspaceDir = '';
@@ -279,7 +280,7 @@ describe('GeminiAdapter fixtures', () => {
 
     expect(adapter.isAvailable()).toBe(true);
 
-    const sessions = await adapter.getActiveSessions(5 * 60 * 1000);
+    const sessions = await sessionsOf(adapter, 5 * 60 * 1000);
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({
       sessionId: 'gemini-abc',
@@ -334,7 +335,7 @@ describe('GeminiAdapter fixtures', () => {
     const file = listed.jsonl('delta1', [geminiMsg('delta done', 1)]);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === 'gemini-delta1l',
       );
       expect(row).toEqual({
@@ -373,7 +374,7 @@ describe('GeminiAdapter fixtures', () => {
       listed.jsonl('shape1', [geminiMsg('from jsonl', 1)]);
       listed.json('shape2', [geminiMsg('from json', 1)]);
 
-      const ids = (await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId);
+      const ids = (await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId);
       expect(ids).toContain('gemini-shape1l');
       expect(ids).toContain('gemini-shape2');
 
@@ -393,7 +394,7 @@ describe('GeminiAdapter fixtures', () => {
     listed.jsonl('nomod1', [{ type: 'user', content: 'no model here', timestamp: at(1) }]);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === 'gemini-nomod1l',
       );
       // `lastMessage` is null, not '': parseSession only ever writes the field
@@ -417,13 +418,13 @@ describe('GeminiAdapter fixtures', () => {
     fs.utimesSync(stale, eightMinutesAgo, eightMinutesAgo);
 
     try {
-      const narrow = (await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId);
+      const narrow = (await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId);
       expect(narrow).not.toContain('gemini-stale1');
       expect(narrow).toContain('gemini-fresh1');
       // The inherited base fixture is seconds old, so it is inside both windows.
       expect(narrow).toContain('gemini-abc');
 
-      const wide = await adapter.getActiveSessions(10 * MINUTE);
+      const wide = await sessionsOf(adapter, 10 * MINUTE);
       const wideIds = wide.map((s: any) => s.sessionId);
       expect(wideIds).toContain('gemini-stale1');
       expect(wideIds).toContain('gemini-fresh1');
@@ -460,7 +461,7 @@ describe('GeminiAdapter fixtures', () => {
     fs.writeFileSync(path.join(listed.dir, 'session-keep1'), 'no extension\n');
 
     try {
-      const ids = (await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId);
+      const ids = (await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId);
       expect(ids).toHaveLength(3);
       expect(ids).toEqual(expect.arrayContaining(['gemini-keep1', 'gemini-keep2l', 'gemini-abc']));
     } finally {
@@ -540,7 +541,7 @@ describe('GeminiAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === 'gemini-dir1l',
       );
       expect(row).toMatchObject({
@@ -585,7 +586,7 @@ describe('GeminiAdapter fixtures', () => {
     listed.jsonl('rowwin2', [geminiMsg('early msg', 0), ...filler(59)]);
 
     try {
-      const rows = await adapter.getActiveSessions(5 * MINUTE);
+      const rows = await sessionsOf(adapter, 5 * MINUTE);
       const rowOf = (id: string) => rows.find((s: any) => s.sessionId === id);
 
       expect(rowOf('gemini-rowwin1l')).toMatchObject({
@@ -706,7 +707,7 @@ describe('GeminiAdapter fixtures', () => {
         geminiMsg(LONG_TEXT, 3, { toolCalls: [{ name: 'other_tool', args: LONG_ARGS }] }),
       ]);
 
-      const rows = await adapter.getActiveSessions(5 * MINUTE);
+      const rows = await sessionsOf(adapter, 5 * MINUTE);
       const rowOf = (id: string) => rows.find((s: any) => s.sessionId === id);
 
       const cmdRow = rowOf('gemini-caps1l');
@@ -836,7 +837,7 @@ describe('GeminiAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === 'gemini-blocks1l',
       );
       // The newest record wins, and `extractText` trims before the 80-char cap.
@@ -1033,7 +1034,7 @@ describe('GeminiAdapter fixtures', () => {
     fs.utimesSync(path.join(listed.dir, 'session-lookup1.json'), twentyMinutesAgo, twentyMinutesAgo);
 
     try {
-      expect((await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId)).not.toContain(
+      expect((await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId)).not.toContain(
         'gemini-lookup1',
       );
 
@@ -1094,7 +1095,7 @@ describe('GeminiAdapter fixtures', () => {
     ]);
 
     try {
-      const rows = await adapter.getActiveSessions(5 * MINUTE);
+      const rows = await sessionsOf(adapter, 5 * MINUTE);
       const rowOf = (id: string) => rows.find((s: any) => s.sessionId === id);
 
       expect(rowOf('gemini-fb1l')).toMatchObject({
@@ -1150,7 +1151,7 @@ describe('GeminiAdapter fixtures', () => {
     fs.mkdirSync(jsonlDecoy);
 
     try {
-      const rows = await adapter.getActiveSessions(5 * MINUTE);
+      const rows = await sessionsOf(adapter, 5 * MINUTE);
       // `getActiveSessions` scans every project directory under TMP_DIR, so the
       // base fixture `abc` (line 239) is in the listing too and the assertion is
       // the FULL set: it plus the real file, and neither decoy.

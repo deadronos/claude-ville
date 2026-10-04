@@ -178,6 +178,7 @@ import path from 'path';
 
 import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 const MINUTE = 60 * 1000;
 const originalDataDir = process.env.OPENCODE_DATA_DIR;
@@ -477,7 +478,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
           provider: adapter.provider,
           homeDir: adapter.homeDir,
           available: adapter.isAvailable(),
-          sessions: await adapter.getActiveSessions(5 * MINUTE),
+          sessions: await sessionsOf(adapter, 5 * MINUTE),
           watch: adapter.getWatchPaths(),
         };
       },
@@ -508,7 +509,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         expect(fs.existsSync(absent)).toBe(false);
         return {
           available: adapter.isAvailable(),
-          sessions: await adapter.getActiveSessions(5 * MINUTE),
+          sessions: await sessionsOf(adapter, 5 * MINUTE),
           watch: adapter.getWatchPaths(),
           detail: await adapter.getSessionDetail('opencode-anything', null, null),
           dbDetail: await adapter.getSessionDetail('opencode-anything', null, 'opencode-db:anything'),
@@ -601,7 +602,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         const adapter = new OpenCodeAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         // Four sessions: the two nested documents, the symlink's TARGET, and the
         // top-level one. Neither DIRECTORY became a session, and neither leaf decoy
         // did — `link.json` included, even though its name satisfies the `.json`
@@ -648,7 +649,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         }
       },
       async (OpenCodeAdapter) => {
-        const rows = await new OpenCodeAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new OpenCodeAdapter(), 5 * MINUTE);
         const project = (id: string) => rowOf(rows, `opencode-${id}`).project;
         expect(project('projectpath')).toBe('/w/project');
         expect(project('cwd')).toBe('/w/cwd');
@@ -662,10 +663,18 @@ describe('OpenCodeAdapter on-disk characterization', () => {
 
   // `getSessionFiles` guards on `existsSync(SESSION_DIR)` (opencode.ts:56), which is
   // true for a FILE, and `collectJsonFiles` then calls `readdir` on it — which throws
-  // `ENOTDIR`. The `catch` at opencode.ts:45-48 swallows that and answers `[]`, so
-  // nothing is listed. This is the deterministic, permission-free way to reach the
-  // catch: no `chmod` and no root-vs-user assumption, unlike an unreadable directory.
-  it('swallow a readdir failure on the session directory and list nothing', async () => {
+  // `ENOTDIR`. This is the deterministic, permission-free way to reach the
+  // `storage/session` read failure: no `chmod` and no root-vs-user assumption,
+  // unlike an unreadable directory.
+  //
+  // The `catch` at opencode.ts:45-48 used to swallow that and answer `[]`, so the
+  // listing was empty and the provider read as idle. The empty answer is still
+  // there, but it is no longer the ONLY answer: there is no second source to fall
+  // back to, so this is `ok: false` with `root-unreadable`. The assertion below
+  // used to be `expect(await ...).toEqual([])` and COULD NOT distinguish this from
+  // an install with no sessions — that is the whole point of the contract, so it
+  // is the one assertion in this file that changes shape rather than call style.
+  it('report root-unreadable when the session directory cannot be listed', async () => {
     await withOpencodeDir(
       (dir) => {
         // A FILE where the session directory is expected.
@@ -679,7 +688,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
           fileMessage('assistant', [textBlock('never seen')], 1),
         ]);
       },
-      async (OpenCodeAdapter) => {
+      async (OpenCodeAdapter, dir) => {
         const adapter = new OpenCodeAdapter();
         // `isAvailable()` and both watch paths still see their entries, because all
         // three use `existsSync` alone — a FILE satisfies it just as a directory does.
@@ -688,8 +697,16 @@ describe('OpenCodeAdapter on-disk characterization', () => {
           { type: 'directory', path: expect.stringContaining('session'), recursive: true, filter: '.json' },
           { type: 'directory', path: expect.stringContaining('message'), recursive: true, filter: '.json' },
         ]);
-        // …but the listing is empty.
-        expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
+        // …but nothing can be listed, and the adapter SAYS SO rather than
+        // answering an empty listing that reads as an idle provider.
+        const result = await adapter.getActiveSessions(5 * MINUTE);
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('unreachable: expected a whole-adapter failure');
+        expect(result.error.code).toBe('root-unreadable');
+        // The operator detail names the provider, never the absolute path, which
+        // carries a username.
+        expect(result.error.message).not.toContain(dir);
+        expect(result.error.message).toContain('opencode');
       },
     );
   });
@@ -736,7 +753,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter, dir) => {
         const adapter = new OpenCodeAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['opencode-alpha', 'opencode-beta']);
 
         expect(rowOf(rows, 'opencode-alpha')).toStrictEqual({
@@ -831,7 +848,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter, dir) => {
         const adapter = new OpenCodeAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rowOf(rows, 'opencode-bare').agentType).toBe('main');
         expect(rowOf(rows, 'opencode-bare').model).toBe('opencode');
         expect(rowOf(rows, 'opencode-empty').agentType).toBe('main');
@@ -875,8 +892,8 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         const adapter = new OpenCodeAdapter();
-        expect(ids(await adapter.getActiveSessions(6_000))).toEqual([]);
-        expect(ids(await adapter.getActiveSessions(60_000))).toEqual(['opencode-fresh']);
+        expect(ids(await sessionsOf(adapter, 6_000))).toEqual([]);
+        expect(ids(await sessionsOf(adapter, 60_000))).toEqual(['opencode-fresh']);
       },
     );
   });
@@ -901,7 +918,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         }
       },
       async (OpenCodeAdapter) => {
-        const rows = await new OpenCodeAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new OpenCodeAdapter(), 5 * MINUTE);
         expect(rowOf(rows, 'opencode-modelid').model).toBe('from-modelID');
         expect(rowOf(rows, 'opencode-model').model).toBe('from-model');
         expect(rowOf(rows, 'opencode-modelid-lower').model).toBe('from-modelId');
@@ -920,7 +937,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         ]);
       },
       async (OpenCodeAdapter) => {
-        const rows = await new OpenCodeAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new OpenCodeAdapter(), 5 * MINUTE);
         expect(rowOf(rows, 'opencode-firstwins').model).toBe('model-one');
       },
     );
@@ -943,7 +960,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter, dir) => {
         const adapter = new OpenCodeAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rowOf(rows, 'opencode-types').lastMessage).toBe(LONG_TEXT.substring(0, 80));
         const detail = await adapter.getSessionDetail('opencode-types', null, messagePath(dir, 'proj', 'types.json'));
         // The `system` message kept its `type` as its role.
@@ -1004,7 +1021,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         const adapter = new OpenCodeAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rows).toHaveLength(1);
 
         expect(rows[0]).toStrictEqual({
@@ -1065,8 +1082,8 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         const adapter = new OpenCodeAdapter();
-        expect(ids(await adapter.getActiveSessions(6_000))).toEqual(['opencode-kept']);
-        expect(ids(await adapter.getActiveSessions(60_000))).toEqual([
+        expect(ids(await sessionsOf(adapter, 6_000))).toEqual(['opencode-kept']);
+        expect(ids(await sessionsOf(adapter, 60_000))).toEqual([
           'opencode-fresh',
           'opencode-kept',
         ]);
@@ -1126,7 +1143,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         db.close();
       },
       async (OpenCodeAdapter) => {
-        const rows = await new OpenCodeAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new OpenCodeAdapter(), 5 * MINUTE);
         // Bare, NOT composed with the provider.
         expect(rowOf(rows, 'opencode-from-message').model).toBe('message-model');
         expect(rowOf(rows, 'opencode-no-model').model).toBe('opencode');
@@ -1199,7 +1216,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         db.close();
       },
       async (OpenCodeAdapter) => {
-        const rows = await new OpenCodeAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new OpenCodeAdapter(), 5 * MINUTE);
         const model = (id: string) => rowOf(rows, `opencode-${id}`).model;
         expect(model('modelid')).toBe('p/m');
         expect(model('modelid-lower')).toBe('p/m');
@@ -1301,7 +1318,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         const adapter = new OpenCodeAdapter();
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual(['opencode-malformed']);
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual(['opencode-malformed']);
 
         // The malformed part column became a MESSAGE whose text is the raw string,
         // verbatim. Under `safeJsonParse`'s `null` this would be absent.
@@ -1367,7 +1384,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         const adapter = new OpenCodeAdapter();
         // All THREE are listed. Before the fix this was `[]` — the malformed row
         // removed the two healthy sessions too.
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['opencode-broken', 'opencode-healthy-one', 'opencode-healthy-two']);
         // The healthy pair keeps the model read from its own message data…
         expect(rowOf(rows, 'opencode-healthy-one').model).toBe('ok');
@@ -1405,7 +1422,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         const adapter = new OpenCodeAdapter();
         // `'42'` is a string, so it PARSES to the number 42 — and a number has no
         // `.role`, so the row's default answers.
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['opencode-numeric']);
         const detail = await adapter.getSessionDetail('opencode-numeric', null, 'opencode-db:numeric');
         // Only the text part survives; the numeric one contributes nothing.
@@ -1872,7 +1889,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter, dir) => {
         const adapter = new OpenCodeAdapter();
-        const row = rowOf(await adapter.getActiveSessions(5 * MINUTE), 'opencode-caps');
+        const row = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'opencode-caps');
         // The LAST assistant's summary, not the long earlier one.
         expect(row.lastMessage).toBe('final answer');
         expect(row.lastTool).toBe('runner');
@@ -2007,7 +2024,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         const adapter = new OpenCodeAdapter();
         // The row's 30 newest messages end exactly at index 50, so the assistant is
         // inside them and names the row's model.
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rowOf(rows, 'opencode-window').lastMessage).toBe('THE_ASSISTANT');
         expect(rowOf(rows, 'opencode-window').model).toBe('boundary');
         // …and `tokens` is still absent from the row.
@@ -2044,7 +2061,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         const adapter = new OpenCodeAdapter();
         // `opencode-nested` is doubled on the way out, because the FILE is named
         // `opencode-nested.json` and carries `id: 'opencode-nested'`.
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual([
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual([
           'opencode-my-opencode-thing',
           'opencode-opencode-nested',
           'opencode-plain',
@@ -2082,7 +2099,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter, dir) => {
         const adapter = new OpenCodeAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         const row = rowOf(rows, 'opencode-from-document');
         expect(row.filePath).toBe(messagePath(dir, 'proj', 'filename.json'));
 
@@ -2130,7 +2147,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         expect(detail.sessionId).toBe('opencode-opencode-db:inner');
 
         // The row's own sentinel is single, and resolves normally.
-        expect(rowOf(await adapter.getActiveSessions(5 * MINUTE), 'opencode-opencode-db:inner').filePath).toBe(
+        expect(rowOf(await sessionsOf(adapter, 5 * MINUTE), 'opencode-opencode-db:inner').filePath).toBe(
           'opencode-db:opencode-db:inner',
         );
       },
@@ -2162,17 +2179,17 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       async (OpenCodeAdapter, dir) => {
         const adapter = new OpenCodeAdapter();
         // Listed under a 15-minute threshold…
-        expect(ids(await adapter.getActiveSessions(15 * MINUTE))).toEqual(['opencode-old']);
+        expect(ids(await sessionsOf(adapter, 15 * MINUTE))).toEqual(['opencode-old']);
         // …and the id-only lookup's own 30-minute window sees it too, so this resolves.
         expect(texts((await adapter.getSessionDetail('opencode-old', null, null)).messages)).toEqual([
           'old but present',
         ]);
         // But the LISTING honours the caller's threshold, and five minutes is not
         // enough — which is precisely the window the hard-coded constant replaces.
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual([]);
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual([]);
         // The row's own `filePath` resolves regardless, because that branch does not
         // re-scan.
-        const row = rowOf(await adapter.getActiveSessions(15 * MINUTE), 'opencode-old');
+        const row = rowOf(await sessionsOf(adapter, 15 * MINUTE), 'opencode-old');
         expect(texts((await adapter.getSessionDetail(row.sessionId, row.project, row.filePath)).messages)).toEqual([
           'old but present',
         ]);
@@ -2197,8 +2214,8 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         const adapter = new OpenCodeAdapter();
         // A malformed session document still becomes a row: the scan lists the FILE,
         // and every field derived from its contents is null or a literal.
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual(['opencode-broken-session']);
-        expect(rowOf(await adapter.getActiveSessions(5 * MINUTE), 'opencode-broken-session')).toStrictEqual({
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual(['opencode-broken-session']);
+        expect(rowOf(await sessionsOf(adapter, 5 * MINUTE), 'opencode-broken-session')).toStrictEqual({
           sessionId: 'opencode-broken-session',
           provider: 'opencode',
           agentId: null,
@@ -2431,7 +2448,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         // One row, not two: the DB answer short-circuits the `.json` walk (:186).
-        const rows = await new OpenCodeAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new OpenCodeAdapter(), 5 * MINUTE);
         expect(ids(rows)).toEqual(['opencode-db-session']);
         expect(rows[0].lastMessage).toBe('from the db');
       },
@@ -2451,8 +2468,8 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         const adapter = new OpenCodeAdapter();
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual(['opencode-file-session']);
-        expect(rowOf(await adapter.getActiveSessions(5 * MINUTE), 'opencode-file-session').lastMessage).toBe(
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual(['opencode-file-session']);
+        expect(rowOf(await sessionsOf(adapter, 5 * MINUTE), 'opencode-file-session').lastMessage).toBe(
           'from the file path',
         );
       },
@@ -2466,7 +2483,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         openDb(dir, MESSAGE_SQL).db.close();
       },
       async (OpenCodeAdapter) => {
-        expect(ids(await new OpenCodeAdapter().getActiveSessions(5 * MINUTE))).toEqual(['opencode-file-session']);
+        expect(ids(await sessionsOf(new OpenCodeAdapter(), 5 * MINUTE))).toEqual(['opencode-file-session']);
       },
     );
 
@@ -2479,7 +2496,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         const adapter = new OpenCodeAdapter();
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual(['opencode-file-session']);
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual(['opencode-file-session']);
         // …and the sentinel branch degrades to the `sessionId`-bearing empty shape.
         expect(await adapter.getSessionDetail('opencode-nope', null, 'opencode-db:nope')).toStrictEqual({
           toolHistory: [],

@@ -1,6 +1,6 @@
 import { WebSocketServer, type WebSocket } from 'ws';
 
-import { getAllSessions } from './adapters/index.js';
+import { collectFromAdapters } from './adapters/index.js';
 import * as usageQuota from './services/usageQuota.js';
 import { ACTIVE_THRESHOLD_MS, claudeAdapter } from './server-config.js';
 
@@ -100,14 +100,20 @@ function wsBroadcast(data: unknown) {
 
 async function sendInitialData(socket: WebSocket) {
   try {
-    const [sessions, teams, usage] = await Promise.all([
-      getAllSessions(ACTIVE_THRESHOLD_MS),
+    const [{ sessions, errors, warnings }, teams, usage] = await Promise.all([
+      collectFromAdapters(ACTIVE_THRESHOLD_MS),
       claudeAdapter?.getTeams ? claudeAdapter.getTeams() : [],
       usageQuota.fetchUsage(),
     ]);
     wsSend(socket, {
       type: 'init',
       sessions,
+      // The adapter error contract's push surface. `WsMessage` is a tagged
+      // envelope with an index signature and the frontend reads only `sessions`,
+      // `teams` and `usage` off it, so these are additive and ignored by every
+      // current consumer.
+      errors,
+      warnings,
       teams,
       usage,
       timestamp: Date.now(),
@@ -128,14 +134,16 @@ export async function broadcastUpdate() {
   }
   broadcastInFlight = true;
   try {
-    const [sessions, teams, usage] = await Promise.all([
-      getAllSessions(ACTIVE_THRESHOLD_MS),
+    const [{ sessions, errors, warnings }, teams, usage] = await Promise.all([
+      collectFromAdapters(ACTIVE_THRESHOLD_MS),
       claudeAdapter?.getTeams ? claudeAdapter.getTeams() : [],
       usageQuota.fetchUsage(),
     ]);
     wsBroadcast({
       type: 'update',
       sessions,
+      errors,
+      warnings,
       teams,
       usage,
       timestamp: Date.now(),

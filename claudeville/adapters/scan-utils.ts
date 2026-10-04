@@ -74,9 +74,32 @@ export async function collectScanByMtime<T>(
     fileFor: (name: string) => string | string[] | null;
     /** Build the record for a candidate that passed the mtime filter. */
     build: (candidate: ScanCandidate) => Promise<T | null> | T | null;
+    /**
+     * Called for the two `readdir` failures that answer `[]` for a reason no
+     * consumer can otherwise see, told apart because the contract classifies them
+     * differently:
+     *
+     * - `'root'` — the provider's own session directory could not be listed. An
+     *   install with no sessions and an install whose directory cannot be read
+     *   both return an empty array, so this is a WHOLE-adapter failure unless the
+     *   adapter has another source.
+     * - `'child'` — one child directory could not be enumerated. Its siblings
+     *   survive, so this is a per-ITEM degradation and belongs in `warnings`.
+     *
+     * Never called for a root that simply does not exist: `existsSync` already
+     * answered, and absence is data, not failure.
+     *
+     * Optional, and the return type stays `T[]` rather than becoming
+     * `{ records, failures }`, deliberately. The caller has to classify the
+     * failure through `combineSources`, and threading a counter back through a
+     * return-type change would have put a shape change in front of all three
+     * adapters AND every assertion in this helper's own suite, for no extra
+     * information. A callback keeps the one new channel opt-in and local.
+     */
+    onUnreadable?: (scope: 'root' | 'child', err: unknown, dir: string) => void;
   },
 ): Promise<T[]> {
-  const { dir, scope, operation, thresholdMs, fileFor, build } = opts;
+  const { dir, scope, operation, thresholdMs, fileFor, build, onUnreadable } = opts;
   const results: T[] = [];
   if (!fs.existsSync(dir)) return results;
 
@@ -91,6 +114,7 @@ export async function collectScanByMtime<T>(
         filePaths = resolved === null ? null : Array.isArray(resolved) ? resolved : [resolved];
       } catch (err) {
         debugAdapterError(scope, `${operation} resolve`, err, path.join(dir, child.name));
+        onUnreadable?.('child', err, path.join(dir, child.name));
         return null;
       }
       if (!filePaths || filePaths.length === 0) return null;
@@ -117,6 +141,7 @@ export async function collectScanByMtime<T>(
     results.push(...built.flat().filter((r): r is T => r !== null));
   } catch (err) {
     debugAdapterError(scope, operation, err, dir);
+    onUnreadable?.('root', err, dir);
   }
   return results;
 }

@@ -67,6 +67,36 @@ describe('createApiRouteHandler', () => {
     expect(json).toEqual({ sessions: [{ sessionId: 's1' }], count: 1, timestamp: 123 });
   });
 
+  // The adapter error contract's REST surface. `errors` / `warnings` are additive
+  // and are omitted entirely when empty, so a healthy server's body is exactly
+  // what it was before the contract existed — the assertion above pins that.
+  it('carries adapter errors and warnings in the sessions payload', async () => {
+    const provider = makeProvider({
+      getSessions: vi.fn(async () => ({
+        sessions: [{ sessionId: 's1' }],
+        timestamp: 123,
+        errors: [{ provider: 'hermes', error: { code: 'store-unreadable', message: 'state.db (.hermes)' } }],
+        warnings: [{ provider: 'openclaw', warning: { code: 'root-unreadable', detail: '1 agent sessions directory(ies)' } }],
+      })),
+    });
+    const { json } = await run(provider, '/api/sessions');
+
+    expect(json).toEqual({
+      sessions: [{ sessionId: 's1' }],
+      count: 1,
+      timestamp: 123,
+      errors: [{ provider: 'hermes', error: { code: 'store-unreadable', message: 'state.db (.hermes)' } }],
+      warnings: [{ provider: 'openclaw', warning: { code: 'root-unreadable', detail: '1 agent sessions directory(ies)' } }],
+    });
+  });
+
+  it('omits the diagnostics fields entirely when there are none', async () => {
+    const { json } = await run(makeProvider(), '/api/sessions');
+    // Not `[]` — absent, so an existing client sees the identical body.
+    expect('errors' in json).toBe(false);
+    expect('warnings' in json).toBe(false);
+  });
+
   it('falls back to the current time when the provider omits a timestamp', async () => {
     const provider = makeProvider({ getSessions: vi.fn(async () => ({ sessions: [] })) });
     const { json } = await run(provider, '/api/sessions');

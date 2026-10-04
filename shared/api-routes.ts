@@ -9,10 +9,30 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http';
+import type { AdapterErrorReport, AdapterWarningReport } from './types.js';
 import { sendJson, sendError, safeLimit } from './http-utils.js';
 
+/**
+ * What `/api/sessions` answers with.
+ *
+ * `errors` / `warnings` are the adapter error contract reaching a consumer, and
+ * both are OPTIONAL so an implementer that has no diagnostics to report — the
+ * split-stack `hubreceiver`, which merges already-collected state — still
+ * satisfies this without change. They are additive on the wire: every existing
+ * consumer reads `sessions` (or `data.sessions`) and ignores the rest, so adding
+ * them cannot break a client.
+ */
+export interface SessionsPayload {
+  sessions: unknown[];
+  timestamp?: number;
+  /** One per adapter that could not be read at all. */
+  errors?: AdapterErrorReport[];
+  /** One per adapter whose record set was degraded but still listed. */
+  warnings?: AdapterWarningReport[];
+}
+
 export interface ReadApiProvider {
-  getSessions(): Promise<{ sessions: unknown[]; timestamp?: number }> | { sessions: unknown[]; timestamp?: number };
+  getSessions(): Promise<SessionsPayload> | SessionsPayload;
   getTeams(): Promise<unknown[]> | unknown[];
   getTasks(): Promise<unknown[]> | unknown[];
   getProviders(): Promise<unknown[]> | unknown[];
@@ -64,8 +84,18 @@ export function createApiRouteHandler(provider: ReadApiProvider) {
     switch (url.pathname) {
       case '/api/sessions': {
         await respond(res, 'sessions', async () => {
-          const { sessions, timestamp } = await provider.getSessions();
-          return { sessions, count: sessions.length, timestamp: timestamp ?? Date.now() };
+          const { sessions, timestamp, errors, warnings } = await provider.getSessions();
+          // `count` and `timestamp` are unchanged; the diagnostics ride alongside.
+          // Emitted only when non-empty so a healthy server's body is byte-for-byte
+          // what it was before the contract existed — a client that diffs payloads
+          // does not see churn on every poll.
+          return {
+            sessions,
+            count: sessions.length,
+            timestamp: timestamp ?? Date.now(),
+            ...(errors?.length ? { errors } : {}),
+            ...(warnings?.length ? { warnings } : {}),
+          };
         });
         return true;
       }

@@ -5,6 +5,7 @@ import { promisify } from 'util';
 import { execFile } from 'child_process';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 const originalDataDir = process.env.OPENCODE_DATA_DIR;
 const execFileAsync = promisify(execFile);
@@ -58,7 +59,7 @@ describe('opencode adapter', () => {
     fs.utimesSync(sessionFile, new Date(now - 1000), new Date(now - 1000));
 
     const adapter = await loadAdapter(tmp);
-    const sessions = await adapter.getActiveSessions(60_000);
+    const sessions = await sessionsOf(adapter, 60_000);
 
     fs.rmSync(tmp, { recursive: true, force: true });
     expect(sessions).toHaveLength(1);
@@ -171,7 +172,7 @@ describe('opencode adapter', () => {
     `]);
 
     const adapter = await loadAdapter(tmp);
-    const sessions = await adapter.getActiveSessions(60_000);
+    const sessions = await sessionsOf(adapter, 60_000);
     const detail = await adapter.getSessionDetail('opencode-ses_live', '/workspace/live', 'opencode-db:ses_live');
 
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -205,16 +206,23 @@ describe('opencode adapter', () => {
     expect(detail.tokenUsage).toEqual({ input: 150, output: 25 });
   });
 
-  it('degrades to empty results when the database file is corrupt', async () => {
+  // The title used to be "degrades to empty results", and the assertion was
+  // `toEqual([])` — which is precisely the shape the typed contract removes. A
+  // plain-text `opencode.db` with no `storage/session/` beside it leaves nothing
+  // readable at all, so the provider failed; it did not degrade. Asserted through
+  // the union rather than through `sessionsOf`, which would throw here.
+  it('reports store-unreadable when the database file is corrupt', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-corrupt-'));
     fs.writeFileSync(path.join(tmp, 'opencode.db'), 'this is not a sqlite database');
 
     const adapter = await loadAdapter(tmp);
-    const sessions = await adapter.getActiveSessions(60_000);
+    const result = await adapter.getActiveSessions(60_000);
     const detail = await adapter.getSessionDetail('opencode-ses_missing', null, 'opencode-db:ses_missing');
 
     fs.rmSync(tmp, { recursive: true, force: true });
-    expect(sessions).toEqual([]);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('unreachable: expected a whole-adapter failure');
+    expect(result.error.code).toBe('store-unreadable');
     expect(detail.toolHistory).toEqual([]);
     expect(detail.messages).toEqual([]);
   });

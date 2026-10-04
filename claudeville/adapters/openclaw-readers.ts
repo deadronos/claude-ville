@@ -4,7 +4,7 @@
  * adapter class and the scan; the dependency is one-way.
  */
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
-import { decodeZstdText, queryAll, safeJsonParse } from './sqlite-utils.js';
+import { decodeZstdText, safeJsonParse } from './sqlite-utils.js';
 import type { SqliteDb } from './sqlite-utils.js';
 import { extractText } from './text-utils.js';
 import type { AdapterSessionDetail } from '../../shared/types.js';
@@ -236,15 +236,31 @@ function applyEventsToDetail(entries: any[], detail: DbDetail) {
   }
 }
 
-function readDbDetail(db: SqliteDb, sessionId: string, limit = 60): DbDetail {
-  const rows = queryAll<{ event_json: string | null; event_zstd: Buffer | null }>(
-    db,
-    'SELECT event_json, event_zstd FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?',
-    [sessionId, limit],
-  );
+/**
+ * One session's transcript detail, plus whether the events query raised.
+ *
+ * This runs inside the window row loop, which is the audit's LOAD-BEARING swallow
+ * (instance 10): `queryAll` answers `[]` for "no events" and "the query raised"
+ * alike, and making it throw would abort the enclosing loop and lose every sibling
+ * row. That containment stays. What is new is that the difference is REPORTED
+ * rather than collapsed — the try/catch moves here, to the one frame that can
+ * afford it, and the caller turns the flag into a `warning` (the listing stands,
+ * so it is never a whole-adapter failure).
+ *
+ * Behaviour on both paths is identical to the old `queryAll`: an empty detail when
+ * there are no events, and an empty detail when the read raises.
+ */
+function readDbDetail(db: SqliteDb, sessionId: string, limit = 60): { detail: DbDetail; degraded: boolean } {
+  let rows: Array<{ event_json: string | null; event_zstd: Buffer | null }>;
+  try {
+    rows = db.prepare('SELECT event_json, event_zstd FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?').all(sessionId, limit) as Array<{ event_json: string | null; event_zstd: Buffer | null }>;
+  } catch (err) {
+    debugAdapterError('openclaw', 'readDbDetail events', err, sessionId);
+    return { detail: emptyDetail(), degraded: true };
+  }
   const detail = emptyDetail();
   applyEventsToDetail(decodeEventRows(rows), detail);
-  return detail;
+  return { detail, degraded: false };
 }
 
 export { toolBlockInfo, normalizeTokenUsage, decodeEventRows, parseSession, getToolHistory, getRecentMessages, readDbDetail };

@@ -14,9 +14,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines, collectJsonl } from './jsonl-utils.js';
 import { collectScanByMtime } from './scan-utils.js';
+import { combineSources, sourceDetail } from './sources.js';
 import { summarizeToolInput } from './sanitize.js';
 import { extractText } from './text-utils.js';
 
@@ -200,16 +201,42 @@ async function getTokenUsage(filePath: string): Promise<{ input: number; output:
 
 // ─── Session scan ────────────────────────────────────────
 
-async function scanAllSessions(activeThresholdMs: number) {
-  return collectScanByMtime<{ filePath: string; mtime: number; sessionId: string }>({
+/**
+ * The scan, plus whether its ROOT could be listed.
+ *
+ * The two answers used to be the same empty array, which is why an install whose
+ * `session-state/` cannot be enumerated read exactly like an install with no
+ * copilot sessions. `collectScanByMtime` reports the root failure through
+ * `onRootUnreadable` rather than through a changed return type, so `getSessionDetail`
+ * — which scans the same directory and wants only the records — is untouched.
+ *
+ * `fileFor` is `existsSync`-free by design: copilot's layout is
+ * `session-state/{uuid}/events.jsonl`, so there is no per-child enumeration that
+ * could fail. A missing or unstattable candidate is a per-ITEM loss contained by
+ * `collectScanByMtime`'s own `stat` catch, and copilot has no cheap signal for it,
+ * so it stays un-reported (audit instance 22 rated `getTokenUsage` the same way:
+ * per-row tolerant by construction).
+ */
+async function scanAllSessions(activeThresholdMs: number): Promise<{ records: CopilotScanRecord[]; rootUnreadable: boolean }> {
+  let rootUnreadable = false;
+  const records = await collectScanByMtime<CopilotScanRecord>({
     dir: SESSION_STATE_DIR,
     scope: 'copilot',
     operation: 'scanAllSessions',
     thresholdMs: activeThresholdMs,
     fileFor: (name) => path.join(SESSION_STATE_DIR, name, 'events.jsonl'),
     build: ({ name, filePath, mtimeMs }) => ({ filePath, mtime: mtimeMs, sessionId: name }),
+    onUnreadable: (scope, err, dir) => {
+      // Copilot's `fileFor` never enumerates a child, so only the root can fail.
+      if (scope !== 'root') return;
+      rootUnreadable = true;
+      debugAdapterError('copilot', 'scanAllSessions root', err, dir);
+    },
   });
+  return { records, rootUnreadable };
 }
+
+type CopilotScanRecord = { filePath: string; mtime: number; sessionId: string };
 
 // ─── Adapter class ─────────────────────────────────────
 
@@ -222,10 +249,10 @@ export class CopilotAdapter implements AgentAdapter {
     return fs.existsSync(SESSION_STATE_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs: number) {
-    const sessions = await scanAllSessions(activeThresholdMs);
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
+    const { records, rootUnreadable } = await scanAllSessions(activeThresholdMs);
 
-    return Promise.all(sessions.map(async ({ filePath, mtime, sessionId }) => {
+    const sessions = await Promise.all(records.map(async ({ filePath, mtime, sessionId }) => {
       const detail = await parseSession(filePath);
 
       return {
@@ -244,6 +271,20 @@ export class CopilotAdapter implements AgentAdapter {
         filePath,
       };
     })).then(results => results.sort((a, b) => b.lastActivity - a.lastActivity));
+
+    // Copilot has ONE source, so the classification is the trivial case of the
+    // shared rule: a root that could not be listed is `ok: false` (there is no
+    // second half to fall back to, and an empty listing would be a lie), and a
+    // root that answered is `ok: true` even with zero sessions. `absent` is kept
+    // distinct from `rows` so an install with no `session-state/` at all does not
+    // report a failure it does not have.
+    return combineSources([
+      rootUnreadable
+        ? { kind: 'failed', code: 'root-unreadable', detail: sourceDetail('session-state directory could not be listed', COPILOT_DIR) }
+        : fs.existsSync(SESSION_STATE_DIR)
+          ? { kind: 'rows', sessions, warnings: [] }
+          : { kind: 'absent' },
+    ]);
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
@@ -257,9 +298,9 @@ export class CopilotAdapter implements AgentAdapter {
     }
 
     const cleanId = sessionId.replace('copilot-', '');
-    const sessions = await scanAllSessions(30 * 60 * 1000);
+    const { records } = await scanAllSessions(30 * 60 * 1000);
 
-    const found = sessions.find(s => s.sessionId === cleanId);
+    const found = records.find(s => s.sessionId === cleanId);
     if (found) {
       const [toolHistory, messages, tokenUsage] = await Promise.all([
         getToolHistory(found.filePath),

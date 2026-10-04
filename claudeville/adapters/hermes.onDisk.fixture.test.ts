@@ -210,6 +210,8 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import { sessionsOf } from './fixtureHelpers.js';
+
 const MINUTE = 60 * 1000;
 const originalHermesDir = process.env.HERMES_DIR;
 
@@ -606,7 +608,7 @@ describe('HermesAdapter on-disk characterization', () => {
           provider: adapter.provider,
           homeDir: adapter.homeDir,
           available: adapter.isAvailable(),
-          sessions: await adapter.getActiveSessions(5 * MINUTE),
+          sessions: await sessionsOf(adapter, 5 * MINUTE),
           watch: adapter.getWatchPaths(),
         };
       },
@@ -638,7 +640,7 @@ describe('HermesAdapter on-disk characterization', () => {
         expect(fs.existsSync(absent)).toBe(false);
         return {
           available: adapter.isAvailable(),
-          sessions: await adapter.getActiveSessions(5 * MINUTE),
+          sessions: await sessionsOf(adapter, 5 * MINUTE),
           watch: adapter.getWatchPaths(),
           detail: await adapter.getSessionDetail('hermes-anything', null, null),
         };
@@ -684,7 +686,7 @@ describe('HermesAdapter on-disk characterization', () => {
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
         expect(adapter.isAvailable()).toBe(true);
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
 
         // Exactly one row. Every decoy is absent, the directory included.
         expect(ids(rows)).toEqual(['hermes-real']);
@@ -711,7 +713,7 @@ describe('HermesAdapter on-disk characterization', () => {
         writeJson(path.join(sessions, 'session_wrongsuffix.txt'), { session_id: 'wrongsuffix' });
       },
       async (HermesAdapter, dir) => {
-        expect(await new HermesAdapter().getActiveSessions(5 * MINUTE)).toEqual([]);
+        expect(await sessionsOf(new HermesAdapter(), 5 * MINUTE)).toEqual([]);
         // The directory decoy really is a directory, so the empty listing above is
         // the `isFile()` guard and not a missing fixture.
         expect(fs.statSync(path.join(sessionsDir(dir), 'session_dirdecoy.json')).isDirectory()).toBe(true);
@@ -774,7 +776,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['hermes-alpha', 'hermes-beta']);
 
         expect(rowOf(rows, 'hermes-alpha')).toStrictEqual({
@@ -856,7 +858,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual([
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual([
           'hermes-my-session_id',
           'hermes-proj-session_inner',
         ]);
@@ -1009,7 +1011,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rows).toHaveLength(1);
 
         expect(rows[0]).toStrictEqual({
@@ -1068,7 +1070,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         for (const id of ['hermes-tok-null', 'hermes-tok-zero']) {
           const row = rowOf(rows, id);
           expect(row).toBeDefined();
@@ -1115,7 +1117,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
 
         expect(rowOf(rows, 'hermes-out-only').tokens).toStrictEqual({ input: 0, output: 20 });
         expect(rowOf(rows, 'hermes-in-only').tokens).toStrictEqual({ input: 7, output: 0 });
@@ -1180,7 +1182,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         // One row, not three: the DB answer short-circuits the file scan (:179).
-        expect(ids(await new HermesAdapter().getActiveSessions(5 * MINUTE))).toEqual(['hermes-db-only']);
+        expect(ids(await sessionsOf(new HermesAdapter(), 5 * MINUTE))).toEqual(['hermes-db-only']);
       },
     );
   });
@@ -1199,7 +1201,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        expect(ids(await new HermesAdapter().getActiveSessions(5 * MINUTE))).toEqual(['hermes-fileone']);
+        expect(ids(await sessionsOf(new HermesAdapter(), 5 * MINUTE))).toEqual(['hermes-fileone']);
       },
     );
   });
@@ -1231,7 +1233,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         // The DB answer wins (hermes.ts:179), and it is no longer empty — so the
         // legacy file is not consulted at all.
         expect(ids(rows)).toEqual(['hermes-db-missing-columns']);
@@ -1252,7 +1254,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         expect(fs.existsSync(sessionsDir(dir))).toBe(false);
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         expect(ids(rows)).toEqual(['hermes-drifted-one', 'hermes-drifted-two']);
         // And the per-session message read still reaches the `messages` table, which
         // is untouched by the sessions-table drift.
@@ -1272,7 +1274,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const row = rowOf(await new HermesAdapter().getActiveSessions(5 * MINUTE), 'hermes-no-labels');
+        const row = rowOf(await sessionsOf(new HermesAdapter(), 5 * MINUTE), 'hermes-no-labels');
         expect(row.model).toBe('m1');
         // `origin_json` would have produced a `<platform>:<chat>` label had the
         // column existed; `cwd` is the rung below it.
@@ -1304,7 +1306,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        expect(ids(await new HermesAdapter().getActiveSessions(5 * MINUTE))).toEqual([
+        expect(ids(await sessionsOf(new HermesAdapter(), 5 * MINUTE))).toEqual([
           'hermes-explicit',
           'hermes-plain',
         ]);
@@ -1326,7 +1328,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         // The newest assistant wins (`messages.find(role === 'assistant')` over
         // the newest-first rows), and that one is the `active = 0` row — which the
         // gate removed, so the runner-up answers instead.
@@ -1353,7 +1355,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), MINUTE);
         expect(ids(rows)).toEqual(['hermes-fresh-last']);
         expect(rowOf(rows, 'hermes-fresh-last').lastActivity).toBeGreaterThanOrEqual(nowSeconds() * 1000 - MINUTE);
       },
@@ -1373,7 +1375,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        expect(ids(await new HermesAdapter().getActiveSessions(MINUTE))).toEqual(['hermes-clocked']);
+        expect(ids(await sessionsOf(new HermesAdapter(), MINUTE))).toEqual(['hermes-clocked']);
       },
     );
   });
@@ -1400,9 +1402,9 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         // 6_000ms → 6 seconds. `db-fresh` at 6.1s is stale; `db-stale` older still.
-        expect(ids(await new HermesAdapter().getActiveSessions(6_000))).toEqual([]);
+        expect(ids(await sessionsOf(new HermesAdapter(), 6_000))).toEqual([]);
         // 60_000ms → 60 seconds admits the 6.1s row only.
-        expect(ids(await new HermesAdapter().getActiveSessions(60_000))).toEqual(['hermes-db-fresh']);
+        expect(ids(await sessionsOf(new HermesAdapter(), 60_000))).toEqual(['hermes-db-fresh']);
       },
     );
 
@@ -1418,10 +1420,10 @@ describe('HermesAdapter on-disk characterization', () => {
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
         // 6_000ms → 6 seconds excludes a file 6.1s old…
-        expect(ids(await adapter.getActiveSessions(6_000))).toEqual([]);
+        expect(ids(await sessionsOf(adapter, 6_000))).toEqual([]);
         // …and 60_000ms admits it. If the file path compared seconds against a
         // millisecond threshold the first case would wrongly admit it.
-        expect(ids(await adapter.getActiveSessions(60_000))).toEqual(['hermes-fresh']);
+        expect(ids(await sessionsOf(adapter, 60_000))).toEqual(['hermes-fresh']);
       },
     );
   });
@@ -1442,7 +1444,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         expect(rows.map((r: any) => r.sessionId)).toEqual(['hermes-tie-first', 'hermes-tie-second']);
       },
     );
@@ -1491,7 +1493,7 @@ describe('HermesAdapter on-disk characterization', () => {
         }
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
 
         // The future clock wins outright over the 30-second-old mtime.
         expect(rowOf(rows, 'hermes-future').lastActivity).toBeGreaterThan(mtimes.future + 5 * MINUTE);
@@ -1518,8 +1520,8 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual(['hermes-from-metadata']);
-        expect(rowOf(await adapter.getActiveSessions(5 * MINUTE), 'hermes-from-metadata').filePath).toBe(
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual(['hermes-from-metadata']);
+        expect(rowOf(await sessionsOf(adapter, 5 * MINUTE), 'hermes-from-metadata').filePath).toBe(
           path.join(sessionsDir(dir), 'session_filename.json'),
         );
       },
@@ -1551,7 +1553,7 @@ describe('HermesAdapter on-disk characterization', () => {
         }
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         const model = (id: string) => rowOf(rows, `hermes-${id}`).model;
         expect(model('both')).toBe('minimax/M2.7');
         expect(model('modelonly')).toBe('M2.7');
@@ -1576,7 +1578,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         const model = (id: string) => rowOf(rows, `hermes-${id}`).model;
         expect(model('both')).toBe('minimax/M2.7');
         expect(model('modelonly')).toBe('M2.7');
@@ -1617,7 +1619,7 @@ describe('HermesAdapter on-disk characterization', () => {
         }
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         const project = (id: string) => rowOf(rows, `hermes-${id}`).project;
         expect(project('chatname')).toBe('slack:Team');
         expect(project('chatid')).toBe('slack:C42');
@@ -1649,7 +1651,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         const project = (id: string) => rowOf(rows, `hermes-${id}`).project;
         expect(project('chatname')).toBe('slack:Team');
         expect(project('chatid')).toBe('slack:C42');
@@ -1738,7 +1740,7 @@ describe('HermesAdapter on-disk characterization', () => {
         ]);
         // The row's `lastMessage` comes from the same newest-first aggregate, so it
         // is the newest ASSISTANT — `plain user` is a `user` and is skipped.
-        const row = rowOf(await adapter.getActiveSessions(5 * MINUTE), 'hermes-map');
+        const row = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'hermes-map');
         expect(row.lastMessage).toBe('roleless');
         expect(row.lastTool).toBe('fallback_tool');
       },
@@ -1895,7 +1897,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
-        const [row] = await adapter.getActiveSessions(5 * MINUTE);
+        const [row] = await sessionsOf(adapter, 5 * MINUTE);
         // The row exposes summaries only, and no `toolHistory` / `messages` keys.
         expect(Object.keys(row).sort()).toEqual([
           'agentId', 'agentType', 'filePath', 'lastActivity', 'lastMessage',
@@ -1951,7 +1953,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(new HermesAdapter(), 5 * MINUTE);
         // Outside `LIMIT 120`, so the assistant is invisible and `messages[0]`
         // — the NEWEST user, `u129` — answers instead.
         expect(rowOf(rows, 'hermes-lim-hi').lastMessage).toBe('u129');
@@ -2019,7 +2021,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
-        const row = async (id: string) => rowOf(await adapter.getActiveSessions(5 * MINUTE), `hermes-${id}`);
+        const row = async (id: string) => rowOf(await sessionsOf(adapter, 5 * MINUTE), `hermes-${id}`);
         expect((await row('tr-hi')).lastMessage).toBe('u129');
         expect((await row('tr-lo')).lastMessage).toBe('MID_ASSISTANT');
 
@@ -2128,7 +2130,7 @@ describe('HermesAdapter on-disk characterization', () => {
 
         // The metadata-path caps: the message text is cut at 200 (readers:200) and
         // the tool detail at 80 (readers:180).
-        const capsRow = rowOf(await adapter.getActiveSessions(5 * MINUTE), 'hermes-caps');
+        const capsRow = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'hermes-caps');
         expect(capsRow.lastMessage).toBe(LONG_TEXT.substring(0, 80));
         const caps = await adapter.getSessionDetail('hermes-caps', null, null);
         expect(caps.messages).toEqual([
@@ -2206,7 +2208,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
-        const row = rowOf(await adapter.getActiveSessions(5 * MINUTE), 'hermes-long');
+        const row = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'hermes-long');
         // The row's summary is the 80-character prefix of the trimmed text.
         expect(row.lastMessage).toBe(LONG_TEXT.substring(0, 80));
         // …and the row carries no messages at all: the legacy row only reports
@@ -2328,7 +2330,7 @@ describe('HermesAdapter on-disk characterization', () => {
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
         // The ROW still reports them, so the information exists.
-        const row = rowOf(await adapter.getActiveSessions(5 * MINUTE), 'hermes-tokens-only');
+        const row = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'hermes-tokens-only');
         expect(row.tokens).toStrictEqual({ input: 111, output: 222 });
 
         // The DETAIL keeps them too, with the `sessions`-read shape: four keys, and
@@ -2366,7 +2368,7 @@ describe('HermesAdapter on-disk characterization', () => {
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
         // The listing does not depend on `messages` for its token counts either.
-        const row = rowOf(await adapter.getActiveSessions(5 * MINUTE), 'hermes-failed-msgs');
+        const row = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'hermes-failed-msgs');
         expect(row.tokens).toStrictEqual({ input: 111, output: 222 });
         // `lastMessage` comes from the failed read, so the ROW degrades…
         expect(row.lastMessage).toBeNull();
@@ -2396,7 +2398,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         const row = rowOf(rows, 'hermes-from-metadata');
         expect(row.filePath).toBe(path.join(sessionsDir(dir), 'session_filename.json'));
 
@@ -2549,7 +2551,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['hermes-bare', 'hermes-broken']);
 
         // A transcript exists, so the messages come from it even though the
@@ -2602,7 +2604,7 @@ describe('HermesAdapter on-disk characterization', () => {
         const adapter = new HermesAdapter();
         expect(adapter.isAvailable()).toBe(true);
         expect(fs.existsSync(path.join(dir, 'sessions'))).toBe(false);
-        expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
+        expect(await sessionsOf(adapter, 5 * MINUTE)).toEqual([]);
         // `getWatchPaths` gates on the same `existsSync`, so the sessions
         // directory is absent from the watch list too.
         expect(adapter.getWatchPaths()).toEqual([]);

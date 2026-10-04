@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { GeminiAdapter } from './gemini';
+import { sessionsOf } from './fixtureHelpers';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -448,12 +449,12 @@ describe('gemini adapter', () => {
 
     it('getActiveSessions returns array', async () => {
       const adapter = new GeminiAdapter();
-      expect(Array.isArray(await adapter.getActiveSessions(120000))).toBe(true);
+      expect(Array.isArray(await sessionsOf(adapter, 120000))).toBe(true);
     });
 
     it('sessions have required properties', async () => {
       const adapter = new GeminiAdapter();
-      for (const session of await adapter.getActiveSessions(120000)) {
+      for (const session of await sessionsOf(adapter, 120000)) {
         expect(session).toHaveProperty('sessionId');
         expect(session.provider).toBe('gemini');
         expect(session.sessionId).toMatch(/^gemini-/);
@@ -466,7 +467,7 @@ describe('gemini adapter', () => {
 
     it('sessions are sorted by lastActivity descending', async () => {
       const adapter = new GeminiAdapter();
-      const sessions = await adapter.getActiveSessions(120000);
+      const sessions = await sessionsOf(adapter, 120000);
       for (let i = 1; i < sessions.length; i++) {
         expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
       }

@@ -71,6 +71,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 const MINUTE = 60 * 1000;
 
@@ -402,7 +403,7 @@ describe('ClaudeAdapter fixtures', () => {
   });
 
   const list = async (thresholdMs = 10 * MINUTE) =>
-    await new ClaudeAdapter().getActiveSessions(thresholdMs);
+    await sessionsOf(new ClaudeAdapter(), thresholdMs);
 
   it('resolves home, availability and watch paths from CLAUDE_DIR', () => {
     const adapter = new ClaudeAdapter();
@@ -697,12 +698,12 @@ describe('ClaudeAdapter fixtures', () => {
       backdate(path.join(root, 'projects', '-p', 'orph-old.jsonl'), 40 * MINUTE);
 
       const adapter = new Adapter();
-      const wide = await adapter.getActiveSessions(45 * MINUTE);
+      const wide = await sessionsOf(adapter, 45 * MINUTE);
       expect(wide.map((s: any) => s.sessionId).sort()).toEqual(
         ['orph-old', 'ses-fresh', 'subagent-fresh', 'subagent-old'].sort(),
       );
 
-      const narrow = await adapter.getActiveSessions(35 * MINUTE);
+      const narrow = await sessionsOf(adapter, 35 * MINUTE);
       expect(narrow.map((s: any) => s.sessionId).sort()).toEqual(
         ['ses-fresh', 'subagent-fresh'].sort(),
       );
@@ -739,7 +740,7 @@ describe('ClaudeAdapter fixtures', () => {
         assistant([textBlock('donor decode')], 'donor-model', 1),
       ]);
 
-      const sessions = await new Adapter().getActiveSessions(10 * MINUTE);
+      const sessions = await sessionsOf(new Adapter(), 10 * MINUTE);
       expect(sessions.map((s: any) => s.sessionId)).toEqual([
         'ses-live-0', 'ses-live-1', 'ses-live-2', 'ses-live-3', 'ses-live-4', 'ses-live-5',
         'subagent-D',
@@ -934,7 +935,7 @@ describe('ClaudeAdapter fixtures', () => {
         writeJsonl(root, ['projects', `-p-${label}`, `row-${label}.jsonl`], [assistant([toolBlock('Row', input)], 'm', 1)]);
       });
 
-      const rows = await new Adapter().getActiveSessions(MINUTE);
+      const rows = await sessionsOf(new Adapter(), MINUTE);
       for (const [label, , expected] of ROW_CASES) {
         const row = rows.find((s: any) => s.sessionId === `row-${label}`);
         expect(row.lastTool).toBe('Row');
@@ -1118,7 +1119,7 @@ describe('ClaudeAdapter fixtures', () => {
       expect(await adapter.getTasks()).toEqual([]);
       // An empty history.jsonl is not an error either: `readLines` short-circuits
       // on `stat.size === 0`.
-      expect(await adapter.getActiveSessions(MINUTE)).toEqual([]);
+      expect(await sessionsOf(adapter, MINUTE)).toEqual([]);
     });
   });
 
@@ -1146,7 +1147,7 @@ describe('ClaudeAdapter fixtures', () => {
       const decoy = mkdir(root, ['projects', '-p', 'ses-parent', 'subagents', 'agent-dirdecoy.jsonl']);
 
       // Nothing else exists in this tree, so the listing is an exact set.
-      const rows = await new Adapter().getActiveSessions(10 * MINUTE);
+      const rows = await sessionsOf(new Adapter(), 10 * MINUTE);
       expect(rows.map((r: any) => r.sessionId)).toEqual(['subagent-real']);
       // …and the decoy really is a directory, so the exact set above is the
       // `isFile()` guard rather than a missing fixture.
@@ -1165,7 +1166,7 @@ describe('ClaudeAdapter fixtures', () => {
       ]);
       const decoy = mkdir(root, ['projects', '-p', 'orph-dirdecoy.jsonl']);
 
-      const rows = await new Adapter().getActiveSessions(10 * MINUTE);
+      const rows = await sessionsOf(new Adapter(), 10 * MINUTE);
       expect(rows.map((r: any) => r.sessionId)).toEqual(['orph-real']);
       expect(fs.statSync(decoy).isDirectory()).toBe(true);
     });

@@ -22,9 +22,11 @@ import os from 'os';
 import crypto from 'crypto';
 import type { Dirent } from 'fs';
 
-import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { parseSession, getToolHistory, getRecentMessages, getTokenUsage } from './gemini-readers.js';
 import { collectScanByMtime } from './scan-utils.js';
+import { combineSources, degradedWarnings, sourceDetail } from './sources.js';
+import { debugAdapterError } from './jsonl-utils.js';
 
 const GEMINI_DIR = path.join(os.homedir(), '.gemini');
 const TMP_DIR = path.join(GEMINI_DIR, 'tmp');
@@ -142,8 +144,20 @@ type ScanResult = { filePath: string; mtime: number; fileName: string; projectHa
  * now read with `withFileTypes` and gated on `isFile()`, like `hermes` and
  * `opencode` always were.
  */
-async function scanActiveSessions(activeThresholdMs: number) {
-  return collectScanByMtime<ScanResult>({
+/**
+ * The scan, plus the two failures the shared helper used to collapse into `[]`.
+ *
+ * Gemini has one source — `~/.gemini/tmp` — so the classification is the trivial
+ * case of the shared rule: an unreadable `tmp/` is `ok: false`, and an unreadable
+ * one project's `chats/` is a `warning`, because every other project was listed
+ * and is still here. `collectScanByMtime`'s `onUnreadable` scope is what tells
+ * the two apart; both reached `debugAdapterError` only, which is a no-op unless
+ * `DEBUG` is set.
+ */
+async function scanActiveSessions(activeThresholdMs: number): Promise<{ records: ScanResult[]; rootUnreadable: boolean; childrenUnreadable: number }> {
+  let rootUnreadable = false;
+  let childrenUnreadable = 0;
+  const records = await collectScanByMtime<ScanResult>({
     dir: TMP_DIR,
     scope: 'gemini-adapter',
     operation: 'scanActiveSessions',
@@ -163,7 +177,13 @@ async function scanActiveSessions(activeThresholdMs: number) {
       fileName: path.basename(filePath),
       projectHash: name,
     }),
+    onUnreadable: (scope, err, dir) => {
+      debugAdapterError('gemini', `scanActiveSessions ${scope}`, err, dir);
+      if (scope === 'root') rootUnreadable = true;
+      else childrenUnreadable += 1;
+    },
   });
+  return { records, rootUnreadable, childrenUnreadable };
 }
 
 // ─── Adapter class ────────────────────────────────────
@@ -177,9 +197,9 @@ export class GeminiAdapter implements AgentAdapter {
     return fs.existsSync(GEMINI_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs: number) {
-    const sessionFiles = await scanActiveSessions(activeThresholdMs);
-    const sessions = await Promise.all(sessionFiles.map(async ({ filePath, mtime, fileName, projectHash }) => {
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
+    const { records, rootUnreadable, childrenUnreadable } = await scanActiveSessions(activeThresholdMs);
+    const sessions = await Promise.all(records.map(async ({ filePath, mtime, fileName, projectHash }) => {
       const detail = await parseSession(filePath);
       const sessionId = fileName.replace('session-', '').replace('.json', '');
       const project = resolveProjectPath(projectHash);
@@ -201,7 +221,17 @@ export class GeminiAdapter implements AgentAdapter {
       };
     }));
 
-    return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+    return combineSources([
+      rootUnreadable
+        ? { kind: 'failed', code: 'root-unreadable', detail: sourceDetail('tmp directory could not be listed', GEMINI_DIR) }
+        : fs.existsSync(TMP_DIR)
+          ? {
+            kind: 'rows',
+            sessions: sessions.sort((a, b) => b.lastActivity - a.lastActivity),
+            warnings: degradedWarnings(childrenUnreadable, 'root-unreadable', 'project directory(ies)'),
+          }
+          : { kind: 'absent' },
+    ]);
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
@@ -215,9 +245,9 @@ export class GeminiAdapter implements AgentAdapter {
     }
 
     const cleanId = sessionId.replace('gemini-', '');
-    const sessionFiles = await scanActiveSessions(30 * 60 * 1000);
+    const { records } = await scanActiveSessions(30 * 60 * 1000);
 
-    for (const { filePath, fileName } of sessionFiles) {
+    for (const { filePath, fileName } of records) {
       const fileId = fileName.replace('session-', '').replace('.json', '');
       if (fileId === cleanId) {
         const [toolHistory, messages, tokenUsage] = await Promise.all([

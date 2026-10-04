@@ -12,9 +12,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, collectJsonl, foldJsonl } from './jsonl-utils.js';
 import { collectScanByMtime } from './scan-utils.js';
+import { combineSources, degradedWarnings, sourceDetail } from './sources.js';
 import { summarizeToolInput } from './sanitize.js';
 import { extractText } from './text-utils.js';
 import type { Dirent } from './scan-utils.js';
@@ -247,8 +248,22 @@ export function resolveProjectPath(detail: { project: string | null }, projectDi
 
 interface ScanResult { filePath: string; mtime: number; fileName: string; projectDir: string }
 
-async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResult[]> {
-  return collectScanByMtime<ScanResult>({
+/**
+ * The scan, plus the two failures the shared helper used to collapse into `[]`.
+ *
+ * Pi has exactly one source — `~/.pi/agent/sessions` — so the classification is
+ * the trivial case of the shared rule: a root that could not be listed is
+ * `ok: false`, and one project directory that could not be enumerated is a
+ * `warning`, because its siblings were listed and are still here.
+ *
+ * The two are told apart by `collectScanByMtime`'s `onUnreadable` scope, which is
+ * why neither is silent any more. Both used to reach `debugAdapterError` only,
+ * which is a no-op unless `DEBUG` is set.
+ */
+async function scanAllSessionFiles(activeThresholdMs: number): Promise<{ records: ScanResult[]; rootUnreadable: boolean; childrenUnreadable: number }> {
+  let rootUnreadable = false;
+  let childrenUnreadable = 0;
+  const records = await collectScanByMtime<ScanResult>({
     dir: SESSIONS_DIR,
     scope: 'pi',
     operation: 'scanAllSessionFiles',
@@ -270,7 +285,13 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResul
       fileName: path.basename(filePath),
       projectDir: name,
     }),
+    onUnreadable: (scope, err, dir) => {
+      debugAdapterError('pi', `scanAllSessionFiles ${scope}`, err, dir);
+      if (scope === 'root') rootUnreadable = true;
+      else childrenUnreadable += 1;
+    },
   });
+  return { records, rootUnreadable, childrenUnreadable };
 }
 
 // ─── Adapter class ─────────────────────────────────────
@@ -284,9 +305,9 @@ export class PiAdapter implements AgentAdapter {
     return fs.existsSync(SESSIONS_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs: number) {
-    const sessionFiles = await scanAllSessionFiles(activeThresholdMs);
-    const sessions = await Promise.all(sessionFiles.map(async ({ filePath, mtime, fileName, projectDir }) => {
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
+    const { records, rootUnreadable, childrenUnreadable } = await scanAllSessionFiles(activeThresholdMs);
+    const sessions = await Promise.all(records.map(async ({ filePath, mtime, fileName, projectDir }) => {
       const detail = await parseSession(filePath);
       const project = resolveProjectPath(detail, projectDir);
 
@@ -308,7 +329,17 @@ export class PiAdapter implements AgentAdapter {
       };
     }));
 
-    return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+    return combineSources([
+      rootUnreadable
+        ? { kind: 'failed', code: 'root-unreadable', detail: sourceDetail('sessions directory could not be listed', PI_DIR) }
+        : fs.existsSync(SESSIONS_DIR)
+          ? {
+            kind: 'rows',
+            sessions: sessions.sort((a, b) => b.lastActivity - a.lastActivity),
+            warnings: degradedWarnings(childrenUnreadable, 'root-unreadable', 'project directory(ies)'),
+          }
+          : { kind: 'absent' },
+    ]);
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
@@ -321,10 +352,10 @@ export class PiAdapter implements AgentAdapter {
       return { toolHistory, messages, tokenUsage, sessionId };
     }
 
-    const sessionFiles = await scanAllSessionFiles(30 * 60 * 1000);
+    const { records } = await scanAllSessionFiles(30 * 60 * 1000);
     const parsed = parseSessionId(sessionId);
 
-    for (const { filePath, fileName, projectDir } of sessionFiles) {
+    for (const { filePath, fileName, projectDir } of records) {
       const fileId = fileName.replace('.jsonl', '');
       if (
         fileId === parsed.fileId

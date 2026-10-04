@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PiAdapter, parseSession, resolveProjectPath } from './pi';
+import { sessionsOf } from './fixtureHelpers';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -384,12 +385,12 @@ describe('pi adapter', () => {
 
     it('getActiveSessions returns array', async () => {
       const adapter = new PiAdapter();
-      expect(Array.isArray(await adapter.getActiveSessions(120000))).toBe(true);
+      expect(Array.isArray(await sessionsOf(adapter, 120000))).toBe(true);
     });
 
     it('sessions have required properties when available', async () => {
       const adapter = new PiAdapter();
-      const sessions = await adapter.getActiveSessions(120000);
+      const sessions = await sessionsOf(adapter, 120000);
       // Only check if sessions exist
       if (sessions.length > 0) {
         for (const session of sessions) {
@@ -405,7 +406,7 @@ describe('pi adapter', () => {
 
     it('sessions are sorted by lastActivity descending when available', async () => {
       const adapter = new PiAdapter();
-      const sessions = await adapter.getActiveSessions(120000);
+      const sessions = await sessionsOf(adapter, 120000);
       if (sessions.length > 1) {
         for (let i = 1; i < sessions.length; i++) {
           expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
