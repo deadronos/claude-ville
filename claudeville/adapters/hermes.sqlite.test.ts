@@ -5,6 +5,8 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { sessionsOf } from './fixtureHelpers.js';
+
 let tmpDir = '';
 let HermesAdapter: any;
 const originalHermesDir = process.env.HERMES_DIR;
@@ -85,7 +87,7 @@ describe('HermesAdapter SQLite sessions', () => {
 
   it('reads sessions from Hermes state.db', async () => {
     const adapter = new HermesAdapter();
-    const sessions = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+    const sessions = await sessionsOf(adapter, Number.MAX_SAFE_INTEGER);
 
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({
