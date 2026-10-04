@@ -46,7 +46,7 @@ type SessionFile = { filePath: string; sessionId: string; mtime: number };
 // hermes was the only adapter on the union, and the note that said so named the
 // hoist as the next step for the second adapter. `sourceDetail` is bound here
 // because hermes reports against `HERMES_DIR` and every adapter binds its own.
-import { combineDetailSources, combineSources, degradedWarnings, detailOk, sourceDetail as baseDetail, type DetailSource, type SourceListing } from './sources.js';
+import { combineDetailSources, combineSources, degradedWarnings, detailOk, sourceDetail as baseDetail, type AnsweredDetailSource, type DetailSource, type FailedDetailSource, type SourceListing } from './sources.js';
 
 const sourceDetail = (what: string) => baseDetail(what, HERMES_DIR);
 
@@ -490,8 +490,12 @@ export class HermesAdapter implements AgentAdapter {
     // A failed store is only fatal if nothing else can answer for this session, so
     // it is carried as a source rather than returned — the legacy files below may
     // still hold it, and then it is a `warning` on a detail that stands.
-    const dbSource = db.kind === 'failed' ? [db] : [];
-    const legacy: DetailSource[] = [];
+    const dbSource: FailedDetailSource[] = db.kind === 'failed' ? [db] : [];
+    // At most one answering source: the transcript, or else the session metadata
+    // file, never both. `combineDetailSources` takes the store's failure as the
+    // fallback and this as the `primary`, so which half outranks the other is a
+    // named argument rather than the order the two were appended in.
+    let legacy: AnsweredDetailSource | null = null;
 
     if (dbDetail && (dbDetail.toolHistory.length || dbDetail.messages.length)) {
       return detailOk(dbDetail, dbWarnings);
@@ -500,7 +504,7 @@ export class HermesAdapter implements AgentAdapter {
     const transcript = transcriptPath(cleanId);
     if (fs.existsSync(transcript)) {
       const detail = await parseTranscript(transcript);
-      legacy.push({ kind: 'detail', detail: { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId }, warnings: [] });
+      legacy = { kind: 'detail', detail: { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId }, warnings: [] };
     } else {
       // Fall back to the session metadata JSON file which has a messages array
       const sessionFile = path.join(SESSIONS_DIR, `session_${cleanId}.json`);
@@ -508,13 +512,13 @@ export class HermesAdapter implements AgentAdapter {
         const metadata = await readJson(sessionFile);
         if (metadata?.messages) {
           const detail = parseSessionMessages(metadata);
-          legacy.push({ kind: 'detail', detail: { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId }, warnings: [] });
+          legacy = { kind: 'detail', detail: { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId }, warnings: [] };
         }
       }
     }
 
-    if (legacy.length > 0) {
-      return combineDetailSources([...dbSource, ...legacy]);
+    if (legacy) {
+      return combineDetailSources({ primary: legacy, fallbacks: dbSource });
     }
 
     // Nothing rendered. If the `sessions` table DID answer for this id, report its
@@ -527,7 +531,7 @@ export class HermesAdapter implements AgentAdapter {
     // No source has anything for this id, so `ok: true` with the empty detail. Only
     // a store that FAILED answers `ok: false`, and only when nothing readable was
     // left to say whether this session has messages.
-    return combineDetailSources(dbSource);
+    return combineDetailSources({ primary: { kind: 'absent' }, fallbacks: dbSource });
   }
 
   getWatchPaths(): WatchPath[] {
