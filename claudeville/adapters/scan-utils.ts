@@ -25,7 +25,22 @@ import path from 'path';
 
 import { debugAdapterError } from './jsonl-utils.js';
 
-type Dirent = { name: string; isDirectory(): boolean };
+/**
+ * A directory entry as the adapters' readdir-with-`withFileTypes` walks see it.
+ *
+ * The single declaration for the whole adapter layer. It is the WIDER of the two
+ * shapes that were in circulation: six adapters carried
+ * `{ name, isDirectory, isFile }` while this module carried only
+ * `{ name, isDirectory }`. Widening is the safe direction -- the narrow shape is
+ * a subset, so every caller that only calls `isDirectory()` still type-checks --
+ * whereas narrowing this back would break the `isFile()` filters in `hermes` and
+ * `opencode`. Do not narrow it.
+ *
+ * Structurally a subset of Node's own `fs.Dirent`, which is what the readdir
+ * overloads actually return; `gemini` reads that one directly and needs no
+ * import.
+ */
+export type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 export type ScanCandidate = { name: string; filePath: string; mtimeMs: number };
 

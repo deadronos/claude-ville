@@ -11,6 +11,7 @@ import { debugAdapterError } from './jsonl-utils.js';
 import type { DbMessage } from './opencode-readers.js';
 import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession } from './opencode-readers.js';
 import { queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import type { Dirent } from './scan-utils.js';
 
 const OPENCODE_DIR = process.env.OPENCODE_DATA_DIR || path.join(os.homedir(), '.local', 'share', 'opencode');
 const STORAGE_DIR = path.join(OPENCODE_DIR, 'storage');
@@ -18,7 +19,6 @@ const SESSION_DIR = path.join(STORAGE_DIR, 'session');
 const MESSAGE_DIR = path.join(STORAGE_DIR, 'message');
 const DB_FILE = path.join(OPENCODE_DIR, 'opencode.db');
 
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 type SessionFile = { filePath: string; sessionId: string; projectKey: string; mtime: number };
 type DbSession = {
   id: string;

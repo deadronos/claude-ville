@@ -11,6 +11,7 @@ import os from 'os';
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import { parseSession, hasRealActivity, getToolHistory, getRecentMessages, getTokenUsage } from './vscode-readers.js';
+import type { Dirent } from './scan-utils.js';
 
 const VSCODE_USER_DIR = process.env.VSCODE_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User');
@@ -28,7 +29,6 @@ const STORAGE_ROOTS = [
   { channel: 'offset', workspaceStorageDir: path.join(VSCODE_OFFSET_DIR, 'workspaceStorage') },
 ].filter(root => root.workspaceStorageDir);
 
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 const DEFAULT_MIN_ACTIVE_WINDOW_MS = 30 * 60 * 1000;
 const MIN_ACTIVE_WINDOW_MS = Math.max(

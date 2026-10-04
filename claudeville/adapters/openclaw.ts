@@ -26,13 +26,11 @@ import { debugAdapterError } from './jsonl-utils.js';
 import { hasTable, queryAll, withReadonlySqlite } from './sqlite-utils.js';
 import { toolBlockInfo, normalizeTokenUsage, decodeEventRows, parseSession, getToolHistory, getRecentMessages, readDbDetail } from './openclaw-readers.js';
 import { extractText } from './text-utils.js';
+import type { Dirent } from './scan-utils.js';
 
 const OPENCLAW_DIR = path.join(os.homedir(), '.openclaw');
 const AGENTS_DIR = path.join(OPENCLAW_DIR, 'agents');
 const AGENT_DB_FILENAME = 'openclaw-agent.sqlite';
-
-// Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Utility ─────────────────────────────────────────────
 

@@ -8,9 +8,7 @@ import path from 'path';
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 import { CLAUDE_DIR, resolveProjectDisplayPath, getSessionFileActivity, getSessionDetail, getSubAgentDetail, getToolHistory, getRecentMessages, getTokenUsage, resolveSessionFilePath } from './claude-readers.js';
-
-// Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
+import type { Dirent } from './scan-utils.js';
 
 const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const TEAMS_DIR = path.join(CLAUDE_DIR, 'teams');
