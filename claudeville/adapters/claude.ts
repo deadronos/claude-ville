@@ -5,11 +5,11 @@
 import fs from 'fs';
 import path from 'path';
 
-import type { AdapterSessionsResult, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
+import type { AdapterDetailResult, AdapterSessionsResult, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 import { CLAUDE_DIR, resolveProjectDisplayPath, getSessionFileActivity, getSessionDetail, getSubAgentDetail, getToolHistory, getRecentMessages, getTokenUsage, resolveSessionFilePath } from './claude-readers.js';
 import type { Dirent } from './scan-utils.js';
-import { combineSources, degradedWarnings, sourceDetail, type SourceListing } from './sources.js';
+import { combineSources, degradedWarnings, detailFailed, detailOk, emptyDetail, sourceDetail, type SourceListing } from './sources.js';
 
 const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const TEAMS_DIR = path.join(CLAUDE_DIR, 'teams');
@@ -30,6 +30,24 @@ type ClaudeProjectScan = {
 };
 
 // ─── Adapter class ──────────────────────────────────────
+
+/**
+ * Whether a directory EXISTS and cannot be LISTED, as distinct from not existing
+ * at all. `resolveSessionFilePath` answers `null` for a `projects/<encoded>` that
+ * exists but cannot be read, because `existsSync` on a path inside it fails — so
+ * this is the probe that recovers the distinction. Absence is not a failure: a
+ * project directory that was never created is how most unknown sessions look, and
+ * the `existsSync` guard is what keeps this from reporting all of them.
+ */
+function isUnreadableDir(dir: string): boolean {
+  if (!fs.existsSync(dir)) return false;
+  try {
+    fs.readdirSync(dir);
+    return false;
+  } catch {
+    return true;
+  }
+}
 
 export class ClaudeAdapter implements AgentAdapter {
   get name() { return 'Claude Code'; }
@@ -310,20 +328,31 @@ export class ClaudeAdapter implements AgentAdapter {
     return { sessions: projectResults.flat().filter(Boolean), projectsUnreadable: false, dirsUnreadable, filesUnstattable };
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
     const sessionFilePath = filePath || await resolveSessionFilePath(sessionId, project);
-    if (!sessionFilePath) return { toolHistory: [], messages: [] };
+    if (!sessionFilePath) {
+      // No file, and no project to look under it with. If the caller's project
+      // DIRECTORY exists and cannot be listed, that is why: `existsSync` on a path
+      // inside an unreadable directory answers false, so the resolver returns null
+      // and this used to read as "this session has no stored detail". Same code and
+      // same message the listing uses for the same root.
+      const unreadable = project && isUnreadableDir(path.join(CLAUDE_DIR, 'projects', project.replace(/\//g, '-')));
+      if (unreadable) {
+        return detailFailed('root-unreadable', sourceDetail('projects directory could not be listed', CLAUDE_DIR));
+      }
+      return detailOk(emptyDetail());
+    }
     const [toolHistory, messages, tokenUsage] = await Promise.all([
       getToolHistory(sessionFilePath),
       getRecentMessages(sessionFilePath),
       getTokenUsage(sessionFilePath),
     ]);
-    return {
+    return detailOk({
       toolHistory,
       messages,
       tokenUsage,
       sessionId,
-    };
+    });
   }
 
   getWatchPaths(): WatchPath[] {

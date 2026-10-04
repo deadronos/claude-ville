@@ -118,7 +118,7 @@ import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WatchPath } from '../../shared/types.js';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 const MINUTE = 60 * 1000;
 const originalHome = process.env.HOME;
@@ -441,7 +441,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         expect(rows[0].lastActivity).toBeGreaterThan(rows[1].lastActivity);
 
         // …and the filePath the row reports is the one that resolves.
-        const detail = await adapter.getSessionDetail(first.sessionId, first.project, first.filePath);
+        const detail = await detailOf(adapter, first.sessionId, first.project, first.filePath);
         expect(detail.sessionId).toBe('openclaw:agent-alpha:session-1');
         expect(detail.messages).toEqual([{ role: 'assistant', text: 'Working on it', ts: tsOf(2) }]);
       },
@@ -519,7 +519,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         });
 
         // …and feeding the database path back resolves the same session.
-        const detail = await adapter.getSessionDetail(a.sessionId, a.project, a.filePath);
+        const detail = await detailOf(adapter, a.sessionId, a.project, a.filePath);
         expect(detail).toEqual({
           toolHistory: [{ tool: 'exec', detail: '{"command":"npm test"}', ts: tsOf(1) }],
           messages: [{ role: 'assistant', text: 'db text', ts: tsOf(1) }],
@@ -810,10 +810,10 @@ describe('OpenClawAdapter on-disk characterization', () => {
         const adapter = new OpenClawAdapter();
         const dbPath = agentPath(home, 'agent-tok', 'agent', 'openclaw-agent.sqlite');
         for (const [sessionId, , expected] of cases) {
-          const detail = await adapter.getSessionDetail(`openclaw:agent-tok:${sessionId}`, null, dbPath);
+          const detail = await detailOf(adapter, `openclaw:agent-tok:${sessionId}`, null, dbPath);
           expect([sessionId, detail.tokenUsage]).toEqual([sessionId, expected]);
         }
-        const nan = await adapter.getSessionDetail('openclaw:agent-tok:tok-nan', null, dbPath);
+        const nan = await detailOf(adapter, 'openclaw:agent-tok:tok-nan', null, dbPath);
         expect(nan.tokenUsage!.output).toBe(3);
         expect(Number.isNaN(nan.tokenUsage!.input)).toBe(true);
       },
@@ -839,7 +839,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         const adapter = new OpenClawAdapter();
         const row = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'openclaw:agent-tok2:u1')!;
         expect(row.lastMessage).toBe('newest');
-        const detail = await adapter.getSessionDetail(row.sessionId, row.project, row.filePath);
+        const detail = await detailOf(adapter, row.sessionId, row.project, row.filePath);
         expect(detail.tokenUsage).toEqual({ input: 2, output: 2, totalInput: 2, totalOutput: 2 });
         expect(detail.messages.map((m: any) => m.text)).toEqual(['oldest', 'middle', 'newest']);
       },
@@ -880,7 +880,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         const dbPath = agentPath(home, 'agent-role', 'agent', 'openclaw-agent.sqlite');
-        const detail = await adapter.getSessionDetail('openclaw:agent-role:r1', null, dbPath);
+        const detail = await detailOf(adapter, 'openclaw:agent-role:r1', null, dbPath);
         expect(detail.toolHistory).toEqual([]);
         expect(detail.messages).toEqual([]);
         expect(detail.tokenUsage).toEqual({ input: 33, output: 44, totalInput: 33, totalOutput: 44 });
@@ -889,7 +889,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         // but getRecentMessages skips those same two records, and it accepts the
         // plain STRING content of the third.
         const legacyFile = agentPath(home, 'agent-role', 'sessions', 'r1.jsonl');
-        const legacy = await adapter.getSessionDetail('openclaw:agent-role:r1', null, legacyFile);
+        const legacy = await detailOf(adapter, 'openclaw:agent-role:r1', null, legacyFile);
         expect(legacy.toolHistory).toEqual([
           { tool: 'ToolRoleTool', detail: '{"a":1}', ts: tsOf(1) },
           { tool: 'ToolResultTool', detail: '{"b":2}', ts: tsOf(2) },
@@ -947,7 +947,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         const dbPath = agentPath(home, 'agent-dec', 'agent', 'openclaw-agent.sqlite');
-        const detail = await adapter.getSessionDetail('openclaw:agent-dec:d1', null, dbPath);
+        const detail = await detailOf(adapter, 'openclaw:agent-dec:d1', null, dbPath);
         expect(detail.messages.map((m: any) => m.text)).toEqual([
           'plain survivor',
           'after null literal',
@@ -1002,7 +1002,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         expect(row.lastTool).toBe('tool-inside-row-window');
         expect(row.lastToolInput).toBe('{"b":2}');
 
-        const detail = await adapter.getSessionDetail(row.sessionId, row.project, row.filePath);
+        const detail = await detailOf(adapter, row.sessionId, row.project, row.filePath);
         expect(detail.toolHistory).toEqual([
           { tool: 'tool-outside-row-window', detail: '{"a":1}', ts: tsOf(100) },
           { tool: 'tool-inside-row-window', detail: '{"b":2}', ts: tsOf(160) },
@@ -1040,7 +1040,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
         const rows = await sessionsOf(adapter, 5 * MINUTE);
-        const detail = await adapter.getSessionDetail('openclaw:agent-slice:s1', null, rows[0].filePath);
+        const detail = await detailOf(adapter, 'openclaw:agent-slice:s1', null, rows[0].filePath);
         expect(detail.toolHistory).toHaveLength(15);
         expect(detail.toolHistory.map((t: any) => t.tool)).toEqual([
           ...Array.from({ length: 14 }, (_, i) => `tool_${String(i + 6).padStart(2, '0')}`),
@@ -1103,7 +1103,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
           expect(row.lastMessage).toHaveLength(80);
         }
 
-        const stringDetail = await adapter.getSessionDetail(
+        const stringDetail = await detailOf(adapter, 
           'openclaw:agent-caps:caps-string',
           null,
           path.join(dir, 'caps-string.jsonl'),
@@ -1113,7 +1113,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         expect(stringDetail.messages[0].text).toBe(LONG_TEXT.substring(0, 200));
         expect(stringDetail.messages[0].text).toHaveLength(200);
 
-        const noInputDetail = await adapter.getSessionDetail(
+        const noInputDetail = await detailOf(adapter, 
           'openclaw:agent-caps:caps-noinput',
           null,
           path.join(dir, 'caps-noinput.jsonl'),
@@ -1168,7 +1168,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         const file = agentPath(home, 'agent-shapes', 'sessions', 'shapes.jsonl');
-        const detail = await adapter.getSessionDetail('openclaw:agent-shapes:shapes', null, file);
+        const detail = await detailOf(adapter, 'openclaw:agent-shapes:shapes', null, file);
         expect(detail.toolHistory).toEqual([
           // `type: 'tool_use'` with no name → the literal 'tool_use'.
           { tool: 'tool_use', detail: '{"from":"input"}', ts: tsOf(1) },
@@ -1216,7 +1216,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
           lastTool: 'newer_tool',
           lastToolInput: '{"b":2}',
         });
-        const detail = await adapter.getSessionDetail(row.sessionId, row.project, row.filePath);
+        const detail = await detailOf(adapter, row.sessionId, row.project, row.filePath);
         expect(detail.toolHistory).toEqual([
           { tool: 'older_tool', detail: '{"a":1}', ts: tsOf(1) },
           { tool: 'newer_tool', detail: '{"b":2}', ts: tsOf(2) },
@@ -1366,10 +1366,10 @@ describe('OpenClawAdapter on-disk characterization', () => {
         const adapter = new OpenClawAdapter();
         const dir = agentPath(home, 'agent-win', 'sessions');
 
-        const tools = await adapter.getSessionDetail('openclaw:agent-win:win-tools', null, path.join(dir, 'win-tools.jsonl'));
+        const tools = await detailOf(adapter, 'openclaw:agent-win:win-tools', null, path.join(dir, 'win-tools.jsonl'));
         expect(tools.toolHistory).toEqual([{ tool: 'tool-at-3', detail: '{"a":1}', ts: tsOf(1) }]);
 
-        const msgs = await adapter.getSessionDetail('openclaw:agent-win:win-msgs', null, path.join(dir, 'win-msgs.jsonl'));
+        const msgs = await detailOf(adapter, 'openclaw:agent-win:win-msgs', null, path.join(dir, 'win-msgs.jsonl'));
         expect(msgs.messages).toEqual([{ role: 'assistant', text: 'msg-at-1', ts: tsOf(1) }]);
 
         const rows = await sessionsOf(adapter, 5 * MINUTE);
@@ -1378,7 +1378,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         expect(rowOf(rows, 'openclaw:agent-win:win80out')!.lastTool).toBeNull();
         // …and the detail's 100-line reader reaches the record the row could not.
         expect(
-          (await adapter.getSessionDetail('openclaw:agent-win:win80out', null, path.join(dir, 'win80out.jsonl'))).toolHistory,
+          (await detailOf(adapter, 'openclaw:agent-win:win80out', null, path.join(dir, 'win80out.jsonl'))).toolHistory,
         ).toEqual([{ tool: 'tool-outside-80', detail: '{"a":1}', ts: tsOf(1) }]);
       },
     );
@@ -1401,7 +1401,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         const file = agentPath(home, 'agent-ls', 'sessions', 'slice.jsonl');
-        const detail = await adapter.getSessionDetail('openclaw:agent-ls:slice', null, file);
+        const detail = await detailOf(adapter, 'openclaw:agent-ls:slice', null, file);
         expect(detail.toolHistory.map((t: any) => t.tool)).toEqual(
           Array.from({ length: 15 }, (_, i) => `t${String(i + 5).padStart(2, '0')}`),
         );
@@ -1440,7 +1440,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
 
         // Both ids round-trip back to their `session_id`, so the detail resolves.
         for (const row of rows) {
-          const detail = await adapter.getSessionDetail(row.sessionId, row.project, row.filePath);
+          const detail = await detailOf(adapter, row.sessionId, row.project, row.filePath);
           expect(detail.messages).toHaveLength(1);
         }
       },
@@ -1475,7 +1475,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         expect(mangled).toBeDefined();
         expect(mangled.lastMessage).toBe('listed but unreadable');
         // …but the id it reports resolves to nothing.
-        expect(await adapter.getSessionDetail(mangled.sessionId, mangled.project, mangled.filePath)).toEqual({
+        expect(await detailOf(adapter, mangled.sessionId, mangled.project, mangled.filePath)).toEqual({
           toolHistory: [],
           messages: [],
           tokenUsage: null,
@@ -1485,7 +1485,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         // The legacy twin strips one `.jsonl` and the lookup re-appends it.
         const legacy = rowOf(rows, 'openclaw:agent-legacy:a.jsonl')!;
         expect(legacy.sessionId).toBe('openclaw:agent-legacy:a.jsonl');
-        expect((await adapter.getSessionDetail(legacy.sessionId, null)).messages).toEqual([
+        expect((await detailOf(adapter, legacy.sessionId, null)).messages).toEqual([
           { role: 'assistant', text: 'double jsonl', ts: tsOf(2) },
         ]);
       },
@@ -1514,20 +1514,20 @@ describe('OpenClawAdapter on-disk characterization', () => {
         // The row's own id is encoded, so it resolves.
         const row = rows[0];
         expect(row.sessionId).toBe('openclaw:agent-x:sess%3Acolon');
-        expect((await adapter.getSessionDetail(row.sessionId, null, dbPath)).messages).toHaveLength(1);
+        expect((await detailOf(adapter, row.sessionId, null, dbPath)).messages).toHaveLength(1);
 
         // The same id with the colon left raw: `split(':', 3)` drops `:colon`,
         // so the query runs for a `fileId` of 'sess' and finds nothing.
-        expect((await adapter.getSessionDetail('openclaw:agent-x:sess:colon', null, dbPath)).messages).toEqual([]);
+        expect((await detailOf(adapter, 'openclaw:agent-x:sess:colon', null, dbPath)).messages).toEqual([]);
 
         // No `openclaw:` prefix → `agentId: null`, `fileId` used verbatim (no
         // decode), and the FIRST database in readdir order answers. The returned
         // `sessionId` is the caller's argument echoed back.
-        const bare = await adapter.getSessionDetail('sess:colon', null);
+        const bare = await detailOf(adapter, 'sess:colon', null);
         expect(bare.sessionId).toBe('sess:colon');
         expect(bare.messages).toEqual([{ role: 'assistant', text: 'colon session', ts: tsOf(1) }]);
         // An `openclaw-` prefix on a non-`openclaw:` id is stripped, tolerantly.
-        expect((await adapter.getSessionDetail('openclaw-sess:colon', null)).sessionId).toBe('openclaw-sess:colon');
+        expect((await detailOf(adapter, 'openclaw-sess:colon', null)).sessionId).toBe('openclaw-sess:colon');
       },
     );
   });
@@ -1567,14 +1567,14 @@ describe('OpenClawAdapter on-disk characterization', () => {
         const jsonlFile = agentPath(home, 'agent-disp', 'sessions', 'shared.jsonl');
 
         // A `.jsonl` filePath never touches the database.
-        expect(await adapter.getSessionDetail('openclaw:agent-disp:shared', null, jsonlFile)).toEqual({
+        expect(await detailOf(adapter, 'openclaw:agent-disp:shared', null, jsonlFile)).toEqual({
           toolHistory: [],
           messages: [{ role: 'assistant', text: 'JSONL TEXT', ts: tsOf(2) }],
           sessionId: 'openclaw:agent-disp:shared',
         });
         // No filePath: the database answers, and its tool block is the one that
         // the same session's `.jsonl` did not have.
-        expect(await adapter.getSessionDetail('openclaw:agent-disp:shared', null)).toEqual({
+        expect(await detailOf(adapter, 'openclaw:agent-disp:shared', null)).toEqual({
           toolHistory: [{ tool: 'DBTOOL', detail: '{"c":3}', ts: tsOf(1) }],
           messages: [{ role: 'assistant', text: 'DB TEXT', ts: tsOf(1) }],
           tokenUsage: null,
@@ -1583,7 +1583,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         // A filePath that is neither suffix still PROBES THE DATABASE (openclaw.ts:270),
         // so the same `shared` id resolves from the database even though the
         // passed path does not exist.
-        expect((await adapter.getSessionDetail('openclaw:agent-disp:shared', null, '/tmp/not-a-session.txt')).messages).toEqual([
+        expect((await detailOf(adapter, 'openclaw:agent-disp:shared', null, '/tmp/not-a-session.txt')).messages).toEqual([
           { role: 'assistant', text: 'DB TEXT', ts: tsOf(1) },
         ]);
         // A filePath that is neither suffix and names a session the database does
@@ -1592,23 +1592,23 @@ describe('OpenClawAdapter on-disk characterization', () => {
         // (openclaw.ts:279-280). The file is not on disk, so the answer is the
         // empty detail — `only-file` is a real session, and it is unreachable
         // this way.
-        expect(await adapter.getSessionDetail('openclaw:agent-disp:only-file', null, '/tmp/not-a-session.txt')).toEqual({
+        expect(await detailOf(adapter, 'openclaw:agent-disp:only-file', null, '/tmp/not-a-session.txt')).toEqual({
           toolHistory: [],
           messages: [],
         });
         // The same id with NO filePath does resolve, through the legacy scan.
-        expect((await adapter.getSessionDetail('openclaw:agent-disp:only-file', null)).messages).toEqual([
+        expect((await detailOf(adapter, 'openclaw:agent-disp:only-file', null)).messages).toEqual([
           { role: 'assistant', text: 'FILE ONLY', ts: tsOf(3) },
         ]);
         // …and the id-only database probe is scoped by the id's OWN agent, so
         // `shared2` — which lives in the OTHER agent's database — is not found.
         // A `databases[0]` or an inverted `find` would answer with its text.
-        expect(await adapter.getSessionDetail('openclaw:agent-disp:shared2', null)).toEqual({
+        expect(await detailOf(adapter, 'openclaw:agent-disp:shared2', null)).toEqual({
           toolHistory: [],
           messages: [],
         });
         // A `.sqlite` filePath short-circuits — no legacy scan is attempted.
-        expect((await adapter.getSessionDetail('openclaw:agent-disp:shared', null, dbPath)).messages).toEqual([
+        expect((await detailOf(adapter, 'openclaw:agent-disp:shared', null, dbPath)).messages).toEqual([
           { role: 'assistant', text: 'DB TEXT', ts: tsOf(1) },
         ]);
       },
@@ -1636,21 +1636,21 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        expect((await adapter.getSessionDetail('openclaw:agent-x:same-file', null)).messages).toEqual([
+        expect((await detailOf(adapter, 'openclaw:agent-x:same-file', null)).messages).toEqual([
           { role: 'assistant', text: 'text for agent-x', ts: tsOf(1) },
         ]);
-        expect((await adapter.getSessionDetail('openclaw:agent-y:same-file', null)).messages).toEqual([
+        expect((await detailOf(adapter, 'openclaw:agent-y:same-file', null)).messages).toEqual([
           { role: 'assistant', text: 'text for agent-y', ts: tsOf(1) },
         ]);
         // An id naming an agent with no sessions directory at all: the empty
         // detail, with NO `sessionId` key (openclaw.ts:299).
-        expect(await adapter.getSessionDetail('openclaw:agent-zzz:same-file', null)).toEqual({
+        expect(await detailOf(adapter, 'openclaw:agent-zzz:same-file', null)).toEqual({
           toolHistory: [],
           messages: [],
         });
         // An unprefixed id has no agent to scope by, so the scan searches every
         // agent directory and the FIRST `unprefixed.jsonl` it finds answers.
-        const unprefixed = await adapter.getSessionDetail('unprefixed', null);
+        const unprefixed = await detailOf(adapter, 'unprefixed', null);
         expect(unprefixed.sessionId).toBe('unprefixed');
         expect(unprefixed.messages).toEqual([
           { role: 'assistant', text: 'text for an unprefixed id', ts: tsOf(2) },
@@ -1681,20 +1681,26 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         // The inherited case: an unknown id under an agent that has no sessions.
-        await expect(adapter.getSessionDetail('openclaw:agent-missing:missing', 'openclaw:agent-missing')).resolves.toEqual({
+        await expect(detailOf(adapter, 'openclaw:agent-missing:missing', 'openclaw:agent-missing')).resolves.toEqual({
           toolHistory: [],
           messages: [],
         });
         // A real `session_windows` row whose database has no transcript table:
         // no rows in the listing, and an empty detail without `sessionId`.
         expect(await sessionsOf(adapter, Number.MAX_SAFE_INTEGER)).toEqual([]);
+        // A `session_windows` row whose database has no `transcript_events`: the
+        // caller named the database, so there is nothing to fall back to, and the
+        // store opened but its shape is not one we understand. That is
+        // `schema-incompatible`, NOT the empty detail — which used to be the same
+        // answer as the unknown id above, and is the collapse this contract removes.
+        // Driven directly, not through `detailOf`: the error branch is under test.
         expect(
           await adapter.getSessionDetail(
             'openclaw:agent-notbl:s1',
             null,
             agentPath(home, 'agent-notbl', 'agent', 'openclaw-agent.sqlite'),
           ),
-        ).toEqual({ toolHistory: [], messages: [] });
+        ).toMatchObject({ ok: false, error: { code: 'schema-incompatible' } });
       },
     );
   });
@@ -1796,7 +1802,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         ]);
         // The id-only path probes the database, gets nothing, and falls through
         // to the legacy scan, so the session IS readable by id.
-        expect((await adapter.getSessionDetail('openclaw:agent-broken:s1', null)).messages).toEqual([
+        expect((await detailOf(adapter, 'openclaw:agent-broken:s1', null)).messages).toEqual([
           { role: 'assistant', text: 'listed now', ts: tsOf(1) },
         ]);
       },
@@ -2229,7 +2235,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
           lastMessage: 'survivor',
         });
         const dir = agentPath(home, 'agent-bad', 'sessions');
-        expect((await adapter.getSessionDetail('openclaw:agent-bad:partial', null, path.join(dir, 'partial.jsonl'))).messages).toEqual([
+        expect((await detailOf(adapter, 'openclaw:agent-bad:partial', null, path.join(dir, 'partial.jsonl'))).messages).toEqual([
           { role: 'assistant', text: 'survivor', ts: tsOf(1) },
         ]);
       },
@@ -2259,13 +2265,13 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         const dbPath = agentPath(home, 'agent-guard', 'agent', 'openclaw-agent.sqlite');
-        const detail = await adapter.getSessionDetail('openclaw:agent-guard:g1', null, dbPath);
+        const detail = await detailOf(adapter, 'openclaw:agent-guard:g1', null, dbPath);
         expect(detail.messages.map((m: any) => m.text)).toEqual(['block text']);
         expect(detail.tokenUsage).toEqual({ input: 21, output: 12, totalInput: 21, totalOutput: 12 });
 
         // The legacy reader has no `Array.isArray` guard, so the same string
         // content becomes a message there.
-        const legacy = await adapter.getSessionDetail(
+        const legacy = await detailOf(adapter, 
           'openclaw:agent-guard:g1',
           null,
           agentPath(home, 'agent-guard', 'sessions', 'g1.jsonl'),

@@ -19,7 +19,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let workspaceAlpha = '';
@@ -293,7 +293,7 @@ describe('PiAdapter fixtures', () => {
   it('sums numeric usage only, and truncates tool details at 80 chars', async () => {
     const adapter = new PiAdapter();
 
-    const detail = await adapter.getSessionDetail(sessionIdOf(PROJ_ALPHA, `${ALPHA_ID}.jsonl`), workspaceAlpha, alphaFile);
+    const detail = await detailOf(adapter, sessionIdOf(PROJ_ALPHA, `${ALPHA_ID}.jsonl`), workspaceAlpha, alphaFile);
 
     // pi.ts:197-206 — 100 + 300 in, 20 + 80 out. The string-valued and
     // cache-only entries contribute nothing.
@@ -326,7 +326,7 @@ describe('PiAdapter fixtures', () => {
     const adapter = new PiAdapter();
     const sessionId = sessionIdOf(PROJ_ALPHA, `${ALPHA_ID}.jsonl`);
 
-    const viaId = await adapter.getSessionDetail(sessionId, workspaceAlpha);
+    const viaId = await detailOf(adapter, sessionId, workspaceAlpha);
     expect(viaId.sessionId).toBe(sessionId);
     expect(viaId.tokenUsage).toEqual({ input: 400, output: 100 });
     expect(viaId.toolHistory).toHaveLength(2);
@@ -334,7 +334,7 @@ describe('PiAdapter fixtures', () => {
 
     // A wrong id in an EXISTING project dir must not match on fileId alone.
     // pi.ts:328-331 requires both the file id and the project dir to line up.
-    await expect(adapter.getSessionDetail(sessionIdOf(PROJ_BETA, `${ALPHA_ID}.jsonl`), workspaceBeta)).resolves.toMatchObject({
+    await expect(detailOf(adapter, sessionIdOf(PROJ_BETA, `${ALPHA_ID}.jsonl`), workspaceBeta)).resolves.toMatchObject({
       toolHistory: [],
       messages: [],
     });
@@ -344,7 +344,7 @@ describe('PiAdapter fixtures', () => {
     const adapter = new PiAdapter();
     const sessionId = sessionIdOf(PROJ_BETA, `${BETA_ID}.jsonl`);
 
-    const viaPath = await adapter.getSessionDetail(sessionId, workspaceBeta, betaFile);
+    const viaPath = await detailOf(adapter, sessionId, workspaceBeta, betaFile);
     expect(viaPath.tokenUsage).toBeNull();
     expect(viaPath.messages).toEqual([
       { role: 'assistant', text: 'no usage here', ts: new Date(at(1)).getTime() },
@@ -352,7 +352,7 @@ describe('PiAdapter fixtures', () => {
 
     // BETA is 10 hours old, so getSessionDetail's own 30-minute scan
     // (pi.ts:323) cannot find it and the id-only lookup misses.
-    await expect(adapter.getSessionDetail(sessionId, workspaceBeta)).resolves.toMatchObject({
+    await expect(detailOf(adapter, sessionId, workspaceBeta)).resolves.toMatchObject({
       toolHistory: [],
       messages: [],
     });
@@ -396,7 +396,7 @@ describe('PiAdapter fixtures', () => {
       filePath: deltaFile,
     });
 
-    const viaId = await adapter.getSessionDetail(sessionId, workspaceDelta);
+    const viaId = await detailOf(adapter, sessionId, workspaceDelta);
     expect(viaId.sessionId).toBe(sessionId);
     expect(viaId.messages).toEqual([
       { role: 'assistant', text: 'delta output', ts: new Date(at(2)).getTime() },
@@ -482,7 +482,7 @@ describe('PiAdapter fixtures', () => {
       expect(session.lastMessage).toBe('z'.repeat(80));
       expect(session.model).toBe('claude-sonnet-4');
 
-      const detail = await adapter.getSessionDetail(session.sessionId, session.project, gammaFile);
+      const detail = await detailOf(adapter, session.sessionId, session.project, gammaFile);
 
       // maxItems: the LAST 15 of 20 tools, oldest dropped, original order kept.
       expect(detail.toolHistory).toHaveLength(15);
@@ -618,7 +618,7 @@ describe('PiAdapter fixtures', () => {
       // no gate — so a null lastTool above means the reverse walk stopped early,
       // not that this fixture failed to write the tool. Short `arguments`, so
       // neither 60-char nor 80-char truncation applies and the string is exact.
-      const detail = await adapter.getSessionDetail(session.sessionId, session.project, epsilonFile);
+      const detail = await detailOf(adapter, session.sessionId, session.project, epsilonFile);
       expect(detail.toolHistory).toEqual([
         { tool: 'bash', detail: '{"command":"ls"}', ts: new Date(at(0)).getTime() },
       ]);
@@ -636,7 +636,7 @@ describe('PiAdapter fixtures', () => {
   // block a shared detail builder from returning all four fields.
   it('returns empty detail for unknown session ids', async () => {
     const adapter = new PiAdapter();
-    await expect(adapter.getSessionDetail('pi:no-such-project:no-such-session', workspaceAlpha)).resolves.toMatchObject({
+    await expect(detailOf(adapter, 'pi:no-such-project:no-such-session', workspaceAlpha)).resolves.toMatchObject({
       toolHistory: [],
       messages: [],
     });

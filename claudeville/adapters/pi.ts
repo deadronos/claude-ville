@@ -12,10 +12,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterDetailResult, AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, collectJsonl, foldJsonl } from './jsonl-utils.js';
 import { collectScanByMtime } from './scan-utils.js';
-import { combineSources, degradedWarnings, sourceDetail } from './sources.js';
+import { combineSources, degradedWarnings, detailFailed, detailOk, emptyDetail, sourceDetail } from './sources.js';
 import { summarizeToolInput } from './sanitize.js';
 import { extractText } from './text-utils.js';
 import type { Dirent } from './scan-utils.js';
@@ -342,18 +342,26 @@ export class PiAdapter implements AgentAdapter {
     ]);
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
     if (filePath) {
       const [toolHistory, messages, tokenUsage] = await Promise.all([
         getToolHistory(filePath),
         getRecentMessages(filePath),
         getTokenUsage(filePath),
       ]);
-      return { toolHistory, messages, tokenUsage, sessionId };
+      return detailOk({ toolHistory, messages, tokenUsage, sessionId });
     }
 
-    const { records } = await scanAllSessionFiles(30 * 60 * 1000);
+    const { records, rootUnreadable, childrenUnreadable } = await scanAllSessionFiles(30 * 60 * 1000);
     const parsed = parseSessionId(sessionId);
+
+    if (rootUnreadable) {
+      return detailFailed('root-unreadable', sourceDetail('sessions directory could not be listed', PI_DIR));
+    }
+    // `pi`'s `fileFor` enumerates the project directory, so a project directory
+    // the scan could not list leaves the search incomplete. Its siblings were
+    // searched, so this is a warning rather than a failure.
+    const incomplete = degradedWarnings(childrenUnreadable, 'root-unreadable', 'project directory(ies)');
 
     for (const { filePath, fileName, projectDir } of records) {
       const fileId = fileName.replace('.jsonl', '');
@@ -366,11 +374,11 @@ export class PiAdapter implements AgentAdapter {
           getRecentMessages(filePath),
           getTokenUsage(filePath),
         ]);
-        return { toolHistory, messages, tokenUsage, sessionId };
+        return detailOk({ toolHistory, messages, tokenUsage, sessionId }, incomplete);
       }
     }
 
-    return { toolHistory: [], messages: [] };
+    return detailOk(emptyDetail(), incomplete);
   }
 
   getWatchPaths(): WatchPath[] {

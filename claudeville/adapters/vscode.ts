@@ -8,11 +8,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterDetailResult, AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import { parseSession, hasRealActivity, getToolHistory, getRecentMessages, getTokenUsage } from './vscode-readers.js';
 import type { Dirent } from './scan-utils.js';
-import { combineSources, degradedWarnings, sourceDetail, type SourceListing } from './sources.js';
+import { combineSources, degradedWarnings, detailFailed, detailOk, emptyDetail, sourceDetail, type SourceListing } from './sources.js';
 
 const VSCODE_USER_DIR = process.env.VSCODE_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User');
@@ -392,34 +392,50 @@ export class VSCodeAdapter implements AgentAdapter {
     return combineSources(sources);
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
     if (filePath) {
       const [toolHistory, messages, tokenUsage] = await Promise.all([
         getToolHistory(filePath),
         getRecentMessages(filePath),
         getTokenUsage(filePath),
       ]);
-      return { toolHistory, messages, tokenUsage, sessionId };
+      return detailOk({ toolHistory, messages, tokenUsage, sessionId });
     }
 
     const parsed = parseSessionId(sessionId);
-    if (!parsed) return { toolHistory: [], messages: [] };
+    if (!parsed) return detailOk(emptyDetail());
 
-    const { records } = await scanAllSessions(30 * 60 * 1000);
-    const found = records.find(s => (
+    const { records, roots, dirsUnreadable } = await scanAllSessions(30 * 60 * 1000);
+
+    // The listing's rule, unchanged: a root with no `workspaceStorage` was never
+    // installed and is not a source; a root that EXISTS and cannot be listed
+    // failed. One locked channel must not blank the other three, so it is only
+    // `ok: false` when EVERY present root failed — otherwise the search that did
+    // run is reported, with the locked channels as warnings.
+    const present = roots.filter((root) => fs.existsSync(root.workspaceStorageDir));
+    const failedRoots = present.filter((root) => root.unreadable);
+    if (present.length > 0 && failedRoots.length === present.length) {
+      return detailFailed('root-unreadable', sourceDetail(`workspaceStorage could not be listed (${failedRoots[0].channel})`, failedRoots[0].workspaceStorageDir));
+    }
+    const warnings = [
+      ...failedRoots.map((root) => ({ code: 'root-unreadable' as const, detail: `workspaceStorage could not be listed (${root.channel})` })),
+      ...degradedWarnings(dirsUnreadable, 'root-unreadable', 'chat director(y/ies)'),
+    ];
+
+    const found = records.find((s) => (
       s.channel === parsed.channel
       && s.workspaceId === parsed.workspaceId
       && s.rawSessionId === parsed.debugLogId
     ));
 
-    if (!found) return { toolHistory: [], messages: [] };
+    if (!found) return detailOk(emptyDetail(), warnings);
 
-    return {
+    return detailOk({
       toolHistory: await getToolHistory(found.filePath),
       messages: await getRecentMessages(found.filePath),
       tokenUsage: found.tokens ?? null,
       sessionId,
-    };
+    }, warnings);
   }
 
   getWatchPaths(): WatchPath[] {

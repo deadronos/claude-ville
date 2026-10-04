@@ -6,7 +6,7 @@
  * imports this module. It lives here rather than in `shared/` because it is a
  * test convenience with no production consumer.
  */
-import type { AgentAdapter, AgentSessionSummary } from '../../shared/types.js';
+import type { AdapterSessionDetail, AgentAdapter, AgentSessionSummary } from '../../shared/types.js';
 
 /**
  * `getActiveSessions` answers a union, and a fixture that is pinning an adapter's
@@ -28,4 +28,34 @@ export async function sessionsOf(adapter: AgentAdapter, activeThresholdMs: numbe
     throw new Error(`expected ok, got ${result.error.code}: ${result.error.message}`);
   }
   return result.sessions;
+}
+
+/**
+ * `getSessionDetail` answers a union for the same reason, and the same rule
+ * applies: a fixture pinning a reader's SUCCESS behaviour wants the detail, and
+ * asserts rather than coerces. `result.detail ?? { toolHistory: [], messages: [] }`
+ * would make a fixture that accidentally drove a FAILING reader compare against
+ * the empty detail and pass for the wrong reason — the precise confusion this
+ * contract exists to remove, re-introduced in the test suite.
+ *
+ * The legitimate "this session has nothing stored" answer is `ok: true` with
+ * `{ toolHistory: [], messages: [] }`, so it comes through here unchanged; only
+ * `ok: false` throws. Fixtures exercising a failing reader call
+ * `getSessionDetail` directly and narrow on `ok`.
+ */
+export async function detailOf(
+  adapter: AgentAdapter,
+  sessionId: string,
+  project: string | null = null,
+  filePath?: string | null,
+): Promise<AdapterSessionDetail> {
+  // The optional argument is forwarded ONLY when one was given: passing an explicit
+  // `undefined` changes the call's arity, which a mock assertion can see.
+  const result = filePath === undefined
+    ? await adapter.getSessionDetail(sessionId, project)
+    : await adapter.getSessionDetail(sessionId, project, filePath);
+  if (!result.ok) {
+    throw new Error(`expected ok, got ${result.error.code}: ${result.error.message}`);
+  }
+  return result.detail;
 }

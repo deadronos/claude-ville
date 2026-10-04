@@ -328,8 +328,11 @@ in it (`isAvailable()` kept answering `true` throughout). `scanAgentSessionFiles
 has the same collapse one level down, for a single agent's `sessions/`, and is
 reported the same way; its per-FILE `stat` catch stays on `debugAdapterError`,
 because one unstattable file is noise rather than a collapsed listing. The third
-`AGENTS_DIR` readdir, in `getSessionDetail`'s id-only scan, still has no `try` of
-its own and therefore throws rather than collapsing — recorded below, not fixed.
+`AGENTS_DIR` readdir, in `getSessionDetail`'s id-only scan, has no `try` of its own,
+but it no longer needs one: the detail path probes with `readAgentDirs` FIRST and
+answers `root-unreadable` when that comes back null, which is the same code the
+listing reports for the same root. The bare `readdirSync` behind it is therefore only
+reached once the root has been listed.
 
 **`queryAll`'s swallow stays.** It answers `[]` for both "no rows" and "the query
 failed", which is wrong as a *signal* and load-bearing as *containment*: three call
@@ -513,50 +516,140 @@ information.
 `degraded` flag instead, for the reason `hermes`'s does: it runs inside the window
 row loop, so a throw there would abort the loop and lose every sibling row.
 
-### The known limitation: `getSessionDetail` still swallows
+### The detail path, and the third outcome
 
-**`getSessionDetail` has the same problem and is deliberately OUT OF SCOPE for this
-contract.** It answers `AdapterSessionDetail` unconditionally: `index.ts:71-81`
-turns a throw into `{ toolHistory: [], messages: [] }`, which is the same
-"indistinguishable from nothing" collapse, and the adapters do the same inside
-themselves — `hermes`' `readDbSessionDetail` answers `null` for a database that
-could not be read, and `openclaw`'s per-session events query degrades to an empty
-detail.
+**`getSessionDetail` answers `AdapterDetailResult` now — the same union as the
+listing, with `AdapterSessionDetail` in place of the session list.** It has THREE
+outcomes, and the third is the one that made this more than a copy of the listing's
+rule:
 
-It needs its own union and its own PR rather than half-doing it here. Until then,
-two audited hermes instances stay invisible: the session whose message query
-FAILED and the session with no messages both arrive as the same empty message
-list, and the `tokenUsage` the `sessions` table answered with is indistinguishable
-from a session that has none. Note the boundary this leaves: `getActiveSessions`
-reports instance 4 (a message read that costs one listing row its detail), while
-instances 5 and 6 live on the `getSessionDetail` path and are therefore still
-silent.
+| outcome | answer |
+|---|---|
+| the session genuinely has no stored detail, or the lookup is unsupported | `ok: true` with an EMPTY detail |
+| the reader ran and produced a detail | `ok: true` with it |
+| the reader FAILED | `ok: false` with one of the four codes |
 
-**This is unchanged by converting all nine adapters, and the reason is worth
-being explicit about.** The contract covers the LISTING, and the audit's instances
-5 and 6 are on the DETAIL path: `getSessionDetail` still answers
-`{ toolHistory: [], messages: [] }` both when a session genuinely has no messages
-and when the reader failed, and it does so in `index.ts`'s catch as well as inside
-the adapters. Widening `getActiveSessions` to a union says nothing about that, and
-half-doing `getSessionDetail` in the same pass would have meant shipping a
-half-contract: two shapes named `ok` and one that still lies. The listing is now
-reportable end to end; the detail path is a separate, still-open piece of work, and
-this section is the record that it was chosen rather than forgotten.
+Collapsing those three is what the un-typed shape did, and it is why
+`shared/types.ts` had to document "unknown sessions must resolve to a detail with
+empty `toolHistory` and `messages` arrays, never `null`/`undefined`" — a guarantee
+that is correct on the success branch and is also the defect. The empty detail is
+still what a caller legitimately gets when there is nothing stored. What it is no
+longer is what a caller gets when the store would not open. **A session that has
+never been selected is not a failure**, so the `absent` case stays on the success
+branch in `combineDetailSources`: every source absent answers `ok: true`.
 
-Three related mechanisms were also deliberately left alone, because each would
-have changed what an adapter returns rather than what it reports:
+The per-adapter line, for the DETAIL path rather than the listing:
 
-- **`jsonl-utils.readLines` answering `[]` on any read error** (audit instance 20)
-  is what makes a single file's detail silently empty. It is shared by eight
-  adapters and every one of them relies on it not throwing. Making it report would
-  mean threading a result shape through `collectJsonl`, `foldJsonl` and every
-  caller — a change to the shared JSONL pipeline, not to the error contract.
-- **`hermes`'s per-file `stat` failure** in `discoverSessionFiles` stays a
-  `warning` but has no test: `readdir`'s `isFile()` is an `lstat`, so a candidate
-  is a regular file that existed moments ago, and `stat` needs execute — not read —
-  permission on the directory it is already listed through. Only a race removes it
-  in between, so a test would have to be a race. The branch stays because a dropped
-  file is exactly the kind of loss the audit flagged, and it costs one subtraction.
+| adapter | `ok: false` | `warning` | never a failure |
+|---|---|---|---|
+| `claude` | `projects/<encoded>` exists and cannot be listed | — | a project directory that was never created |
+| `codex` | `sessions/` unlistable | one `YYYY/`, `MM/` or `DD/` directory; one rollout file that will not stat | a rollout absent from the 30-minute window |
+| `copilot` | `session-state/` unlistable | — | a session directory with no `events.jsonl` yet |
+| `gemini` | `tmp/` unlistable | one project's `chats/` | a session file outside the window |
+| `pi` | `sessions/` unlistable | one project directory | a project directory whose `*.jsonl` is a directory (#144) |
+| `vscode` | every PRESENT `workspaceStorage` root unlistable | one locked channel beside an answered one; one chat directory | a root with no `workspaceStorage` at all |
+| `openclaw` | `agents/` unlistable; or a caller-named `.sqlite` that will not open / has no `transcript_events` | — | an id-only lookup whose agent database failed but whose legacy scan answered |
+| `opencode` | a caller-named `opencode-db:` whose store will not open, has no `message` table, or whose read raises | one `message.data` / `part.data` column that will not parse | a session whose resolved message file is absent |
+| `hermes` | `state.db` will not open, is not a database, or has no `messages` table | one session's message query; one session row query | a `state.db` with no `sessions` table |
+
+The two lines that differ from the listing table are the caller-named ones. When the
+caller passes `opencode-db:<id>` or a `.sqlite` `filePath` it has named the store, so
+there is nothing to fall back to and a store that cannot answer is `ok: false` rather
+than an empty detail. The id-only path is the cascade, and there a failed store is a
+`warning` whenever a legacy file behind it answered.
+
+Each adapter classifies with the vocabulary it already established for
+`getActiveSessions`, and the JSONL family's rule is about the SEARCH rather than the
+read. A root the scan could not list is `root-unreadable`; a CHILD it could not
+enumerate leaves the search incomplete without making it worthless, so it is a
+`warning` and whatever the search found stands. `vscode` keeps its own rule verbatim
+— one locked channel must not blank the other three, so the lookup is `ok: false`
+only when EVERY present root failed. `claude` needs a probe instead of a scan:
+`resolveSessionFilePath` answers `null` for a `projects/<encoded>` that exists but
+cannot be read, because `existsSync` on a path inside it fails, so
+`isUnreadableDir` recovers the distinction — and guards on `existsSync` first, since
+a project directory that was never created is how most unknown sessions look.
+
+The SQLite family reads through `openReadonlySqlite` + `hasTableOrNull` + an
+explicit close, because `withReadonlySqlite`'s `null` cannot tell "would not open"
+from "the callback threw". `hermes`' and `openclaw`'s dispatch is a CASCADE, so the
+cascade stays explicit in the control flow and `combineDetailSources` is asked only
+the question it is good at: whether a failed store with a legacy file behind it is a
+`warning` on a detail that stands, or an `ok: false` when nothing readable was left.
+
+**Instances 5 and 6 are no longer invisible.** `readDbSessionDetail` now calls
+`readSessionMessages`, the classified reader the listing already used, so a message
+query that FAILED is a `schema-incompatible` warning and the `tokenUsage` the
+separate `sessions` table answered with survives. The session whose store holds NO
+messages produces the same empty arrays and earns no warning — that difference is the
+contract, and it is pinned by a test that builds both stores side by side.
+
+**One containment decision is load-bearing here too.** `queryAll`'s swallow stays
+everywhere it was: in `hermes`' `readDbSessionDetail` it runs once per session and
+inside no loop, and in `openclaw`'s it is what confines a failure to one session.
+`opencode`'s bounded re-resolve retry stays for the same class of reason — a throw
+there would be a behaviour change rather than a report. What changed is that the
+difference is REPORTED, not that the swallow was removed.
+
+### N detail failures per poll, and which channel they take
+
+**`collectFromAdapters` reads the detail once per session, so a provider whose
+detail reader is broken answers N failures for one poll. They are `warnings`, never
+`errors`, and they are COUNTED.** This is the existing aggregation extended, not a
+second one, and it is the decision most worth stating because the obvious
+alternative is wrong twice over:
+
+- `errors` means the provider could not be read AT ALL. It plainly was:
+  `getActiveSessions` returned, the rows are in the payload, and every sibling
+  session read fine. Promoting one session's failure to a provider-level error is
+  the `ok: false`-over-one-bad-record regression this whole contract exists to
+  prevent, and #156 and #157 are what that regression costs.
+- `AdapterError` carries one `message` and no count, and an operator's first question
+  is "one session or all of them?". A counted warning answers it: N arrives as
+  `"3 session detail(s) failed: store would not open"`.
+
+They are grouped by code, so a store unreadable for some sessions and schema-drifted
+for others says both, and in first-seen order, so the payload is stable across a
+poll. `errors` and `warnings` therefore stay one-per-provider whatever N is. Where a
+single session is asked for — `getSessionDetailByProvider`, and so
+`/api/session-detail` — there is no N, and the code rides on the response.
+
+**The wire is extended, not reshaped.** `/api/session-detail` answers
+`SessionDetailPayload`: `toolHistory`, `messages` and the rest stay at the TOP LEVEL
+with `error` and `warnings` beside them. `sessionDetailApi.ts` reads
+`data.toolHistory` and `data.messages` straight off the body, so wrapping the detail
+in `{ ok, detail }` — the honest-looking choice — would have rendered every session
+empty in every client. `error` is present only when the reader FAILED, never for a
+session that genuinely has nothing stored, which is what makes the two 200s this
+contract separates distinguishable. The `hubreceiver` serves another process's merged
+state and cannot have failed a read, so its type is declared and its behaviour is
+unchanged; the collector narrows `ok: false` to the `null` its persisted snapshot has
+always meant and logs the reason, because a snapshot is not a live pull and giving it
+a diagnostics channel is a separate decision.
+
+### Still uncovered
+
+Four audited mechanisms remain outside the contract, each for a stated reason rather
+than by omission:
+
+- **`jsonl-utils.readLines` answering `[]` on any read error** (audit instance 20) is
+  what still makes a single JSONL file's detail silently empty — a permission-denied
+  `session.jsonl` reached by `filePath` answers the empty detail rather than a
+  failure. It is shared by eight adapters and every one relies on it not throwing.
+  Making it report means threading a result shape through `collectJsonl`, `foldJsonl`
+  and every caller: a change to the shared JSONL pipeline, not to the error contract.
+- **`collectScanByMtime`'s per-file `stat` failure is unreachable by construction.**
+  The helper catches it, logs it and calls `onUnreadable('child', …)` for the sibling
+  case, but a candidate that survives `readdir`'s `isFile()` is a regular file that
+  existed moments ago, and `stat` needs execute — not read — permission on a directory
+  it is already listed through. Only a race removes it in between, so a test would
+  have to be a race. It is counted by `codex`'s and `vscode`'s listings and feeds
+  their warnings; on the detail path it rides in `incomplete` rather than being
+  separately reportable.
+- **`opencode`'s `readJson` answering `null` for a message file it could not read.**
+  The `filePath` branch has no way to tell "this file is not JSON" from "this file is
+  unreadable", so it falls through to the session-file search and, if that finds
+  nothing, answers the empty detail. Same family as the `readLines` entry above.
 - **`isSqliteFile`'s bare `catch`** (audit instance 16) is still silent, because
   `isSqliteFile` has no scope to log under and its callers classify around it:
   `hermes` and `opencode` now ask the open directly with `openReadonlySqlite`, and
@@ -691,21 +784,31 @@ Every production file passes today. The largest, in code-only lines:
 | File | code-only |
 | --- | --- |
 | `agentSpriteRender.ts` | 356 |
-| `vscode.ts` | 345 |
-| `claude.ts` | 335 |
-| `codex.ts` | 318 |
-| `opencode.ts` | 301 |
-| `hermes.ts` | 297 |
+| `vscode.ts` | 354 |
+| `claude.ts` | 350 |
+| `opencode.ts` | 343 |
+| `hermes.ts` | 323 |
+| `codex.ts` | 323 |
+| `pi.ts` | 289 |
+| `copilot.ts` | 233 |
+
+The detail contract moved these without splitting anything: `opencode.ts` grew the
+most, +42 code-only lines, for the classified `readDbMessages` and its `dbMessagesSql`
+/ `buildDbMessages` split out of `getDbMessages`. That is the entry point owning the
+SQL, which is the same reasoning the `readAgentDirs` split above turned on — the
+question "which store, and which query, do I read?" belongs with the reader that asks
+it, and `opencode-readers.ts` has 27 code-only lines of headroom before this is worth
+reopening.
 
 Measured result across the six split adapters (total / code-only):
 
 | Adapter | Before | `<name>.ts` | `<name>-readers.ts` | `<name>-scan.ts` | Readers own |
 | --- | --- | --- | --- | --- | --- |
-| `vscode` | 748 / 569 | 444 / 345 | 381 / 258 | — | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
+| `vscode` | 748 / 569 | 444 / 354 | 381 / 258 | — | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
 | `openclaw` | 619 / 486 | 257 / 175 | 266 / 200 | 375 / 223 | legacy-JSONL and SQLite-transcript readers, `toolBlockInfo`, `normalizeTokenUsage` |
-| `claude` | 626 / 486 | 437 / 335 | 269 / 188 | — | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
-| `hermes` | 517 / 420 | 496 / 297 | 274 / 224 | — | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
-| `opencode` | 470 / 417 | 430 / 301 | 213 / 186 | — | part/tool/message shaping, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
+| `claude` | 626 / 486 | 437 / 350 | 269 / 188 | — | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
+| `hermes` | 517 / 420 | 496 / 323 | 274 / 224 | — | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
+| `opencode` | 470 / 417 | 430 / 343 | 213 / 186 | — | part/tool/message shaping, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
 | `gemini` | 473 / 324 | 282 / 195 | 234 / 152 | — | `readJsonFile`, `loadSessionMessages`, `parseSession`, tool/message readers, `getTokenUsage`, `TokenFold` |
 
 `openclaw` was the only `<name>.ts` that grew back over the criterion after its

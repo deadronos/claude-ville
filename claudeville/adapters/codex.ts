@@ -12,10 +12,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterDetailResult, AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines, collectJsonl, foldJsonl } from './jsonl-utils.js';
 import { extractText } from './text-utils.js';
-import { combineSources, degradedWarnings, sourceDetail } from './sources.js';
+import { combineSources, degradedWarnings, detailFailed, detailOk, emptyDetail, sourceDetail } from './sources.js';
 import type { Dirent } from './scan-utils.js';
 
 const CODEX_DIR = path.join(os.homedir(), '.codex');
@@ -394,19 +394,31 @@ export class CodexAdapter implements AgentAdapter {
     ]);
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
     if (filePath) {
       const [toolHistory, messages, tokenUsage] = await Promise.all([
         getToolHistory(filePath),
         getRecentMessages(filePath),
         getTokenUsage(filePath),
       ]);
-      return { toolHistory, messages, tokenUsage, sessionId };
+      return detailOk({ toolHistory, messages, tokenUsage, sessionId });
     }
 
     // Find file from sessionId
     const cleanId = sessionId.replace('codex-', '');
-    const { records } = await scanRecentRollouts(30 * 60 * 1000); // Expand to 30 min range
+    const { records, rootUnreadable, levelsUnreadable, filesUnstattable } = await scanRecentRollouts(30 * 60 * 1000); // Expand to 30 min range
+
+    // A `sessions/` that could not be listed is not a session that does not exist.
+    // Before the union both arrived as the empty detail, so an unreadable rollout
+    // store and a session with no rollout file were one answer.
+    if (rootUnreadable) {
+      return detailFailed('root-unreadable', sourceDetail('sessions directory could not be listed', CODEX_DIR));
+    }
+    // A date directory or rollout file the scan could not read leaves the search
+    // incomplete without making it worthless: the siblings were searched, so this is
+    // a warning and whatever the search found stands.
+    const incomplete = degradedWarnings(levelsUnreadable, 'root-unreadable', 'date directory(ies)')
+      .concat(degradedWarnings(filesUnstattable, 'root-unreadable', 'rollout file(s)'));
 
     for (const { filePath, fileName } of records) {
       const fileId = fileName.replace('rollout-', '').replace('.jsonl', '');
@@ -416,11 +428,11 @@ export class CodexAdapter implements AgentAdapter {
           getRecentMessages(filePath),
           getTokenUsage(filePath),
         ]);
-        return { toolHistory, messages, tokenUsage, sessionId };
+        return detailOk({ toolHistory, messages, tokenUsage, sessionId }, incomplete);
       }
     }
 
-    return { toolHistory: [], messages: [] };
+    return detailOk(emptyDetail(), incomplete);
   }
 
   getWatchPaths(): WatchPath[] {

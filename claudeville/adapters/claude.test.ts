@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ClaudeAdapter } from './claude';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 const path = require('path');
 
 describe('claude adapter', () => {
@@ -25,7 +25,7 @@ describe('claude adapter', () => {
 
     it('getSessionDetail omits tokenUsage for an unknown session', async () => {
       const adapter = new ClaudeAdapter();
-      const detail = await adapter.getSessionDetail('does-not-exist', null, null);
+      const detail = await detailOf(adapter, 'does-not-exist', null, null);
       expect(detail).toEqual({ toolHistory: [], messages: [] });
       expect('tokenUsage' in detail).toBe(false);
     });
@@ -1185,7 +1185,7 @@ describe('claude adapter', () => {
     it('getSessionDetail returns expected structure', async () => {
       const adapter = new ClaudeAdapter();
       // Test with non-existent session to get empty result structure
-      const detail = await adapter.getSessionDetail('nonexistent-session', '/nonexistent/project');
+      const detail = await detailOf(adapter, 'nonexistent-session', '/nonexistent/project');
 
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
@@ -1195,7 +1195,7 @@ describe('claude adapter', () => {
 
     it('getSessionDetail returns empty arrays for unknown session', async () => {
       const adapter = new ClaudeAdapter();
-      const detail = await adapter.getSessionDetail('unknown-session-12345', '/unknown/project/path');
+      const detail = await detailOf(adapter, 'unknown-session-12345', '/unknown/project/path');
 
       expect(detail.toolHistory).toEqual([]);
       expect(detail.messages).toEqual([]);
@@ -1218,11 +1218,14 @@ describe('claude adapter', () => {
 
     it('getSessionDetail is async and returns a Promise', async () => {
       const adapter = new ClaudeAdapter();
+      // Called directly, not through `detailOf`: what is under test is the
+      // METHOD's own promise, and the union is what it now answers.
       const detailPromise = adapter.getSessionDetail('test-session', '/test/project');
       expect(detailPromise).toBeInstanceOf(Promise);
-      const detail = await detailPromise;
-      expect(detail).toHaveProperty('toolHistory');
-      expect(detail).toHaveProperty('messages');
+      const result = await detailPromise;
+      expect(result.ok).toBe(true);
+      expect(result.detail).toHaveProperty('toolHistory');
+      expect(result.detail).toHaveProperty('messages');
     });
   });
 });

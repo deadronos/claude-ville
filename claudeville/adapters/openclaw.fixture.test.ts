@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let projectDir = '';
@@ -74,7 +74,7 @@ describe('OpenClawAdapter fixtures', () => {
       lastToolInput: '{"command":"npm test"}',
     });
 
-    const detail = await adapter.getSessionDetail(sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
+    const detail = await detailOf(adapter, sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
     expect(detail.toolHistory).toEqual([
       expect.objectContaining({ tool: 'Bash', detail: '{"command":"npm test"}' }),
     ]);
@@ -93,7 +93,7 @@ describe('OpenClawAdapter fixtures', () => {
 
   it('returns an empty detail for unknown openclaw session ids', async () => {
     const adapter = new OpenClawAdapter();
-    await expect(adapter.getSessionDetail('openclaw:agent-alpha:missing', 'openclaw:agent-alpha')).resolves.toEqual({
+    await expect(detailOf(adapter, 'openclaw:agent-alpha:missing', 'openclaw:agent-alpha')).resolves.toEqual({
       toolHistory: [],
       messages: [],
     });

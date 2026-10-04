@@ -71,7 +71,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 const MINUTE = 60 * 1000;
 
@@ -788,7 +788,7 @@ describe('ClaudeAdapter fixtures', () => {
       lastMessage: 'wide display',
     });
 
-    const detail = await new ClaudeAdapter().getSessionDetail('ses-wide', WIDE_PROJECT);
+    const detail = await detailOf(new ClaudeAdapter(), 'ses-wide', WIDE_PROJECT);
     expect(detail.sessionId).toBe('ses-wide');
     expect(detail.toolHistory).toEqual([{ tool: 'Edit', detail: '/tmp/cv/wide.ts', ts: 9 }]);
     expect(detail.messages).toEqual([{ role: 'assistant', text: 'wide assistant text', ts: 9 }]);
@@ -822,14 +822,14 @@ describe('ClaudeAdapter fixtures', () => {
       { message: { role: 'assistant', usage: { input_tokens: 7000, output_tokens: 700 } }, timestamp: 1 },
     ]);
 
-    expect((await adapter.getSessionDetail('tool', null, toolFile)).toolHistory).toEqual([]);
-    expect((await adapter.getSessionDetail('message', null, messageFile)).messages).toEqual([]);
-    expect((await adapter.getSessionDetail('usage', null, usageFile)).tokenUsage).toEqual({
+    expect((await detailOf(adapter, 'tool', null, toolFile)).toolHistory).toEqual([]);
+    expect((await detailOf(adapter, 'message', null, messageFile)).messages).toEqual([]);
+    expect((await detailOf(adapter, 'usage', null, usageFile)).tokenUsage).toEqual({
       totalInput: 0, totalOutput: 0, cacheRead: 0, cacheCreate: 0, contextWindow: 0, turnCount: 0,
     });
     // Control: unpadded, the same records resolve — so the zeros above are the
     // windows, not absent records.
-    expect((await adapter.getSessionDetail('control', null, usageControlFile)).tokenUsage).toEqual({
+    expect((await detailOf(adapter, 'control', null, usageControlFile)).tokenUsage).toEqual({
       totalInput: 7000, totalOutput: 700, cacheRead: 0, cacheCreate: 0, contextWindow: 7000, turnCount: 1,
     });
   });
@@ -848,7 +848,7 @@ describe('ClaudeAdapter fixtures', () => {
       assistant([toolBlock('Read', { file_path: '/tmp/cv/deep/path/readme.md' })], 'cap-model', 2),
     ]);
 
-    const detail = await adapter.getSessionDetail('caps', null, file);
+    const detail = await detailOf(adapter, 'caps', null, file);
     // claude.ts:115-116 — 80 chars, and no basename.
     expect(detail.toolHistory).toEqual([
       { tool: 'Bash', detail: LONG_COMMAND, ts: 1 },
@@ -860,7 +860,7 @@ describe('ClaudeAdapter fixtures', () => {
     const row = (await list()).find((s: any) => s.sessionId === 'ses-known');
     expect(row.lastTool).toBe('Read');
     expect(row.lastToolInput).toBe('known.txt');
-    expect((await adapter.getSessionDetail('ses-known', KNOWN_PROJECT)).toolHistory).toEqual([
+    expect((await detailOf(adapter, 'ses-known', KNOWN_PROJECT)).toolHistory).toEqual([
       { tool: 'Read', detail: '/tmp/cv/known.txt', ts: 1 },
     ]);
   });
@@ -895,7 +895,7 @@ describe('ClaudeAdapter fixtures', () => {
       { message: { role: 'assistant', content: [toolBlock('NoTs', { pattern: 'nots' })] } },
     ]);
 
-    expect((await adapter.getSessionDetail('inputs', null, file)).toolHistory).toEqual([
+    expect((await detailOf(adapter, 'inputs', null, file)).toolHistory).toEqual([
       { tool: 'T', detail: 'x'.repeat(80), ts: 1 },
       { tool: 'T', detail: '/tmp/cv/a.txt', ts: 2 },
       { tool: 'T', detail: 'p', ts: 3 },
@@ -910,7 +910,7 @@ describe('ClaudeAdapter fixtures', () => {
       { tool: 'NoTs', detail: 'nots', ts: 0 },
     ]);
 
-    expect((await adapter.getSessionDetail('inputs', null, file)).messages).toEqual([]);
+    expect((await detailOf(adapter, 'inputs', null, file)).messages).toEqual([]);
 
     // The ROW's extractor, one session per input field so each is the newest
     // (and only) turn. Its field set differs from getToolHistory's: `recipient`
@@ -967,7 +967,7 @@ describe('ClaudeAdapter fixtures', () => {
     }
     const file = writeJsonl(tmpRoot, ['scratch', 'maxitems.jsonl'], entries);
 
-    const detail = await adapter.getSessionDetail('maxitems', null, file);
+    const detail = await detailOf(adapter, 'maxitems', null, file);
     expect(detail.toolHistory).toHaveLength(15);
     expect(detail.toolHistory[0]).toEqual({ tool: 'tool_06', detail: 'p6', ts: 106 });
     expect(detail.toolHistory[14]).toEqual({ tool: 'tool_20', detail: 'p20', ts: 120 });
@@ -996,7 +996,7 @@ describe('ClaudeAdapter fixtures', () => {
     // `lastUsage` is overwritten by EVERY turn that carries a `usage` object
     // (claude.ts:180), so the trailing empty one decides contextWindow and zeros
     // it — the sums still include the two populated turns.
-    expect((await adapter.getSessionDetail('usage-sum', null, file)).tokenUsage).toEqual({
+    expect((await detailOf(adapter, 'usage-sum', null, file)).tokenUsage).toEqual({
       totalInput: 300,
       totalOutput: 30,
       cacheRead: 11,
@@ -1011,7 +1011,7 @@ describe('ClaudeAdapter fixtures', () => {
       { message: { role: 'assistant', usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 5, cache_creation_input_tokens: 1 } }, timestamp: 1 },
       { message: { role: 'assistant', usage: { input_tokens: 200, output_tokens: 20, cache_read_input_tokens: 6, cache_creation_input_tokens: 2 } }, timestamp: 2 },
     ]);
-    expect((await adapter.getSessionDetail('usage-control', null, controlFile)).tokenUsage).toEqual({
+    expect((await detailOf(adapter, 'usage-control', null, controlFile)).tokenUsage).toEqual({
       totalInput: 300,
       totalOutput: 30,
       cacheRead: 11,
@@ -1028,7 +1028,7 @@ describe('ClaudeAdapter fixtures', () => {
   it('resolves a sub-agent detail by its subagent- id and project', async () => {
     const adapter = new ClaudeAdapter();
 
-    const viaId = await adapter.getSessionDetail(`subagent-${A1}`, STALE_PROJECT);
+    const viaId = await detailOf(adapter, `subagent-${A1}`, STALE_PROJECT);
     expect(viaId.sessionId).toBe(`subagent-${A1}`);
     expect(viaId.toolHistory).toEqual([{ tool: 'Task', detail: 'do-the-thing', ts: 11 }]);
     expect(viaId.messages).toEqual([{ role: 'assistant', text: 'sub one done', ts: 11 }]);
@@ -1038,7 +1038,7 @@ describe('ClaudeAdapter fixtures', () => {
 
     // The agent file really is reached through the stale donor's directory name,
     // not through a `project` that any active session reported.
-    const viaWrongProject = await adapter.getSessionDetail(`subagent-${A1}`, ALPHA_PROJECT);
+    const viaWrongProject = await detailOf(adapter, `subagent-${A1}`, ALPHA_PROJECT);
     expect(viaWrongProject).toEqual({ toolHistory: [], messages: [] });
   });
 
@@ -1054,7 +1054,7 @@ describe('ClaudeAdapter fixtures', () => {
       ['ses-alpha', '/tmp/cv/no-such-project'],
       ['subagent-does-not-exist', STALE_PROJECT],
     ] as const) {
-      const detail = await adapter.getSessionDetail(id, project);
+      const detail = await detailOf(adapter, id, project);
       expect(detail).toEqual({ toolHistory: [], messages: [] });
       expect('tokenUsage' in detail).toBe(false);
       expect('sessionId' in detail).toBe(false);
@@ -1064,7 +1064,7 @@ describe('ClaudeAdapter fixtures', () => {
     const scratch = writeJsonl(tmpRoot, ['scratch', 'direct.jsonl'], [
       assistant([textBlock('direct read')], 'direct-model', 7),
     ]);
-    expect((await adapter.getSessionDetail('anything', null, scratch)).messages).toEqual([
+    expect((await detailOf(adapter, 'anything', null, scratch)).messages).toEqual([
       { role: 'assistant', text: 'direct read', ts: 7 },
     ]);
   });

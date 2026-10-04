@@ -210,7 +210,7 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
-import { sessionsOf } from './fixtureHelpers.js';
+import { detailOf, sessionsOf } from './fixtureHelpers.js';
 
 const MINUTE = 60 * 1000;
 const originalHermesDir = process.env.HERMES_DIR;
@@ -642,7 +642,7 @@ describe('HermesAdapter on-disk characterization', () => {
           available: adapter.isAvailable(),
           sessions: await sessionsOf(adapter, 5 * MINUTE),
           watch: adapter.getWatchPaths(),
-          detail: await adapter.getSessionDetail('hermes-anything', null, null),
+          detail: await detailOf(adapter, 'hermes-anything', null, null),
         };
       },
       'absent',
@@ -898,7 +898,7 @@ describe('HermesAdapter on-disk characterization', () => {
         ]);
       },
       async (HermesAdapter, dir) => {
-        const detail = await new HermesAdapter().getSessionDetail(
+        const detail = await detailOf(new HermesAdapter(), 
           'hermes-ts-aliases',
           null,
           path.join(sessionsDir(dir), 'ts-aliases.jsonl'),
@@ -928,7 +928,7 @@ describe('HermesAdapter on-disk characterization', () => {
         ]);
       },
       async (HermesAdapter, dir) => {
-        const detail = await new HermesAdapter().getSessionDetail(
+        const detail = await detailOf(new HermesAdapter(), 
           'hermes-content-aliases',
           null,
           path.join(sessionsDir(dir), 'content-aliases.jsonl'),
@@ -972,8 +972,8 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
-        expect(texts((await adapter.getSessionDetail('hermes-roles', null, null)).messages)).toEqual(['kept']);
-        expect(texts((await adapter.getSessionDetail('hermes-meta-roles', null, null)).messages)).toEqual(['kept']);
+        expect(texts((await detailOf(adapter, 'hermes-roles', null, null)).messages)).toEqual(['kept']);
+        expect(texts((await detailOf(adapter, 'hermes-meta-roles', null, null)).messages)).toEqual(['kept']);
       },
     );
   });
@@ -1046,7 +1046,7 @@ describe('HermesAdapter on-disk characterization', () => {
         // detail's `ts` values are the RAW `timestamp` column — SECONDS, not
         // milliseconds — because `dbRowToEntry` passes the number straight to
         // `asTimestamp`, which returns a number unchanged (readers:51).
-        const detail = await adapter.getSessionDetail('hermes-db-one', rows[0].project, rows[0].filePath);
+        const detail = await detailOf(adapter, 'hermes-db-one', rows[0].project, rows[0].filePath);
         expect(texts(detail.messages)).toEqual(['update the docs', 'inspecting']);
         // Ascending, and in SECONDS — the raw column value, not milliseconds.
         expect(detail.messages[0].ts).toBeLessThan(detail.messages[1].ts);
@@ -1126,19 +1126,19 @@ describe('HermesAdapter on-disk characterization', () => {
 
         // `dbSessionTokenUsage` (readers:267-272) — FOUR keys, not opencode's two,
         // and `null` (present, not absent) when both counts are zero.
-        expect((await adapter.getSessionDetail('hermes-out-only', null, null)).tokenUsage).toStrictEqual({
+        expect((await detailOf(adapter, 'hermes-out-only', null, null)).tokenUsage).toStrictEqual({
           input: 0,
           output: 20,
           totalInput: 0,
           totalOutput: 20,
         });
-        expect((await adapter.getSessionDetail('hermes-in-only', null, null)).tokenUsage).toStrictEqual({
+        expect((await detailOf(adapter, 'hermes-in-only', null, null)).tokenUsage).toStrictEqual({
           input: 7,
           output: 0,
           totalInput: 7,
           totalOutput: 0,
         });
-        expect((await adapter.getSessionDetail('hermes-textual', null, null)).tokenUsage).toStrictEqual({
+        expect((await detailOf(adapter, 'hermes-textual', null, null)).tokenUsage).toStrictEqual({
           input: 40,
           output: 0,
           totalInput: 40,
@@ -1160,7 +1160,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const detail = await new HermesAdapter().getSessionDetail('hermes-zero', null, null);
+        const detail = await detailOf(new HermesAdapter(), 'hermes-zero', null, null);
         expect('tokenUsage' in detail).toBe(true);
         expect(detail.tokenUsage).toBeNull();
         expect(detail.sessionId).toBe('hermes-zero');
@@ -1333,7 +1333,7 @@ describe('HermesAdapter on-disk characterization', () => {
         // the newest-first rows), and that one is the `active = 0` row — which the
         // gate removed, so the runner-up answers instead.
         expect(rowOf(rows, 'hermes-flags').lastMessage).toBe('active one');
-        const detail = await adapter.getSessionDetail('hermes-flags', null, null);
+        const detail = await detailOf(adapter, 'hermes-flags', null, null);
         expect(texts(detail.messages)).toEqual(['NULL active', 'active one']);
       },
     );
@@ -1728,7 +1728,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
-        const detail = await adapter.getSessionDetail('hermes-map', null, null);
+        const detail = await detailOf(adapter, 'hermes-map', null, null);
         // `ORDER BY timestamp DESC` newest-first, then `.reverse()`d into
         // chronological by :156.
         expect(toolNames(detail.toolHistory)).toEqual(['nested_tool', 'fallback_tool']);
@@ -1767,7 +1767,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const detail = await new HermesAdapter().getSessionDetail('hermes-stamps', null, null);
+        const detail = await detailOf(new HermesAdapter(), 'hermes-stamps', null, null);
         expect(detail.messages).toEqual([
           // DESC put the NULL row last, so `.reverse()` put it first.
           { role: 'assistant', text: 'null ts', ts: 0 },
@@ -1825,7 +1825,7 @@ describe('HermesAdapter on-disk characterization', () => {
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
         const lastTool = async (id: string) =>
-          (await adapter.getSessionDetail(`hermes-${id}`, null, null)).toolHistory.at(-1)?.tool;
+          (await detailOf(adapter, `hermes-${id}`, null, null)).toolHistory.at(-1)?.tool;
         expect(await lastTool('nested')).toBe('from_function');
         expect(await lastTool('flat')).toBe('from_call_name');
         expect(await lastTool('name')).toBeUndefined();
@@ -1836,7 +1836,7 @@ describe('HermesAdapter on-disk characterization', () => {
         // On a transcript entry the `entry.name` / `entry.tool` / `entry.tool_name`
         // rungs ARE live, and a `tool_call`-role entry with no name at all falls
         // to the role itself (`String(name || role || 'tool')`, readers:90).
-        const detail = await adapter.getSessionDetail(
+        const detail = await detailOf(adapter, 
           'hermes-transcript',
           null,
           path.join(sessionsDir(dir), 'transcript.jsonl'),
@@ -1914,7 +1914,7 @@ describe('HermesAdapter on-disk characterization', () => {
         expect(row.lastMessage).toBe('msg_19');
         expect(row.tokens).toBeUndefined();
 
-        const detail = await adapter.getSessionDetail('hermes-wide', null, null);
+        const detail = await detailOf(adapter, 'hermes-wide', null, null);
         // 20 tools read, 15 kept — and CHRONOLOGICAL, unlike the row.
         expect(detail.toolHistory.map((t: any) => t.tool)).toEqual(
           Array.from({ length: 15 }, (_, i) => `tool_${5 + i}`),
@@ -1984,7 +1984,7 @@ describe('HermesAdapter on-disk characterization', () => {
         db.close();
       },
       async (HermesAdapter) => {
-        const detail = await new HermesAdapter().getSessionDetail('hermes-deep', null, null);
+        const detail = await detailOf(new HermesAdapter(), 'hermes-deep', null, null);
         expect(detail.toolHistory).toHaveLength(15);
         expect(detail.toolHistory[0].tool).toBe('tool_5');
         expect(detail.toolHistory.at(-1).tool).toBe('tool_19');
@@ -2026,7 +2026,7 @@ describe('HermesAdapter on-disk characterization', () => {
         expect((await row('tr-lo')).lastMessage).toBe('MID_ASSISTANT');
 
         const detail = (id: string) =>
-          adapter.getSessionDetail(`hermes-${id}`, null, path.join(sessionsDir(dir), `${id}.jsonl`));
+          detailOf(adapter, `hermes-${id}`, null, path.join(sessionsDir(dir), `${id}.jsonl`));
         // Both details keep the LAST 5 messages of whatever the 120-line tail
         // held. For `tr-hi` the window is lines 10..129 (all users); for `tr-lo`
         // it is lines 10..129 too, but the assistant at line 100 is outside the
@@ -2104,7 +2104,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter, dir) => {
         const adapter = new HermesAdapter();
-        const ladder = await adapter.getSessionDetail('hermes-ladder', null, null);
+        const ladder = await detailOf(adapter, 'hermes-ladder', null, null);
         expect(toolNames(ladder.toolHistory)).toEqual([
           't_command',
           't_query',
@@ -2132,7 +2132,7 @@ describe('HermesAdapter on-disk characterization', () => {
         // the tool detail at 80 (readers:180).
         const capsRow = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'hermes-caps');
         expect(capsRow.lastMessage).toBe(LONG_TEXT.substring(0, 80));
-        const caps = await adapter.getSessionDetail('hermes-caps', null, null);
+        const caps = await detailOf(adapter, 'hermes-caps', null, null);
         expect(caps.messages).toEqual([
           { role: 'assistant', text: LONG_TEXT.substring(0, 200), ts: tsOf(2) },
           { role: 'user', text: 'newest is a user', ts: tsOf(3) },
@@ -2142,7 +2142,7 @@ describe('HermesAdapter on-disk characterization', () => {
         ]);
 
         // The `catch` branch keeps the unparseable argument string verbatim.
-        const raw = await adapter.getSessionDetail('hermes-rawargs', null, null);
+        const raw = await detailOf(adapter, 'hermes-rawargs', null, null);
         expect(raw.toolHistory).toEqual([{ tool: 't_raw', detail: 'not json {', ts: tsOf(0) }]);
         // `filePath` is asserted above from `dir`, so the unused parameter is
         // genuinely unused here.
@@ -2172,7 +2172,7 @@ describe('HermesAdapter on-disk characterization', () => {
         ]);
       },
       async (HermesAdapter, dir) => {
-        const detail = await new HermesAdapter().getSessionDetail(
+        const detail = await detailOf(new HermesAdapter(), 
           'hermes-objects',
           null,
           path.join(sessionsDir(dir), 'objects.jsonl'),
@@ -2216,7 +2216,7 @@ describe('HermesAdapter on-disk characterization', () => {
         expect('messages' in row).toBe(false);
         expect('toolHistory' in row).toBe(false);
 
-        const detail = await adapter.getSessionDetail('hermes-long', null, path.join(sessionsDir(dir), 'long.jsonl'));
+        const detail = await detailOf(adapter, 'hermes-long', null, path.join(sessionsDir(dir), 'long.jsonl'));
         // Trimmed to 260 characters, then cut to the 200-character cap.
         expect(detail.messages).toEqual([
           { role: 'assistant', text: LONG_TEXT.substring(0, 200), ts: tsOf(0) },
@@ -2248,7 +2248,7 @@ describe('HermesAdapter on-disk characterization', () => {
       },
       async (HermesAdapter) => {
         const adapter = new HermesAdapter();
-        const absent = await adapter.getSessionDetail('hermes-nope', null, null);
+        const absent = await detailOf(adapter, 'hermes-nope', null, null);
         expect(absent).toStrictEqual({ toolHistory: [], messages: [] });
         expect('sessionId' in absent).toBe(false);
         expect('tokenUsage' in absent).toBe(false);
@@ -2256,27 +2256,30 @@ describe('HermesAdapter on-disk characterization', () => {
         // A MALFORMED id — quotes and SQL metacharacters — is a bound parameter
         // (hermes.ts:137), so it reaches the same no-match shape rather than
         // throwing or matching everything.
-        const malformed = await adapter.getSessionDetail("hermes-x'; DROP TABLE messages;--", null, null);
+        const malformed = await detailOf(adapter, "hermes-x'; DROP TABLE messages;--", null, null);
         expect(malformed).toStrictEqual({ toolHistory: [], messages: [] });
         // …and the table is still there.
-        const present = await adapter.getSessionDetail('hermes-present', null, null);
+        const present = await detailOf(adapter, 'hermes-present', null, null);
         expect(texts(present.messages)).toEqual(['here']);
 
         // An id that is present but with the `hermes-` prefix already stripped
         // resolves identically: `cleanId` only strips ONE leading prefix.
-        const unprefixed = await adapter.getSessionDetail('present', null, null);
+        const unprefixed = await detailOf(adapter, 'present', null, null);
         expect(texts(unprefixed.messages)).toEqual(['here']);
         expect(unprefixed.sessionId).toBe('present');
       },
     );
   });
 
-  // A `messages` table that is absent makes `hasTable(db, 'messages')` false
-  // (hermes.ts:136), so `readDbSessionDetail` answers `null` and the method's
-  // `detail || { toolHistory: [], messages: [] }` (:162) answers the no-match
-  // shape. A `sessions` table that is absent leaves `tokenUsage` at its `null`
-  // initial value (:140) while the messages still come through.
-  it('degrade to the no-match shape without a messages table, and to a null tokenUsage without a sessions table', async () => {
+  // A `messages` table that is absent used to make `hasTable(db, 'messages')` false
+  // so `readDbSessionDetail` answered `null`, and the method's
+  // `detail || { toolHistory: [], messages: [] }` answered the no-match shape — the
+  // SAME shape an unknown session got. That is the collapse this contract removes:
+  // a `state.db` we cannot read a session out of is a `schema-incompatible` failure,
+  // and it is reported as one. A `sessions` table that is absent, by contrast,
+  // leaves `tokenUsage` at its `null` initial value while the messages come
+  // through — still a success, because the store DID answer.
+  it('report schema-incompatible without a messages table, and a null tokenUsage without a sessions table', async () => {
     await withHermesDir(
       (dir) => {
         // Only a `sessions` table: no messages at all.
@@ -2285,9 +2288,12 @@ describe('HermesAdapter on-disk characterization', () => {
         bare.db.close();
       },
       async (HermesAdapter) => {
-        const detail = await new HermesAdapter().getSessionDetail('hermes-lonely', null, null);
-        expect(detail).toStrictEqual({ toolHistory: [], messages: [] });
-        expect('tokenUsage' in detail).toBe(false);
+        const result = await new HermesAdapter().getSessionDetail('hermes-lonely', null, null);
+        // Driven directly, not through `detailOf`: the error branch is the thing
+        // under test.
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('unreachable: expected a detail failure');
+        expect(result.error.code).toBe('schema-incompatible');
       },
     );
 
@@ -2301,7 +2307,7 @@ describe('HermesAdapter on-disk characterization', () => {
         // The messages table exists, so the messages come through; the `sessions`
         // table does not, so `tokenUsage` stays at its `null` initial value
         // (:140) — present, and null.
-        const detail = await new HermesAdapter().getSessionDetail('hermes-orphan', null, null);
+        const detail = await detailOf(new HermesAdapter(), 'hermes-orphan', null, null);
         expect(texts(detail.messages)).toEqual(['no parent row']);
         expect('tokenUsage' in detail).toBe(true);
         expect(detail.tokenUsage).toBeNull();
@@ -2336,7 +2342,7 @@ describe('HermesAdapter on-disk characterization', () => {
         // The DETAIL keeps them too, with the `sessions`-read shape: four keys, and
         // the caller's own sessionId (the legacy branches have no `tokenUsage` key
         // at all, and the no-match shape has no `sessionId`).
-        const detail = await adapter.getSessionDetail('hermes-tokens-only', null, null);
+        const detail = await detailOf(adapter, 'hermes-tokens-only', null, null);
         expect(detail).toStrictEqual({
           toolHistory: [],
           messages: [],
@@ -2374,7 +2380,7 @@ describe('HermesAdapter on-disk characterization', () => {
         expect(row.lastMessage).toBeNull();
 
         // …while the counts the sessions read did produce are still reported.
-        const detail = await adapter.getSessionDetail('hermes-failed-msgs', null, null);
+        const detail = await detailOf(adapter, 'hermes-failed-msgs', null, null);
         expect(texts(detail.messages)).toEqual([]);
         expect(detail.tokenUsage).toStrictEqual({ input: 111, output: 222, totalInput: 111, totalOutput: 222 });
       },
@@ -2404,17 +2410,17 @@ describe('HermesAdapter on-disk characterization', () => {
 
         // Passing the reported filePath does not help: it is not `.jsonl`, so it is
         // ignored and `session_from-metadata.json` is looked up instead.
-        expect(await adapter.getSessionDetail(row.sessionId, row.project, row.filePath)).toStrictEqual({
+        expect(await detailOf(adapter, row.sessionId, row.project, row.filePath)).toStrictEqual({
           toolHistory: [],
           messages: [],
         });
         // …and the id-only lookup fails for the same reason.
-        expect(await adapter.getSessionDetail(row.sessionId, row.project, null)).toStrictEqual({
+        expect(await detailOf(adapter, row.sessionId, row.project, null)).toStrictEqual({
           toolHistory: [],
           messages: [],
         });
         // The session IS readable under the id its FILE NAME implies.
-        const byFileId = await adapter.getSessionDetail('hermes-filename', null, null);
+        const byFileId = await detailOf(adapter, 'hermes-filename', null, null);
         expect(texts(byFileId.messages)).toEqual(['the only message']);
       },
     );
@@ -2456,24 +2462,24 @@ describe('HermesAdapter on-disk characterization', () => {
         const at_ = (id: string) => path.join(sessions, id);
 
         // (a)
-        const jsonl = await adapter.getSessionDetail('hermes-via-jsonl', null, at_('via-jsonl.jsonl'));
+        const jsonl = await detailOf(adapter, 'hermes-via-jsonl', null, at_('via-jsonl.jsonl'));
         expect(texts(jsonl.messages)).toEqual(['from the jsonl']);
         expect(jsonl.sessionId).toBe('hermes-via-jsonl');
         expect('tokenUsage' in jsonl).toBe(false);
 
         // (b)
-        const transcript = await adapter.getSessionDetail('hermes-via-transcript', null, null);
+        const transcript = await detailOf(adapter, 'hermes-via-transcript', null, null);
         expect(texts(transcript.messages)).toEqual(['from the transcript']);
         expect(transcript.sessionId).toBe('hermes-via-transcript');
         expect('tokenUsage' in transcript).toBe(false);
 
         // (c)
-        const metadata = await adapter.getSessionDetail('hermes-via-metadata', null, null);
+        const metadata = await detailOf(adapter, 'hermes-via-metadata', null, null);
         expect(texts(metadata.messages)).toEqual(['from the metadata']);
         expect(metadata.sessionId).toBe('hermes-via-metadata');
 
         // (d)
-        expect(await adapter.getSessionDetail('hermes-no-messages', null, null)).toStrictEqual({
+        expect(await detailOf(adapter, 'hermes-no-messages', null, null)).toStrictEqual({
           toolHistory: [],
           messages: [],
         });
@@ -2506,21 +2512,21 @@ describe('HermesAdapter on-disk characterization', () => {
         // THE discriminating case: no leading `hermes-`, so the anchored strip is a
         // no-op and the whole id survives. An unanchored strip would go looking for
         // `session_x-y.json` and find nothing.
-        expect(texts((await adapter.getSessionDetail('xhermes-y', null, null)).messages)).toEqual([
+        expect(texts((await detailOf(adapter, 'xhermes-y', null, null)).messages)).toEqual([
           'message for xhermes-y',
         ]);
         // A mid-string `hermes-` is untouched even with the prefix present:
         // `hermes-xhermes-y` reduces to `xhermes-y`, which exists.
-        expect(texts((await adapter.getSessionDetail('hermes-xhermes-y', null, null)).messages)).toEqual([
+        expect(texts((await detailOf(adapter, 'hermes-xhermes-y', null, null)).messages)).toEqual([
           'message for xhermes-y',
         ]);
         // Only the FIRST leading prefix goes, so the remainder still resolves —
         // `hermes-hermes-xhermes-y` reduces to `hermes-xhermes-y`.
-        expect(texts((await adapter.getSessionDetail('hermes-hermes-xhermes-y', null, null)).messages)).toEqual([
+        expect(texts((await detailOf(adapter, 'hermes-hermes-xhermes-y', null, null)).messages)).toEqual([
           'message for hermes-xhermes-y',
         ]);
         // `hermesy` has no trailing hyphen, so nothing is stripped.
-        expect(texts((await adapter.getSessionDetail('hermes-hermesy', null, null)).messages)).toEqual([
+        expect(texts((await detailOf(adapter, 'hermes-hermesy', null, null)).messages)).toEqual([
           'message for hermesy',
         ]);
       },

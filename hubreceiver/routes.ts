@@ -1,3 +1,4 @@
+import type { SessionDetailPayload } from '../shared/types.js';
 import http from 'http';
 
 import { createApiRouteHandler } from '../shared/api-routes.js';
@@ -26,7 +27,7 @@ function isAuthorized(req: http.IncomingMessage, authToken: string) {
 interface HubreceiverDeps {
   applySnapshot: (snapshot: object) => object;
   getCurrentState: () => { sessions: unknown[]; teams: unknown[]; taskGroups: unknown[]; providers: unknown[]; usage: unknown; timestamp: number };
-  getSessionDetail: (sessionId: string, provider: string) => unknown;
+  getSessionDetail: (sessionId: string, provider: string) => SessionDetailPayload;
   getHistory: (limit: number) => unknown[];
   wsManager: { broadcast: (type: string) => void };
   authToken: string;

@@ -15,7 +15,9 @@
 import path from 'path';
 
 import type {
+  AdapterDetailResult,
   AdapterErrorCode,
+  AdapterSessionDetail,
   AdapterSessionsResult,
   AdapterWarning,
   AgentSessionSummary,
@@ -95,4 +97,75 @@ export function sourceDetail(what: string, baseDir: string): string {
  */
 export function degradedWarnings(count: number, code: AdapterErrorCode, unit: string): AdapterWarning[] {
   return count > 0 ? [{ code, detail: `${count} ${unit}` }] : [];
+}
+
+// ─── The same rule, for ONE session's detail ───────────────
+
+/**
+ * One read source of a single session's detail. {@link SourceListing} with
+ * `AdapterSessionDetail` in place of `AgentSessionSummary[]`, because it is the
+ * same question asked of the same install at a different granularity: did
+ * anything answer?
+ *
+ * `absent` is "this source has nothing for this session", which is the answer for
+ * most sessions of most providers and is emphatically NOT a failure — turning it
+ * into one would make every not-yet-selected session an error.
+ */
+export type DetailSource =
+  | { kind: 'absent' }
+  | { kind: 'detail'; detail: AdapterSessionDetail; warnings: AdapterWarning[] }
+  | { kind: 'failed'; code: AdapterErrorCode; detail: string };
+
+/**
+ * {@link combineSources}' rule, verbatim, with the detail record type. A failure
+ * with NO source that answered is `ok: false` — for a detail that means "the only
+ * store that could have held this session could not be read", which is the honest
+ * answer. A failure alongside a source that DID answer is a `warning`: hermes'
+ * `state.db` refusing to open does not stop its legacy transcript files from
+ * rendering, so the detail stands and says what was lost.
+ *
+ * An adapter with a single source does not need this: `detailOk` and
+ * `detailFailed` are the two outcomes, and `emptyDetail` is the third.
+ */
+export function combineDetailSources(sources: DetailSource[]): AdapterDetailResult {
+  const answered = sources.find((source): source is Extract<DetailSource, { kind: 'detail' }> => source.kind === 'detail');
+  const failures = sources.filter((source): source is Extract<DetailSource, { kind: 'failed' }> => source.kind === 'failed');
+  const warnings = sources.flatMap<AdapterWarning>((source) => {
+    if (source.kind === 'detail') return source.warnings;
+    if (source.kind === 'failed') return [{ code: source.code, detail: source.detail }];
+    return [];
+  });
+
+  if (answered) return { ok: true, detail: answered.detail, warnings };
+  if (failures.length > 0) {
+    const { code, detail: message } = failures[0];
+    return { ok: false, error: { code, message } };
+  }
+  // Every source was `absent`: this session has no stored detail anywhere, which
+  // is the legitimate third outcome, not a failure.
+  return { ok: true, detail: emptyDetail(), warnings };
+}
+
+/**
+ * The detail a reader produced. `warnings` rides with it, because a degradation
+ * inside one session's detail is still only a degradation — it costs that session
+ * a row or a token reading, not the provider its sessions.
+ */
+export function detailOk(detail: AdapterSessionDetail, warnings: AdapterWarning[] = []): AdapterDetailResult {
+  return { ok: true, detail, warnings };
+}
+
+/** A reader that failed. Never used for "this session has no stored detail". */
+export function detailFailed(code: AdapterErrorCode, detail: string): AdapterDetailResult {
+  return { ok: false, error: { code, message: detail } };
+}
+
+/**
+ * The empty detail, as SUCCESS. The shape every "nothing stored here" answer
+ * converges on, kept in one place because the guarantee it encodes is
+ * contractual: `toolHistory` and `messages` are always arrays, never
+ * `null`/`undefined`, so a caller that renders a detail never has to guard.
+ */
+export function emptyDetail(): AdapterSessionDetail {
+  return { toolHistory: [], messages: [] };
 }

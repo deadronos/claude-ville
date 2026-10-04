@@ -73,7 +73,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let workspaceDir = '';
@@ -292,7 +292,7 @@ describe('GeminiAdapter fixtures', () => {
       project: workspaceDir,
     });
 
-    const detail = await adapter.getSessionDetail(sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
+    const detail = await detailOf(adapter, sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
     expect(detail.toolHistory).toHaveLength(2);
     expect(detail.toolHistory[0]).toMatchObject({ tool: 'read_file' });
     expect(detail.messages).toEqual([
@@ -302,7 +302,7 @@ describe('GeminiAdapter fixtures', () => {
 
   it('returns empty detail for unknown session ids', async () => {
     const adapter = new GeminiAdapter();
-    await expect(adapter.getSessionDetail('gemini-missing', workspaceDir)).resolves.toEqual({
+    await expect(detailOf(adapter, 'gemini-missing', workspaceDir)).resolves.toEqual({
       toolHistory: [],
       messages: [],
     });
@@ -505,7 +505,7 @@ describe('GeminiAdapter fixtures', () => {
     try {
       // The `.json` session: the whole array, so both slices bite. Forward walk,
       // file order preserved, oldest 5 tools and oldest 3 messages dropped.
-      const fromJson = await adapter.getSessionDetail('gemini-eta1', null, jsonFile);
+      const fromJson = await detailOf(adapter, 'gemini-eta1', null, jsonFile);
       expect(fromJson.toolHistory).toHaveLength(15);
       expect(fromJson.toolHistory.map((t: any) => t.tool)).toEqual(expectedTools);
       expect(fromJson.toolHistory[0].detail).toBe('{"n":5}');
@@ -518,7 +518,7 @@ describe('GeminiAdapter fixtures', () => {
       // are gone entirely. Not a missing slice: the WINDOW. (Pinned as-is; see
       // the report — a jsonl session whose tool calls outnumber its recent
       // messages shows no conversation at all.)
-      const fromJsonl = await adapter.getSessionDetail('gemini-eta1', null, jsonlFile);
+      const fromJsonl = await detailOf(adapter, 'gemini-eta1', null, jsonlFile);
       expect(fromJsonl.toolHistory).toEqual(fromJson.toolHistory);
       expect(fromJsonl.messages).toEqual([]);
       // No record here carries `tokens`, on either path.
@@ -602,7 +602,7 @@ describe('GeminiAdapter fixtures', () => {
         model: 'gemini',
       });
 
-      const detail = await adapter.getSessionDetail('gemini-rowwin1l', null, rowwin1);
+      const detail = await detailOf(adapter, 'gemini-rowwin1l', null, rowwin1);
       // Both detail readers see the whole 60-record file.
       expect(detail.toolHistory).toEqual([{ tool: 'hidden_shell', detail: '{"command":"ls"}', ts: tsOf(0) }]);
       expect(detail.messages).toEqual([{ role: 'assistant', text: 'surfaced msg', ts: tsOf(59) }]);
@@ -652,20 +652,20 @@ describe('GeminiAdapter fixtures', () => {
     const usageControl = writeJsonl(path.join(scratch, 'winusage-control.jsonl'), usageRecords);
 
     try {
-      expect((await adapter.getSessionDetail('gemini-wintool', null, toolTooLong)).toolHistory).toEqual([]);
-      expect((await adapter.getSessionDetail('gemini-winmsg', null, msgFile)).messages).toEqual([]);
-      expect((await adapter.getSessionDetail('gemini-winusage', null, usageFile)).tokenUsage).toBeNull();
+      expect((await detailOf(adapter, 'gemini-wintool', null, toolTooLong)).toolHistory).toEqual([]);
+      expect((await detailOf(adapter, 'gemini-winmsg', null, msgFile)).messages).toEqual([]);
+      expect((await detailOf(adapter, 'gemini-winusage', null, usageFile)).tokenUsage).toBeNull();
       // The 102-record twin of the first file: one record shorter and the same tool
       // is inside the tail. A count of 99 would answer `[]` here, so the pair pins
       // 100 exactly rather than merely bounding it from above.
-      expect((await adapter.getSessionDetail('gemini-wintool', null, toolFile)).toolHistory).toEqual([
+      expect((await detailOf(adapter, 'gemini-wintool', null, toolFile)).toolHistory).toEqual([
         { tool: 'hidden_shell', detail: '{"command":"ls"}', ts: tsOf(2) },
       ]);
       // Control: unpadded, the same record resolves.
-      expect((await adapter.getSessionDetail('gemini-winmsg', null, msgControl)).messages).toEqual([
+      expect((await detailOf(adapter, 'gemini-winmsg', null, msgControl)).messages).toEqual([
         { role: 'assistant', text: 'hidden msg', ts: tsOf(0) },
       ]);
-      expect((await adapter.getSessionDetail('gemini-winusage', null, usageControl)).tokenUsage).toEqual({
+      expect((await detailOf(adapter, 'gemini-winusage', null, usageControl)).tokenUsage).toEqual({
         input: 4242,
         output: 42,
       });
@@ -732,7 +732,7 @@ describe('GeminiAdapter fixtures', () => {
         expect(row.lastMessage).toHaveLength(80);
       }
 
-      const cmdDetail = await adapter.getSessionDetail('gemini-caps1l', null, cmdFile);
+      const cmdDetail = await detailOf(adapter, 'gemini-caps1l', null, cmdFile);
       // gemini.ts:243 — the same 100-char command, capped at 80 rather than 60.
       expect(cmdDetail.toolHistory).toEqual([{ tool: 'run_shell', detail: 'c'.repeat(80), ts: tsOf(1) }]);
       expect(cmdDetail.toolHistory[0].detail).toHaveLength(80);
@@ -745,12 +745,12 @@ describe('GeminiAdapter fixtures', () => {
 
       // gemini.ts:244 — the detail's file_path branch has no cap either, and keeps
       // the whole path where the row kept only its basename.
-      const pathDetail = await adapter.getSessionDetail('gemini-caps2l', null, pathFile);
+      const pathDetail = await detailOf(adapter, 'gemini-caps2l', null, pathFile);
       expect(pathDetail.toolHistory).toEqual([{ tool: 'read_file', detail: LONG_PATH, ts: tsOf(2) }]);
       expect(pathDetail.toolHistory[0].detail).toHaveLength(136);
 
       // gemini.ts:245 — the detail's JSON.stringify fallback, capped at 80.
-      const jsonDetail = await adapter.getSessionDetail('gemini-caps3l', null, jsonFile);
+      const jsonDetail = await detailOf(adapter, 'gemini-caps3l', null, jsonFile);
       expect(jsonDetail.toolHistory).toEqual([
         { tool: 'other_tool', detail: LONG_ARGS_JSON.substring(0, 80), ts: tsOf(3) },
       ]);
@@ -796,7 +796,7 @@ describe('GeminiAdapter fixtures', () => {
     ]);
 
     try {
-      const detail = await adapter.getSessionDetail('gemini-shapes1l', null, file);
+      const detail = await detailOf(adapter, 'gemini-shapes1l', null, file);
       expect(detail.toolHistory).toEqual([
         { tool: 'function_call', detail: '{"a":1}', ts: tsOf(1) },
         { tool: 'tool', detail: 'raw input', ts: tsOf(2) },
@@ -843,7 +843,7 @@ describe('GeminiAdapter fixtures', () => {
       // The newest record wins, and `extractText` trims before the 80-char cap.
       expect(row.lastMessage).toBe('padded and trimmed');
 
-      const detail = await adapter.getSessionDetail('gemini-blocks1l', null, listed.dir + '/session-blocks1.jsonl');
+      const detail = await detailOf(adapter, 'gemini-blocks1l', null, listed.dir + '/session-blocks1.jsonl');
       // The array-content record is dropped by `typeof msg.content === 'string'`
       // (gemini.ts:295); the string one is kept, TRIMMED — the row trims through
       // `extractText`, the detail reader trims and takes the first 200 chars.
@@ -882,7 +882,7 @@ describe('GeminiAdapter fixtures', () => {
 
     try {
       for (const file of [jsonlFile, jsonFile]) {
-        const detail = await adapter.getSessionDetail('gemini-hole1', null, file);
+        const detail = await detailOf(adapter, 'gemini-hole1', null, file);
         // Everything up to the first hole, and nothing after it.
         expect(detail.toolHistory).toEqual([
           { tool: 'before_hole', detail: '{"command":"a"}', ts: tsOf(0) },
@@ -916,10 +916,10 @@ describe('GeminiAdapter fixtures', () => {
     try {
       // Hand-summed from the fixture: 1000 + 1200 + 5 in, 10 + 30 + 0 out. The
       // `total` / `cached` / `thoughts` fields are not read at all.
-      const fromJsonl = await adapter.getSessionDetail('gemini-tok1', null, jsonlFile);
+      const fromJsonl = await detailOf(adapter, 'gemini-tok1', null, jsonlFile);
       expect(fromJsonl.tokenUsage).toEqual({ input: 2205, output: 40 });
 
-      const fromJson = await adapter.getSessionDetail('gemini-tok1', null, jsonFile);
+      const fromJson = await detailOf(adapter, 'gemini-tok1', null, jsonFile);
       expect(fromJson.tokenUsage).toEqual({ input: 2205, output: 40 });
       expect(fromJson.tokenUsage).toEqual(fromJsonl.tokenUsage);
     } finally {
@@ -938,8 +938,8 @@ describe('GeminiAdapter fixtures', () => {
     const jsonFile = writeSessionJson(path.join(scratch, 'session-notok.json'), NO_TOKEN_RECORDS);
 
     try {
-      expect((await adapter.getSessionDetail('gemini-notok', null, jsonlFile)).tokenUsage).toBeNull();
-      expect((await adapter.getSessionDetail('gemini-notok', null, jsonFile)).tokenUsage).toBeNull();
+      expect((await detailOf(adapter, 'gemini-notok', null, jsonlFile)).tokenUsage).toBeNull();
+      expect((await detailOf(adapter, 'gemini-notok', null, jsonFile)).tokenUsage).toBeNull();
     } finally {
       fs.rmSync(scratch, { recursive: true, force: true });
     }
@@ -961,11 +961,11 @@ describe('GeminiAdapter fixtures', () => {
     try {
       // 2000 from the numeric `input`; 10 from the sibling of the string `input`;
       // the string `output` and the record whose `tokens` is 0 add nothing.
-      expect((await adapter.getSessionDetail('gemini-guard1', null, jsonlFile)).tokenUsage).toEqual({
+      expect((await detailOf(adapter, 'gemini-guard1', null, jsonlFile)).tokenUsage).toEqual({
         input: 2000,
         output: 10,
       });
-      expect((await adapter.getSessionDetail('gemini-guard1', null, jsonFile)).tokenUsage).toEqual({
+      expect((await detailOf(adapter, 'gemini-guard1', null, jsonFile)).tokenUsage).toEqual({
         input: 2000,
         output: 10,
       });
@@ -1001,7 +1001,7 @@ describe('GeminiAdapter fixtures', () => {
 
     try {
       for (const file of [noMessages, messagesNull, messagesObject, malformed]) {
-        const detail = await adapter.getSessionDetail('gemini-broken', null, file);
+        const detail = await detailOf(adapter, 'gemini-broken', null, file);
         expect(detail.toolHistory).toEqual([]);
         expect(detail.messages).toEqual([]);
         expect(detail.tokenUsage).toBeNull();
@@ -1009,7 +1009,7 @@ describe('GeminiAdapter fixtures', () => {
 
       // The corrupt LINE is skipped; the 9999 that would have come with it is not
       // summed, and the two intact readings are.
-      expect((await adapter.getSessionDetail('gemini-halfbroken', null, partlyBroken)).tokenUsage).toEqual({
+      expect((await detailOf(adapter, 'gemini-halfbroken', null, partlyBroken)).tokenUsage).toEqual({
         input: 30,
         output: 3,
       });
@@ -1038,7 +1038,7 @@ describe('GeminiAdapter fixtures', () => {
         'gemini-lookup1',
       );
 
-      const viaId = await adapter.getSessionDetail('gemini-lookup1', null);
+      const viaId = await detailOf(adapter, 'gemini-lookup1', null);
       expect(viaId.sessionId).toBe('gemini-lookup1');
       expect(viaId.messages).toEqual([{ role: 'assistant', text: 'lookup answer', ts: tsOf(1) }]);
       expect(viaId.tokenUsage).toEqual({ input: 700, output: 70 });
@@ -1046,7 +1046,7 @@ describe('GeminiAdapter fixtures', () => {
       // The strip is a tolerant `replace`, not a required-prefix parse, so an id
       // that arrives WITHOUT the prefix still resolves — and the returned
       // `sessionId` is the caller's argument echoed back verbatim.
-      const unprefixed = await adapter.getSessionDetail('lookup1', null);
+      const unprefixed = await detailOf(adapter, 'lookup1', null);
       expect(unprefixed.sessionId).toBe('lookup1');
       expect(unprefixed.messages).toEqual([{ role: 'assistant', text: 'lookup answer', ts: tsOf(1) }]);
     } finally {
@@ -1066,7 +1066,7 @@ describe('GeminiAdapter fixtures', () => {
     listed.json('proj1', [geminiMsg('project answer', 1)]);
 
     try {
-      const wrongProject = await adapter.getSessionDetail('gemini-proj1', path.join(tmpHome, 'not-a-project'));
+      const wrongProject = await detailOf(adapter, 'gemini-proj1', path.join(tmpHome, 'not-a-project'));
       expect(wrongProject.sessionId).toBe('gemini-proj1');
       expect(wrongProject.messages).toEqual([{ role: 'assistant', text: 'project answer', ts: tsOf(1) }]);
     } finally {
@@ -1116,13 +1116,13 @@ describe('GeminiAdapter fixtures', () => {
         lastMessage: null,
       });
 
-      expect((await adapter.getSessionDetail('gemini-fb1l', null, fb1)).toolHistory).toEqual([
+      expect((await detailOf(adapter, 'gemini-fb1l', null, fb1)).toolHistory).toEqual([
         { tool: 'function_call', detail: '{"a":1}', ts: tsOf(1) },
       ]);
-      expect((await adapter.getSessionDetail('gemini-fb2l', null, fb2)).toolHistory).toEqual([
+      expect((await detailOf(adapter, 'gemini-fb2l', null, fb2)).toolHistory).toEqual([
         { tool: 'tool', detail: 'raw', ts: tsOf(1) },
       ]);
-      expect((await adapter.getSessionDetail('gemini-fb3l', null, fb3)).toolHistory).toEqual([
+      expect((await detailOf(adapter, 'gemini-fb3l', null, fb3)).toolHistory).toEqual([
         { tool: 'only_tool_name', detail: 'raw', ts: tsOf(1) },
       ]);
     } finally {

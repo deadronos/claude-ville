@@ -9,7 +9,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { AdapterErrorReport, AdapterWarningReport } from './types.js';
+import type { AdapterErrorReport, AdapterWarningReport, SessionDetailPayload } from './types.js';
 import { sendJson, sendError, safeLimit } from './http-utils.js';
 
 /**
@@ -38,7 +38,7 @@ export interface ReadApiProvider {
   getProviders(): Promise<unknown[]> | unknown[];
   getUsage(): Promise<unknown> | unknown;
   getHistory(limit: number): Promise<unknown[]> | unknown[];
-  getSessionDetail(sessionId: string, project: string | null, provider: string): Promise<unknown> | unknown;
+  getSessionDetail(sessionId: string, project: string | null, provider: string): Promise<SessionDetailPayload> | SessionDetailPayload;
 }
 
 const ERROR_MESSAGES = {

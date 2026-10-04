@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { estimateCost } from '../../shared/cost.js';
+import { detailOf } from './fixtureHelpers.js';
 
 describe('adapter registry logic', () => {
   describe('estimateCost', () => {
@@ -107,12 +108,13 @@ describe('adapter registry logic', () => {
         {
           provider: 'claude',
           name: 'Claude',
-          getSessionDetail: vi.fn().mockResolvedValue(mockDetail),
+          // The union, as the real adapters answer it.
+          getSessionDetail: vi.fn().mockResolvedValue({ ok: true, detail: mockDetail, warnings: [] }),
         },
       ];
 
       const adapter = adapters.find(a => a.provider === 'claude');
-      const detail = adapter ? await adapter.getSessionDetail('s1', '/proj') : { toolHistory: [], messages: [] };
+      const detail = adapter ? await detailOf(adapter, 's1', '/proj') : { toolHistory: [], messages: [] };
 
       expect(detail).toEqual(mockDetail);
       expect(adapter!.getSessionDetail).toHaveBeenCalledWith('s1', '/proj');

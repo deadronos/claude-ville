@@ -6,12 +6,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import type { AdapterErrorCode, AdapterSessionDetail, AdapterSessionsResult, AdapterWarning, AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterDetailResult, AdapterErrorCode, AdapterSessionsResult, AdapterWarning, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import type { DbMessage } from './opencode-readers.js';
 import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession } from './opencode-readers.js';
 import { closeSqlite, hasTableOrNull, openReadonlySqlite, queryAll, withReadonlySqlite } from './sqlite-utils.js';
-import { combineSources, degradedWarnings, sourceDetail, type SourceListing } from './sources.js';
+import { combineSources, degradedWarnings, detailFailed, detailOk, sourceDetail, type SourceListing } from './sources.js';
 import type { Dirent } from './scan-utils.js';
 
 const OPENCODE_DIR = process.env.OPENCODE_DATA_DIR || path.join(os.homedir(), '.local', 'share', 'opencode');
@@ -115,16 +115,23 @@ function isReadableDir(dir: string): boolean {
  * difference is reported instead of collapsed. Same shape as `hermes`'s
  * `readSessionMessages`, and for the same reason.
  */
-async function getDbMessages(sessionId: string, limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
-  const rows = await queryDb<{
-    message_id: string;
-    message_time_created: number;
-    message_data: string;
-    part_id: string | null;
-    part_time_created: number | null;
-    part_data: string | null;
-  }>(
-    `SELECT
+type DbMessageRow = {
+  message_id: string;
+  message_time_created: number;
+  message_data: string;
+  part_id: string | null;
+  part_time_created: number | null;
+  part_data: string | null;
+};
+
+/**
+ * The one message query, for both readers. It is a FUNCTION because the `LIMIT ?`
+ * differs between them — 30 for the listing's summary, 60 for the detail — and two
+ * copies of this literal are two copies of a query that #156 already had to be
+ * reasoned about carefully.
+ */
+function dbMessagesSql(limit: number): string {
+  return `SELECT
        recent.id AS message_id,
        recent.time_created AS message_time_created,
        recent.data AS message_data,
@@ -139,10 +146,15 @@ async function getDbMessages(sessionId: string, limit = 30): Promise<{ messages:
        LIMIT ${limit}
      ) recent
      LEFT JOIN part p ON p.message_id = recent.id
-     ORDER BY recent.time_created ASC, p.time_created ASC`,
-    [sessionId],
-  );
+     ORDER BY recent.time_created ASC, p.time_created ASC`;
+}
 
+async function getDbMessages(sessionId: string, limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
+  return buildDbMessages(await queryDb<DbMessageRow>(dbMessagesSql(limit), [sessionId]));
+}
+
+/** The rows to messages, shared by both readers so the per-row tolerance cannot drift. */
+function buildDbMessages(rows: DbMessageRow[]): { messages: DbMessage[]; degraded: boolean } {
   const messageMap = new Map<string, DbMessage>();
   // A `message.data` or `part.data` column that does not parse arrives as its raw
   // string. That is audit instance 1's condition and #156's fix: the bad ROW
@@ -176,6 +188,48 @@ async function getDbMessages(sessionId: string, limit = 30): Promise<{ messages:
   }
 
   return { messages: Array.from(messageMap.values()), degraded: unparsedRows > 0 };
+}
+
+/**
+ * The same read for the DETAIL path, classified. `getDbMessages` answers
+ * `[]`-shaped data through `queryDb`, which folds four states into one — no
+ * database, one that will not open, a file that is not a database, and a query that
+ * raised — and the detail path has to tell them apart, because a caller that named
+ * `opencode-db:<id>` has no other source to fall back to.
+ *
+ * `openReadonlySqlite` plus `hasTableOrNull` plus an explicit `close`, rather than
+ * `withReadonlySqlite`, whose `null` cannot tell "would not open" from "the callback
+ * threw".
+ */
+type DbMessagesRead =
+  | { kind: 'absent' }
+  | { kind: 'messages'; messages: DbMessage[]; degraded: boolean }
+  | { kind: 'failed'; code: AdapterErrorCode; detail: string };
+
+function readDbMessages(sessionId: string, limit = 30): DbMessagesRead {
+  if (!fs.existsSync(DB_FILE)) return { kind: 'absent' };
+
+  const db = openReadonlySqlite(DB_FILE, 'opencode');
+  if (!db) return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db would not open', OPENCODE_DIR) };
+
+  try {
+    const hasMessage = hasTableOrNull(db, 'message');
+    if (hasMessage === null) {
+      return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db is not a readable database', OPENCODE_DIR) };
+    }
+    if (!hasMessage) {
+      return { kind: 'failed', code: 'schema-incompatible', detail: sourceDetail('opencode.db has no message table', OPENCODE_DIR) };
+    }
+
+    try {
+      return { kind: 'messages', ...buildDbMessages(db.prepare(dbMessagesSql(limit)).all(sessionId) as DbMessageRow[]) };
+    } catch (err) {
+      debugAdapterError('opencode', 'readDbMessages rows', err, DB_FILE);
+      return { kind: 'failed', code: 'unknown', detail: sourceDetail('opencode.db message read failed', OPENCODE_DIR) };
+    }
+  } finally {
+    closeSqlite(db);
+  }
 }
 
 type DbSessionRow = DbSession & { message_data: string | null };
@@ -395,30 +449,55 @@ export class OpenCodeAdapter implements AgentAdapter {
     return combineSources([dbListing, filesListing]);
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterSessionDetail> {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
+    // The listing's own table, reused. `opencode-db:<id>` names the store outright,
+    // so a store that will not answer is `ok: false` rather than an empty detail —
+    // audit instance 11, where `queryDb`'s `[]` for "the query raised" and for
+    // "this session has no messages" arrived as the same answer.
     if (filePath?.startsWith('opencode-db:')) {
       const dbSessionId = filePath.replace('opencode-db:', '');
-      const detail = extractDbDetail((await getDbMessages(dbSessionId, 60)).messages);
-      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId };
+      const read = readDbMessages(dbSessionId, 60);
+      if (read.kind === 'failed') return detailFailed(read.code, read.detail);
+      // `absent` — no `opencode.db` at all — is the listing's own `absent` too: this
+      // install stores nothing in a database, which is an absence and not a failure.
+      const detail = extractDbDetail(read.kind === 'messages' ? read.messages : []);
+      return detailOk(
+        { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId },
+        // One malformed `message.data` or `part.data` degrades the ROW, never the
+        // session — so it is a `warning` here for the same reason it is one in the
+        // listing (#156).
+        read.kind === 'messages' && read.degraded ? [{ code: 'schema-incompatible', detail: 'message row(s) would not parse' }] : [],
+      );
     }
 
     const raw = filePath ? await readJson(filePath) : null;
     if (raw) {
       const detail = extractDetail(normalizeMessages(raw));
-      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId };
+      return detailOk({ toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId });
     }
 
     const cleanId = sessionId.replace(/^opencode-/, '');
-    const { files } = await getSessionFiles(30 * 60 * 1000);
+    const { files, rootUnreadable, filesUnstattable } = await getSessionFiles(30 * 60 * 1000);
+    if (rootUnreadable) {
+      return detailFailed('root-unreadable', sourceDetail('session directory could not be listed', OPENCODE_DIR));
+    }
     const match = files.find((file) => file.sessionId === cleanId);
     const resolved = match ? resolveMessageFile(match.projectKey, cleanId) : null;
     // Re-resolving is how a moved session file is recovered, so it stays — but the
     // retry is BOUNDED to a path this call has not already failed to read. Re-entering
     // with the path just read was the loop: `readJson` answered null, the scan still
     // listed the session file by name, and the same path came back forever.
-    if (!resolved || resolved === filePath) return { toolHistory: [], messages: [], tokenUsage: null };
+    if (!resolved || resolved === filePath) {
+      // A session file the search could not stat is a per-ITEM degradation: its
+      // siblings were searched, so this session may simply have nothing stored.
+      return detailOk(
+        { toolHistory: [], messages: [], tokenUsage: null },
+        degradedWarnings(filesUnstattable, 'root-unreadable', 'session file(s)'),
+      );
+    }
     return this.getSessionDetail(sessionId, project, resolved);
   }
+
 
   getWatchPaths(): WatchPath[] {
     const paths: WatchPath[] = [];

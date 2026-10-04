@@ -18,6 +18,7 @@ import os from 'os';
 import path from 'path';
 
 import type {
+  AdapterDetailResult,
   AdapterErrorCode,
   AdapterSessionDetail,
   AdapterSessionsResult,
@@ -30,7 +31,7 @@ import { debugAdapterError } from './jsonl-utils.js';
 import type { DbSessionRow, DbMessageRow } from './hermes-readers.js';
 import { readJson, asTimestamp, parseTranscript, parseSessionMessages, modelName, projectName, summarizeDbMessages, dbSessionTokenUsage } from './hermes-readers.js';
 import type { SqliteDb, SqliteParam } from './sqlite-utils.js';
-import { closeSqlite, hasTable, hasTableOrNull, openReadonlySqlite, queryAll, safeJsonParse, withReadonlySqlite } from './sqlite-utils.js';
+import { closeSqlite, hasTable, hasTableOrNull, openReadonlySqlite, queryAll, safeJsonParse } from './sqlite-utils.js';
 
 const HERMES_DIR = process.env.HERMES_DIR || path.join(os.homedir(), '.hermes');
 const SESSIONS_DIR = path.join(HERMES_DIR, 'sessions');
@@ -45,7 +46,7 @@ type SessionFile = { filePath: string; sessionId: string; mtime: number };
 // hermes was the only adapter on the union, and the note that said so named the
 // hoist as the next step for the second adapter. `sourceDetail` is bound here
 // because hermes reports against `HERMES_DIR` and every adapter binds its own.
-import { combineSources, degradedWarnings, sourceDetail as baseDetail, type SourceListing } from './sources.js';
+import { combineDetailSources, combineSources, degradedWarnings, detailOk, sourceDetail as baseDetail, type DetailSource, type SourceListing } from './sources.js';
 
 const sourceDetail = (what: string) => baseDetail(what, HERMES_DIR);
 
@@ -242,20 +243,22 @@ function dbProjectName(row: DbSessionRow): string | null {
 }
 
 /**
+ /**
  * The per-session message read, with the failure KEPT.
  *
  * `queryAll` answers `[]` for "no messages" and for "the query raised" alike, and
- * it has to keep answering that way: this runs inside `rows.map()`, so a throw
- * would abort the enclosing map and take EVERY session with it. That swallow is
- * load-bearing containment, and it is not what is wrong — losing the distinction
- * is. So the try/catch moves HERE, to the one call site that can afford it, and
- * the difference is reported instead of collapsed.
+ * it has to keep answering that way: this runs inside `rows.map()` on the listing
+ * path, so a throw would abort the enclosing map and take EVERY session with it.
+ * That swallow is load-bearing containment, and it is not what is wrong — losing
+ * the distinction is. So the try/catch moves HERE, to the one call site that can
+ * afford it, and the difference is reported instead of collapsed. The detail path
+ * calls this too, which is what makes audit instance 6 reportable there.
  */
-function readSessionMessages(db: SqliteDb, rawId: string): { ok: true; rows: DbMessageRow[] } | { ok: false } {
+function readSessionMessages(db: SqliteDb, rawId: string, limit = 120): { ok: true; rows: DbMessageRow[] } | { ok: false } {
   try {
-    return { ok: true, rows: db.prepare(DB_MESSAGES_SQL).all(rawId, 120) as DbMessageRow[] };
+    return { ok: true, rows: db.prepare(DB_MESSAGES_SQL).all(rawId, limit) as DbMessageRow[] };
   } catch (err) {
-    debugAdapterError('hermes', 'getDbSessions messages', err, rawId);
+    debugAdapterError('hermes', 'readSessionMessages', err, rawId);
     return { ok: false };
   }
 }
@@ -352,47 +355,82 @@ function readDbListing(activeThresholdMs: number): SourceListing {
 }
 
 /**
- * null means the database could not answer AT ALL — no handle, or no `messages`
- * table — which is the same situation as no `state.db`, so the caller takes the
- * legacy-file path either way. An object means the read happened: it may be
- * empty, and an empty answer is data (this session has no messages, and here are
- * its token counts), not a failure.
+ * The `state.db` half of ONE session's detail, classified with the listing's own
+ * table. It used to answer `AdapterSessionDetail | null`, and `null` meant three
+ * different things at once — no `state.db`, a database that would not open, and a
+ * database with no `messages` table — all of which fell through to the legacy
+ * files and out as the same empty detail. The three are now apart:
+ *
+ * | branch | state |
+ * |---|---|
+ * | no `state.db` | `absent` — nothing to read |
+ * | the handle will not open, or `sqlite_master` will not answer | `failed` / `store-unreadable` |
+ * | no `messages` table | `failed` / `schema-incompatible` |
+ * | this one session's message query raised | a `warning`, and the `sessions` row still answers |
+ *
+ * `openReadonlySqlite` plus `hasTableOrNull` plus an explicit `close` rather than
+ * `withReadonlySqlite`, which answers `null` for "would not open" and "the
+ * callback threw" alike — the collapse being undone.
  */
-function readDbSessionDetail(rawId: string, sessionId: string): AdapterSessionDetail | null {
-  const detail = withReadonlySqlite(DB_PATH, 'hermes', (db) => {
-    if (!hasTable(db, 'messages')) return null;
-    // Left on `queryAll` on purpose. This runs once per session and inside no loop,
-    // but a FAILED message read must not cost the session its token reading: the
-    // counts below come from a different table, so a failure here degrades to an
-    // empty message list and nothing else.
-    const rows = queryAll<DbMessageRow>(db, DB_MESSAGES_SQL, [rawId, 200]);
-    const summary = summarizeDbMessages(rows, 200);
+function readDbSessionDetail(rawId: string, sessionId: string): DetailSource {
+  if (!fs.existsSync(DB_PATH)) return { kind: 'absent' };
+
+  const db = openReadonlySqlite(DB_PATH, 'hermes');
+  if (!db) return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('state.db would not open') };
+
+  try {
+    const hasMessages = hasTableOrNull(db, 'messages');
+    if (hasMessages === null) {
+      return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('state.db is not a readable database') };
+    }
+    if (!hasMessages) {
+      return { kind: 'failed', code: 'schema-incompatible', detail: sourceDetail('state.db has no messages table') };
+    }
+
+    // `readSessionMessages`, not `queryAll`, for the same reason the listing uses
+    // it: the counts below come from a DIFFERENT table, so a failure here must
+    // cost this session its messages and nothing else — and must be reported
+    // rather than collapsed into the empty list that says "no messages".
+    const messages = readSessionMessages(db, rawId, 200);
+    const summary = summarizeDbMessages(messages.ok ? messages.rows : [], 200);
 
     let tokenUsage: AdapterSessionDetail['tokenUsage'] = null;
+    let sessionRowFailed = false;
     const query = dbSessionByIdSql(db, rawId);
     if (query) {
       try {
         const sessionRow = db.prepare(query.sql).get(...query.params) as DbSessionRow | undefined;
         if (sessionRow) tokenUsage = dbSessionTokenUsage(sessionRow);
       } catch (err) {
-        // Caught HERE rather than left to `withReadonlySqlite`, which would answer
-        // null for the whole callback and take the messages down as well. This
-        // site's swallow is load-bearing: `queryAll` is what confines a failure to
-        // this one field.
+        // Caught HERE rather than left to a wrapper that would answer null for the
+        // whole read and take the messages down as well. This site's swallow is
+        // load-bearing: it confines a failure to this one field.
         debugAdapterError('hermes', 'readDbSessionDetail session row', err, rawId);
+        sessionRowFailed = true;
       }
     }
 
     return {
-      // newest-first -> reverse back to chronological for display
-      toolHistory: summary.toolHistory.slice(0, 15).reverse(),
-      messages: summary.messages.slice(0, 5).reverse(),
-      tokenUsage,
-      sessionId,
+      kind: 'detail',
+      detail: {
+        // newest-first -> reverse back to chronological for display
+        toolHistory: summary.toolHistory.slice(0, 15).reverse(),
+        messages: summary.messages.slice(0, 5).reverse(),
+        tokenUsage,
+        sessionId,
+      },
+      // Audit instances 5 and 6. Both used to be the indistinguishable `[]`, so
+      // the `tokenUsage` this very function had computed was thrown away by the
+      // `length` gate its caller applied to them. A warning keeps the answer AND
+      // says why it is short.
+      warnings: [
+        ...(messages.ok ? [] : [{ code: 'schema-incompatible' as const, detail: 'messages query failed' }]),
+        ...(sessionRowFailed ? [{ code: 'schema-incompatible' as const, detail: 'session row query failed' }] : []),
+      ],
     };
-  });
-
-  return detail;
+  } finally {
+    closeSqlite(db);
+  }
 }
 
 // ─── Adapter class ────────────────────────────────────────
@@ -433,54 +471,63 @@ export class HermesAdapter implements AgentAdapter {
     return combineSources([db, filesListing]);
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterSessionDetail> {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
     if (filePath && filePath.endsWith('.jsonl')) {
       const detail = await parseTranscript(filePath);
-      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId };
+      return detailOk({ toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId });
     }
 
     const cleanId = sessionId.replace(/^hermes-/, '');
 
-    // SQLite-backed session (current Hermes). `readDbSessionDetail` answers null
-    // only when the database could not be read at all, which is the same situation
-    // as no `state.db` — so the legacy files below are the fallback in either case.
-    //
-    // What must not happen is discarding an answer the database DID give. The
-    // `length` of the message arrays used to stand in for "the read worked", and
-    // it is `[]` for two different situations — a session that has no messages,
-    // and a message query that failed — so a `tokenUsage` the `sessions` table
-    // had answered with was thrown away by both.
-    let dbTokenUsage: AdapterSessionDetail['tokenUsage'] = null;
-    if (fs.existsSync(DB_PATH)) {
-      const dbDetail = readDbSessionDetail(cleanId, sessionId);
-      if (dbDetail) {
-        if (dbDetail.toolHistory.length || dbDetail.messages.length) return dbDetail;
-        dbTokenUsage = dbDetail.tokenUsage;
-      }
+    // The `state.db` half, in the three states it actually has. `readDbSessionDetail`
+    // used to answer `null` for a database that could not be read at all AND for one
+    // with no `messages` table, and both then fell through to the legacy files and
+    // out as the same empty detail — so an unreadable store and a store with nothing
+    // in it were one answer.
+    const db = readDbSessionDetail(cleanId, sessionId);
+    const dbDetail = db.kind === 'detail' ? db.detail : null;
+    const dbWarnings = db.kind === 'detail' ? db.warnings : [];
+    // A failed store is only fatal if nothing else can answer for this session, so
+    // it is carried as a source rather than returned — the legacy files below may
+    // still hold it, and then it is a `warning` on a detail that stands.
+    const dbSource = db.kind === 'failed' ? [db] : [];
+    const legacy: DetailSource[] = [];
+
+    if (dbDetail && (dbDetail.toolHistory.length || dbDetail.messages.length)) {
+      return detailOk(dbDetail, dbWarnings);
     }
 
     const transcript = transcriptPath(cleanId);
     if (fs.existsSync(transcript)) {
       const detail = await parseTranscript(transcript);
-      return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId };
+      legacy.push({ kind: 'detail', detail: { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId }, warnings: [] });
+    } else {
+      // Fall back to the session metadata JSON file which has a messages array
+      const sessionFile = path.join(SESSIONS_DIR, `session_${cleanId}.json`);
+      if (fs.existsSync(sessionFile)) {
+        const metadata = await readJson(sessionFile);
+        if (metadata?.messages) {
+          const detail = parseSessionMessages(metadata);
+          legacy.push({ kind: 'detail', detail: { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId }, warnings: [] });
+        }
+      }
     }
 
-    // Fall back to the session metadata JSON file which has a messages array
-    const sessionFile = path.join(SESSIONS_DIR, `session_${cleanId}.json`);
-    if (fs.existsSync(sessionFile)) {
-      const metadata = await readJson(sessionFile);
-      if (metadata?.messages) {
-        const detail = parseSessionMessages(metadata);
-        return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId };
-      }
+    if (legacy.length > 0) {
+      return combineDetailSources([...dbSource, ...legacy]);
     }
 
     // Nothing rendered. If the `sessions` table DID answer for this id, report its
     // counts rather than the bare no-match shape — real messages from the legacy
     // files would have been returned above.
-    if (dbTokenUsage) return { toolHistory: [], messages: [], tokenUsage: dbTokenUsage, sessionId };
+    if (dbDetail?.tokenUsage) {
+      return detailOk({ toolHistory: [], messages: [], tokenUsage: dbDetail.tokenUsage, sessionId }, dbWarnings);
+    }
 
-    return { toolHistory: [], messages: [] };
+    // No source has anything for this id, so `ok: true` with the empty detail. Only
+    // a store that FAILED answers `ok: false`, and only when nothing readable was
+    // left to say whether this session has messages.
+    return combineDetailSources(dbSource);
   }
 
   getWatchPaths(): WatchPath[] {

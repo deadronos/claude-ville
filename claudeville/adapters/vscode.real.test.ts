@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 type LoadedAdapter = InstanceType<typeof import('./vscode.ts').VSCodeAdapter>;
 
@@ -257,7 +257,7 @@ describe('VSCodeAdapter real module coverage', () => {
       expect(debugSession).toBeTruthy();
       expect(resourceSession).toBeTruthy();
 
-      const debugDetail = await adapter.getSessionDetail(debugSession!.sessionId, debugSession!.project);
+      const debugDetail = await detailOf(adapter, debugSession!.sessionId, debugSession!.project);
       expect(debugDetail.toolHistory).toEqual(expect.arrayContaining([
         expect.objectContaining({ tool: 'read_file' }),
         expect.objectContaining({ tool: 'grep_search' }),
@@ -267,7 +267,7 @@ describe('VSCodeAdapter real module coverage', () => {
         expect.objectContaining({ text: 'Assistant fallback message' }),
       ]));
 
-      const resourceDetail = await adapter.getSessionDetail(resourceSession!.sessionId, resourceSession!.project, resourceFilePath);
+      const resourceDetail = await detailOf(adapter, resourceSession!.sessionId, resourceSession!.project, resourceFilePath);
       expect(resourceDetail.toolHistory).toEqual([
         expect.objectContaining({ tool: 'call_result', detail: 'call_alpha' }),
         expect.objectContaining({ tool: 'tool_result', detail: 'toolu_beta' }),
@@ -300,7 +300,7 @@ describe('VSCodeAdapter real module coverage', () => {
       const sessions = await sessionsOf(adapter, 60_000);
       expect(sessions).toEqual([]);
 
-      const missingDetail = await adapter.getSessionDetail('not-a-vscode-session', workspaceProject);
+      const missingDetail = await detailOf(adapter, 'not-a-vscode-session', workspaceProject);
       expect(missingDetail).toEqual({ toolHistory: [], messages: [] });
     } finally {
       rmTmp(tmpRoot);

@@ -4,6 +4,7 @@
  */
 
 import { flattenHistoryEntries, type HistorySource } from '../shared/history-utils.js';
+import type { SessionDetailPayload } from '../shared/types.js';
 
 export function defaultUsage() {
   return {
@@ -169,9 +170,18 @@ export function getCurrentState() {
   };
 }
 
-export function getSessionDetail(sessionId: string, provider: string) {
+/**
+ * The merged collector's answer for one session.
+ *
+ * The stored detail is returned VERBATIM, which is what it has always done — the
+ * hub merges state another process collected and has no failure channel of its own,
+ * so it cannot say "the reader failed" and must not invent one. The cast is at the
+ * single boundary where unvalidated collector JSON becomes a typed wire payload.
+ */
+export function getSessionDetail(sessionId: string, provider: string): SessionDetailPayload {
   const key = `${provider}:${sessionId}`;
-  return getCurrentState().sessionDetails.get(key) || { toolHistory: [], messages: [] };
+  const detail = getCurrentState().sessionDetails.get(key);
+  return (detail || { toolHistory: [], messages: [] }) as SessionDetailPayload;
 }
 
 export function getHistory(limit = 100) {

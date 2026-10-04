@@ -6,7 +6,7 @@ import { resolveHubAuthToken } from '../shared/hub-auth.js';
 import type { WatchPath } from '../shared/types.js';
 import { adapters, getAllSessions, getAllWatchPaths, getActiveProviders, getSessionDetailByProvider } from '../claudeville/adapters/index.js';
 import { buildCollectorSnapshot } from './snapshot.js';
-import type { CollectorSnapshotDeps } from './snapshot.js';
+import type { CollectorSnapshotDeps, SessionDetail } from './snapshot.js';
 import { createCollectorPublisher } from './publisher.js';
 
 const DEFAULT_ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
@@ -62,6 +62,29 @@ export function getCollectorConfig(): CollectorRuntimeConfig {
   };
 }
 
+/**
+ * The adapter layer's `getSessionDetailByProvider` answers a discriminated union
+ * and the collector's snapshot is a merged, PERSISTED state — it has no channel
+ * for diagnostics, exactly as `getAllSessions` above does not carry the listing's
+ * `errors`/`warnings` either. Giving the snapshot a diagnostics channel is a
+ * separate decision about the collector's wire contract, so this is the one place
+ * the two views meet: `ok: false` becomes the `null` the collector has always
+ * treated as "no detail for this session", and it is logged so the reason is not
+ * lost in the process.
+ */
+async function collectSessionDetail(
+  provider: string,
+  sessionId: string,
+  project: string | null,
+): Promise<SessionDetail | null> {
+  const result = await getSessionDetailByProvider(provider, sessionId, project);
+  if (!result.ok) {
+    console.error(`[collector] ${provider} session detail failed: ${result.error.code}: ${result.error.message}`);
+    return null;
+  }
+  return result.detail;
+}
+
 const defaultCollectorDeps: CollectorRuntimeDeps = {
   createFileWatchers,
   createHash: crypto.createHash,
@@ -76,7 +99,7 @@ const defaultCollectorDeps: CollectorRuntimeDeps = {
   getAllSessions: getAllSessions as CollectorSnapshotDeps['getAllSessions'],
   getAllWatchPaths,
   getActiveProviders,
-  getSessionDetailByProvider,
+  getSessionDetailByProvider: collectSessionDetail,
   fetch: globalThis.fetch,
   setTimeout: globalThis.setTimeout,
   clearTimeout: globalThis.clearTimeout,

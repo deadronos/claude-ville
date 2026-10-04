@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CodexAdapter } from './codex';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -520,7 +520,7 @@ describe('codex adapter', () => {
 
     it('getSessionDetail returns expected structure', async () => {
       const adapter = new CodexAdapter();
-      const detail = await adapter.getSessionDetail('nonexistent-session', '/nonexistent');
+      const detail = await detailOf(adapter, 'nonexistent-session', '/nonexistent');
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
       expect(Array.isArray(detail.toolHistory)).toBe(true);
@@ -529,7 +529,7 @@ describe('codex adapter', () => {
 
     it('getSessionDetail returns empty arrays for unknown session', async () => {
       const adapter = new CodexAdapter();
-      const detail = await adapter.getSessionDetail('codex-rollout-2025-01-22T10-30-00-abc123', '/nonexistent');
+      const detail = await detailOf(adapter, 'codex-rollout-2025-01-22T10-30-00-abc123', '/nonexistent');
       expect(detail.toolHistory).toEqual([]);
       expect(detail.messages).toEqual([]);
     });
@@ -546,7 +546,7 @@ describe('codex token usage', () => {
         JSON.stringify({ type: 'token_usage_record', payload: { usage: { input_tokens: 500, output_tokens: 50 }, thread_token_usage: { input_tokens: 7000, output_tokens: 700, total_tokens: 7700 } } }),
         JSON.stringify({ type: 'token_usage_record', payload: { usage: { input_tokens: 800, output_tokens: 90 }, thread_token_usage: { input_tokens: 9000, output_tokens: 900, total_tokens: 9900 } } }),
       ].join('\n'));
-      const detail = await new CodexAdapter().getSessionDetail('codex-x', null, file);
+      const detail = await detailOf(new CodexAdapter(), 'codex-x', null, file);
       expect(detail.tokenUsage).toEqual({ input: 9000, output: 900 });
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -561,7 +561,7 @@ describe('codex token usage', () => {
         JSON.stringify({ type: 'session_meta', payload: { model: 'gpt-5', cwd: '/tmp/proj' } }),
         JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 4000, output_tokens: 400, total_tokens: 4400 } } } }),
       ].join('\n'));
-      const detail = await new CodexAdapter().getSessionDetail('codex-y', null, file);
+      const detail = await detailOf(new CodexAdapter(), 'codex-y', null, file);
       expect(detail.tokenUsage).toEqual({ input: 4000, output: 400 });
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

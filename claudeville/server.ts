@@ -42,7 +42,21 @@ const handleApiRoute = createApiRouteHandler({
   getTasks: async () => (claudeAdapter?.getTasks ? claudeAdapter.getTasks() : []),
   getProviders: () => getActiveProviders(),
   getUsage: () => usageQuota.fetchUsage(),
-  getSessionDetail: (sessionId, project, provider) => getSessionDetailByProvider(provider, sessionId, project),
+  getSessionDetail: async (sessionId, project, provider) => {
+    const result = await getSessionDetailByProvider(provider, sessionId, project);
+    // The detail fields stay at the top level so every existing client keeps
+    // reading them; `error` and `warnings` ride alongside. A FAILED reader still
+    // answers 200 with `toolHistory`/`messages` present — because the detail is
+    // part of this contract and a client that destructures it must not crash on a
+    // provider having a bad day — but it now says WHY, instead of the 200 empty
+    // detail that read as "this session has nothing stored" (audit instance 15).
+    if (!result.ok) {
+      return { toolHistory: [], messages: [], error: result.error };
+    }
+    return result.warnings.length
+      ? { ...result.detail, warnings: result.warnings }
+      : result.detail;
+  },
   getHistory: async (limit) => {
     // History is a flattened view of the session rows, so it takes the sessions
     // alone. The diagnostics belong to `/api/sessions`, which is where the

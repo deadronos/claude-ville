@@ -20,12 +20,13 @@
 import fs from 'fs';
 import path from 'path';
 
-import type { AdapterSessionDetail, AdapterSessionsResult, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
-import { hasTable, isOpenableSqliteDatabase, queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import type { AdapterDetailResult, AdapterSessionDetail, AdapterSessionsResult, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
+import { closeSqlite, hasTableOrNull, isOpenableSqliteDatabase, openReadonlySqlite } from './sqlite-utils.js';
 import { toolBlockInfo, normalizeTokenUsage, decodeEventRows, parseSession, getToolHistory, getRecentMessages } from './openclaw-readers.js';
+import { debugAdapterError } from './jsonl-utils.js';
 import { OPENCLAW_DIR, AGENTS_DIR, AGENT_DB_FILENAME, readAgentDirs, buildSessionId, buildProjectKey, parseSessionId, scanAgentSessionFiles, findAgentDatabase, getDbSessions } from './openclaw-scan.js';
 import { extractText } from './text-utils.js';
-import { combineSources, degradedWarnings, sourceDetail, type SourceListing } from './sources.js';
+import { combineDetailSources, combineSources, degradedWarnings, detailFailed, detailOk, sourceDetail, type DetailSource, type SourceListing } from './sources.js';
 import type { Dirent } from './scan-utils.js';
 
 // ─── Adapter class ────────────────────────────────────────
@@ -134,19 +135,45 @@ export class OpenClawAdapter implements AgentAdapter {
     };
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterSessionDetail> {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
     const parsed = parseSessionId(sessionId);
 
-    // SQLite-backed session (current OpenClaw)
+    // SQLite-backed session (current OpenClaw). An explicit `.sqlite` filePath is
+    // the caller naming the store, so there is nothing to fall back to and a
+    // store that cannot answer is `ok: false` rather than an empty detail.
     if (filePath && filePath.endsWith('.sqlite')) {
-      return this.readDbSessionDetail(filePath, parsed.fileId, sessionId);
+      const answer = this.readDbSessionDetail(filePath, parsed.fileId, sessionId);
+      return answer.kind === 'detail'
+        ? detailOk(answer.detail, answer.warnings)
+        : answer.kind === 'failed'
+          ? detailFailed(answer.code, answer.detail)
+          : detailOk({ toolHistory: [], messages: [] });
     }
 
+    // Without one, the agent's own database is tried and then the legacy JSONL,
+    // so the two are combined rather than cascaded: a database that will not open
+    // used to fall through to the legacy scan and out as an empty detail, which is
+    // how audit instance 8's corrupt `openclaw-agent.sqlite` read as "this session
+    // has no messages".
+    const sources: DetailSource[] = [];
+
     if (!filePath || !filePath.endsWith('.jsonl')) {
+      // The `agents/` root is what makes the id-only lookup possible at all, so a
+      // root that cannot be listed fails the lookup — the same rule the listing
+      // applies to it, and the same code.
+      if (fs.existsSync(AGENTS_DIR) && readAgentDirs('getSessionDetail') === null) {
+        return detailFailed('root-unreadable', sourceDetail('agents directory could not be listed', OPENCLAW_DIR));
+      }
       const database = findAgentDatabase(parsed.agentId);
       if (database) {
-        const detail = this.readDbSessionDetail(database.dbPath, parsed.fileId, sessionId);
-        if (detail.toolHistory.length || detail.messages.length) return detail;
+        const answer = this.readDbSessionDetail(database.dbPath, parsed.fileId, sessionId);
+        if (answer.kind === 'detail' && (answer.detail.toolHistory.length || answer.detail.messages.length)) {
+          return detailOk(answer.detail, answer.warnings);
+        }
+        // Content-less or failed: the legacy scan below is still consulted, so this
+        // is carried as a source and decides only whether the legacy scan failing to
+        // answer leaves a `warning` or an `ok: false`.
+        if (answer.kind === 'failed') sources.push(answer);
       }
     }
 
@@ -164,24 +191,61 @@ export class OpenClawAdapter implements AgentAdapter {
     }
 
     if (target && fs.existsSync(target)) {
-      return {
-        toolHistory: await getToolHistory(target),
-        messages: await getRecentMessages(target),
-        sessionId,
-      };
+      sources.push({
+        kind: 'detail',
+        detail: {
+          toolHistory: await getToolHistory(target),
+          messages: await getRecentMessages(target),
+          sessionId,
+        },
+        warnings: [],
+      });
     }
 
-    return { toolHistory: [], messages: [] };
+    return combineDetailSources(sources);
   }
 
-  private readDbSessionDetail(dbPath: string, rawSessionId: string, sessionId: string): AdapterSessionDetail {
-    const detail = withReadonlySqlite(dbPath, 'openclaw', (db) => {
-      if (!hasTable(db, 'transcript_events')) return null;
-      const rows = queryAll<{ event_json: string | null; event_zstd: Buffer | null }>(
-        db,
-        'SELECT event_json, event_zstd FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?',
-        [rawSessionId, 200],
-      );
+  /**
+   * One agent database, for ONE session, classified.
+   *
+   * It used to answer `{ toolHistory: [], messages: [] }` for a database that would
+   * not open AND for one with no `transcript_events` table, which is the collapse
+   * this contract removes. `openReadonlySqlite` plus `hasTableOrNull` plus an
+   * explicit `close` rather than `withReadonlySqlite`, whose `null` cannot tell
+   * "would not open" from "the callback threw".
+   *
+   * | branch | state |
+   * |---|---|
+   * | the file is not there | `absent` |
+   * | will not open, or `sqlite_master` will not answer | `failed` / `store-unreadable` |
+   * | no `transcript_events` table | `failed` / `schema-incompatible` |
+   * | the events query raised | `failed` / `unknown` — one session, one store, no other half |
+   */
+  private readDbSessionDetail(dbPath: string, rawSessionId: string, sessionId: string): DetailSource {
+    if (!fs.existsSync(dbPath)) return { kind: 'absent' };
+
+    const db = openReadonlySqlite(dbPath, 'openclaw');
+    if (!db) return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('agent database would not open', OPENCLAW_DIR) };
+
+    try {
+      const hasEvents = hasTableOrNull(db, 'transcript_events');
+      if (hasEvents === null) {
+        return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('agent database is not a readable database', OPENCLAW_DIR) };
+      }
+      if (!hasEvents) {
+        return { kind: 'failed', code: 'schema-incompatible', detail: sourceDetail('agent database has no transcript_events table', OPENCLAW_DIR) };
+      }
+
+      let rows: Array<{ event_json: string | null; event_zstd: Buffer | null }>;
+      try {
+        rows = db
+          .prepare('SELECT event_json, event_zstd FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?')
+          .all(rawSessionId, 200) as Array<{ event_json: string | null; event_zstd: Buffer | null }>;
+      } catch (err) {
+        debugAdapterError('openclaw', 'readDbSessionDetail events', err, dbPath);
+        return { kind: 'failed', code: 'unknown', detail: sourceDetail('agent database events read failed', OPENCLAW_DIR) };
+      }
+
       // rows are newest-first; reverse to chronological so `slice(-N)` keeps the latest
       const entries = decodeEventRows(rows).reverse();
       const toolHistory: Array<{ tool: string; detail: string; ts: number }> = [];
@@ -218,15 +282,20 @@ export class OpenClawAdapter implements AgentAdapter {
       }
 
       return {
-        toolHistory: toolHistory.slice(-15),
-        messages: messages.slice(-5),
-        tokenUsage,
-        sessionId,
+        kind: 'detail',
+        detail: {
+          toolHistory: toolHistory.slice(-15),
+          messages: messages.slice(-5),
+          tokenUsage,
+          sessionId,
+        },
+        warnings: [],
       };
-    });
-
-    return detail || { toolHistory: [], messages: [] };
+    } finally {
+      closeSqlite(db);
+    }
   }
+
 
   getWatchPaths(): WatchPath[] {
     const paths: WatchPath[] = [];

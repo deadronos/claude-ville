@@ -15,7 +15,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let workspaceDir = '';
@@ -104,7 +104,7 @@ describe('CopilotAdapter fixtures', () => {
       project: workspaceDir,
     });
 
-    const detail = await adapter.getSessionDetail(sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
+    const detail = await detailOf(adapter, sessions[0].sessionId, sessions[0].project, sessions[0].filePath);
     expect(detail.toolHistory).toEqual([
       expect.objectContaining({ tool: 'read_file', detail: '{"file_path":"/tmp/report.md"}' }),
     ]);
@@ -122,7 +122,7 @@ describe('CopilotAdapter fixtures', () => {
     // optional tokenUsage/sessionId "may accompany them". An exact-match
     // assertion would freeze today's two-key miss shape and block a shared
     // detail builder from returning all four fields.
-    await expect(adapter.getSessionDetail('copilot-missing', workspaceDir)).resolves.toMatchObject({
+    await expect(detailOf(adapter, 'copilot-missing', workspaceDir)).resolves.toMatchObject({
       toolHistory: [],
       messages: [],
     });
@@ -247,7 +247,7 @@ describe('CopilotAdapter fixtures', () => {
       expect(assistantSession.lastToolInput).toBe('{"path":"' + 'p'.repeat(30) + '","q":"' + 'q'.repeat(14));
       expect(assistantSession.lastToolInput).toHaveLength(60);
 
-      const detail = await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
+      const detail = await detailOf(adapter, session.sessionId, session.project, session.filePath);
 
       // maxItems: the LAST 15 of 20 tools, oldest dropped, original order kept.
       expect(detail.toolHistory).toHaveLength(15);
@@ -276,7 +276,7 @@ describe('CopilotAdapter fixtures', () => {
       // copilot.ts:135 — toolHistory's assistant.message site also caps at 80,
       // from the identical payload, so the two getToolHistory branches agree on
       // the limit while the two parseSession branches stay at 60.
-      const assistantDetail = await adapter.getSessionDetail(
+      const assistantDetail = await detailOf(adapter, 
         assistantSession.sessionId,
         assistantSession.project,
         assistantSession.filePath,
@@ -379,7 +379,7 @@ describe('CopilotAdapter fixtures', () => {
       expect(assistantSession.lastToolInput).toBeNull();
 
       // copilot.ts:138 — getToolHistory's tool_call site.
-      const toolCallDetail = await adapter.getSessionDetail(
+      const toolCallDetail = await detailOf(adapter, 
         toolCallSession.sessionId,
         toolCallSession.project,
         toolCallSession.filePath,
@@ -390,7 +390,7 @@ describe('CopilotAdapter fixtures', () => {
       ]);
 
       // copilot.ts:129 — getToolHistory's assistant.message site.
-      const assistantDetail = await adapter.getSessionDetail(
+      const assistantDetail = await detailOf(adapter, 
         assistantSession.sessionId,
         assistantSession.project,
         assistantSession.filePath,

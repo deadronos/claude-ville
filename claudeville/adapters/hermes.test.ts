@@ -4,7 +4,7 @@ import path from 'path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { sessionsOf } from './fixtureHelpers.js';
+import { detailOf, sessionsOf } from './fixtureHelpers.js';
 
 const originalHermesDir = process.env.HERMES_DIR;
 
@@ -86,7 +86,7 @@ describe('hermes adapter', () => {
     ]);
 
     const adapter = await loadAdapter(tmp);
-    const detail = await adapter.getSessionDetail('hermes-20260426_154631_8edf9b47', null, transcriptFile);
+    const detail = await detailOf(adapter, 'hermes-20260426_154631_8edf9b47', null, transcriptFile);
 
     fs.rmSync(tmp, { recursive: true, force: true });
     expect(detail.toolHistory).toEqual([{ tool: 'patch', detail: '{"mode":"replace"}', ts: Date.parse('2026-04-26T15:48:00.000Z') }]);
