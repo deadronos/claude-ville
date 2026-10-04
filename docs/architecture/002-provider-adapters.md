@@ -331,7 +331,7 @@ Five more were then split the same way — `openclaw`, `claude`, `hermes`,
 
 | Adapter | Before (total / code-only) | `<name>.ts` | `<name>-readers.ts` | Readers own |
 | --- | --- | --- | --- | --- |
-| `vscode` | 748 / 569 | 380 / 317 | 382 / 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
+| `vscode` | 748 / 569 | 380 / 317 | 381 / 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
 | `openclaw` | 619 / 486 | 381 / 294 | 250 / 198 | legacy-JSONL and SQLite-transcript readers, `toolBlockInfo`, `normalizeTokenUsage` |
 | `claude` | 626 / 486 | 371 / 303 | 269 / 188 | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
 | `hermes` | 517 / 420 | 257 / 204 | 274 / 224 | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
