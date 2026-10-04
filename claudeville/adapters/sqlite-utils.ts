@@ -43,6 +43,20 @@ export function openReadonlySqlite(filePath: string, scope: string): SqliteDb | 
 }
 
 /**
+ * Close a handle opened by {@link openReadonlySqlite}, never throwing. Its own
+ * `finally`, so a caller that has to classify what went wrong INSIDE the
+ * callback — and therefore cannot use {@link withReadonlySqlite}, which folds a
+ * throw into the same `null` as a failed open — still gets the close.
+ */
+export function closeSqlite(db: SqliteDb): void {
+  try {
+    db.close();
+  } catch {
+    // already closed
+  }
+}
+
+/**
  * Open a read-only handle, run `fn`, and always close. Returns null when the
  * database cannot be opened or the query throws.
  */
@@ -55,11 +69,7 @@ export function withReadonlySqlite<T>(filePath: string, scope: string, fn: (db: 
     debugAdapterError(scope, 'query', err, filePath);
     return null;
   } finally {
-    try {
-      db.close();
-    } catch {
-      // already closed
-    }
+    closeSqlite(db);
   }
 }
 
@@ -76,17 +86,32 @@ export function queryAll<T = Record<string, unknown>>(
   }
 }
 
-/** True when a table/view exists in the attached database. */
-export function hasTable(db: SqliteDb, name: string): boolean {
+/**
+ * {@link hasTable} with the third state KEPT: `false` when the table is absent,
+ * `null` when the database could not answer the question at all.
+ *
+ * `hasTable` folds those two together, and `false` therefore means both "this
+ * store has no such table" and "this file is not a database" — so a `state.db`
+ * of plain text and a `state.db` from a different tool are indistinguishable, and
+ * both read as "this provider has no sessions". An adapter that has to report
+ * which of the two happened needs them apart. `hasTable` is the coercing wrapper
+ * over this, so there is one probe and not two.
+ */
+export function hasTableOrNull(db: SqliteDb, name: string): boolean | null {
   try {
     const row = db
       .prepare("SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ? LIMIT 1")
       .get(name);
     return Boolean(row);
   } catch (err) {
-    debugAdapterError('sqlite', 'hasTable', err, name);
-    return false;
+    debugAdapterError('sqlite', 'hasTableOrNull', err, name);
+    return null;
   }
+}
+
+/** True when a table/view exists in the attached database. */
+export function hasTable(db: SqliteDb, name: string): boolean {
+  return hasTableOrNull(db, name) === true;
 }
 
 /**
