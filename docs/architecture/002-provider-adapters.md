@@ -60,9 +60,9 @@ and none of it is logic to remove. `vscode.ts` was 748 lines / 569 code-only
 before the split below — it merges four storage roots across four editor channels
 (`vscode`, `vscode-insiders`, `cursor`, `offset` — `vscode.ts:25`) and cannot
 honestly reach 400 by removing boilerplate, which is why it was split into files
-rather than trimmed. See **File layout** below, which records all five oversized
-adapters — `vscode`, `openclaw`, `claude`, `hermes`, `opencode` — and their
-measured results.
+rather than trimmed. See **File layout** below, which records all six oversized
+adapters — `vscode`, `openclaw`, `claude`, `hermes`, `opencode`, `gemini` — and
+their measured results.
 
 Three helpers landed, `copilot` the reference consumer (321 → 281 lines):
 `jsonl-utils` owns `readJsonlEntries`, `collectJsonl` (the read → parse → fold
@@ -162,7 +162,7 @@ Caveats for anyone converting an adapter:
       `string[]`, and what added the `<operation> resolve` label for a throwing
       callback (`pi.ts:260`).
     - `openclaw` and `hermes` enumerate **files** in the session directory
-      directly, with no project-dir level to descend through (`openclaw.ts:126`,
+      directly, with no project-dir level to descend through (`openclaw-scan.ts:113`,
       `hermes.ts:36`), so `fileFor` still has nothing to map there and the
       `isDirectory()` filter would drop every candidate.
     - `gemini` nests one level deeper than `pi`: project dir → `chats/` →
@@ -289,17 +289,17 @@ something that can never produce data. There are now three tiers, each with its
 own question:
 
 - **`isSqliteFile`** (`sqlite-utils.ts:20`) — "is this a regular file?" This is
-  what `findAgentDatabases` (`openclaw.ts:167`) gates on, so a directory-shaped
+  what `findAgentDatabases` (`openclaw-scan.ts:154`) gates on, so a directory-shaped
   path is not an agent database at all. It deliberately does NOT read the
   header: it only asks `statSync().isFile()`, so a regular file that is not a
   database passes it, and `openReadonlySqlite`'s own gate answers that case.
 - **The open itself** — `getDbSessions` returns which agents the database
   **actually answered for**, and `getActiveSessions` skips the legacy scan for
-  exactly those (`dbBackedAgents`, `openclaw.ts:323`). This replaced a set
+  exactly those (`dbBackedAgents`, `openclaw.ts:53`). This replaced a set
   computed from path existence *before* any read, so the fallback is now driven
   by an observation rather than a second guess.
 - **`isOpenableSqliteDatabase`** (`sqlite-utils.ts:105`) — "will this actually
-  be read?" `getWatchPaths` (`openclaw.ts:458`) gates on it, because a
+  be read?" `getWatchPaths` (`openclaw.ts:188`) gates on it, because a
   `type: 'file'` watch entry is a promise that the path yields data. The check
   opens a read-only handle **and reads one row**: `better-sqlite3` opens lazily,
   so a file of garbage yields a usable handle and only raises `file is not a
@@ -308,7 +308,7 @@ own question:
 
 **A table that is too far from the expected shape is `null`, not `[]`.** Within
 that open, `openclaw`'s window query is projected from `pragma_table_info`
-(`sessionWindowSql`, `openclaw.ts:211`) exactly as `hermes.ts` projects its
+(`sessionWindowSql`, `openclaw-scan.ts:198`) exactly as `hermes.ts` projects its
 `sessions` query, because the literal it replaced named `transcript_updated_at`
 unconditionally and drift made the agent report zero sessions instead of the one
 it held. Missing a required table, missing `session_id`, or missing every activity
@@ -318,7 +318,7 @@ agent to its legacy listing — while a query that ran and found nothing answers
 audit called out, and it is the one that has to be kept separate from the second.
 
 **A directory that exists but cannot be read is not an empty directory.**
-`readAgentDirs` (`openclaw.ts:68`) answers `null` for "could not enumerate" against
+`readAgentDirs` (`openclaw-scan.ts:55`) answers `null` for "could not enumerate" against
 `[]` for "there are no agents", and reports the failure on `console.error` — the
 unconditional channel `adapters/index.ts:60` already uses for an adapter about to
 report less data than it should. `debugAdapterError` is the wrong channel for
@@ -367,7 +367,7 @@ Every adapter method that performs file or network I/O must be implemented as an
   `shared/types.ts:89` declares it as `getWatchPaths(): WatchPath[]` and the
   registry calls it without awaiting (`adapters/index.ts:91`). The three adapters
   that must enumerate a directory to answer it therefore use `fs.readdirSync`
-  inside it — `claude.ts:275`, `gemini.ts:240`, `openclaw.ts:449`. That is a
+  inside it — `claude.ts:275`, `gemini.ts:240`, `openclaw.ts:179`. That is a
   structural consequence of the interface, not the "must be async" rule being
   deliberately broken; converting these needs an interface change first.
 - **Concurrent scans**: When iterating over multiple directories or files, use `Promise.all` to run operations in parallel rather than sequential `for` loops.
@@ -377,16 +377,17 @@ Every adapter method that performs file or network I/O must be implemented as an
 Note that the rules above are not uniformly held, and the eight remaining
 `fs.readdirSync` sites breach them in two different ways:
 
-- `claude.ts:275`, `gemini.ts:235`, `openclaw.ts:449` — inside `getWatchPaths()`,
+- `claude.ts:275`, `gemini.ts:235`, `openclaw.ts:179` — inside `getWatchPaths()`,
   so they cannot be async at all without an interface change. `openclaw`'s is now
   inside `readAgentDirs`, shared with the two scan sites below.
-- `openclaw.ts:70` — inside the synchronous helper `readAgentDirs()`, called from
-  `findAgentDatabases` (`:156`), `getActiveSessions` (`:320`) and
-  `getWatchPaths` (`:449`), all from async paths. It used to be three separate
-  sites, at `openclaw.ts:120`, `:227` and `:361`.
+- `openclaw-scan.ts:57` — inside the synchronous helper `readAgentDirs()`
+  (`openclaw-scan.ts:55`), called from `findAgentDatabases`
+  (`openclaw-scan.ts:143`), `getActiveSessions` (`openclaw.ts:50`) and
+  `getWatchPaths` (`openclaw.ts:179`), all from async paths. It used to be three
+  separate readdir sites.
 - `gemini.ts:91,109` — inside synchronous project-path resolution, called from
   async paths.
-- `openclaw.ts:370` — inside `getSessionDetail`, so it breaches the "use
+- `openclaw.ts:100` — inside `getSessionDetail`, so it breaches the "use
   `fs.promises`" rule without breaching the "must be async" rule. It additionally
   has no try of its own, so an unreadable agents directory THROWS there rather
   than collapsing; `adapters/index.ts:78` catches it to an empty detail for one
@@ -413,6 +414,10 @@ files, and the split is by responsibility, not by size:
   discovered file path into detail: `parseSession`, `getToolHistory`,
   `getRecentMessages`, `getTokenUsage`, `hasRealActivity`, and their shared types
   and window constants.
+- **`<name>-scan.ts` is the third file, only when two are not enough** — the
+  storage roots, the directory walk, the id helpers and the file/database scan,
+  for an adapter whose class needs so much of the pre-class block that no honest
+  reader/scan line exists inside it. `openclaw` is the only adapter that has one.
 
 The dependency is **one-way**: `<name>.ts` imports from `<name>-readers.ts`, never
 the reverse. A two-way reference means the boundary is drawn in the wrong place —
@@ -441,32 +446,46 @@ count.
 | `vscode-readers.ts` | 381 | 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
 
 Down from 748 / 569 in one file. If one file is ever not enough, add
-`<name>-scan.ts`; prefer the fewest files.
+`<name>-scan.ts`; prefer the fewest files. `openclaw` is the one adapter that
+needed it — see below.
 
 Five more were then split the same way — `openclaw`, `claude`, `hermes`,
-`opencode`, `gemini` — and the measured result, all six adapters:
+`opencode`, `gemini` — and the measured result, all six adapters. Code-only is
+"lines carrying an AST node, comments and blanks excluded", counted with the
+TypeScript compiler API:
 
-| Adapter | Before (total / code-only) | `<name>.ts` | `<name>-readers.ts` | Readers own |
-| --- | --- | --- | --- | --- |
-| `vscode` | 748 / 569 | 380 / 317 | 381 / 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
-| `openclaw` | 619 / 486 | 470 / 318 | 250 / 198 | legacy-JSONL and SQLite-transcript readers, `toolBlockInfo`, `normalizeTokenUsage` |
-| `claude` | 626 / 486 | 371 / 303 | 269 / 188 | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
-| `hermes` | 517 / 420 | 257 / 204 | 274 / 224 | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
-| `opencode` | 470 / 417 | 267 / 238 | 213 / 186 | part/tool/message shaping, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
-| `gemini` | 473 / 324 | 248 / 175 | 234 / 152 | `readJsonFile`, `loadSessionMessages`, `parseSession`, tool/message readers, `getTokenUsage`, `TokenFold` |
+| Adapter | Before (total / code-only) | `<name>.ts` | `<name>-readers.ts` | `<name>-scan.ts` | Readers own |
+| --- | --- | --- | --- | --- | --- |
+| `vscode` | 748 / 569 | 380 / 317 | 381 / 258 | — | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
+| `openclaw` | 619 / 486 | 201 / 154 | 250 / 205 | 287 / 195 | legacy-JSONL and SQLite-transcript readers, `toolBlockInfo`, `normalizeTokenUsage` |
+| `claude` | 626 / 486 | 371 / 303 | 269 / 188 | — | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
+| `hermes` | 517 / 420 | 257 / 204 | 274 / 224 | — | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
+| `opencode` | 470 / 417 | 267 / 238 | 213 / 186 | — | part/tool/message shaping, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
+| `gemini` | 473 / 324 | 248 / 175 | 234 / 152 | — | `readJsonFile`, `loadSessionMessages`, `parseSession`, tool/message readers, `getTokenUsage`, `TokenFold` |
 
-`openclaw`'s `<name>.ts` cell is the only one that has grown since its row was
-measured: 381 / 294 → 470 / 318, from the `pragma_table_info` projection above and
-the `readAgentDirs` legibility work. Both are decisions about which database and
-which directory to read, which is the scan's own business, so they stayed on this
-side of the boundary rather than becoming reader code. It is still under the
-criterion on code-only lines, which is the one the boundary is drawn on.
+`openclaw` was the only `<name>.ts` that grew back over the criterion after its
+row was measured: the `pragma_table_info` projection above and the
+`readAgentDirs` legibility work are both decisions about which database and which
+directory to read, which read as the scan's own business and so stayed on the
+entry-point side. That is what forced the second split below.
+
+**The other rows are stale and are recorded as measured, not restated.** They
+predate #156 and #157, and the drift is **not** uniform: total-line drift is
+`hermes` **+105** (the schema-drift and `tokenUsage`-fallback work), `opencode`
++13, `gemini` +5, `claude` +1, `vscode` +1. The `code-only` column has **not**
+been re-measured, and it should not be recomputed by hand — the counter here is
+"lines carrying an AST node, comments and blanks excluded", which excludes
+comment lines *interior to a multi-line node's span*. A naive AST span walk
+counts those interior lines and over-reports badly (`vscode.ts` measures 375 that
+way against 317 here). Re-measure with the original tool, or state a second
+definition and label the table with it — but do not mix the two.
 
 The split boundary is uniform: **everything above `export class XAdapter` is the
 format-specific layer.** Within that block, what stays on the `<name>.ts` side is
-whatever the **scan** needs, and what moves is whatever only the readers need —
-so two of the five needed the line drawn on a *shared value* rather than on
-readership, which is where the one-way rule bit:
+whatever the **scan** needs, and what moves is whatever only the readers need.
+That is a rule about what is *shared*, not about readership, and in four of the
+five it cut against a naive "readers over there" reading — which is where the
+one-way rule bit:
 
 - `claude` needed `CLAUDE_DIR`, because `getSessionDetail`,
   `resolveSessionFilePath` and `getSessionFileActivity` all resolve paths under
@@ -484,13 +503,27 @@ readership, which is where the one-way rule bit:
   and `scanActiveSessions`, and not one of the four readers touches any of them.
   The readers side needed only `fs`, so the boundary fell exactly where "what the
   scan needs" says it should.
+- `openclaw` is the case where that rule **degenerates**, and it is worth stating
+  because the answer is not "ignore the rule". Its class calls almost the entire
+  pre-class block — `getDbSessions`, `readAgentDirs`, `scanAgentSessionFiles`,
+  `buildSessionId`, `buildProjectKey`, `parseSessionId`, `findAgentDatabase`,
+  and the three storage roots `OPENCLAW_DIR` / `AGENTS_DIR` /
+  `AGENT_DB_FILENAME`. There was therefore almost nothing in the block that
+  *only* the readers needed, so no honest second-file boundary existed to carve:
+  the split that fit the rule in #146 kept the scan side, and #157's audit fixes
+  then pushed that side back over 400. The fix was a third file rather than a
+  fabricated reader/scan line — `<name>-scan.ts` takes the whole block, and the
+  class imports it back. Note that the *set* of names that cross is larger than
+  the functions: three constants cross too, which is the `CLAUDE_DIR` shape
+  recurring under a different name.
 
-Neither `openclaw` nor the others needed a third file. `openclaw.ts` is the
-tightest at 381 lines, and it got there only because the shared event/usage
-shapers (`toolBlockInfo`, `normalizeTokenUsage`, `decodeEventRows`,
-`applyEventsToDetail`, `readDbDetail`) are all genuinely reader-side; they are
-used by the class's `readDbSessionDetail` too, which imports them back in the
-same one-way direction `vscode.ts` uses for `parseSession`.
+`openclaw` is the only adapter with three files. It stayed flat and
+one-way — `openclaw.ts` → `openclaw-scan.ts` → `openclaw-readers.ts`, never
+back — and `openclaw.ts` is still the only entry point, so `adapters/index.ts`
+and all four openclaw test files are untouched by either split. The split itself
+is a pure MOVE: all 21 moved declarations, the `OpenClawAdapter` declaration and
+all 8 of its members hash byte-identical to `origin/main` under the TypeScript
+compiler API.
 
 **`Dirent` lives in `scan-utils.ts` and is declared once** (`scan-utils.ts:43`).
 It was declared seven times: the wide `{ name, isDirectory, isFile }` in `codex`,
@@ -513,14 +546,14 @@ hides by swallowing the `EISDIR`. The eight sites are `claude.ts:133` (`agent-*.
 under `subagents/`), `claude.ts:201` (`*.jsonl` under a project),
 `claude.ts:339` (`*.json` under a task group), `codex.ts:220` (`rollout-*.jsonl`
 at the day level), `gemini.ts:152` (`session-*.json`/`.jsonl` in `chats/`),
-`openclaw.ts:126` (`isPrimarySessionFile` in `sessions/`), `pi.ts:262` (`*.jsonl`
+`openclaw-scan.ts:113` (`isPrimarySessionFile` in `sessions/`), `pi.ts:262` (`*.jsonl`
 in a project directory) and `vscode.ts:181` (`*.jsonl` in `transcripts/`).
 `hermes.ts:36-38` and `opencode.ts:37-41` always had the guard.
 
 This is distinct from the `isDirectory()` filters on the directory-level fan-out
-(`claude.ts:109`/`:121`/`:190`, `openclaw.ts:71` — now the single filter inside
+(`claude.ts:109`/`:121`/`:190`, `openclaw-scan.ts:58` — now the single filter inside
 `readAgentDirs`, reached from `findAgentDatabases`/`getActiveSessions`/`getWatchPaths`
-— and `openclaw.ts:371` (in `getSessionDetail`, the one left with its own readdir),
+— and `openclaw.ts:101` (in `getSessionDetail`, the one left with its own readdir),
 `codex.ts:191`/`:201`/`:211`), which want directories — including `codex`'s
 per-level `.sort().reverse().slice(0, 3)`/`6`/`14` prune, which is why a stray
 `README.md` cannot evict a real year there. `gemini.ts:109` stays a bare
