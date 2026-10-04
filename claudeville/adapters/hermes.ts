@@ -135,6 +135,13 @@ async function discoverSessionFiles(activeThresholdMs: number): Promise<FileList
       files,
       // One unstattable file is a per-ITEM degradation: the listing survives, so
       // this is a warning and never a failure. It was silent until now.
+      //
+      // NOT REACHABLE FROM A FIXTURE, and that is a property of the filter rather
+      // than a gap: `readdir`'s `isFile()` is an `lstat`, so a candidate is a
+      // regular file that existed moments ago, and `stat` needs execute — not
+      // read — permission on the DIRECTORY it is already listed through. Only a
+      // race removes it in between. The branch stays because a dropped file is
+      // exactly the kind of loss the audit flagged, and it costs one subtraction.
       warnings: dropped > 0 ? [{ code: 'root-unreadable', detail: `${dropped} session file(s)` }] : [],
     };
   } catch (err) {
@@ -380,8 +387,13 @@ function readDbListing(activeThresholdMs: number): SourceListing {
       sessions,
       // Audit instance 4. The listing survived, so this is a per-ITEM
       // degradation: reporting it as a failure would be exactly the regression
-      // the union exists to prevent.
-      warnings: degraded > 0 ? [{ code: 'store-unreadable', detail: `${degraded} session(s)` }] : [],
+      // the union exists to prevent. `schema-incompatible` rather than
+      // `store-unreadable` because the store opened and answered — what failed is
+      // the SHAPE this one query expects, typically a `messages` table or column
+      // the installed install does not have. A corrupt store surfaces as
+      // `unknown` from the rows read above instead, which is why the two are not
+      // merged here.
+      warnings: degraded > 0 ? [{ code: 'schema-incompatible', detail: `${degraded} session(s)` }] : [],
     };
   } finally {
     closeSqlite(db);
