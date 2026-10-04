@@ -2239,6 +2239,45 @@ describe('OpenCodeAdapter on-disk characterization', () => {
     expect(outcome.value).toStrictEqual({ toolHistory: [], messages: [], tokenUsage: null });
   });
 
+  // The other half of the branch above, and the reason it cannot simply stop
+  // re-resolving: a caller may hand back a `filePath` that has since MOVED, and the
+  // id-only scan finds the session's current location. Here the session document (and
+  // so its message file) lives under the projectKey `moved`, while the caller's path
+  // still names the `old` one. `readJson` cannot read it, the scan resolves a DIFFERENT
+  // path, and the one re-resolution is what makes the detail resolve at all.
+  //
+  // Pinned from both ends: a guard that forbade the re-resolution, or that compared the
+  // resolved path against `filePath` without allowing a first call from `null`, would
+  // answer the empty detail here.
+  it('re-resolve once when the caller’s filePath has moved, and return the moved detail', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        // The session document, and therefore the message file, under `moved`.
+        writeSession(dir, 'moved', 's.json', { id: 's', time: { created: T0, updated: T0 } });
+        writeMessages(dir, 'moved', 's.json', [
+          fileMessage('assistant', [textBlock('read at the new location')], 1),
+        ]);
+        // Nothing at the stale location: `old/` is never created.
+        expect(fs.existsSync(messagePath(dir, 'old', 's.json'))).toBe(false);
+      },
+      async (OpenCodeAdapter, dir) => {
+        const adapter = new OpenCodeAdapter();
+        // A stale path: `readJson` cannot read it, the scan resolves a DIFFERENT path,
+        // and the one re-resolution is what makes the detail resolve at all.
+        const detail = await adapter.getSessionDetail('opencode-s', null, messagePath(dir, 'old', 's.json'));
+        expect(texts(detail.messages)).toEqual(['read at the new location']);
+        expect(detail.sessionId).toBe('opencode-s');
+
+        // The same call with NO path reads the resolved location on its first entry,
+        // because `null` is not the resolved path. So does a moved session reached by
+        // id alone — both terminate, and both read the same file.
+        const byId = await adapter.getSessionDetail('opencode-s', null, null);
+        expect(texts(byId.messages)).toEqual(['read at the new location']);
+        expect(byId.sessionId).toBe('opencode-s');
+      },
+    );
+  });
+
   // The same fall-through, terminating. A message file holding the JSON literal
   // `null` is indistinguishable from a malformed one — `readJson` answers `null` for
   // both — and an EMPTY ARRAY is TRUTHY, so it takes the early branch instead and
