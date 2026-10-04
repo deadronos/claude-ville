@@ -106,7 +106,7 @@ The old imperative renderer was removed in Phase 2 (git history preserves it). T
 
 - `claudeville/src/domain/value-objects/iso.ts` is the canonical isometric projection.
 - `world/utils.ts` exposes the camera-relative transforms and `getCameraFocusPosition()` centering helper.
-- `character-mode/AgentSprite.ts` remains the facing-flip reference (`ctx.scale(facingLeft ? -1 : 1, 1)`), mirrored by `AgentActor`'s negative-x scale. It is no longer the screen-space motion model: `AgentSprite.update()` has no production callers, and per-frame motion lives in the ECS systems above.
+- `character-mode/agentSpriteRender.ts` remains the facing-flip reference (`ctx.scale(facingLeft ? -1 : 1, 1)`), mirrored by `AgentActor`'s negative-x scale; it is the rendering half of `character-mode/AgentSprite.ts`. The sprite is no longer the screen-space motion model: `AgentSprite.update()` has no production callers, and per-frame motion lives in the ECS systems above.
 
 ## Invariants
 
