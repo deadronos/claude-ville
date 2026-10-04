@@ -240,6 +240,56 @@ Caveats for anyone converting an adapter:
   outside any try, because the enclosing try blocks have already closed after the
   readdir and stat steps.
 
+### SQLite reads: parse the row in JS, never in SQL
+
+**A `json_extract()` in a provider query is a listing-wide failure, not a row-level
+one.** SQLite does not answer NULL for a JSON path it cannot parse — it **raises**
+`SQLITE_ERROR: malformed JSON` — and `queryAll` (`sqlite-utils.ts:73-77`) swallows
+that into `[]`. So one unparseable `data` column does not cost its own row, it
+costs the entire result: `opencode`'s `getDbSessions` projected
+`json_extract(m.data, '$.modelID')` and `$.providerID` per session, and a single
+malformed `message.data` took **0 of 6** sessions out of the listing. Because
+`getActiveSessions` then falls through to the legacy `storage/session/*.json` walk,
+an install that still has those files gets its sessions back *degraded* — file
+`filePath`s instead of `opencode-db:<id>`, no DB-sourced model — and a fully
+migrated install, which has none, reports an empty provider while holding six
+sessions.
+
+The house rule, which this was the last violation of, is: **select the raw column
+and parse it per row in JS.** `normalizeDbJson` (`opencode-readers.ts:77-84`,
+returning the raw string on a parse failure), `safeJsonParse`
+(`sqlite-utils.ts:104-111`, returning `null`) and `decodeEventRows` in
+`openclaw-readers.ts` all do this, and `getDbMessages` had always done it on the
+same `message.data` column that `getDbSessions` was reaching into SQL forty lines
+away. After the fix one malformed row costs **that one session** its model and
+provider, and the file is internally consistent. `json_extract` now appears nowhere
+in the adapter layer; the fixture pins both halves of the difference.
+
+**The schema-drift twin of the same bug is a missing COLUMN, not bad data.** A
+`state.db` written by a different Hermes has no `archived` / `hidden`, and
+`hermes.ts` named both unconditionally, so SQLite raised `no such column`, `queryAll`
+answered `[]`, and the `dbSessions.length > 0` fallback gate could not tell a
+failed query from an empty database. `hermes.ts` now builds its sessions query from
+`pragma_table_info`: it projects only the columns the installed table HAS and applies
+a gate only for a gate column that exists, so drift costs one field instead of the
+listing. A table too far from the expected shape to answer still returns null and
+takes the legacy-file path, which is what that fallback is genuinely for — a
+migrated install has no `sessions/` directory for it to find.
+
+**`queryAll`'s swallow stays.** It answers `[]` for both "no rows" and "the query
+failed", which is wrong as a *signal* and load-bearing as *containment*: three call
+sites run it inside a `.map()` — `hermes.ts` per session, and
+`openclaw-readers.ts:240` in `openclaw`'s row loop — where a throw would abort the
+enclosing loop, be caught by `withReadonlySqlite`, and return `null` for the WHOLE
+listing. The swallow is what confines a failure to one row. So tolerance is fixed
+per call site, and where a call site must distinguish failure from emptiness it
+uses `db.prepare` inside its own `try`, as `hermes.ts` does for the `sessions`-by-id
+read that feeds `tokenUsage` (catching it in the `withReadonlySqlite` callback
+instead would answer null for the whole callback and lose the messages too).
+The unresolved half is observability, not data: `adapters/index.ts` still reduces
+every adapter failure to "this provider has no sessions", so a reader failure
+remains indistinguishable from an idle agent.
+
 ## Compliance
 
 Every adapter method that performs file or network I/O must be implemented as an `async` function using non-blocking primitives. Specific requirements:

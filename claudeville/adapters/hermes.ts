@@ -21,6 +21,7 @@ import type { AdapterSessionDetail, AgentAdapter, AgentSessionSummary, WatchPath
 import { debugAdapterError } from './jsonl-utils.js';
 import type { DbSessionRow, DbMessageRow } from './hermes-readers.js';
 import { readJson, asTimestamp, parseTranscript, parseSessionMessages, modelName, projectName, summarizeDbMessages, dbSessionTokenUsage } from './hermes-readers.js';
+import type { SqliteDb, SqliteParam } from './sqlite-utils.js';
 import { hasTable, queryAll, safeJsonParse, withReadonlySqlite } from './sqlite-utils.js';
 
 const HERMES_DIR = process.env.HERMES_DIR || path.join(os.homedir(), '.hermes');
@@ -61,16 +62,68 @@ function transcriptPath(sessionId: string) {
 
 // ─── SQLite (current Hermes) ──────────────────────────────
 
-const DB_SESSIONS_SQL = `
-  SELECT id, source, model, title, cwd, display_name, origin_json, billing_provider,
-         input_tokens, output_tokens, estimated_cost_usd, message_count,
-         started_at, last_activity_at, ended_at, parent_session_id
-  FROM sessions
-  WHERE COALESCE(archived, 0) = 0
-    AND COALESCE(hidden, 0) = 0
-    AND COALESCE(last_activity_at, started_at) >= ?
-  ORDER BY COALESCE(last_activity_at, started_at) DESC
-`;
+/**
+ * The columns the `sessions` read projects, and the two it only gates on.
+ * `DB_SESSIONS_SQL` used to name all of them in one string, so a `state.db` whose
+ * `sessions` table lacks ANY of them — an older install, or one written by a newer
+ * Hermes — made SQLite raise `no such column`, which `queryAll` swallowed into `[]`.
+ */
+const DB_SESSION_COLUMNS = [
+  'id', 'source', 'model', 'title', 'cwd', 'display_name', 'origin_json', 'billing_provider',
+  'input_tokens', 'output_tokens', 'estimated_cost_usd', 'message_count',
+  'started_at', 'last_activity_at', 'ended_at', 'parent_session_id',
+] as const;
+
+const DB_SESSION_GATES = ['archived', 'hidden'] as const;
+
+/** The columns `table` actually has, so a query can project only those. */
+function tableColumns(db: SqliteDb, table: string): Set<string> {
+  const rows = queryAll<{ name: string }>(db, 'SELECT name FROM pragma_table_info(?)', [table]);
+  return new Set(rows.map((row) => row.name));
+}
+
+/**
+ * `COALESCE(last_activity_at, started_at)` when both columns exist, whichever
+ * survives drift otherwise. Null when neither does — without an activity column
+ * there is nothing to compare a threshold against, and listing every session the
+ * file has ever held would be worse than falling back to the legacy files.
+ */
+function dbSessionActivity(columns: Set<string>): string | null {
+  if (columns.has('last_activity_at') && columns.has('started_at')) return 'COALESCE(last_activity_at, started_at)';
+  if (columns.has('last_activity_at')) return 'last_activity_at';
+  if (columns.has('started_at')) return 'started_at';
+  return null;
+}
+
+/**
+ * The active-session query, projected from the columns the installed `sessions`
+ * table HAS. A missing gate column is simply not gated on and a missing projected
+ * column is simply absent from the row (every reader already treats an absent
+ * column as NULL), so schema drift costs one field instead of the whole listing.
+ *
+ * Returns null when the table is too far from the expected shape to answer at
+ * all, which is the one case the legacy-file fallback is genuinely for.
+ *
+ * `sqlite-utils.ts` is deliberately NOT changed to do this: `queryAll`'s swallow
+ * is load-bearing at the three NESTED call sites in this file and
+ * `openclaw-readers.ts`, where a throw would abort the enclosing `.map()` and lose
+ * every sibling row. Tolerating a bad row belongs at the call site.
+ */
+function dbSessionsSql(db: SqliteDb, thresholdSeconds: number): { sql: string; params: SqliteParam[] } | null {
+  const columns = tableColumns(db, 'sessions');
+  const activity = dbSessionActivity(columns);
+  if (!activity || !columns.has('id')) return null;
+
+  const projected = DB_SESSION_COLUMNS.filter((column) => columns.has(column));
+  const gates = DB_SESSION_GATES.filter((column) => columns.has(column)).map((column) => `COALESCE(${column}, 0) = 0`);
+  return {
+    sql: `SELECT ${projected.join(', ')}
+          FROM sessions
+          WHERE ${[...gates, `${activity} >= ?`].join(' AND ')}
+          ORDER BY ${activity} DESC`,
+    params: [thresholdSeconds],
+  };
+}
 
 const DB_MESSAGES_SQL = `
   SELECT role, content, tool_calls, tool_name, timestamp
@@ -79,6 +132,21 @@ const DB_MESSAGES_SQL = `
   ORDER BY timestamp DESC
   LIMIT ?
 `;
+
+/**
+ * The single-row read `readDbSessionDetail` does for its `tokenUsage`, projected
+ * from the columns the installed `sessions` table has, for the same reason as
+ * `dbSessionsSql`: the old literal named every column unconditionally, so one
+ * missing column made the query raise and `queryAll` answered `[]` — `undefined`
+ * at the call site, and the session lost its token reading.
+ */
+function dbSessionByIdSql(db: SqliteDb, rawId: string): { sql: string; params: SqliteParam[] } | null {
+  if (!hasTable(db, 'sessions')) return null;
+  const columns = tableColumns(db, 'sessions');
+  if (!columns.has('id')) return null;
+  const projected = DB_SESSION_COLUMNS.filter((column) => columns.has(column));
+  return { sql: `SELECT ${projected.join(', ')} FROM sessions WHERE id = ? LIMIT 1`, params: [rawId] };
+}
 
 function dbModelName(row: DbSessionRow): string {
   if (row.billing_provider && row.model) return `${row.billing_provider}/${row.model}`;
@@ -100,7 +168,13 @@ async function getDbSessions(activeThresholdMs: number): Promise<AgentSessionSum
 
   const sessions = withReadonlySqlite(DB_PATH, 'hermes', (db) => {
     if (!hasTable(db, 'sessions')) return null;
-    const rows = queryAll<DbSessionRow>(db, DB_SESSIONS_SQL, [thresholdSeconds]);
+    const query = dbSessionsSql(db, thresholdSeconds);
+    if (!query) return null;
+    // Deliberately not `queryAll`: at this TOP-LEVEL call site a throw is not a
+    // regression — `withReadonlySqlite` catches it and answers `null`, which
+    // `sessions || []` turns into the same file-scan fallback a missing table
+    // gives, and it logs the cause. What is left here is a real read failure.
+    const rows = db.prepare(query.sql).all(...query.params) as DbSessionRow[];
 
     return rows.map((row) => {
       const messageRows = queryAll<DbMessageRow>(db, DB_MESSAGES_SQL, [row.id, 120]);
@@ -131,23 +205,36 @@ async function getDbSessions(activeThresholdMs: number): Promise<AgentSessionSum
   return sessions || [];
 }
 
-function readDbSessionDetail(rawId: string, sessionId: string): AdapterSessionDetail {
+/**
+ * null means the database could not answer AT ALL — no handle, or no `messages`
+ * table — which is the same situation as no `state.db`, so the caller takes the
+ * legacy-file path either way. An object means the read happened: it may be
+ * empty, and an empty answer is data (this session has no messages, and here are
+ * its token counts), not a failure.
+ */
+function readDbSessionDetail(rawId: string, sessionId: string): AdapterSessionDetail | null {
   const detail = withReadonlySqlite(DB_PATH, 'hermes', (db) => {
     if (!hasTable(db, 'messages')) return null;
+    // Left on `queryAll` on purpose. This runs once per session and inside no loop,
+    // but a FAILED message read must not cost the session its token reading: the
+    // counts below come from a different table, so a failure here degrades to an
+    // empty message list and nothing else.
     const rows = queryAll<DbMessageRow>(db, DB_MESSAGES_SQL, [rawId, 200]);
     const summary = summarizeDbMessages(rows, 200);
 
     let tokenUsage: AdapterSessionDetail['tokenUsage'] = null;
-    if (hasTable(db, 'sessions')) {
-      const sessionRow = queryAll<DbSessionRow>(
-        db,
-        `SELECT id, source, model, title, cwd, display_name, origin_json, billing_provider,
-                input_tokens, output_tokens, estimated_cost_usd, message_count,
-                started_at, last_activity_at, ended_at, parent_session_id
-         FROM sessions WHERE id = ? LIMIT 1`,
-        [rawId],
-      )[0];
-      if (sessionRow) tokenUsage = dbSessionTokenUsage(sessionRow);
+    const query = dbSessionByIdSql(db, rawId);
+    if (query) {
+      try {
+        const sessionRow = db.prepare(query.sql).get(...query.params) as DbSessionRow | undefined;
+        if (sessionRow) tokenUsage = dbSessionTokenUsage(sessionRow);
+      } catch (err) {
+        // Caught HERE rather than left to `withReadonlySqlite`, which would answer
+        // null for the whole callback and take the messages down as well. This
+        // site's swallow is load-bearing: `queryAll` is what confines a failure to
+        // this one field.
+        debugAdapterError('hermes', 'readDbSessionDetail session row', err, rawId);
+      }
     }
 
     return {
@@ -159,7 +246,7 @@ function readDbSessionDetail(rawId: string, sessionId: string): AdapterSessionDe
     };
   });
 
-  return detail || { toolHistory: [], messages: [] };
+  return detail;
 }
 
 // ─── Adapter class ────────────────────────────────────────
@@ -219,10 +306,22 @@ export class HermesAdapter implements AgentAdapter {
 
     const cleanId = sessionId.replace(/^hermes-/, '');
 
-    // SQLite-backed session (current Hermes)
+    // SQLite-backed session (current Hermes). `readDbSessionDetail` answers null
+    // only when the database could not be read at all, which is the same situation
+    // as no `state.db` — so the legacy files below are the fallback in either case.
+    //
+    // What must not happen is discarding an answer the database DID give. The
+    // `length` of the message arrays used to stand in for "the read worked", and
+    // it is `[]` for two different situations — a session that has no messages,
+    // and a message query that failed — so a `tokenUsage` the `sessions` table
+    // had answered with was thrown away by both.
+    let dbTokenUsage: AdapterSessionDetail['tokenUsage'] = null;
     if (fs.existsSync(DB_PATH)) {
       const dbDetail = readDbSessionDetail(cleanId, sessionId);
-      if (dbDetail.toolHistory.length || dbDetail.messages.length) return dbDetail;
+      if (dbDetail) {
+        if (dbDetail.toolHistory.length || dbDetail.messages.length) return dbDetail;
+        dbTokenUsage = dbDetail.tokenUsage;
+      }
     }
 
     const transcript = transcriptPath(cleanId);
@@ -240,6 +339,11 @@ export class HermesAdapter implements AgentAdapter {
         return { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), sessionId };
       }
     }
+
+    // Nothing rendered. If the `sessions` table DID answer for this id, report its
+    // counts rather than the bare no-match shape — real messages from the legacy
+    // files would have been returned above.
+    if (dbTokenUsage) return { toolHistory: [], messages: [], tokenUsage: dbTokenUsage, sessionId };
 
     return { toolHistory: [], messages: [] };
   }
