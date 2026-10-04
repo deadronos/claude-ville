@@ -35,6 +35,40 @@ server.ts (bootstrap)  →  server-ws.ts  →  server-watch.ts
 
 Because the state stays with the block that owns it, this remains a **pure move**: no state is relocated, re-created, or turned into a parameter. If a block ends up needing state from a block that imports it, **stop and report** — that means the boundary is wrong, not that a cycle is acceptable.
 
+## The four-file shape is impossible as first written — corrected shape below
+
+The first draft of this plan put `boundPort` in `server.ts` and had `server-http.ts` import it. **That is provably impossible, not merely awkward.** `boundPort` is:
+
+- declared at `:33`
+- **written** at `:394`, inside the `server.listen` callback — which must stay byte-identical in `server.ts`
+- **read** at `:47` (`parseRequestUrl`) and `:135` (`handleRuntimeConfig`), i.e. from the HTTP block
+- also read at `:397` and `:423`, from the bootstrap
+
+ESM forbids one module assigning another's binding, and `server.ts` already imports `server-http.ts` for its `http.createServer` handler. So the HTTP module would have to import `boundPort` back from the module that imports it. **Four files + a byte-identical bootstrap + no cycle are mutually unsatisfiable.** This was found by the implementer, who stopped at the plan's own stop condition rather than forcing it.
+
+Two further couplings the first draft missed: `server-ws.ts` reads `ACTIVE_THRESHOLD_MS` (`:38`) and `claudeAdapter` (`:29`), and the HTTP block uses `console`, `process` and `__dirname`.
+
+### The shape that works
+
+Add a **config leaf** owning the values that are genuinely shared, so the graph becomes a DAG rather than a cycle:
+
+```
+server-config.ts        (leaf: PORT, boundPort + setBoundPort, ACTIVE_THRESHOLD_MS,
+                         claudeAdapter, HttpRequest, HttpResponse)
+   ↑          ↑              ↑
+server-http  server-ws   server-watch → server-ws
+   ↑          ↑
+server.ts (bootstrap, keeps the listen callback and its boundPort write)
+```
+
+**Cost, stated plainly:** one new file, and exactly one bootstrap line changes — `boundPort = address.port` becomes `setBoundPort(address.port)`. That is the only behavioural edit in the PR, and it is forced by ESM's one-binding-per-module rule, not chosen for convenience. Everything else is a move.
+
+`__filename`/`__dirname` travel with `BUILT_FRONTEND_DIR`/`STATIC_DIR` into `server-http.ts`, since that is where they are read.
+
+### `eslint.config.mjs` must be updated in the same PR
+
+The override block at `eslint.config.mjs:46-56` lists its files literally, and `claudeville/server.ts` is a **literal path**, not a glob. New modules would silently fall outside it and lose `sourceType: 'module'`, `globals.node`, and four rule relaxations — all of which the moved code needs, since it uses `process`, `console` and `__dirname`. `npm run lint` would catch this rather than hiding it, but the new paths must be added to that `files` array as part of this change.
+
 ## Verification — a move, as in B4 and PR C
 
 - **Every moved function body byte-identical**, hashed with the TypeScript compiler API. A brace matcher is fooled by regex literals and template holes — `ASCII_LOGO` at `:370` is a template literal with interpolation, so this matters here.
