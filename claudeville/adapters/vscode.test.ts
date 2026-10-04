@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import { detailOf } from './fixtureHelpers';
+
 // Inline copies of utility functions to avoid module-level fs interference
 function readLinesInline(filePath, { from = 'end', count = 60 } = {}) {
   try {
@@ -541,7 +543,7 @@ describe('getSessionDetail', () => {
 
     const { VSCodeAdapter } = await import('./vscode');
     const adapter = new VSCodeAdapter();
-    const detail = await adapter.getSessionDetail('sess', null, file);
+    const detail = await detailOf(adapter, 'sess', null, file);
 
     fs.rmSync(tmp, { recursive: true, force: true });
     expect(detail.tokenUsage).toEqual({ input: 120, output: 34 });

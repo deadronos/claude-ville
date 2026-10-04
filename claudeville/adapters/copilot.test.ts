@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CopilotAdapter } from './copilot';
 import { extractText } from './text-utils';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 const fs = require('fs');
 
 describe('copilot adapter', () => {
@@ -739,7 +739,7 @@ describe('copilot adapter', () => {
 
     it('getSessionDetail returns expected structure', async () => {
       const adapter = new CopilotAdapter();
-      const detail = await adapter.getSessionDetail('nonexistent-session', '/nonexistent');
+      const detail = await detailOf(adapter, 'nonexistent-session', '/nonexistent');
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
       expect(Array.isArray(detail.toolHistory)).toBe(true);
@@ -748,7 +748,7 @@ describe('copilot adapter', () => {
 
     it('getSessionDetail returns empty arrays for unknown session', async () => {
       const adapter = new CopilotAdapter();
-      const detail = await adapter.getSessionDetail('copilot-12345678-1234-1234-1234-123456789012', '/nonexistent');
+      const detail = await detailOf(adapter, 'copilot-12345678-1234-1234-1234-123456789012', '/nonexistent');
       expect(detail.toolHistory).toEqual([]);
       expect(detail.messages).toEqual([]);
     });
@@ -764,7 +764,7 @@ describe('copilot adapter', () => {
         JSON.stringify({ type: 'assistant.message', data: { toolCalls: [{ name: 'Bash', input: 'ls' }], content: [{ type: 'text', text: 'Running ls' }] }, timestamp: '2024-01-01T00:00:00Z' }) + '\n'
       );
       const adapter = new CopilotAdapter();
-      const detail = await adapter.getSessionDetail('copilot-test-session', '/test', path.join(sessionDir, 'events.jsonl'));
+      const detail = await detailOf(adapter, 'copilot-test-session', '/test', path.join(sessionDir, 'events.jsonl'));
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
@@ -787,7 +787,7 @@ describe('copilot adapter', () => {
       ].join('\n'));
 
       const adapter = new CopilotAdapter();
-      const detail = await adapter.getSessionDetail('copilot-x', null, file);
+      const detail = await detailOf(adapter, 'copilot-x', null, file);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(detail.tokenUsage).toEqual({ input: 298, output: 14 });
     });
@@ -801,7 +801,7 @@ describe('copilot adapter', () => {
       fs.writeFileSync(file, JSON.stringify({ type: 'assistant.message', data: { content: 'hi' } }) + '\n');
 
       const adapter = new CopilotAdapter();
-      const detail = await adapter.getSessionDetail('copilot-y', null, file);
+      const detail = await detailOf(adapter, 'copilot-y', null, file);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(detail.tokenUsage).toBeNull();
     });

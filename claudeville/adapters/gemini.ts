@@ -22,10 +22,10 @@ import os from 'os';
 import crypto from 'crypto';
 import type { Dirent } from 'fs';
 
-import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterDetailResult, AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { parseSession, getToolHistory, getRecentMessages, getTokenUsage } from './gemini-readers.js';
 import { collectScanByMtime } from './scan-utils.js';
-import { combineSources, degradedWarnings, sourceDetail } from './sources.js';
+import { combineSources, degradedWarnings, detailFailed, detailOk, emptyDetail, sourceDetail } from './sources.js';
 import { debugAdapterError } from './jsonl-utils.js';
 
 const GEMINI_DIR = path.join(os.homedir(), '.gemini');
@@ -234,18 +234,25 @@ export class GeminiAdapter implements AgentAdapter {
     ]);
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
     if (filePath) {
       const [toolHistory, messages, tokenUsage] = await Promise.all([
         getToolHistory(filePath),
         getRecentMessages(filePath),
         getTokenUsage(filePath),
       ]);
-      return { toolHistory, messages, tokenUsage, sessionId };
+      return detailOk({ toolHistory, messages, tokenUsage, sessionId });
     }
 
     const cleanId = sessionId.replace('gemini-', '');
-    const { records } = await scanActiveSessions(30 * 60 * 1000);
+    const { records, rootUnreadable, childrenUnreadable } = await scanActiveSessions(30 * 60 * 1000);
+
+    if (rootUnreadable) {
+      return detailFailed('root-unreadable', sourceDetail('tmp directory could not be listed', GEMINI_DIR));
+    }
+    // A project directory the scan could not enumerate leaves the search
+    // incomplete; its siblings were searched, so this is a warning.
+    const incomplete = degradedWarnings(childrenUnreadable, 'root-unreadable', 'project directory(ies)');
 
     for (const { filePath, fileName } of records) {
       const fileId = fileName.replace('session-', '').replace('.json', '');
@@ -255,11 +262,11 @@ export class GeminiAdapter implements AgentAdapter {
           getRecentMessages(filePath),
           getTokenUsage(filePath),
         ]);
-        return { toolHistory, messages, tokenUsage, sessionId };
+        return detailOk({ toolHistory, messages, tokenUsage, sessionId }, incomplete);
       }
     }
 
-    return { toolHistory: [], messages: [] };
+    return detailOk(emptyDetail(), incomplete);
   }
 
   getWatchPaths(): WatchPath[] {

@@ -5,7 +5,7 @@ import { promisify } from 'util';
 import { execFile } from 'child_process';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 const originalDataDir = process.env.OPENCODE_DATA_DIR;
 const execFileAsync = promisify(execFile);
@@ -85,7 +85,7 @@ describe('opencode adapter', () => {
     ]);
 
     const adapter = await loadAdapter(tmp);
-    const detail = await adapter.getSessionDetail('opencode-session-2', null, messageFile);
+    const detail = await detailOf(adapter, 'opencode-session-2', null, messageFile);
 
     fs.rmSync(tmp, { recursive: true, force: true });
     expect(detail.toolHistory).toEqual([{ tool: 'shell', detail: 'npm run test', ts: 2000 }]);
@@ -173,7 +173,7 @@ describe('opencode adapter', () => {
 
     const adapter = await loadAdapter(tmp);
     const sessions = await sessionsOf(adapter, 60_000);
-    const detail = await adapter.getSessionDetail('opencode-ses_live', '/workspace/live', 'opencode-db:ses_live');
+    const detail = await detailOf(adapter, 'opencode-ses_live', '/workspace/live', 'opencode-db:ses_live');
 
     fs.rmSync(tmp, { recursive: true, force: true });
     expect(sessions).toHaveLength(1);
@@ -200,7 +200,7 @@ describe('opencode adapter', () => {
     ]);
 
     const adapter = await loadAdapter(tmp);
-    const detail = await adapter.getSessionDetail('opencode-session-9', null, messageFile);
+    const detail = await detailOf(adapter, 'opencode-session-9', null, messageFile);
 
     fs.rmSync(tmp, { recursive: true, force: true });
     expect(detail.tokenUsage).toEqual({ input: 150, output: 25 });
@@ -217,13 +217,17 @@ describe('opencode adapter', () => {
 
     const adapter = await loadAdapter(tmp);
     const result = await adapter.getActiveSessions(60_000);
+    // The DETAIL path, driven directly: this store cannot be read either, and the
+    // detail path now says so instead of answering the empty detail that made a
+    // broken install look like a session with no messages.
     const detail = await adapter.getSessionDetail('opencode-ses_missing', null, 'opencode-db:ses_missing');
 
     fs.rmSync(tmp, { recursive: true, force: true });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('unreachable: expected a whole-adapter failure');
     expect(result.error.code).toBe('store-unreadable');
-    expect(detail.toolHistory).toEqual([]);
-    expect(detail.messages).toEqual([]);
+    expect(detail.ok).toBe(false);
+    if (detail.ok) throw new Error('unreachable: expected the detail read to fail');
+    expect(detail.error.code).toBe('store-unreadable');
   });
 });

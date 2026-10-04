@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { GeminiAdapter } from './gemini';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -475,7 +475,7 @@ describe('gemini adapter', () => {
 
     it('getSessionDetail returns expected structure', async () => {
       const adapter = new GeminiAdapter();
-      const detail = await adapter.getSessionDetail('nonexistent-session', '/nonexistent');
+      const detail = await detailOf(adapter, 'nonexistent-session', '/nonexistent');
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
       expect(Array.isArray(detail.toolHistory)).toBe(true);
@@ -484,7 +484,7 @@ describe('gemini adapter', () => {
 
     it('getSessionDetail returns empty arrays for unknown session', async () => {
       const adapter = new GeminiAdapter();
-      const detail = await adapter.getSessionDetail('gemini-nonexistent-session-12345', '/nonexistent');
+      const detail = await detailOf(adapter, 'gemini-nonexistent-session-12345', '/nonexistent');
       expect(detail.toolHistory).toEqual([]);
       expect(detail.messages).toEqual([]);
     });
@@ -500,7 +500,7 @@ describe('gemini token usage', () => {
         JSON.stringify({ type: 'gemini', model: 'gemini-2.5-flash', content: 'one', tokens: { input: 1000, output: 10, cached: 0, thoughts: 0, tool: 0, total: 1010 } }),
         JSON.stringify({ type: 'gemini', model: 'gemini-2.5-flash', content: 'two', tokens: { input: 1200, output: 30, cached: 0, thoughts: 0, tool: 0, total: 1230 } }),
       ].join('\n'));
-      const detail = await new GeminiAdapter().getSessionDetail('gemini-session', null, file);
+      const detail = await detailOf(new GeminiAdapter(), 'gemini-session', null, file);
       expect(detail.tokenUsage).toEqual({ input: 2200, output: 40 });
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -517,7 +517,7 @@ describe('gemini token usage', () => {
           { type: 'gemini', model: 'gemini-2.5-flash', content: 'two', tokens: { input: 20, output: 2 } },
         ],
       }));
-      const detail = await new GeminiAdapter().getSessionDetail('gemini-json', null, file);
+      const detail = await detailOf(new GeminiAdapter(), 'gemini-json', null, file);
       expect(detail.tokenUsage).toEqual({ input: 30, output: 3 });
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

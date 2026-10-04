@@ -41,7 +41,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let CodexAdapter: any;
@@ -533,7 +533,7 @@ describe('CodexAdapter fixtures', () => {
         lastMessage: 'surfaced msg',
       });
 
-      const detail = await adapter.getSessionDetail(sessionIdOf('rollout-tail1.jsonl'), null, file);
+      const detail = await detailOf(adapter, sessionIdOf('rollout-tail1.jsonl'), null, file);
       expect(detail.toolHistory).toEqual([{ tool: 'buried_shell', detail: '{}', ts: tsOf(5) }]);
       expect(detail.messages).toEqual([{ role: 'assistant', text: 'surfaced msg', ts: tsOf(56) }]);
     } finally {
@@ -578,12 +578,12 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      expect((await adapter.getSessionDetail('codex-wintool1', null, toolFile)).toolHistory).toEqual([]);
-      expect((await adapter.getSessionDetail('codex-winmsg1', null, msgFile)).messages).toEqual([]);
-      expect((await adapter.getSessionDetail('codex-winusage1', null, paddedUsageFile)).tokenUsage).toBeNull();
+      expect((await detailOf(adapter, 'codex-wintool1', null, toolFile)).toolHistory).toEqual([]);
+      expect((await detailOf(adapter, 'codex-winmsg1', null, msgFile)).messages).toEqual([]);
+      expect((await detailOf(adapter, 'codex-winusage1', null, paddedUsageFile)).tokenUsage).toBeNull();
       // Control: unpadded, the same readings resolve — so `null` above is the
       // 300-line window, not an absent reading.
-      expect((await adapter.getSessionDetail('codex-winusage2', null, controlUsageFile)).tokenUsage).toEqual({
+      expect((await detailOf(adapter, 'codex-winusage2', null, controlUsageFile)).tokenUsage).toEqual({
         input: 7000,
         output: 700,
       });
@@ -628,7 +628,7 @@ describe('CodexAdapter fixtures', () => {
       expect(row.lastMessage).toBe('z'.repeat(80));
       expect(row.lastMessage).toHaveLength(80);
 
-      const detail = await adapter.getSessionDetail(row.sessionId, null, file);
+      const detail = await detailOf(adapter, row.sessionId, null, file);
       expect(detail.toolHistory).toEqual([
         // codex.ts:120 — the same 100-char string, capped at 80 rather than 60.
         { tool: 'shell', detail: 's'.repeat(80), ts: tsOf(1) },
@@ -685,7 +685,7 @@ describe('CodexAdapter fixtures', () => {
       // First-in-window, not last: tool_00 / msg 1, not tool_19 / msg 8.
       expect(row).toMatchObject({ lastTool: 'tool_00', lastToolInput: '{"n":0}', lastMessage: 'msg 1' });
 
-      const detail = await adapter.getSessionDetail(row.sessionId, null, file);
+      const detail = await detailOf(adapter, row.sessionId, null, file);
       expect(detail.toolHistory).toHaveLength(15);
       expect(detail.toolHistory.map((t: any) => t.tool)).toEqual(
         Array.from({ length: 15 }, (_, i) => `tool_${String(i + 5).padStart(2, '0')}`),
@@ -736,7 +736,7 @@ describe('CodexAdapter fixtures', () => {
       expect(row.lastToolInput).toBe('c'.repeat(60));
       expect(row.lastToolInput).toHaveLength(60);
 
-      const detail = await adapter.getSessionDetail(row.sessionId, null, file);
+      const detail = await detailOf(adapter, row.sessionId, null, file);
       expect(detail.toolHistory).toEqual([
         { tool: 'command_execution', detail: 'c'.repeat(80), ts: tsOf(1) },
         { tool: 'command_execution', detail: '{"cmd":"ignored"}', ts: tsOf(2) },
@@ -769,12 +769,12 @@ describe('CodexAdapter fixtures', () => {
       expect(ids).toContain(sessionIdOf('rollout-nots1.jsonl'));
       expect(ids).toContain(sessionIdOf('rollout-blank1.jsonl'));
 
-      const nots = await adapter.getSessionDetail('codex-nots1', null, noTimestamps);
+      const nots = await detailOf(adapter, 'codex-nots1', null, noTimestamps);
       // codex.ts:127 and codex.ts:171 both fall back to ts 0.
       expect(nots.toolHistory).toEqual([{ tool: 'shell', detail: '{}', ts: 0 }]);
       expect(nots.messages).toEqual([{ role: 'assistant', text: 'no timestamp', ts: 0 }]);
 
-      const blank = await adapter.getSessionDetail('codex-blank1', null, blankPath);
+      const blank = await detailOf(adapter, 'codex-blank1', null, blankPath);
       // readLines short-circuits on `stat.size === 0` (jsonl-utils.ts:32), so
       // every reader sees an empty entry list — not an error.
       expect(blank.toolHistory).toEqual([]);
@@ -821,7 +821,7 @@ describe('CodexAdapter fixtures', () => {
     const row = sessions.find((s: any) => s.sessionId === EPSILON_ID);
     expect(row).toBeDefined();
 
-    const detail = await adapter.getSessionDetail(EPSILON_ID, workspaceEpsilon, row.filePath);
+    const detail = await detailOf(adapter, EPSILON_ID, workspaceEpsilon, row.filePath);
     // Walking newest-first in EPSILON's file:
     //   4 event_msg total_token_usage 999/99  → remembered as fallback
     //   3 response_item message            → nothing
@@ -846,7 +846,7 @@ describe('CodexAdapter fixtures', () => {
     const row = sessions.find((s: any) => s.sessionId === ALPHA_ID);
     expect(row).toBeDefined();
 
-    const detail = await adapter.getSessionDetail(ALPHA_ID, workspaceAlpha, row.filePath);
+    const detail = await detailOf(adapter, ALPHA_ID, workspaceAlpha, row.filePath);
     expect(detail.tokenUsage).toEqual({ input: 222, output: 22 });
   });
 
@@ -856,7 +856,7 @@ describe('CodexAdapter fixtures', () => {
     const row = sessions.find((s: any) => s.sessionId === GAMMA_ID);
     expect(row).toBeDefined();
 
-    const detail = await adapter.getSessionDetail(GAMMA_ID, workspaceGamma, row.filePath);
+    const detail = await detailOf(adapter, GAMMA_ID, workspaceGamma, row.filePath);
     // `fallback` stays null and codex.ts:299 returns it directly — not
     // { input: 0, output: 0 }, which is what a fold with a different init would
     // hand back.
@@ -884,11 +884,11 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      expect((await adapter.getSessionDetail('codex-guard1', null, stringThread)).tokenUsage).toEqual({
+      expect((await detailOf(adapter, 'codex-guard1', null, stringThread)).tokenUsage).toEqual({
         input: 555,
         output: 55,
       });
-      expect((await adapter.getSessionDetail('codex-guard2', null, noOutput)).tokenUsage).toEqual({
+      expect((await detailOf(adapter, 'codex-guard2', null, noOutput)).tokenUsage).toEqual({
         input: 42,
         output: 0,
       });
@@ -920,7 +920,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const detail = await adapter.getSessionDetail('codex-theta1', null, file);
+      const detail = await detailOf(adapter, 'codex-theta1', null, file);
       expect(detail.messages).toEqual([
         { role: 'user', text: 'ask something', ts: tsOf(1) },
         { role: 'assistant', text: 'no role here', ts: tsOf(2) },
@@ -953,14 +953,14 @@ describe('CodexAdapter fixtures', () => {
     const fiveMinutes = (await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId);
     expect(fiveMinutes).not.toContain(DELTA_ID);
 
-    const viaId = await adapter.getSessionDetail(DELTA_ID, workspaceDelta);
+    const viaId = await detailOf(adapter, DELTA_ID, workspaceDelta);
     expect(viaId.sessionId).toBe(DELTA_ID);
     expect(viaId.tokenUsage).toEqual({ input: 333, output: 33 });
     expect(viaId.messages).toEqual([{ role: 'assistant', text: 'delta output', ts: tsOf(2) }]);
     expect(viaId.toolHistory).toEqual([]);
 
     // The filePath short-circuit returns the same detail without rescanning.
-    const viaPath = await adapter.getSessionDetail(DELTA_ID, workspaceDelta, deltaFile);
+    const viaPath = await detailOf(adapter, DELTA_ID, workspaceDelta, deltaFile);
     expect(viaPath.sessionId).toBe(DELTA_ID);
     expect(viaPath.tokenUsage).toEqual({ input: 333, output: 33 });
 
@@ -993,7 +993,7 @@ describe('CodexAdapter fixtures', () => {
   // block a shared detail builder from returning all four fields.
   it('returns empty detail for unknown session ids', async () => {
     const adapter = new CodexAdapter();
-    await expect(adapter.getSessionDetail('codex-no-such-rollout', workspaceAlpha)).resolves.toMatchObject({
+    await expect(detailOf(adapter, 'codex-no-such-rollout', workspaceAlpha)).resolves.toMatchObject({
       toolHistory: [],
       messages: [],
     });
@@ -1007,7 +1007,7 @@ describe('CodexAdapter fixtures', () => {
     // The returned `sessionId` is the caller's argument echoed back verbatim
     // (codex.ts:365), NOT the matched file's canonical id — so it does not
     // normalise the prefix away either.
-    const unprefixed = await adapter.getSessionDetail(DELTA_ID.replace('codex-', ''), workspaceDelta);
+    const unprefixed = await detailOf(adapter, DELTA_ID.replace('codex-', ''), workspaceDelta);
     expect(unprefixed.sessionId).toBe('2025-01-22T10-30-00-delta1');
     expect(unprefixed.messages).toEqual([{ role: 'assistant', text: 'delta output', ts: tsOf(2) }]);
   });
@@ -1021,7 +1021,7 @@ describe('CodexAdapter fixtures', () => {
   // whichever `project` the row reported.
   it('ignores the project argument on the id-only lookup path', async () => {
     const adapter = new CodexAdapter();
-    const wrongProject = await adapter.getSessionDetail(DELTA_ID, workspaceAlpha);
+    const wrongProject = await detailOf(adapter, DELTA_ID, workspaceAlpha);
     expect(wrongProject.sessionId).toBe(DELTA_ID);
     expect(wrongProject.messages).toEqual([{ role: 'assistant', text: 'delta output', ts: tsOf(2) }]);
   });

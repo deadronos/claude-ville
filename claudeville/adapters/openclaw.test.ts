@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { OpenClawAdapter } from './openclaw';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -360,7 +360,7 @@ describe('openclaw adapter', () => {
 
     it('getSessionDetail returns expected structure', async () => {
       const adapter = new OpenClawAdapter();
-      const detail = await adapter.getSessionDetail('nonexistent-session', '/nonexistent');
+      const detail = await detailOf(adapter, 'nonexistent-session', '/nonexistent');
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
       expect(Array.isArray(detail.toolHistory)).toBe(true);
@@ -369,7 +369,7 @@ describe('openclaw adapter', () => {
 
     it('getSessionDetail returns empty arrays for unknown session', async () => {
       const adapter = new OpenClawAdapter();
-      const detail = await adapter.getSessionDetail('unknown-session-12345', '/unknown');
+      const detail = await detailOf(adapter, 'unknown-session-12345', '/unknown');
       expect(detail.toolHistory).toEqual([]);
       expect(detail.messages).toEqual([]);
     });

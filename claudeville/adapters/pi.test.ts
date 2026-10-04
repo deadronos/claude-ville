@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PiAdapter, parseSession, resolveProjectPath } from './pi';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -416,7 +416,7 @@ describe('pi adapter', () => {
 
     it('getSessionDetail returns expected structure', async () => {
       const adapter = new PiAdapter();
-      const detail = await adapter.getSessionDetail('nonexistent-session', '/nonexistent');
+      const detail = await detailOf(adapter, 'nonexistent-session', '/nonexistent');
       expect(detail).toHaveProperty('toolHistory');
       expect(detail).toHaveProperty('messages');
       expect(Array.isArray(detail.toolHistory)).toBe(true);
@@ -425,7 +425,7 @@ describe('pi adapter', () => {
 
     it('getSessionDetail returns empty arrays for unknown session', async () => {
       const adapter = new PiAdapter();
-      const detail = await adapter.getSessionDetail('unknown-session-12345', '/unknown');
+      const detail = await detailOf(adapter, 'unknown-session-12345', '/unknown');
       expect(detail.toolHistory).toEqual([]);
       expect(detail.messages).toEqual([]);
     });
@@ -442,7 +442,7 @@ describe('pi token usage', () => {
         JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'one' }], usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 0, totalTokens: 125 } } }),
         JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'two' }], usage: { input: 300, output: 80, cacheRead: 7, cacheWrite: 0, totalTokens: 387 } } }),
       ].join('\n'));
-      const detail = await new PiAdapter().getSessionDetail('pi-s1', null, file);
+      const detail = await detailOf(new PiAdapter(), 'pi-s1', null, file);
       expect(detail.tokenUsage).toEqual({ input: 400, output: 100 });
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

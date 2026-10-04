@@ -42,7 +42,15 @@ const handleApiRoute = createApiRouteHandler({
   getTasks: async () => (claudeAdapter?.getTasks ? claudeAdapter.getTasks() : []),
   getProviders: () => getActiveProviders(),
   getUsage: () => usageQuota.fetchUsage(),
-  getSessionDetail: (sessionId, project, provider) => getSessionDetailByProvider(provider, sessionId, project),
+  getSessionDetail: async (sessionId, project, provider) => {
+    const result = await getSessionDetailByProvider(provider, sessionId, project);
+    // Unwrapped, not reduced: the detail fields stay at the top level, so this
+    // response is byte-identical to what it was before the union. That matters —
+    // the frontend reads `data.toolHistory` and `data.messages` straight off this
+    // body — and it is what makes the union additive rather than breaking. The
+    // `error` and `warnings` fields ride alongside in the next commit.
+    return result.ok ? result.detail : { toolHistory: [], messages: [] };
+  },
   getHistory: async (limit) => {
     // History is a flattened view of the session rows, so it takes the sessions
     // alone. The diagnostics belong to `/api/sessions`, which is where the

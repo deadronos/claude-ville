@@ -221,7 +221,7 @@ export interface AgentAdapter {
    * `{ toolHistory: [], messages: [] }`. Optional `tokenUsage`/`sessionId` fields
    * may accompany it when the source exposes them.
    */
-  getSessionDetail(sessionId: string, project: string | null, filePath?: string | null): Promise<AdapterSessionDetail>;
+  getSessionDetail(sessionId: string, project: string | null, filePath?: string | null): Promise<AdapterDetailResult>;
   getWatchPaths(): WatchPath[];
   getTeams?(): Promise<unknown[]> | unknown[];
   getTasks?(): Promise<unknown[]> | unknown[];

@@ -14,10 +14,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterDetailResult, AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines, collectJsonl } from './jsonl-utils.js';
 import { collectScanByMtime } from './scan-utils.js';
-import { combineSources, sourceDetail } from './sources.js';
+import { combineSources, detailFailed, detailOk, emptyDetail, sourceDetail } from './sources.js';
 import { summarizeToolInput } from './sanitize.js';
 import { extractText } from './text-utils.js';
 
@@ -287,18 +287,25 @@ export class CopilotAdapter implements AgentAdapter {
     ]);
   }
 
-  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
+  async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterDetailResult> {
     if (filePath) {
       const [toolHistory, messages, tokenUsage] = await Promise.all([
         getToolHistory(filePath),
         getRecentMessages(filePath),
         getTokenUsage(filePath),
       ]);
-      return { toolHistory, messages, tokenUsage, sessionId };
+      return detailOk({ toolHistory, messages, tokenUsage, sessionId });
     }
 
     const cleanId = sessionId.replace('copilot-', '');
-    const { records } = await scanAllSessions(30 * 60 * 1000);
+    const { records, rootUnreadable } = await scanAllSessions(30 * 60 * 1000);
+
+    // Copilot's `fileFor` never enumerates a child, so the root is the only thing
+    // the scan can lose — and losing it means the lookup cannot say whether this
+    // session exists. Same code and same message the listing uses for it.
+    if (rootUnreadable) {
+      return detailFailed('root-unreadable', sourceDetail('session-state directory could not be listed', COPILOT_DIR));
+    }
 
     const found = records.find(s => s.sessionId === cleanId);
     if (found) {
@@ -307,10 +314,10 @@ export class CopilotAdapter implements AgentAdapter {
         getRecentMessages(found.filePath),
         getTokenUsage(found.filePath),
       ]);
-      return { toolHistory, messages, tokenUsage, sessionId };
+      return detailOk({ toolHistory, messages, tokenUsage, sessionId });
     }
 
-    return { toolHistory: [], messages: [] };
+    return detailOk(emptyDetail());
   }
 
   getWatchPaths(): WatchPath[] {

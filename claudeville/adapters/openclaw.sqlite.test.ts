@@ -5,7 +5,7 @@ import { zstdCompressSync } from 'node:zlib';
 
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf, sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let OpenClawAdapter: any;
@@ -110,7 +110,7 @@ describe('OpenClawAdapter SQLite sessions', () => {
 
   it('parses zstd-compressed and plain transcript events for detail', async () => {
     const adapter = new OpenClawAdapter();
-    const detail = await adapter.getSessionDetail('openclaw:agent-alpha:sess-1', 'openclaw:agent-alpha');
+    const detail = await detailOf(adapter, 'openclaw:agent-alpha:sess-1', 'openclaw:agent-alpha');
 
     expect(detail.toolHistory).toEqual([
       expect.objectContaining({ tool: 'exec', detail: '{"command":"npm test"}' }),

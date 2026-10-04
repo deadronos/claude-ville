@@ -96,7 +96,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sessionsOf } from './fixtureHelpers';
+import { detailOf as unionDetailOf, sessionsOf } from './fixtureHelpers';
 
 const ACTIVE_WINDOW_MS = 60 * 1000;
 
@@ -286,7 +286,7 @@ async function withVscodeTree<T>(
 
 /** The filePath branch of the public `getSessionDetail` (vscode.ts:624-631). */
 function detailOf(adapter: any, file: string) {
-  return adapter.getSessionDetail('vscode-fixture', null, file);
+  return unionDetailOf(adapter, 'vscode-fixture', null, file);
 }
 
 describe('vscode readers', () => {
@@ -798,7 +798,7 @@ describe('vscode readers', () => {
       ]);
       expect((await detailOf(Adapter, file)).tokenUsage).toEqual({ input: 20, output: 5 });
       // The id path reuses the same scan: `found.tokens` is the same reading.
-      expect((await Adapter.getSessionDetail('vscode:vscode:ws-dir:dir-session', ROOT_PROJECT)).tokenUsage)
+      expect((await unionDetailOf(Adapter, 'vscode:vscode:ws-dir:dir-session', ROOT_PROJECT)).tokenUsage)
         .toEqual({ input: 20, output: 5 });
     });
   });

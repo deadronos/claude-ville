@@ -6,6 +6,7 @@ import { estimateCost } from '../../shared/cost.js';
 import { normalizeTokens } from '../../shared/session-utils.js';
 import { computeSessionContextPercent } from '../../shared/context-window.js';
 import type {
+  AdapterDetailResult,
   AdapterErrorReport,
   AdapterSessionsResult,
   AdapterSessionDetail,
@@ -15,6 +16,7 @@ import type {
   WatchPath,
 } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
+import { emptyDetail } from './sources.js';
 import { sanitizeSessionDetail, sanitizeSessionSummary } from './sanitize.js';
 import { ClaudeAdapter } from './claude.js';
 import { CodexAdapter } from './codex.js';
@@ -88,18 +90,28 @@ export async function collectFromAdapters(activeThresholdMs: number): Promise<Ad
     }
 
     const sessions = await Promise.all(result.sessions.map(async (session: AgentSessionSummary) => {
-      const detailRaw = session.detail || await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
-      const detail = sanitizeSessionDetail(detailRaw || {});
-      const tokens = normalizeTokens(detailRaw?.tokenUsage ?? null, session.tokens || null);
+      let detailRaw: AdapterSessionDetail | null = session.detail ?? null;
+      if (!detailRaw) {
+        const detailResult = await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
+        if (detailResult.ok) {
+          detailRaw = detailResult.detail;
+        } else {
+          console.error(`[${adapter.name}] session detail failed: ${detailResult.error.code}: ${detailResult.error.message}`);
+          detailRaw = emptyDetail();
+        }
+      }
+
+      const detail = sanitizeSessionDetail(detailRaw);
+      const tokens = normalizeTokens(detailRaw.tokenUsage ?? null, session.tokens || null);
 
       const sanitizedSession = sanitizeSessionSummary(session);
-      const contextPercent = await computeSessionContextPercent(sanitizedSession, detailRaw?.tokenUsage ?? null);
+      const contextPercent = await computeSessionContextPercent(sanitizedSession, detailRaw.tokenUsage ?? null);
       const contextFields = contextPercent === null ? {} : { contextPercent };
 
       return {
         ...sanitizedSession,
         detail,
-        tokenUsage: detailRaw?.tokenUsage || null,
+        tokenUsage: detailRaw.tokenUsage || null,
         tokens,
         estimatedCost: estimateCost(sanitizedSession.model, tokens),
         ...contextFields,
@@ -137,18 +149,35 @@ export async function getAllSessions(activeThresholdMs: number) {
 }
 
 /**
- * Get session detail for a specific provider
+ * Get session detail for a specific provider.
+ *
+ * Narrowed rather than reduced: an unknown provider still answers `ok: true` with
+ * an empty detail — there is nothing to have failed — while a provider that
+ * reports `ok: false` keeps its code all the way to the caller. Before the union
+ * this caught a throw and answered the same empty detail, which is the audit's
+ * instance 15 and the reason "no detail" could not be told from "the reader
+ * failed".
  */
-export async function getSessionDetailByProvider(provider: string, sessionId: string, project: string | null): Promise<AdapterSessionDetail> {
+export async function getSessionDetailByProvider(provider: string, sessionId: string, project: string | null): Promise<AdapterDetailResult> {
   const adapter = adapters.find(a => a.provider === provider);
-  if (!adapter) return { toolHistory: [], messages: [] };
+  if (!adapter) return { ok: true, detail: sanitizeSessionDetail(emptyDetail()), warnings: [] };
+
+  let result: AdapterDetailResult;
   try {
-    const detail = await adapter.getSessionDetail(sessionId, project);
-    return sanitizeSessionDetail(detail || {});
+    result = await adapter.getSessionDetail(sessionId, project);
   } catch (err) {
-    console.error(`[${adapter.name}] session detail query failed:`, err instanceof Error ? err.message : err);
-    return { toolHistory: [], messages: [] };
+    // A THROW is not one of the four codes — it is an adapter bug — so it is
+    // reported as `unknown` rather than collapsed into a success.
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[${adapter.name}] session detail query threw:`, message);
+    return { ok: false, error: { code: 'unknown', message } };
   }
+
+  if (!result.ok) {
+    console.error(`[${adapter.name}] session detail failed: ${result.error.code}: ${result.error.message}`);
+    return result;
+  }
+  return { ok: true, detail: sanitizeSessionDetail(result.detail), warnings: result.warnings };
 }
 
 /**

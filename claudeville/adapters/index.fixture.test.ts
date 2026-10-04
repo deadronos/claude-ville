@@ -185,9 +185,13 @@ describe('adapter registry fixtures', () => {
   });
 
   it('returns empty detail for unknown providers', async () => {
+    // `ok: true` and NOT `ok: false`. An unknown provider is a lookup that found
+    // nothing, which is a legitimate answer — before the union this branch and a
+    // failed reader both answered the same empty detail.
     await expect(registry.getSessionDetailByProvider('unknown', 'missing', null)).resolves.toEqual({
-      toolHistory: [],
-      messages: [],
+      ok: true,
+      detail: { toolHistory: [], messages: [] },
+      warnings: [],
     });
   });
 });

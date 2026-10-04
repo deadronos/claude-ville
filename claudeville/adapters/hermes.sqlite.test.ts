@@ -5,7 +5,7 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { sessionsOf } from './fixtureHelpers.js';
+import { detailOf, sessionsOf } from './fixtureHelpers.js';
 
 let tmpDir = '';
 let HermesAdapter: any;
@@ -103,7 +103,7 @@ describe('HermesAdapter SQLite sessions', () => {
 
   it('returns chronological detail with tool history from state.db', async () => {
     const adapter = new HermesAdapter();
-    const detail = await adapter.getSessionDetail('hermes-20260101_000000_abc123', null);
+    const detail = await detailOf(adapter, 'hermes-20260101_000000_abc123', null);
 
     expect(detail.toolHistory.length).toBeGreaterThanOrEqual(1);
     expect(detail.toolHistory.at(-1)).toMatchObject({ tool: 'read_file' });
