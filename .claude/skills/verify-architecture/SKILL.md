@@ -53,12 +53,20 @@ Verify `package.json` contains the current UI stack and no stray framework drift
 Verify `claudeville/adapters/` follows the current multi-provider registry pattern:
 
 - `index.ts` exists and acts as the registry
-- Each adapter (`claude.ts`, `codex.ts`, `gemini.ts`, `openclaw.ts`, `copilot.ts`, `vscode.ts`) exports a consistent interface
+- Each adapter exports a consistent interface. There are **nine**: `claude`,
+  `codex`, `gemini`, `openclaw`, `copilot`, `vscode`, `pi`, `opencode`, `hermes`.
+  An adapter's format-specific readers live in a sibling `<name>-readers.ts` (and
+  `<name>-scan.ts` for `openclaw`); `<name>.ts` stays the entry point that
+  `index.ts` imports
 - Adapters detect installed CLIs or file sources instead of hard-requiring a provider
+- Adapters return `AdapterSessionsResult` — `{ ok: true, sessions, warnings }` or
+  `{ ok: false, error }` — so a provider that cannot be read is reported rather
+  than presented as idle. `collectFromAdapters` surfaces both to the REST payload
+  and the WebSocket frame
 
 - **PASS**: All adapters are present and the registry normalizes provider output before it reaches the UI
 - **WARN**: An adapter is missing but still referenced by the registry or tests
-- **FAIL**: `index.ts` is missing/broken or UI code starts reaching into provider files directly
+- **FAIL**: `index.ts` is missing/broken, an adapter returns a bare array instead of the union, or UI code starts reaching into provider files directly
 
 ### 4. React/R3F World Invariants
 
@@ -90,10 +98,11 @@ grep -rn "position.*fixed" claudeville/css/ --include="*.css"
 Verify the current module split stays intact:
 
 - `claudeville/src/**` uses ES module syntax (`import` / `export`) in the TypeScript/TSX source tree
-- `claudeville/server.ts`, `claudeville/adapters/*.ts`, and `shared/*.js` remain Node/CommonJS-style modules because they are consumed directly by Node/tsx entrypoints
+- The Node entrypoints are **ESM too** — `claudeville/server*.ts`, `claudeville/adapters/*.ts` and `shared/*.js` all use `import`/`export` and contain **zero** `require()` calls. They are separate from the React tree only in that Node/tsx consumes them directly, not in module style
+- `claudeville/server.ts` is the bootstrap only. Its HTTP, WebSocket and file-watcher blocks live in `server-http.ts`, `server-ws.ts`, `server-watch.ts`, and shared values in `server-config.ts`. The dependency is a DAG one way down: config → http/ws → watch
 
 - **PASS**: module boundaries stay aligned with the current runtime
-- **FAIL**: CommonJS leaks into the React source tree or Node entrypoints are converted without updating the runtime scripts
+- **FAIL**: `require()` leaks into any tree, CommonJS is reintroduced, or Node entrypoints are converted without updating the runtime scripts
 
 ### 7. Runtime and Port Configuration
 
