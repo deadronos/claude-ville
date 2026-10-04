@@ -66,7 +66,14 @@ const defaultCollectorDeps: CollectorRuntimeDeps = {
   createFileWatchers,
   createHash: crypto.createHash,
   adapters,
-  getAllSessions,
+  // `SessionSummary` carries a `[key: string]: unknown` index signature because
+  // the snapshot is JSON-ish and `normalizeSession` spreads the whole row through.
+  // The adapter layer's row is the CLOSED interface `AgentSessionSummary`, and
+  // TypeScript will not widen an interface to satisfy an index signature — the
+  // assignment worked before only because `getAllSessions` returned an inferred
+  // object-literal array. Widened here, at the one place the two views meet:
+  // structural, and the snapshot serialises the same fields either way.
+  getAllSessions: getAllSessions as CollectorSnapshotDeps['getAllSessions'],
   getAllWatchPaths,
   getActiveProviders,
   getSessionDetailByProvider,
