@@ -39,6 +39,42 @@ function isPrimarySessionFile(fileName: string) {
   return fileName.endsWith('.jsonl') && !fileName.endsWith('.trajectory.jsonl');
 }
 
+/**
+ * Report a directory that exists but cannot be enumerated, and say what the
+ * reader is giving up.
+ *
+ * The loss is unavoidable — a directory that cannot be read cannot be walked —
+ * but the SILENCE was not defensible. A failed `readdirSync` used to be caught
+ * into an empty array and reported only through `debugAdapterError`, which is a
+ * no-op unless `DEBUG` is set, so an unreadable directory produced exactly the
+ * shape a machine with no sessions installed produces. This is `console.error`
+ * because `console.error` is the unconditional channel `adapters/index.ts:60`
+ * already uses for an adapter that is about to report less data than it should.
+ */
+function reportUnreadableDir(operation: string, dirPath: string, err: unknown) {
+  console.error(
+    `[openclaw] ${operation} could not read ${dirPath}; listing what is in it is skipped`,
+    err instanceof Error ? err.message : String(err),
+  );
+}
+
+/**
+ * The agent directories under `AGENTS_DIR`, or `null` when they cannot be read.
+ *
+ * `null` and `[]` are different answers and must stay different: `[]` is "there
+ * are no agents", which is a fact about the install, and `null` is "the install
+ * cannot be listed", which is a fact about this process.
+ */
+function readAgentDirs(operation: string): Dirent[] | null {
+  try {
+    return fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
+      .filter((d: Dirent) => d.isDirectory());
+  } catch (err) {
+    reportUnreadableDir(operation, AGENTS_DIR, err);
+    return null;
+  }
+}
+
 // ─── Session ID utilities ─────────────────────────────────
 
 function encodeSessionKey(value: string) {
@@ -103,7 +139,7 @@ async function scanAgentSessionFiles(agentId: string, sessionsDir: string, activ
     );
     for (const r of fileResults) if (r) results.push(r);
   } catch (err) {
-    debugAdapterError('openclaw', 'scanAgentSessionFiles readdir', err, sessionsDir);
+    reportUnreadableDir(`scanAgentSessionFiles (agent ${agentId})`, sessionsDir, err);
   }
 
   return results;
@@ -117,22 +153,18 @@ function findAgentDatabases(): AgentDatabase[] {
   const databases: AgentDatabase[] = [];
   if (!fs.existsSync(AGENTS_DIR)) return databases;
 
-  try {
-    const agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-      .filter((d: Dirent) => d.isDirectory());
+  const agentDirs = readAgentDirs('findAgentDatabases');
+  if (agentDirs === null) return databases;
 
-    for (const dir of agentDirs) {
-      const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
-      // `isSqliteFile`, not `existsSync`: `existsSync` is true for a DIRECTORY
-      // named `openclaw-agent.sqlite`, and this list is also what decides, in
-      // `getActiveSessions`, that the agent has a database and so does NOT get
-      // its legacy scan. `withReadonlySqlite` refuses a non-file anyway
-      // (sqlite-utils.ts:30), so registering one cost the agent BOTH halves of
-      // its sessions.
-      if (isSqliteFile(dbPath)) databases.push({ agentId: dir.name, dbPath });
-    }
-  } catch (err) {
-    debugAdapterError('openclaw', 'findAgentDatabases', err, AGENTS_DIR);
+  for (const dir of agentDirs) {
+    const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
+    // `isSqliteFile`, not `existsSync`: `existsSync` is true for a DIRECTORY
+    // named `openclaw-agent.sqlite`, and this list is also what decides, in
+    // `getActiveSessions`, that the agent has a database and so does NOT get
+    // its legacy scan. `withReadonlySqlite` refuses a non-file anyway
+    // (sqlite-utils.ts:30), so registering one cost the agent BOTH halves of
+    // its sessions.
+    if (isSqliteFile(dbPath)) databases.push({ agentId: dir.name, dbPath });
   }
 
   return databases;
@@ -283,15 +315,11 @@ export class OpenClawAdapter implements AgentAdapter {
     // Legacy JSONL sessions, for every agent the database did NOT answer for.
     const legacySessions: any[] = [];
     if (fs.existsSync(AGENTS_DIR)) {
-      let agentDirs: Dirent[] = [];
-      try {
-        agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-          .filter((d: Dirent) => d.isDirectory());
-      } catch (err) {
-        debugAdapterError('openclaw', 'getActiveSessions readdir agents', err, AGENTS_DIR);
-      }
+      // null and [] are the same walk — nothing enumerable — but only one of them
+      // is silent, and `readAgentDirs` has already said which case this is.
+      const agentDirs = readAgentDirs('getActiveSessions');
 
-      for (const dir of agentDirs) {
+      for (const dir of agentDirs ?? []) {
         if (dbBackedAgents.has(dir.name)) continue;
         const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
         const fileSessions = await scanAgentSessionFiles(dir.name, sessionsDir, activeThresholdMs);
@@ -418,27 +446,23 @@ export class OpenClawAdapter implements AgentAdapter {
     const paths: WatchPath[] = [];
     if (!fs.existsSync(AGENTS_DIR)) return paths;
 
-    try {
-      const agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-        .filter((d: Dirent) => d.isDirectory());
+    const agentDirs = readAgentDirs('getWatchPaths');
+    if (agentDirs === null) return paths;
 
-      for (const dir of agentDirs) {
-        const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
-        // `isOpenableSqliteDatabase`, not `isSqliteFile`: a `type: 'file'` watch
-        // entry is a promise that this path yields data, and a regular file that
-        // is not a database can never do that. `getWatchPaths` runs once, at
-        // watcher setup, so the extra open costs nothing per scan.
-        if (isOpenableSqliteDatabase(dbPath, 'openclaw')) {
-          paths.push({ type: 'file', path: dbPath });
-        }
-
-        const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
-        if (fs.existsSync(sessionsDir)) {
-          paths.push({ type: 'directory', path: sessionsDir, filter: '.jsonl' });
-        }
+    for (const dir of agentDirs) {
+      const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
+      // `isOpenableSqliteDatabase`, not `isSqliteFile`: a `type: 'file'` watch
+      // entry is a promise that this path yields data, and a regular file that
+      // is not a database can never do that. `getWatchPaths` runs once, at
+      // watcher setup, so the extra open costs nothing per scan.
+      if (isOpenableSqliteDatabase(dbPath, 'openclaw')) {
+        paths.push({ type: 'file', path: dbPath });
       }
-    } catch (err) {
-      debugAdapterError('openclaw', 'getWatchPaths', err, AGENTS_DIR);
+
+      const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
+      if (fs.existsSync(sessionsDir)) {
+        paths.push({ type: 'directory', path: sessionsDir, filter: '.jsonl' });
+      }
     }
 
     return paths;

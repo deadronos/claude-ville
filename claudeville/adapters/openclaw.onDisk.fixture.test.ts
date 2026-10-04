@@ -1927,6 +1927,132 @@ describe('OpenClawAdapter on-disk characterization', () => {
     );
   });
 
+  // ─── an unreadable agents directory ─────────────────────
+
+  // FIXED (audit instance 18). `readdirSync(AGENTS_DIR)` used to be caught into
+  // an empty array at all three enumeration sites, and the only report was a
+  // `debugAdapterError` line — a no-op unless `DEBUG` is set. So an install
+  // whose agents directory could not be listed reported ZERO agents, which is
+  // the exact shape a machine with no openclaw agents installed reports, and
+  // `isAvailable()` still answered `true` throughout. Three sessions measured
+  // here went to zero and back; the going to zero must now be LOUD.
+  //
+  // The sessions themselves cannot be recovered — a directory that cannot be
+  // read cannot be enumerated — so the loss stays. What changes is that it is
+  // reported on `console.error`, the unconditional channel
+  // `adapters/index.ts:60` already uses for an adapter about to report less data
+  // than it should, rather than only under `DEBUG`.
+  it('reports an unreadable agents directory instead of reporting no agents', async () => {
+    await withOpenclawHome(
+      (home) => {
+        for (const agent of ['agent-one', 'agent-two', 'agent-three']) {
+          writeJsonl(agentPath(home, agent, 'sessions', 's.jsonl'), [
+            message([textBlock('never listed')], { model: 'm' }, 1),
+          ]);
+        }
+        // `chmod 000` as the owner still denies `readdir`, while `existsSync`
+        // keeps answering `true` — which is the whole trap.
+        fs.chmodSync(path.join(home, '.openclaw', 'agents'), 0o000);
+      },
+      async (OpenClawAdapter, home) => {
+        const agentsDir = path.join(home, '.openclaw', 'agents');
+        const errors: string[] = [];
+        const spy = vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+          errors.push(parts.map(String).join(' '));
+        });
+        try {
+          const adapter = new OpenClawAdapter();
+          // The install is still there …
+          expect(adapter.isAvailable()).toBe(true);
+          // … but nothing can be enumerated, so nothing is listed.
+          expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
+          expect(adapter.getWatchPaths()).toEqual([]);
+
+          // Three sites enumerate AGENTS_DIR and all three said nothing before:
+          // the database scan (`findAgentDatabases`), the legacy scan
+          // (`getActiveSessions`) and `getWatchPaths`. Each names its operation
+          // and the directory it could not read.
+          expect(errors.length).toBeGreaterThanOrEqual(3);
+          for (const operation of ['findAgentDatabases', 'getActiveSessions', 'getWatchPaths']) {
+            expect(errors.some((line) => line.includes(operation) && line.includes(agentsDir))).toBe(true);
+          }
+          // The reason, not just the fact: EACCES/EPERM on this platform.
+          expect(errors.some((line) => /EACCES|EPERM/.test(line))).toBe(true);
+        } finally {
+          // Restore before the harness deletes the tree, or `rmSync` cannot
+          // descend into it and `afterEach` fails on a leaked home.
+          spy.mockRestore();
+          fs.chmodSync(agentsDir, 0o755);
+        }
+      },
+    );
+  });
+
+  // The other half of "distinguishable from no agents installed": a directory
+  // that CAN be read and simply has no agents in it must stay silent. Without
+  // this, warning unconditionally on every enumeration would be indistinguishable
+  // from the real failure in the other direction.
+  it('stays silent when the agents directory is readable and holds no agents', async () => {
+    await withOpenclawHome(
+      (home) => {
+        mkdirp(path.join(home, '.openclaw', 'agents'));
+      },
+      async (OpenClawAdapter) => {
+        const errors: unknown[][] = [];
+        const spy = vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+          errors.push(parts);
+        });
+        try {
+          const adapter = new OpenClawAdapter();
+          expect(adapter.isAvailable()).toBe(true);
+          expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
+          expect(adapter.getWatchPaths()).toEqual([]);
+          expect(errors).toEqual([]);
+        } finally {
+          spy.mockRestore();
+        }
+      },
+    );
+  });
+
+  // `scanAgentSessionFiles` has the same collapse one level down: a readdir of a
+  // single agent's `sessions/` that fails answers `[]`, so that agent's rows are
+  // gone while every other agent's survive. The blast radius is one agent rather
+  // than the whole provider, and the exact two-id set below is what holds the
+  // containment in place — but the failure is reported on the same channel, so
+  // it is not silent either.
+  it('reports an unreadable sessions directory for one agent and still lists the others', async () => {
+    await withOpenclawHome(
+      (home) => {
+        writeJsonl(agentPath(home, 'agent-locked', 'sessions', 's.jsonl'), [
+          message([textBlock('locked out')], { model: 'locked-model' }, 1),
+        ]);
+        writeJsonl(agentPath(home, 'agent-open', 'sessions', 's.jsonl'), [
+          message([textBlock('readable')], { model: 'open-model' }, 1),
+        ]);
+        fs.chmodSync(agentPath(home, 'agent-locked', 'sessions'), 0o000);
+      },
+      async (OpenClawAdapter, home) => {
+        const sessionsDir = agentPath(home, 'agent-locked', 'sessions');
+        const errors: string[] = [];
+        const spy = vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+          errors.push(parts.map(String).join(' '));
+        });
+        try {
+          const adapter = new OpenClawAdapter();
+          const rows = await adapter.getActiveSessions(5 * MINUTE);
+          // Good data survives: only the locked agent is missing.
+          expect(ids(rows)).toEqual(['openclaw:agent-open:s']);
+          expect(rowOf(rows, 'openclaw:agent-open:s')!.lastMessage).toBe('readable');
+          expect(errors.some((line) => line.includes('scanAgentSessionFiles') && line.includes(sessionsDir))).toBe(true);
+        } finally {
+          spy.mockRestore();
+          fs.chmodSync(sessionsDir, 0o755);
+        }
+      },
+    );
+  });
+
   // ─── a directory named *.jsonl in sessions/ ─────────────
 
   // FIXED (#144). This assertion previously pinned the DEFECT — a DIRECTORY named
