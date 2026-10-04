@@ -147,12 +147,15 @@
  * - `db-msg-subselect-order-asc` and `db-subselect-oldest-message` are dead for the
  *   reason given above: `session.modelID` and `session.providerID` are never read.
  *
- * DEFECTS FOUND WHILE PINNING, all left unfixed and all recorded above: a malformed
- * `message.data` removes every session from the listing; a malformed MESSAGE file
- * drives `getSessionDetail` into unbounded recursion; a session document's `id`
- * differing from its file name makes the session unresolvable; a symlinked session
- * document is invisible; and the two `isFile()`/readdir quirks that make the
- * directory and symlink cases observable in the first place.
+ * DEFECTS FOUND WHILE PINNING, and all recorded above: a malformed `message.data`
+ * removes every session from the listing; a session document's `id` differing from
+ * its file name makes the session unresolvable; a symlinked session document is
+ * invisible; and the two `isFile()`/readdir quirks that make the directory and
+ * symlink cases observable in the first place. A fifth — a malformed MESSAGE file
+ * driving `getSessionDetail` into unbounded recursion — is BOUNDED rather than
+ * removed, because the same re-entry is what recovers a session file that has moved;
+ * the case below asserts the call SETTLES, and the case after it asserts the one
+ * re-resolution a moved file still gets.
  *
  * - HAZARD (pinned): `readJson` returns `null` for a malformed message file, so
  *   `if (raw)` at :247 falls through to the id-only scan; but a message file holding
@@ -2188,20 +2191,22 @@ describe('OpenCodeAdapter on-disk characterization', () => {
     );
   });
 
-  // DEFECT (pinned, not fixed): INFINITE RECURSION. `getSessionDetail`'s last branch
-  // re-enters ITSELF with the resolved message-file path (opencode.ts:257). But a
-  // malformed message file makes `readJson` answer `null`, so `if (raw)` at :247 is
-  // false and control falls back into the id-only branch — which finds the SAME
-  // session file again, because `getSessionFiles(30 * 60 * 1000)` at :253 still sees
-  // it. There is no visited set and no depth limit, so the call never settles.
+  // A malformed message file must make `getSessionDetail` SETTLE. `readJson`
+  // (readers:20-27) answers `null` for one, so `if (raw)` at :247 is false and control
+  // falls into the id-only branch — which resolves the SAME path straight back
+  // (opencode.ts:257), because `getSessionFiles(30 * 60 * 1000)` still lists the
+  // session file whose NAME matches. Unbounded, that re-entry never ended: measured at
+  // ~4,400 re-reads of the one file in 500ms, with the loop stopping only once the
+  // session file aged out of the hard-coded window. It is now bounded, and this is the
+  // regression test for that.
   //
-  // It is pinned with a BOUNDED probe rather than awaited: the call is raced against
-  // a short timer and the expectation is that it is still pending. Afterwards the
-  // session file is backdated past the hard-coded 30-minute window so the loop's next
-  // `getSessionFiles` misses it and the runaway recursion unwinds — otherwise it
-  // would spin on I/O for the rest of the run.
-  it('DEFECT: never settle when the resolved message file is malformed', async () => {
-    await withOpencodeDir(
+  // The call is RACED rather than awaited, so a regression names the call that failed
+  // to settle instead of timing out with no attribution. The unwind runs only when the
+  // race was lost, and only so a regressed run does not spin on I/O for the rest of the
+  // suite — it happens after `outcome` is captured, so it cannot make the assertion
+  // pass, and it asserts nothing about the value it produces.
+  it('settle on the no-match detail when the resolved message file is malformed', async () => {
+    const outcome = await withOpencodeDir(
       (dir) => {
         writeSession(dir, 'proj', 'broken.json', { id: 'broken', time: { created: T0, updated: T0 } });
         writeRaw(messagePath(dir, 'proj', 'broken.json'), '{ not json');
@@ -2211,15 +2216,64 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         const call = adapter.getSessionDetail('opencode-broken', null, null);
         const outcome = await Promise.race([
           call.then((value: unknown) => ({ settled: true, value })),
-          new Promise((resolve) => setTimeout(() => resolve({ settled: false }), 250)),
+          new Promise<{ settled: boolean; value: unknown }>((resolve) =>
+            setTimeout(() => resolve({ settled: false, value: undefined }), 250),
+          ),
         ]);
-        // Still pending after 250ms: the recursion is unbounded.
-        expect(outcome).toEqual({ settled: false });
+        if (!outcome.settled) {
+          // The call is mid-loop here. Past the hard-coded 30-minute window the scan
+          // misses the session file, which is the only thing that ever stopped it.
+          backdate(sessionPath(dir, 'proj', 'broken.json'), 45 * MINUTE);
+          await call;
+        }
+        return outcome;
+      },
+    );
 
-        // Unwind: past the hard-coded 30-minute window, the id-only scan finds no
-        // session file, so the loop exits on its next turn with the no-match shape.
-        backdate(sessionPath(dir, 'proj', 'broken.json'), 45 * MINUTE);
-        expect(await call).toStrictEqual({ toolHistory: [], messages: [], tokenUsage: null });
+    expect(
+      outcome.settled,
+      "getSessionDetail('opencode-broken', null, null) never settled on a malformed message file",
+    ).toBe(true);
+    // The no-match shape from opencode.ts:255 — `tokenUsage: null` and NO `sessionId`,
+    // which is what every other malformed-record path in this adapter returns.
+    expect(outcome.value).toStrictEqual({ toolHistory: [], messages: [], tokenUsage: null });
+  });
+
+  // The other half of the branch above, and the reason it cannot simply stop
+  // re-resolving: a caller may hand back a `filePath` that has since MOVED, and the
+  // id-only scan finds the session's current location. Here the session document (and
+  // so its message file) lives under the projectKey `moved`, while the caller's path
+  // still names the `old` one. `readJson` cannot read it, the scan resolves a DIFFERENT
+  // path, and the one re-resolution is what makes the detail resolve at all.
+  //
+  // Pinned from both ends: a guard that forbade the re-resolution, or that compared the
+  // resolved path against `filePath` without allowing a first call from `null`, would
+  // answer the empty detail here.
+  it('re-resolve once when the caller’s filePath has moved, and return the moved detail', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        // The session document, and therefore the message file, under `moved`.
+        writeSession(dir, 'moved', 's.json', { id: 's', time: { created: T0, updated: T0 } });
+        writeMessages(dir, 'moved', 's.json', [
+          fileMessage('assistant', [textBlock('read at the new location')], 1),
+        ]);
+        // Nothing at the stale location: `old/` is never created.
+        expect(fs.existsSync(messagePath(dir, 'old', 's.json'))).toBe(false);
+      },
+      async (OpenCodeAdapter, dir) => {
+        const adapter = new OpenCodeAdapter();
+        // A stale path: `readJson` cannot read it, the scan resolves a DIFFERENT path,
+        // and the one re-resolution is what makes the detail resolve at all.
+        const detail = await adapter.getSessionDetail('opencode-s', null, messagePath(dir, 'old', 's.json'));
+        expect(texts(detail.messages)).toEqual(['read at the new location']);
+        expect(detail.sessionId).toBe('opencode-s');
+
+        // The same call with NO path reads the resolved location on its first entry,
+        // because `null` is not the resolved path. So does a moved session reached by
+        // id alone — both terminate, and both read the same file.
+        const byId = await adapter.getSessionDetail('opencode-s', null, null);
+        expect(texts(byId.messages)).toEqual(['read at the new location']);
+        expect(byId.sessionId).toBe('opencode-s');
       },
     );
   });

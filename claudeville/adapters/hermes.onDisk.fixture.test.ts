@@ -1321,6 +1321,12 @@ describe('HermesAdapter on-disk characterization', () => {
   // unparseable clock falls back to the mtime, and a NULL `last_updated` falls
   // through the `??` chain to `updated_at`.
   it('take the legacy lastActivity from max(metadata clock, mtime), with a ?? chain and an || fallback', async () => {
+    // `backdate` reads `Date.now()` per call, so each file gets an mtime a
+    // millisecond or so apart from its siblings. Each row must therefore be
+    // asserted against ITS OWN file's mtime — comparing them to one shared
+    // value passes only when two clock reads land on the same millisecond,
+    // which is a ~1-in-13 flake under full-suite load.
+    const mtimes: Record<string, number> = {};
     await withHermesDir(
       (dir) => {
         const sessions = sessionsDir(dir);
@@ -1346,20 +1352,20 @@ describe('HermesAdapter on-disk characterization', () => {
           session_start: at(1),
         });
         for (const name of ['future', 'unparseable', 'chain']) {
-          backdate(path.join(sessions, `session_${name}.json`), 30 * 1000);
+          mtimes[name] = backdate(path.join(sessions, `session_${name}.json`), 30 * 1000);
         }
       },
-      async (HermesAdapter, dir) => {
+      async (HermesAdapter) => {
         const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
-        const mtime = fs.statSync(path.join(sessionsDir(dir), 'session_future.json')).mtimeMs;
 
         // The future clock wins outright over the 30-second-old mtime.
-        expect(rowOf(rows, 'hermes-future').lastActivity).toBeGreaterThan(mtime + 5 * MINUTE);
-        // An unparseable clock is `asTimestamp → 0`, so `|| mtime` answers.
-        expect(rowOf(rows, 'hermes-unparseable').lastActivity).toBe(mtime);
+        expect(rowOf(rows, 'hermes-future').lastActivity).toBeGreaterThan(mtimes.future + 5 * MINUTE);
+        // An unparseable clock is `asTimestamp → 0`, so `|| mtime` answers —
+        // and the mtime it answers with is this file's own, not a sibling's.
+        expect(rowOf(rows, 'hermes-unparseable').lastActivity).toBe(mtimes.unparseable);
         // `last_updated: null` falls through to `updated_at`, and that future clock
         // beats the mtime outright.
-        expect(rowOf(rows, 'hermes-chain').lastActivity).toBeGreaterThan(mtime + 5 * MINUTE);
+        expect(rowOf(rows, 'hermes-chain').lastActivity).toBeGreaterThan(mtimes.chain + 5 * MINUTE);
         expect(rowOf(rows, 'hermes-chain').lastActivity).toBeLessThan(Date.now() + 15 * MINUTE);
       },
     );

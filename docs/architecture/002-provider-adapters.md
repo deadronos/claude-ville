@@ -260,7 +260,7 @@ Every adapter method that performs file or network I/O must be implemented as an
   structural consequence of the interface, not the "must be async" rule being
   deliberately broken; converting these needs an interface change first.
 - **Concurrent scans**: When iterating over multiple directories or files, use `Promise.all` to run operations in parallel rather than sequential `for` loops.
-- **Detail fetching**: When a session scan must fetch detail data per-session, fan out with `Promise.all` — do not fetch sequentially.
+- **Detail fetching**: When a session scan must fetch detail data per-session, fan out with `Promise.all` — do not fetch sequentially. A detail read may also re-resolve its own input, and `opencode`'s `getSessionDetail` does: its last branch re-enters once with the message file the id-only scan resolves, which is how a session file that has since moved is recovered — bounded so it stops instead of re-entering with a path that has already failed to read.
 - **Availability checks**: `isAvailable()` may use synchronous `fs.existsSync` as a one-time check; all other I/O must be async.
 
 Note that the rules above are not uniformly held, and the eight remaining

@@ -252,9 +252,13 @@ export class OpenCodeAdapter implements AgentAdapter {
     const cleanId = sessionId.replace(/^opencode-/, '');
     const files = await getSessionFiles(30 * 60 * 1000);
     const match = files.find((file) => file.sessionId === cleanId);
-    if (!match) return { toolHistory: [], messages: [], tokenUsage: null };
-
-    return this.getSessionDetail(sessionId, project, resolveMessageFile(match.projectKey, cleanId));
+    const resolved = match ? resolveMessageFile(match.projectKey, cleanId) : null;
+    // Re-resolving is how a moved session file is recovered, so it stays — but the
+    // retry is BOUNDED to a path this call has not already failed to read. Re-entering
+    // with the path just read was the loop: `readJson` answered null, the scan still
+    // listed the session file by name, and the same path came back forever.
+    if (!resolved || resolved === filePath) return { toolHistory: [], messages: [], tokenUsage: null };
+    return this.getSessionDetail(sessionId, project, resolved);
   }
 
   getWatchPaths(): WatchPath[] {
