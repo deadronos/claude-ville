@@ -166,12 +166,12 @@ Caveats for anyone converting an adapter:
       `hermes.ts:36`), so `fileFor` still has nothing to map there and the
       `isDirectory()` filter would drop every candidate.
     - `gemini` nests one level deeper than `pi`: project dir → `chats/` →
-      session files (`gemini.ts:333` joins the `chats` subdirectory before
+      session files (`gemini.ts:148` joins the `chats` subdirectory before
       reading). It **is** converted, on `pi`'s many-paths `fileFor` — the project
       directory is the child and `fileFor` hands back the whole `session-*`
       listing beneath it, which is also how `projectHash` reaches the record,
       since `build` receives the child directory as `name`. `fileFor` is called
-      synchronously, so that listing is a `readdirSync` (`gemini.ts:337`); see the
+      synchronously, so that listing is a `readdirSync` (`gemini.ts:152`); see the
       Compliance note below.
     - `opencode` **does** apply a threshold: `getSessionFiles(activeThresholdMs)`
       (`opencode.ts:55`) stats each candidate and drops anything older
@@ -248,7 +248,7 @@ Every adapter method that performs file or network I/O must be implemented as an
 - **Synchronous `fileFor` (the one sanctioned exception)**: `collectScanByMtime`
   calls `fileFor` synchronously (`scan-utils.ts:74`), so an adapter that has to
   enumerate a directory in order to answer must do so with `fs.readdirSync`.
-  `pi.ts:262` and `gemini.ts:337` are the cases in the tree today. This exception
+  `pi.ts:262` and `gemini.ts:152` are the cases in the tree today. This exception
   is bounded by the helper rather than open-ended: a throw is caught, logged as
   `<operation> resolve`, and confined to that one child directory, so a failing
   enumeration cannot take down its siblings.
@@ -256,7 +256,7 @@ Every adapter method that performs file or network I/O must be implemented as an
   `shared/types.ts:89` declares it as `getWatchPaths(): WatchPath[]` and the
   registry calls it without awaiting (`adapters/index.ts:91`). The three adapters
   that must enumerate a directory to answer it therefore use `fs.readdirSync`
-  inside it — `claude.ts:275`, `gemini.ts:465`, `openclaw.ts:361`. That is a
+  inside it — `claude.ts:275`, `gemini.ts:240`, `openclaw.ts:361`. That is a
   structural consequence of the interface, not the "must be async" rule being
   deliberately broken; converting these needs an interface change first.
 - **Concurrent scans**: When iterating over multiple directories or files, use `Promise.all` to run operations in parallel rather than sequential `for` loops.
@@ -266,11 +266,11 @@ Every adapter method that performs file or network I/O must be implemented as an
 Note that the rules above are not uniformly held, and the eight remaining
 `fs.readdirSync` sites breach them in two different ways:
 
-- `claude.ts:275`, `gemini.ts:460`, `openclaw.ts:361` — inside `getWatchPaths()`,
+- `claude.ts:275`, `gemini.ts:235`, `openclaw.ts:361` — inside `getWatchPaths()`,
   so they cannot be async at all without an interface change.
 - `openclaw.ts:120` — inside the synchronous helper `findAgentDatabases()`, called
   from async paths.
-- `gemini.ts:92,110` — inside synchronous project-path resolution, called from
+- `gemini.ts:91,109` — inside synchronous project-path resolution, called from
   async paths.
 - `openclaw.ts:227,281` — inside async methods, so these breach the "use
   `fs.promises`" rule without breaching the "must be async" rule. `openclaw.ts:281`
@@ -278,7 +278,7 @@ Note that the rules above are not uniformly held, and the eight remaining
 
 All are pre-existing and unconverted; converting those adapters is what retires
 them. Widening `fileFor` to accept a promise would likewise retire `pi.ts:262`
-and `gemini.ts:337` — it is a real option, but it belongs in its own change with
+and `gemini.ts:152` — it is a real option, but it belongs in its own change with
 its own concurrency tests rather than in an adapter conversion.
 
 The `getAllSessions` function in `adapters/index.ts` calls all adapters concurrently. If any adapter blocks on synchronous I/O, it blocks the entire scan for all providers.
@@ -326,8 +326,8 @@ count.
 Down from 748 / 569 in one file. If one file is ever not enough, add
 `<name>-scan.ts`; prefer the fewest files.
 
-Four more were then split the same way — `openclaw`, `claude`, `hermes`,
-`opencode` — and the measured result, all five adapters:
+Five more were then split the same way — `openclaw`, `claude`, `hermes`,
+`opencode`, `gemini` — and the measured result, all six adapters:
 
 | Adapter | Before (total / code-only) | `<name>.ts` | `<name>-readers.ts` | Readers own |
 | --- | --- | --- | --- | --- |
@@ -336,11 +336,12 @@ Four more were then split the same way — `openclaw`, `claude`, `hermes`,
 | `claude` | 626 / 486 | 371 / 303 | 269 / 188 | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
 | `hermes` | 517 / 420 | 257 / 204 | 274 / 224 | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
 | `opencode` | 470 / 417 | 267 / 238 | 213 / 186 | part/tool/message shaping, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
+| `gemini` | 473 / 324 | 248 / 175 | 234 / 152 | `readJsonFile`, `loadSessionMessages`, `parseSession`, tool/message readers, `getTokenUsage`, `TokenFold` |
 
 The split boundary is uniform: **everything above `export class XAdapter` is the
 format-specific layer.** Within that block, what stays on the `<name>.ts` side is
 whatever the **scan** needs, and what moves is whatever only the readers need —
-so two of the four needed the line drawn on a *shared value* rather than on
+so two of the five needed the line drawn on a *shared value* rather than on
 readership, which is where the one-way rule bit:
 
 - `claude` needed `CLAUDE_DIR`, because `getSessionDetail`,
@@ -354,6 +355,11 @@ readership, which is where the one-way rule bit:
   reads through `queryDb`, so moving it while `queryDb` stayed would have been a
   two-way reference. What stays is therefore "what the scan needs", not "what is
   named `scan*`".
+- `gemini` needed no such exception, which is the rule working rather than the
+  rule being bent: the scan keeps `GEMINI_DIR`, `TMP_DIR`, `resolveProjectPath`
+  and `scanActiveSessions`, and not one of the four readers touches any of them.
+  The readers side needed only `fs`, so the boundary fell exactly where "what the
+  scan needs" says it should.
 
 Neither `openclaw` nor the others needed a third file. `openclaw.ts` is the
 tightest at 381 lines, and it got there only because the shared event/usage
