@@ -23,7 +23,7 @@ import os from 'os';
 
 import type { AdapterSessionDetail, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
-import { hasTable, queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import { hasTable, isSqliteFile, queryAll, withReadonlySqlite } from './sqlite-utils.js';
 import { toolBlockInfo, normalizeTokenUsage, decodeEventRows, parseSession, getToolHistory, getRecentMessages, readDbDetail } from './openclaw-readers.js';
 import { extractText } from './text-utils.js';
 import type { Dirent } from './scan-utils.js';
@@ -122,7 +122,13 @@ function findAgentDatabases(): AgentDatabase[] {
 
     for (const dir of agentDirs) {
       const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
-      if (fs.existsSync(dbPath)) databases.push({ agentId: dir.name, dbPath });
+      // `isSqliteFile`, not `existsSync`: `existsSync` is true for a DIRECTORY
+      // named `openclaw-agent.sqlite`, and this list is also what decides, in
+      // `getActiveSessions`, that the agent has a database and so does NOT get
+      // its legacy scan. `withReadonlySqlite` refuses a non-file anyway
+      // (sqlite-utils.ts:30), so registering one cost the agent BOTH halves of
+      // its sessions.
+      if (isSqliteFile(dbPath)) databases.push({ agentId: dir.name, dbPath });
     }
   } catch (err) {
     debugAdapterError('openclaw', 'findAgentDatabases', err, AGENTS_DIR);
@@ -363,7 +369,9 @@ export class OpenClawAdapter implements AgentAdapter {
 
       for (const dir of agentDirs) {
         const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
-        if (fs.existsSync(dbPath)) {
+        // Same `isSqliteFile` gate as `findAgentDatabases`, so a `type: 'file'`
+        // entry is never advertised for a path `fs.watch` cannot watch as a file.
+        if (isSqliteFile(dbPath)) {
           paths.push({ type: 'file', path: dbPath });
         }
 

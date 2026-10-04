@@ -87,7 +87,8 @@
  *   children (openclaw.ts:121, :228, :281, :361). Unlike `claude`'s equivalent
  *   — whose `getWatchPaths` pushes the CHILD path, so a loose `README.md` would
  *   be watched — every use here immediately joins `agent/` or `sessions/` onto
- *   `dir.name` and gates the result on `existsSync`, so a loose file can only
+ *   `dir.name` and gates the result on a file check (`existsSync`, or
+ *   `isSqliteFile` for the database at `:125`/`:366`), so a loose file can only
  *   ever contribute a path that does not exist. `notes.txt` and a file named
  *   `agent-four` are written under `agents/` below so the claim stays honest:
  *   no assertion in this file can pin those four filters, and a 90-mutation
@@ -115,6 +116,8 @@ import { zstdCompressSync } from 'node:zlib';
 
 import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+
+import type { WatchPath } from '../../shared/types.js';
 
 const MINUTE = 60 * 1000;
 const originalHome = process.env.HOME;
@@ -1801,29 +1804,93 @@ describe('OpenClawAdapter on-disk characterization', () => {
     );
   });
 
-  // A `.sqlite` path that is a DIRECTORY is registered as an agent database by
-  // `existsSync` (openclaw.ts:125), so the agent's legacy sessions are
-  // suppressed, `withReadonlySqlite` returns null because `isSqliteFile` wants a
-  // file (sqlite-utils.ts:22), and `getWatchPaths` advertises a `type: 'file'`
-  // entry pointing at a directory. Pinned as-is; see the report.
-  it('registers a directory named openclaw-agent.sqlite as that agent\'s database', async () => {
+  // FIXED (audit instance 9). This assertion previously pinned the DEFECT: a
+  // DIRECTORY named `openclaw-agent.sqlite` was registered as that agent's
+  // database by `existsSync` (openclaw.ts:125), which made `agentsWithDb`
+  // (openclaw.ts:217) suppress the agent's legacy sessions, made `withReadonlySqlite`
+  // answer null because `isSqliteFile` wants a regular file (sqlite-utils.ts:23),
+  // and made `getWatchPaths` advertise a `type: 'file'` entry pointing at a
+  // directory — so one bad path cost the agent BOTH halves of its sessions while
+  // the UI watched a path that could never produce data.
+  //
+  // `findAgentDatabases` and `getWatchPaths` now gate on `isSqliteFile`, so a
+  // non-file is not an agent database at all: the agent falls back to its legacy
+  // listing, and the directory is not advertised. The decoy still holds a file, so
+  // it `stat`s cleanly and would be registered again if the `isFile()` term came
+  // back.
+  it('ignores a directory named openclaw-agent.sqlite, so the agent still lists its legacy sessions', async () => {
     await withOpenclawHome(
       (home) => {
         writeRaw(agentPath(home, 'agent-dir-db', 'agent', 'openclaw-agent.sqlite', 'inside.txt'), 'x\n');
         writeJsonl(agentPath(home, 'agent-dir-db', 'sessions', 's1.jsonl'), [
-          message([textBlock('suppressed')], { model: 'm' }, 1),
+          message([textBlock('listed again')], { model: 'legacy-model' }, 1),
         ]);
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        expect(await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER)).toEqual([]);
-        const paths = adapter.getWatchPaths();
-        expect(paths).toHaveLength(2);
-        expect(paths[0]).toEqual({
-          type: 'file',
-          path: agentPath(home, 'agent-dir-db', 'agent', 'openclaw-agent.sqlite'),
+        const rows = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+        expect(ids(rows)).toEqual(['openclaw:agent-dir-db:s1']);
+        expect(rowOf(rows, 'openclaw:agent-dir-db:s1')).toMatchObject({
+          model: 'legacy-model',
+          lastMessage: 'listed again',
+          filePath: agentPath(home, 'agent-dir-db', 'sessions', 's1.jsonl'),
         });
+        // The directory is not a database, so it is not watched as a FILE either.
+        // Its `sessions/` directory still is.
+        expect(adapter.getWatchPaths()).toEqual([
+          { type: 'directory', path: agentPath(home, 'agent-dir-db', 'sessions'), filter: '.jsonl' },
+        ]);
         expect(fs.statSync(agentPath(home, 'agent-dir-db', 'agent', 'openclaw-agent.sqlite')).isDirectory()).toBe(true);
+      },
+    );
+  });
+
+  // The blast radius is per AGENT, so one agent's unusable database path must not
+  // reach another's. `agent-good` has a real database and one SQLite session;
+  // `agent-bad` has a DIRECTORY where its database should be and one legacy
+  // session. Before the `isSqliteFile` gate the whole listing was `[]` and both
+  // watch-path entries for `agent-bad` lied. The exact two-id set is what holds
+  // each half in place: drop the gate and the legacy id disappears; keep it but
+  // gate `getWatchPaths` too loosely and the third assertion fails.
+  it('lists a healthy agent\'s sessions and the broken agent\'s legacy ones when one database path is a directory', async () => {
+    await withOpenclawHome(
+      (home) => {
+        const { db, addWindow, addEvent } = openAgentDb(home, 'agent-good');
+        addWindow({ sessionId: 'sess-1', key: 'k', model: 'good-model' });
+        addEvent('sess-1', 1, message([textBlock('from the database')], { model: 'good-model' }, 1));
+        db.close();
+        mkdirp(agentPath(home, 'agent-good', 'sessions'));
+        writeRaw(agentPath(home, 'agent-bad', 'agent', 'openclaw-agent.sqlite', 'inside.txt'), 'x\n');
+        writeJsonl(agentPath(home, 'agent-bad', 'sessions', 'legacy.jsonl'), [
+          message([textBlock('from the legacy file')], { model: 'legacy-model' }, 1),
+        ]);
+      },
+      async (OpenClawAdapter, home) => {
+        const adapter = new OpenClawAdapter();
+        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        expect(ids(rows)).toEqual(['openclaw:agent-bad:legacy', 'openclaw:agent-good:sess-1']);
+        expect(rowOf(rows, 'openclaw:agent-good:sess-1')).toMatchObject({
+          model: 'good-model',
+          lastMessage: 'from the database',
+          filePath: agentPath(home, 'agent-good', 'agent', 'openclaw-agent.sqlite'),
+        });
+        expect(rowOf(rows, 'openclaw:agent-bad:legacy')).toMatchObject({
+          model: 'legacy-model',
+          lastMessage: 'from the legacy file',
+        });
+
+        const paths = adapter.getWatchPaths();
+        expect(paths).toHaveLength(3);
+        expect(paths).toEqual(
+          expect.arrayContaining([
+            { type: 'file', path: agentPath(home, 'agent-good', 'agent', 'openclaw-agent.sqlite') },
+            { type: 'directory', path: agentPath(home, 'agent-good', 'sessions'), filter: '.jsonl' },
+            { type: 'directory', path: agentPath(home, 'agent-bad', 'sessions'), filter: '.jsonl' },
+          ]),
+        );
+        expect(paths.map((entry: WatchPath) => entry.path)).not.toContain(
+          agentPath(home, 'agent-bad', 'agent', 'openclaw-agent.sqlite'),
+        );
       },
     );
   });
