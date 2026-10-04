@@ -96,25 +96,21 @@ export class OpenClawAdapter implements AgentAdapter {
     // The per-agent database failures are NOT that. Each one still has its legacy
     // JSONL scan below, so the listing stands and each becomes a `warning`
     // (audit instance 8, and #157's whole point).
+    // No per-agent database failure is ever `ok: false`, and that is deliberate.
+    // `AGENTS_DIR` was listed either way, so the provider WAS read: what failed is
+    // one agent's store, and that agent's legacy scan still runs. #157 is exactly
+    // this case, and calling it a whole-adapter failure would delete the rows it
+    // kept. Only the `agents/` root itself can fail the provider.
     const dbSource: SourceListing = databaseCount === 0
       ? { kind: 'absent' }
-      : dbFailures.length > 0 && !dbBackedAgents.size
-        ? {
-          kind: 'failed',
-          code: dbFailures[0].code,
-          detail: sourceDetail(`${dbFailures.length} agent database(s) could not be read`, OPENCLAW_DIR),
-        }
-        : {
-          kind: 'rows',
-          sessions: dbSessions,
-          // Each unreadable database is a WARNING while any other agent answered or
-          // has a legacy scan below: that agent keeps its rows, so the listing
-          // stands. Reporting it as a failure is the #157 regression.
-          warnings: dbFailures.map((failure) => ({
-            code: failure.code,
-            detail: `1 agent database (${failure.agentId})`,
-          })),
-        };
+      : {
+        kind: 'rows',
+        sessions: dbSessions,
+        warnings: dbFailures.map((failure) => ({
+          code: failure.code,
+          detail: `1 agent database (${failure.agentId})`,
+        })),
+      };
 
     const legacySource: SourceListing = agentsUnreadable.length > 0
       ? { kind: 'failed', code: 'root-unreadable', detail: sourceDetail('agents directory could not be listed', OPENCLAW_DIR) }

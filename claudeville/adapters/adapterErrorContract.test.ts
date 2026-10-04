@@ -290,6 +290,45 @@ describe('hermes per-item degradation: warnings, never ok: false', () => {
     );
   });
 
+  // The pilot reported this path as newly reachable and correct but UNTESTED, so
+  // it is pinned here. It is the neighbouring degradation to the one above: the
+  // `messages` table exists but lacks the `active` column (drift), versus not
+  // existing at all (a half-written or foreign store). Both make the per-session
+  // query raise `no such …`, both cost that session its `lastMessage` / `lastTool`
+  // and nothing else, and both must be warnings — never `ok: false`, because the
+  // listing stands and the token counts from the `sessions` read are still real.
+  //
+  // It was silent before the contract and is reported now, which is the whole
+  // reason `warnings` is not decoration: this is one of the ~21 audited per-item
+  // instances becoming visible.
+  it('warn when the installed store has a sessions table but no messages table', async () => {
+    await withAdapter(
+      (dir) => {
+        // NO messages table at all. `SESSIONS_SQL` alone.
+        const db = new Database(path.join(dir, 'state.db'));
+        db.exec(SESSIONS_SQL);
+        db.prepare(
+          'INSERT INTO sessions (id, source, model, input_tokens, output_tokens, started_at, last_activity_at) VALUES (?,?,?,?,?,?,?)',
+        ).run('half-store', 'cli', 'M2.7', 31, 41, Date.now() / 1000 - 5, Date.now() / 1000 - 5);
+        db.close();
+      },
+      async (adapter) => {
+        const result = await adapter.getActiveSessions(5 * MINUTE);
+
+        // Read, not failed: the session is listed with the counts it does have.
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error('unreachable');
+        expect(result.sessions).toHaveLength(1);
+        expect(result.sessions[0].sessionId).toBe('hermes-half-store');
+        expect(result.sessions[0].lastMessage).toBeNull();
+        expect(result.sessions[0].tokens).toStrictEqual({ input: 31, output: 41 });
+        // …and the loss is named, with the code that says why: the store opened
+        // and answered, so this is a shape problem and not an unreadable store.
+        expect(result.warnings).toStrictEqual([{ code: 'schema-incompatible', detail: '1 session(s)' }]);
+      },
+    );
+  });
+
   // The #157 regression, stated as a test: a provider with one broken store and
   // one good one is a DEGRADED provider, not a failed one. Reporting `ok: false`
   // here would drop the sessions the legacy files hold, which is exactly what
