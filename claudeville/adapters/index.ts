@@ -7,9 +7,11 @@ import { normalizeTokens } from '../../shared/session-utils.js';
 import { computeSessionContextPercent } from '../../shared/context-window.js';
 import type {
   AdapterDetailResult,
+  AdapterErrorCode,
   AdapterErrorReport,
   AdapterSessionsResult,
   AdapterSessionDetail,
+  AdapterWarning,
   AdapterWarningReport,
   AgentAdapter,
   AgentSessionSummary,
@@ -48,6 +50,42 @@ export interface AdapterCollection {
   /** One per degraded record set. The listing still stands. */
   warnings: AdapterWarningReport[];
 }
+
+/**
+ * N per-session detail failures for ONE provider, as one warning per code.
+ *
+ * The listing calls `getSessionDetail` once per session, so a provider whose
+ * detail reader is broken answers N failures for a single poll — and emitting one
+ * `error` each would flood the payload with the same fact N times. They are
+ * therefore `warnings`, not `errors`, and the same aggregation the listing already
+ * uses applies: a warning per degraded record set, counted. Two reasons it must not
+ * be `errors`:
+ *
+ * - `errors` means the provider could not be read AT ALL. It plainly was — the
+ *   session rows are in the payload. Promoting one session's failure to a
+ *   provider-level error is the `ok: false`-over-one-bad-record regression the
+ *   contract exists to prevent, and #156 and #157 are why.
+ * - `AdapterError` carries one `message` and no count, and an operator's first
+ *   question is "one session or all of them?". A counted warning answers it.
+ *
+ * Grouped by code, so a store that is unreadable for some sessions and
+ * schema-drifted for others reports both rather than collapsing to whichever
+ * came first. First-seen order, so the payload is stable across a poll.
+ */
+function detailFailureWarnings(provider: string, counts: Map<AdapterErrorCode, number>): AdapterWarningReport[] {
+  return Array.from(counts, ([code, count]): AdapterWarningReport => ({
+    provider,
+    warning: { code, detail: `${count} session detail(s) failed: ${DETAIL_UNIT_BY_CODE[code]}` },
+  }));
+}
+
+/** What an operator needs from a code alone; the messages are already deduplicated per code. */
+const DETAIL_UNIT_BY_CODE: Record<AdapterErrorCode, string> = {
+  'root-unreadable': 'store could not be listed',
+  'store-unreadable': 'store would not open',
+  'schema-incompatible': 'store shape is not one we understand',
+  unknown: 'read failed',
+};
 
 /**
  * Collect sessions from all active adapters.
@@ -89,14 +127,21 @@ export async function collectFromAdapters(activeThresholdMs: number): Promise<Ad
       console.error(`[${adapter.name}] partial read: ${warning.code}: ${warning.detail}`);
     }
 
+    // One session's detail failing is an `ok: false` too, and it must NOT become
+    // an `errors` entry — see {@link detailFailureWarnings}.
+    const detailFailures = new Map<AdapterErrorCode, number>();
+    const detailWarnings: AdapterWarning[] = [];
+
     const sessions = await Promise.all(result.sessions.map(async (session: AgentSessionSummary) => {
       let detailRaw: AdapterSessionDetail | null = session.detail ?? null;
       if (!detailRaw) {
         const detailResult = await adapter.getSessionDetail(session.sessionId, session.project, session.filePath);
         if (detailResult.ok) {
           detailRaw = detailResult.detail;
+          detailWarnings.push(...detailResult.warnings);
         } else {
           console.error(`[${adapter.name}] session detail failed: ${detailResult.error.code}: ${detailResult.error.message}`);
+          detailFailures.set(detailResult.error.code, (detailFailures.get(detailResult.error.code) ?? 0) + 1);
           detailRaw = emptyDetail();
         }
       }
@@ -118,7 +163,16 @@ export async function collectFromAdapters(activeThresholdMs: number): Promise<Ad
       };
     }));
 
-    return { sessions, errors: [], warnings };
+    const detailWarningReports = detailFailureWarnings(adapter.provider, detailFailures);
+    for (const { warning } of detailWarningReports) {
+      console.error(`[${adapter.name}] partial detail read: ${warning.code}: ${warning.detail}`);
+    }
+
+    return {
+      sessions,
+      errors: [],
+      warnings: [...warnings, ...detailWarningReports, ...detailWarnings.map((warning) => ({ provider: adapter.provider, warning }))],
+    };
   }));
 
   return {
