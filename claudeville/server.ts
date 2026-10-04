@@ -2,51 +2,28 @@ import '../load-local-env.js';
 
 import * as http from 'http';
 import * as net from 'net';
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
-import { WebSocketServer, type WebSocket } from 'ws';
 
-import { buildRuntimeConfig } from '../runtime-config.shared.js';
-import { MIME_TYPES } from '../shared/mime-types.js';
 import { setCorsHeaders, sendError } from '../shared/http-utils.js';
 import { createApiRouteHandler } from '../shared/api-routes.js';
 import { flattenHistoryEntries } from '../shared/history-utils.js';
-import { createFileWatchers } from '../shared/watch-utils.js';
 import {
-  adapters,
   getAllSessions,
   getSessionDetailByProvider,
-  getAllWatchPaths,
   getActiveProviders,
 } from './adapters/index.js';
 import * as usageQuota from './services/usageQuota.js';
-
-type HttpRequest = http.IncomingMessage;
-type HttpResponse = http.ServerResponse;
-
-// Claude adapter (teams/tasks are Claude-only)
-const claudeAdapter = adapters.find((a: { provider: string }) => a.provider === 'claude');
-
-// ─── Config ────────────────────────────────────────────────
-const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
-let boundPort = PORT;
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const BUILT_FRONTEND_DIR = path.join(__dirname, '..', 'dist', 'frontend');
-const STATIC_DIR = fs.existsSync(path.join(BUILT_FRONTEND_DIR, 'index.html')) ? BUILT_FRONTEND_DIR : __dirname;
-const ACTIVE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
-
-// ─── WebSocket client management ──────────────────────────
-const wsServer = new WebSocketServer({ noServer: true });
-const wsClients = new Set<WebSocket>();
-
-function parseRequestUrl(req: HttpRequest) {
-  const host = req.headers.host && /^[A-Za-z0-9.:[\]-]+$/.test(req.headers.host)
-    ? req.headers.host
-    : `localhost:${boundPort}`;
-  return new URL(req.url ?? '/', `http://${host}`);
-}
+import {
+  ACTIVE_THRESHOLD_MS,
+  boundPort,
+  claudeAdapter,
+  PORT,
+  setBoundPort,
+  type HttpRequest,
+  type HttpResponse,
+} from './server-config.js';
+import { handleRuntimeConfig, handleStaticFile, parseRequestUrl } from './server-http.js';
+import { handleWebSocketConnection, wsClients, wsServer } from './server-ws.js';
+import { startFileWatcher, stopFileWatcher } from './server-watch.js';
 
 // ─── API handlers ─────────────────────────────────────────
 
@@ -71,256 +48,6 @@ const handleApiRoute = createApiRouteHandler({
     );
   },
 });
-
-// ─── Static file serving ─────────────────────────────────────
-
-function handleStaticFile(req: HttpRequest, res: HttpResponse) {
-  try {
-    const reqUrl = req.url ?? '/';
-    let filePath = path.join(STATIC_DIR, reqUrl === '/' ? 'index.html' : reqUrl);
-
-    const resolvedPath = path.resolve(filePath);
-    if (!resolvedPath.startsWith(STATIC_DIR)) {
-      return sendError(res, 403, 'Forbidden');
-    }
-
-    filePath = resolvedPath.split('?')[0];
-
-    if (!fs.existsSync(filePath)) {
-      return sendError(res, 404, 'Not Found');
-    }
-
-    const stat = fs.statSync(filePath);
-    if (stat.isDirectory()) {
-      filePath = path.join(filePath, 'index.html');
-      if (!fs.existsSync(filePath)) {
-        return sendError(res, 404, 'Not Found');
-      }
-    }
-
-    const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext as keyof typeof MIME_TYPES] || 'application/octet-stream';
-    const isText = contentType.includes('text') ||
-                   contentType.includes('javascript') ||
-                   contentType.includes('json') ||
-                   contentType.includes('svg');
-
-    setCorsHeaders(res);
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Cache-Control': 'no-cache',
-    });
-
-    const stream = fs.createReadStream(filePath, isText ? { encoding: 'utf-8' } : undefined);
-    stream.pipe(res);
-    stream.on('error', (err: Error) => {
-      console.error('file stream error:', err.message);
-      if (!res.headersSent) {
-        sendError(res, 500, 'Internal Server Error');
-      }
-    });
-  } catch (err: unknown) {
-    console.error('static file serving failed:', err instanceof Error ? err.message : String(err));
-    if (!res.headersSent) {
-      sendError(res, 500, 'Internal Server Error');
-    }
-  }
-}
-
-function handleRuntimeConfig(req: HttpRequest, res: HttpResponse) {
-  // The legacy server is itself the hub, so when no HUB_HTTP_URL env override
-  // is set, expose this server's own origin. This keeps `/runtime-config.js`
-  // working out of the box even after the shared default moved to the
-  // split-stack hubreceiver port (3030).
-  const legacyBase = `http://localhost:${boundPort}`;
-  const env = {
-    ...process.env,
-    HUB_HTTP_URL: process.env.HUB_HTTP_URL || process.env.HUB_URL || legacyBase,
-  };
-  const runtimeConfig = buildRuntimeConfig(env);
-  setCorsHeaders(res);
-  res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
-  res.end(`window.__CLAUDEVILLE_CONFIG__ = ${JSON.stringify(runtimeConfig)};\n`);
-}
-
-// ─── WebSocket implementation ──────────────────────────
-
-function handleWebSocketConnection(socket: WebSocket) {
-  wsClients.add(socket);
-  setTimeout(() => {
-    if (socket.readyState === socket.OPEN && wsClients.has(socket)) {
-      void sendInitialData(socket);
-    }
-  }, 100);
-
-  socket.on('message', (data) => {
-    const message = typeof data === 'string' ? data : data.toString('utf8');
-    handleTextMessage(socket, message);
-  });
-
-  socket.on('close', () => {
-    wsClients.delete(socket);
-  });
-
-  socket.on('error', (err) => {
-    console.error('[WebSocket] socket error:', err.message);
-    wsClients.delete(socket);
-  });
-}
-
-function handleTextMessage(socket: WebSocket, message: string) {
-  try {
-    const data = JSON.parse(message);
-    if (data.type === 'ping') {
-      wsSend(socket, { type: 'pong', timestamp: Date.now() });
-    }
-  } catch (err: unknown) {
-    console.warn('[WebSocket] invalid JSON text frame:', err instanceof Error ? err.message : String(err));
-  }
-}
-
-function wsSend(socket: WebSocket, data: unknown) {
-  try {
-    if (socket.readyState === socket.OPEN) {
-      socket.send(JSON.stringify(data), (err) => {
-        if (err) {
-          console.error('[WebSocket] send error:', err.message);
-          wsClients.delete(socket);
-        }
-      });
-    } else {
-      wsClients.delete(socket);
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[WebSocket] send error: ${msg}`);
-    wsClients.delete(socket);
-  }
-}
-
-function wsBroadcast(data: unknown) {
-  let payload: string;
-  try {
-    payload = JSON.stringify(data);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[WebSocket] broadcast payload creation failed: ${msg}`);
-    return;
-  }
-
-  const deadSockets: WebSocket[] = [];
-  for (const socket of wsClients) {
-    if (socket.readyState !== socket.OPEN) {
-      deadSockets.push(socket);
-      continue;
-    }
-    socket.send(payload, (err) => {
-      if (err) {
-        console.error('[WebSocket] broadcast error:', err.message);
-        wsClients.delete(socket);
-        try {
-          socket.close();
-        } catch {
-          // ignore close failures
-        }
-      }
-    });
-  }
-  for (const socket of deadSockets) {
-    wsClients.delete(socket);
-  }
-}
-
-// ─── Data broadcast ────────────────────────────────
-
-async function sendInitialData(socket: WebSocket) {
-  try {
-    const [sessions, teams, usage] = await Promise.all([
-      getAllSessions(ACTIVE_THRESHOLD_MS),
-      claudeAdapter?.getTeams ? claudeAdapter.getTeams() : [],
-      usageQuota.fetchUsage(),
-    ]);
-    wsSend(socket, {
-      type: 'init',
-      sessions,
-      teams,
-      usage,
-      timestamp: Date.now(),
-    });
-  } catch (err: unknown) {
-    console.error('[WebSocket] initial data send failed:', err instanceof Error ? err.message : String(err));
-  }
-}
-
-let watchDebounce: ReturnType<typeof setTimeout> | null = null;
-let broadcastInFlight = false;
-let broadcastPendingCount = 0;
-let fileWatcherCleanup: (() => void) | null = null;
-let pollingIntervalId: ReturnType<typeof setInterval> | null = null;
-
-async function broadcastUpdate() {
-  if (wsClients.size === 0) return;
-  if (broadcastInFlight) {
-    broadcastPendingCount++;
-    return;
-  }
-  broadcastInFlight = true;
-  try {
-    const [sessions, teams, usage] = await Promise.all([
-      getAllSessions(ACTIVE_THRESHOLD_MS),
-      claudeAdapter?.getTeams ? claudeAdapter.getTeams() : [],
-      usageQuota.fetchUsage(),
-    ]);
-    wsBroadcast({
-      type: 'update',
-      sessions,
-      teams,
-      usage,
-      timestamp: Date.now(),
-    });
-  } catch (err: unknown) {
-    console.error('[Watch] data processing failed:', err instanceof Error ? err.message : String(err));
-  } finally {
-    broadcastInFlight = false;
-    if (broadcastPendingCount > 0 && wsClients.size > 0) {
-      broadcastPendingCount = 0;
-      void broadcastUpdate();
-    }
-  }
-}
-
-function debouncedBroadcast() {
-  if (watchDebounce) clearTimeout(watchDebounce);
-  watchDebounce = setTimeout(() => { void broadcastUpdate(); }, 100);
-}
-
-// ─── File watching (multi-provider) ────────────────────────
-
-function startFileWatcher() {
-  const watcherHandle = createFileWatchers(getAllWatchPaths(), debouncedBroadcast);
-  fileWatcherCleanup = watcherHandle.close;
-  const { watchCount } = watcherHandle;
-  console.log(`[Watch] started watching ${watchCount} paths`);
-
-  // Periodic polling (2s) - prevent missed updates
-  pollingIntervalId = setInterval(() => {
-    if (wsClients.size > 0) void broadcastUpdate();
-  }, 2000);
-  console.log('[Watch] polling started at 2s interval');
-}
-
-function stopFileWatcher() {
-  if (watchDebounce) {
-    clearTimeout(watchDebounce);
-    watchDebounce = null;
-  }
-  fileWatcherCleanup?.();
-  fileWatcherCleanup = null;
-  if (pollingIntervalId) {
-    clearInterval(pollingIntervalId);
-    pollingIntervalId = null;
-  }
-}
 
 // ─── HTTP server ──────────────────────────────────────────
 
@@ -391,7 +118,7 @@ const ASCII_LOGO = `
 server.listen(PORT, '0.0.0.0', () => {
   const address = server.address();
   if (address && typeof address === 'object') {
-    boundPort = address.port;
+    setBoundPort(address.port);
   }
   console.log(ASCII_LOGO);
   console.log(`  server running: http://localhost:${boundPort} (bound to 0.0.0.0)`);
