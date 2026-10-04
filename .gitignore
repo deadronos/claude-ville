@@ -48,3 +48,6 @@ android/.DS_Store
 .idea/
 
 claudeville-e2e-*/
+
+# agent scratch: reports and SDD workspaces are local, never committed
+.superpowers/
