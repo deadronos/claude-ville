@@ -31,7 +31,7 @@ import { debugAdapterError } from './jsonl-utils.js';
 import type { DbSessionRow, DbMessageRow } from './hermes-readers.js';
 import { readJson, asTimestamp, parseTranscript, parseSessionMessages, modelName, projectName, summarizeDbMessages, dbSessionTokenUsage } from './hermes-readers.js';
 import type { SqliteDb, SqliteParam } from './sqlite-utils.js';
-import { closeSqlite, hasTable, hasTableOrNull, openReadonlySqlite, queryAll, safeJsonParse } from './sqlite-utils.js';
+import { closeSqlite, hasTable, hasTableOrNull, openReadonlySqlite, safeJsonParse, tableColumns } from './sqlite-utils.js';
 
 const HERMES_DIR = process.env.HERMES_DIR || path.join(os.homedir(), '.hermes');
 const SESSIONS_DIR = path.join(HERMES_DIR, 'sessions');
@@ -154,12 +154,6 @@ const DB_SESSION_COLUMNS = [
 ] as const;
 
 const DB_SESSION_GATES = ['archived', 'hidden'] as const;
-
-/** The columns `table` actually has, so a query can project only those. */
-function tableColumns(db: SqliteDb, table: string): Set<string> {
-  const rows = queryAll<{ name: string }>(db, 'SELECT name FROM pragma_table_info(?)', [table]);
-  return new Set(rows.map((row) => row.name));
-}
 
 /**
  * `COALESCE(last_activity_at, started_at)` when both columns exist, whichever
