@@ -42,22 +42,25 @@ The registry is also responsible for sanitizing summaries and details, normalizi
 - Adapter implementations remain file-format-specific, which keeps provider logic isolated.
 - **Performance Optimizations**:
     - **Caching**: Heavy adapters like `gemini.ts` use an LRU-style cache for project path restoration to avoid expensive recursive scans.
-    - **Scoped Reading**: Large logs in `vscode.ts` are checked for activity using partial reads (`readLines` with `count`) instead of loading entire files.
+    - **Scoped Reading**: Large logs in `vscode-readers.ts` are checked for activity using partial reads (`readLines` with `count`) instead of loading entire files.
 - Adapter I/O operations must be non-blocking. Prefer `fs.promises` over synchronous `fs` methods, and use `Promise.all` for concurrent operations. Blocking the event loop degrades the responsiveness of all providers scanned together in `getAllSessions`.
 
 ### Shared pipeline helpers
 
-The ~400-line criterion does not apply to adapters: they are long because each
-embeds a different on-disk format. In its place, a duplication rule: a block of
+The ~400-line criterion **does** apply to adapters: it was settled as a hard
+goal for all of them once the shared helper layer below had extracted everything
+genuinely common, leaving only per-format logic. What replaced the old "no
+criterion here" position is a **duplication rule**, which still stands: a block of
 ≥8 lines appearing in ≥3 adapters, or byte-identically in ≥2, must be extracted
 into a shared `adapters/` helper module. Declaration boilerplate with no logic is
 exempt — the `getWatchPaths` accumulator shape is in all 9 (only `copilot`
 returns an array literal outright; the other eight push onto an empty array, and
 `claude`, `hermes`, `openclaw` and `opencode` also emit `type: 'file'` entries),
-and none of it is logic to remove. `vscode.ts` — 760 lines, the longest adapter
-here — merges four storage roots across four editor channels (`vscode`,
-`vscode-insiders`, `cursor`, `offset` — `vscode.ts:23`) and cannot honestly reach
-400 by removing boilerplate.
+and none of it is logic to remove. `vscode.ts` was 748 lines / 569 code-only
+before the split below — it merges four storage roots across four editor channels
+(`vscode`, `vscode-insiders`, `cursor`, `offset` — `vscode.ts:24`) and cannot
+honestly reach 400 by removing boilerplate, which is why it was split into files
+rather than trimmed. See **File layout** below.
 
 Three helpers landed, `copilot` the reference consumer (321 → 281 lines):
 `jsonl-utils` owns `readJsonlEntries`, `collectJsonl` (the read → parse → fold
@@ -93,10 +96,10 @@ Caveats for anyone converting an adapter:
 - A helper's **error policy is a behaviour change, not a convenience**.
   `foldJsonl` wraps the fold in a catch and returns `init` on a throw;
   `readJsonlEntries` + `foldEntries` is the same fold with no catch. Pick per
-  reader, not per convenience. `vscode`'s `parseSession` (`vscode.ts:225`) takes
+  reader, not per convenience. `vscode`'s `parseSession` (`vscode-readers.ts:163`) takes
   the second on purpose: it has no catch of its own, and `scanAllSessions` relies
   on the throw — it wraps `(await parseSession(mainLogFile)).tokens` in its own
-  try and DROPS the candidate (`vscode.ts:539`). Folded with `foldJsonl`, a
+  try and DROPS the candidate (`vscode.ts:159`). Folded with `foldJsonl`, a
   malformed record would instead report a session with null detail where a
   session would have been dropped — a different set of sessions, not a different
   detail. No single-candidate fixture separates the two; only a mutation sweep
@@ -122,11 +125,11 @@ Caveats for anyone converting an adapter:
   now written into both files (`claude.ts:78`, `codex.ts:274`) rather than left
   to be re-derived from the fold helpers' defaults.
 - `vscode` makes it a THIRD file, and splits **within** one adapter.
-  `parseSession` (`vscode.ts:225`) is newest-first — `readJsonlEntries`, then
+  `parseSession` (`vscode-readers.ts:163`) is newest-first — `readJsonlEntries`, then
   `foldEntries` over `[...entries].reverse()`, which is what `foldJsonl`'s
   `reverse` expresses — so under its `!detail.lastX` guards the first match is the
   genuinely last tool and message, and the field names are honest. `getToolHistory`
-  (`:294`) and `getRecentMessages` (`:350`) are forward. With `claude`
+  (`vscode-readers.ts:229`) and `getRecentMessages` (`:285`) are forward. With `claude`
   (newest-first), `codex` (forward detail walk, newest-first token walk) and now
   `vscode` (both), there is no safe default in either direction: the direction has
   to be read off the loop per function, every time, and not inferred from the
@@ -134,7 +137,7 @@ Caveats for anyone converting an adapter:
 - Folding in **one pass** can change what a reader emits where the original made
   several passes over the same array, and where a `slice` follows that, it changes
   the surviving *set* and not merely the order. `vscode`'s `getToolHistory`
-  (`vscode.ts:294`) and `getRecentMessages` (`:350`) each ran TWO forward loops
+  (`vscode-readers.ts:229`) and `getRecentMessages` (`:285`) each ran TWO forward loops
   over one `entries` — `tool_call` then `tool.execution_start`, `agent_response`
   then `assistant.message` — pushing into ONE list and finishing with
   `slice(-maxItems)`. Their order is therefore grouped by record type, not file
@@ -143,7 +146,7 @@ Caveats for anyone converting an adapter:
   so converting mechanically interleaves the two types and then slices a different
   subset — a silent change to the detail pane, not a cosmetic one. Both readers
   keep the grouping by filling two buckets in the single pass and concatenating
-  them at the call site (`vscode.ts:335`, `:416`). `gemini` and `pi` have no such
+  them at the call site (`vscode-readers.ts:270`, `:350`). `gemini` and `pi` have no such
   trap: each of their readers is a single pass over a single window, so nothing
   they emit depends on how many times the entries were walked.
 - `collectScanByMtime` fits **copilot's shape, and `pi` and `gemini` are the
@@ -206,9 +209,9 @@ Caveats for anyone converting an adapter:
       its own readdir and its own filename filter: a debug-log dir → `main.jsonl`,
       a transcript file, and a resource dir → newest `content.txt` across its
       tool dirs. The three then have to be **merged against each other**, not merely
-      filtered: `SOURCE_PRIORITY` (`vscode.ts:38`) ranks them `debug` 3 /
-      `transcript` 2 / `resource` 1, and `shouldReplaceCandidate` (`:55`, called
-      from the merge at `:659`) keeps the higher-priority candidate per
+      filtered: `SOURCE_PRIORITY` (`vscode.ts:39`) ranks them `debug` 3 /
+      `transcript` 2 / `resource` 1, and `shouldReplaceCandidate` (`vscode.ts:56`, called
+      from the merge at `vscode.ts:279`) keeps the higher-priority candidate per
       channel/workspace/session key, breaking a priority tie on mtime.
       `collectScanByMtime` fuses readdir → stat → build across child directories
       and returns records; it has no post-collection step in which three separately
@@ -218,18 +221,19 @@ Caveats for anyone converting an adapter:
       out at each, and `vscode` does neither — it gathers siblings and merges
       them afterwards. (For scale, `claude` has four candidate shapes to `vscode`'s
       three.) `vscode.ts` GREW for the same reason `codex.ts` and `claude.ts` did:
-      672 → 760 total while code-only went 562 → 569, so the growth is the prose
-      carrying the three traps above rather than logic — but it is now the longest
-      adapter in the tree, which is a cost the consolidation is buying knowingly.
+      672 → 748 total while code-only went 562 → 569, so the growth is the prose
+      carrying the three traps above rather than logic. That left it the longest
+      adapter in the tree and over the criterion, which is what the split below
+      then fixed — by moving the readers out, not by trimming the prose.
 - `collectScanByMtime` runs `build` inside the stat try/catch, so a throwing
   `build` is logged as `"<operation> stat"` — latent while `build` is a pure
   object literal (it is for `pi`, `gemini`, `codex`, `openclaw`, `hermes`),
   live for `vscode`, whose per-candidate `hasRealActivity` + `parseSession` calls
   already sit inside its own stat try **on two of its three shapes** — the
-  debug-log candidates wrap them in a try opened at `vscode.ts:526` (calls at
-  `:530` and `:539`) and the transcript candidates in one opened at `:565`
-  (calls at `:568` and `:578`). The resource shape does not: its
-  `hasRealActivity` (`vscode.ts:636`) and `parseSession` (`:646`) calls sit
+  debug-log candidates wrap them in a try opened at `vscode.ts:146` (calls at
+  `:150` and `:159`) and the transcript candidates in one opened at `:185`
+  (calls at `:188` and `:198`). The resource shape does not: its
+  `hasRealActivity` (`vscode.ts:256`) and `parseSession` (`:266`) calls sit
   outside any try, because the enclosing try blocks have already closed after the
   readdir and stat steps.
 
@@ -275,3 +279,46 @@ and `gemini.ts:337` — it is a real option, but it belongs in its own change wi
 its own concurrency tests rather than in an adapter conversion.
 
 The `getAllSessions` function in `adapters/index.ts` calls all adapters concurrently. If any adapter blocks on synchronous I/O, it blocks the entire scan for all providers.
+
+### File layout
+
+An adapter that does not fit the ~400-line criterion is split across two **flat**
+files, and the split is by responsibility, not by size:
+
+- **`<name>.ts` stays the entry point.** It owns the exported adapter class and the
+  **scan** — the storage roots, the candidate type and its priority merge, the id
+  helpers, and `scanAllSessions`. Everything the registry needs stays here, so
+  `import { XAdapter } from './<name>.js'` is unchanged.
+- **`<name>-readers.ts` owns the format-specific readers** — the ones that turn a
+  discovered file path into detail: `parseSession`, `getToolHistory`,
+  `getRecentMessages`, `getTokenUsage`, `hasRealActivity`, and their shared types
+  and window constants.
+
+The dependency is **one-way**: `<name>.ts` imports from `<name>-readers.ts`, never
+the reverse. A two-way reference means the boundary is drawn in the wrong place —
+re-derive it per adapter rather than assuming it holds, and move code across
+rather than reaching for a circular import. Keep it flat rather than a
+`<name>/` directory: the adapter layer is already flat (`jsonl-utils.ts`,
+`scan-utils.ts`, `sqlite-utils.ts`, `sanitize.ts`), and **no importer outside
+`adapters/` changes** — for `vscode` the only one is `adapters/index.ts`. A
+directory would churn every import site for no structural gain.
+
+**This is a size change with no behaviour change.** A split here is a MOVE, and it
+is held to that: every moved declaration is byte-identical to before, proven by
+hashing each function/type body with the TypeScript AST and comparing to the base
+commit. Exports are declared in one trailing `export { ... }` rather than with
+inline `export` keywords, so that adding an export does not alter the bytes of the
+declaration it exports. The comments that record the direction, grouping and
+error-policy traps move **with** the code they describe — they are the reason a
+later tidy-up cannot silently reintroduce a bug, so never trim them to hit a line
+count.
+
+`vscode` is the first, and the measured result:
+
+| File | Total | Code-only | Owns |
+| --- | --- | --- | --- |
+| `vscode.ts` | 380 | 317 | adapter class, storage roots, candidate merge, `scanAllSessions` |
+| `vscode-readers.ts` | 382 | 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
+
+Down from 748 / 569 in one file. If one file is ever not enough, add
+`<name>-scan.ts`; prefer the fewest files.
