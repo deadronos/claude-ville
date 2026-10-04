@@ -131,7 +131,13 @@ async function getDbMessages(sessionId: string, limit = 30): Promise<DbMessage[]
 async function getDbSessions(activeThresholdMs: number): Promise<DbSession[]> {
   // queryDb already guards existence via the read-only SQLite helper.
   const cutoff = Date.now() - activeThresholdMs;
-  const rows = await queryDb<DbSession & { message_model: string | null; message_provider: string | null }>(
+  // The latest message's `data` is selected RAW and parsed per row below. It must
+  // not be projected with `json_extract(m.data, '$.modelID')`: SQLite RAISES
+  // `malformed JSON` on a column that does not parse (it does not answer NULL),
+  // `queryAll` swallows that into `[]`, and one malformed row then removed EVERY
+  // session from the listing rather than its own. `normalizeDbJson` is what the
+  // sibling `getDbMessages` above already uses on the same column.
+  const rows = await queryDb<DbSession & { message_data: string | null }>(
     `SELECT
        s.id,
        s.project_id,
@@ -141,19 +147,12 @@ async function getDbSessions(activeThresholdMs: number): Promise<DbSession[]> {
        s.time_created,
        s.time_updated,
        (
-         SELECT json_extract(m.data, '$.modelID')
+         SELECT m.data
          FROM message m
          WHERE m.session_id = s.id
          ORDER BY m.time_created DESC
          LIMIT 1
-       ) AS message_model,
-       (
-         SELECT json_extract(m.data, '$.providerID')
-         FROM message m
-         WHERE m.session_id = s.id
-         ORDER BY m.time_created DESC
-         LIMIT 1
-       ) AS message_provider
+       ) AS message_data
      FROM session s
      WHERE s.time_updated >= ?
        AND s.time_archived IS NULL
@@ -161,11 +160,20 @@ async function getDbSessions(activeThresholdMs: number): Promise<DbSession[]> {
     [String(cutoff)],
   );
 
-  return rows.map((row) => ({
-    ...row,
-    modelID: row.message_model || null,
-    providerID: row.message_provider || null,
-  }));
+  return rows.map((row) => {
+    const messageData = normalizeDbJson(row.message_data);
+    // A malformed column arrives as the raw string and parses to nothing, so only
+    // this one session loses its model and provider.
+    const data = (typeof messageData === 'object' && messageData !== null ? messageData : {}) as {
+      modelID?: unknown;
+      providerID?: unknown;
+    };
+    return {
+      ...row,
+      modelID: (data.modelID || null) as string | null,
+      providerID: (data.providerID || null) as string | null,
+    };
+  });
 }
 
 function resolveMessageFile(projectKey: string, sessionId: string) {

@@ -144,18 +144,23 @@
  * - `db-row-last-activity-floored` only differs for a `time_updated` of `0` or NULL,
  *   and `0` fails `s.time_updated >= ?` at any reachable threshold while NULL is
  *   excluded by the schema.
- * - `db-msg-subselect-order-asc` and `db-subselect-oldest-message` are dead for the
- *   reason given above: `session.modelID` and `session.providerID` are never read.
- *
- * DEFECTS FOUND WHILE PINNING, and all recorded above: a malformed `message.data`
- * removes every session from the listing; a session document's `id` differing from
- * its file name makes the session unresolvable; a symlinked session document is
- * invisible; and the two `isFile()`/readdir quirks that make the directory and
- * symlink cases observable in the first place. A fifth — a malformed MESSAGE file
- * driving `getSessionDetail` into unbounded recursion — is BOUNDED rather than
- * removed, because the same re-entry is what recovers a session file that has moved;
- * the case below asserts the call SETTLES, and the case after it asserts the one
- * re-resolution a moved file still gets.
+* - `db-msg-subselect-order-asc` and `db-subselect-oldest-message` are dead for the
+  *   reason given above: `session.modelID` and `session.providerID` are never read.
+  *   That is still true after the malformed-row fix, which collapsed the two
+  *   `json_extract` subselects into ONE that selects the raw `data` column — and the
+  *   latest row of that column is likewise shadowed by `extractDbDetail`, which takes
+  *   the model off the FIRST message of the 30-row window instead.
+  *
+  * DEFECTS FOUND WHILE PINNING: a session document's `id` differing from its file name
+  * makes the session unresolvable; a symlinked session document is invisible; and the
+  * two `isFile()`/readdir quirks that make the directory and symlink cases observable
+  * in the first place. A fourth — a malformed MESSAGE file driving `getSessionDetail`
+  * into unbounded recursion — is BOUNDED rather than removed, because the same
+  * re-entry is what recovers a session file that has moved; the case below asserts the
+  * call SETTLES, and the case after it asserts the one re-resolution a moved file still
+  * gets. A fifth, a malformed `message.data` removing every session from the listing
+  * via `json_extract`, was FIXED (#154): `getDbSessions` selects the raw column and
+  * parses it per row in JS, and the case below asserts all three sessions survive.
  *
  * - HAZARD (pinned): `readJson` returns `null` for a malformed message file, so
  *   `if (raw)` at :247 falls through to the id-only scan; but a message file holding
@@ -1259,12 +1264,12 @@ describe('OpenCodeAdapter on-disk characterization', () => {
   // (sqlite-utils.ts:104-111), which hermes uses, returns `null`. That difference is
   // observable, and the case that reaches it is `getSessionDetail`, not the listing.
   //
-  // WHY NOT THE LISTING: `getDbSessions`' model subselects call
-  // `json_extract(m.data, '$.modelID')` (opencode.ts:144), and SQLite RAISES
-  // `malformed JSON` on a column that does not parse. `queryAll` swallows that
-  // (sqlite-utils.ts:74) and returns `[]`, so ONE malformed `message.data` removes
-  // EVERY session from the listing, not just the malformed one. That is pinned as its
-  // own case below.
+  // WHY NOT THE LISTING: `getDbSessions` used to project the same two fields with
+  // `json_extract(m.data, '$.modelID')` (opencode.ts:143-156), which RAISES
+  // `malformed JSON` on a column that does not parse; `queryAll` swallowed that
+  // into `[]`, so ONE malformed `message.data` removed EVERY session from the
+  // listing. That query now selects the raw column and parses it in JS, and the
+  // case below pins the tolerance: all three sessions are still listed.
   //
   // In `getSessionDetail` there is no `json_extract`, so `normalizeDbJson` is reached
   // directly. A malformed `part.data` becomes the STRING `'{also not json'`, and
@@ -1306,12 +1311,23 @@ describe('OpenCodeAdapter on-disk characterization', () => {
     );
   });
 
-  // DEFECT (pinned, not fixed): one malformed `message.data` column removes EVERY
-  // session from the listing. `json_extract` raises on it, `queryAll` swallows the
-  // error and returns `[]` (sqlite-utils.ts:73-77), so `getDbSessions` yields nothing
-  // and `getActiveSessions` falls through to the `.json` walk — which finds nothing
-  // here. A single corrupt row therefore makes the whole provider look empty.
-  it('DEFECT: lose every session from the listing when one message.data column is malformed', async () => {
+  // One malformed `message.data` column must cost ONE session its model and
+  // provider, not the whole listing. `json_extract(m.data, '$.modelID')` RAISES
+  // `malformed JSON` on a column that does not parse (it does not answer NULL),
+  // `queryAll` swallowed that into `[]` (sqlite-utils.ts:73-77), so `getDbSessions`
+  // yielded NOTHING and `getActiveSessions` fell through to the `.json` walk.
+  //
+  // The tree below is FULLY MIGRATED — a `opencode.db` and no `storage/session/*.json`
+  // at all — which is the total-loss variant: the legacy fallback has nothing to
+  // rescue, so the provider reported zero sessions. (On an install that still has
+  // the legacy files the fallback did answer, but with file `filePath`s and no
+  // DB-sourced model; the DB path wins whenever it yields rows, so that degraded
+  // shape is no longer reachable either.)
+  //
+  // `getDbSessions` now selects the raw `data` column and parses it per row in JS
+  // through `normalizeDbJson` — the same tolerance `getDbMessages` (opencode.ts:74)
+  // already applied to the same column, so the file is now internally consistent.
+  it('keep every session in the listing when one message.data column is malformed', async () => {
     await withOpencodeDir(
       (dir) => {
         const { db, addSession, addMessage, addPart } = openOpencodeDb(dir);
@@ -1345,10 +1361,18 @@ describe('OpenCodeAdapter on-disk characterization', () => {
       },
       async (OpenCodeAdapter) => {
         const adapter = new OpenCodeAdapter();
-        // All three vanish, not just the broken one.
-        expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
-        // …but `getSessionDetail` reads the broken session directly and still finds
-        // its parts, because there is no `json_extract` on that path.
+        // All THREE are listed. Before the fix this was `[]` — the malformed row
+        // removed the two healthy sessions too.
+        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        expect(ids(rows)).toEqual(['opencode-broken', 'opencode-healthy-one', 'opencode-healthy-two']);
+        // The healthy pair keeps the model read from its own message data…
+        expect(rowOf(rows, 'opencode-healthy-one').model).toBe('ok');
+        expect(rowOf(rows, 'opencode-healthy-two').model).toBe('ok');
+        // …and only the malformed row degrades, to the 'opencode' default, because
+        // its `data` parsed to a raw string with no `modelID` in it.
+        expect(rowOf(rows, 'opencode-broken').model).toBe('opencode');
+        // …and `getSessionDetail` still finds the broken session's parts, because
+        // that path never had a `json_extract` on it.
         const detail = await adapter.getSessionDetail('opencode-broken', null, 'opencode-db:broken');
         expect(texts(detail.messages)).toEqual(['unreachable']);
       },
