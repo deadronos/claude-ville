@@ -5,6 +5,7 @@ import { zstdCompressSync } from 'node:zlib';
 
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let OpenClawAdapter: any;
@@ -91,7 +92,7 @@ describe('OpenClawAdapter SQLite sessions', () => {
 
   it('reads sessions from the per-agent SQLite database', async () => {
     const adapter = new OpenClawAdapter();
-    const sessions = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+    const sessions = await sessionsOf(adapter, Number.MAX_SAFE_INTEGER);
 
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({

@@ -6,10 +6,10 @@ import { estimateCost } from '../../shared/cost.js';
 import { normalizeTokens } from '../../shared/session-utils.js';
 import { computeSessionContextPercent } from '../../shared/context-window.js';
 import type {
-  AdapterError,
+  AdapterErrorReport,
   AdapterSessionsResult,
   AdapterSessionDetail,
-  AdapterWarning,
+  AdapterWarningReport,
   AgentAdapter,
   AgentSessionSummary,
   WatchPath,
@@ -42,23 +42,9 @@ export const adapters: AgentAdapter[] = [
 export interface AdapterCollection {
   sessions: AgentSessionSummary[];
   /** One per adapter that could not be read at all. NEVER empty-bolstered into sessions. */
-  errors: Array<{ provider: string; error: AdapterError }>;
+  errors: AdapterErrorReport[];
   /** One per degraded record set. The listing still stands. */
-  warnings: Array<{ provider: string; warning: AdapterWarning }>;
-}
-
-/**
- * Narrow what an adapter answered.
- *
- * PILOT SHIM (PR E1) — the `Array.isArray` branch is deleted in PR E2. Only
- * `hermes` is on the union so far, so the other eight still answer a BARE ARRAY
- * at runtime even though `AgentAdapter` now declares the union; accepting both is
- * what keeps this call site runtime-correct while those eight are
- * type-incompatible. Without it, an unconverted adapter's array would be read as
- * a result object and its sessions silently dropped.
- */
-function unwrapSessions(answer: AdapterSessionsResult | AgentSessionSummary[]): AdapterSessionsResult {
-  return Array.isArray(answer) ? { ok: true, sessions: answer, warnings: [] } : answer;
+  warnings: AdapterWarningReport[];
 }
 
 /**
@@ -79,7 +65,7 @@ export async function collectFromAdapters(activeThresholdMs: number): Promise<Ad
     const empty: AdapterCollection = { sessions: [], errors: [], warnings: [] };
     if (!adapter.isAvailable()) return empty;
 
-    let answer: AdapterSessionsResult | AgentSessionSummary[];
+    let answer: AdapterSessionsResult;
     try {
       answer = await adapter.getActiveSessions(activeThresholdMs);
     } catch (err) {
@@ -88,7 +74,7 @@ export async function collectFromAdapters(activeThresholdMs: number): Promise<Ad
       return { ...empty, errors: [{ provider: adapter.provider, error: { code: 'unknown', message } }] };
     }
 
-    const result = unwrapSessions(answer);
+    const result = answer;
     if (!result.ok) {
       // The point of the union. Before it, this branch was indistinguishable from
       // an install with no sessions.
@@ -133,14 +119,18 @@ export async function collectFromAdapters(activeThresholdMs: number): Promise<Ad
 }
 
 /**
- * Collect sessions from all active adapters.
+ * Collect sessions from all active adapters — the sessions alone.
  *
- * Thin wrapper over {@link collectFromAdapters} and the shape every existing
- * caller wants: the sessions alone. Failures are REPORTED through it and then
- * dropped, which is the pre-contract behaviour kept for the WS payload and the
- * REST route — wiring `errors`/`warnings` into those is the follow-up, and it is
- * deliberately not done here because it would change two payload contracts in a
- * PR whose subject is the adapter contract.
+ * KEPT, and still array-returning, because `collector/index.ts` injects it as
+ * `CollectorSnapshotDeps['getAllSessions']`, whose declared type is
+ * `Promise<SessionSummary[]>`. The collector's snapshot is a merged, persisted
+ * state rather than a live adapter pull, so it has no place to put the
+ * diagnostics; changing that type is a separate decision about the collector's
+ * contract, not this one.
+ *
+ * Every LIVE read now goes through {@link collectFromAdapters} directly — the
+ * REST route and both WebSocket frames — so no consumer is left holding only the
+ * sessions.
  */
 export async function getAllSessions(activeThresholdMs: number) {
   return (await collectFromAdapters(activeThresholdMs)).sessions;

@@ -19,6 +19,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let workspaceAlpha = '';
@@ -261,7 +262,7 @@ describe('PiAdapter fixtures', () => {
   // why the maxItems case below writes and removes its own directory in-body.
   it('lists only in-window .jsonl sessions, with the full summary field set', async () => {
     const adapter = new PiAdapter();
-    const sessions = await adapter.getActiveSessions(5 * MINUTE);
+    const sessions = await sessionsOf(adapter, 5 * MINUTE);
 
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toEqual({
@@ -370,10 +371,10 @@ describe('PiAdapter fixtures', () => {
     const adapter = new PiAdapter();
     const sessionId = sessionIdOf(PROJ_DELTA, `${DELTA_ID}.jsonl`);
 
-    const narrow = await adapter.getActiveSessions(5 * MINUTE);
+    const narrow = await sessionsOf(adapter, 5 * MINUTE);
     expect(narrow.map((s: any) => s.sessionId)).toEqual([sessionIdOf(PROJ_ALPHA, `${ALPHA_ID}.jsonl`)]);
 
-    const sessions = await adapter.getActiveSessions(30 * MINUTE);
+    const sessions = await sessionsOf(adapter, 30 * MINUTE);
     expect(sessions.map((s: any) => s.sessionId)).toEqual([
       sessionIdOf(PROJ_ALPHA, `${ALPHA_ID}.jsonl`),
       sessionIdOf(PROJ_DELTA, `${DELTA_ID}.jsonl`),
@@ -466,7 +467,7 @@ describe('PiAdapter fixtures', () => {
     const adapter = new reimported.PiAdapter();
 
     try {
-      const sessions = await adapter.getActiveSessions(5 * MINUTE);
+      const sessions = await sessionsOf(adapter, 5 * MINUTE);
       const session = sessions.find((s: any) => s.sessionId === sessionIdOf(gammaDir, 'gamma-1.jsonl'));
       expect(session).toBeDefined();
 
@@ -588,7 +589,7 @@ describe('PiAdapter fixtures', () => {
     const adapter = new reimported.PiAdapter();
 
     try {
-      const sessions = await adapter.getActiveSessions(5 * MINUTE);
+      const sessions = await sessionsOf(adapter, 5 * MINUTE);
       const session = sessions.find((s: any) => s.sessionId === sessionIdOf(epsilonDir, 'epsilon-1.jsonl'));
       expect(session).toBeDefined();
 
@@ -665,7 +666,7 @@ describe('PiAdapter fixtures', () => {
       const decoy = path.join(projectPath, 'dirdecoy.jsonl');
       fs.mkdirSync(decoy, { recursive: true });
 
-      const rows = await new Adapter().getActiveSessions(5 * MINUTE);
+      const rows = await sessionsOf(new Adapter(), 5 * MINUTE);
       // Nothing else exists in this tree, so the listing is an exact set — and
       // sessionIdOf encodes both halves exactly as pi.ts's buildSessionId does.
       expect(rows.map((r: any) => r.sessionId)).toEqual([sessionIdOf(projectDir, 'real1.jsonl')]);

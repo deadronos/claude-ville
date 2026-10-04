@@ -9,10 +9,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AgentSessionSummary } from '../../shared/types.js';
+import type { AdapterErrorCode, AdapterWarning, AgentSessionSummary } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import type { SqliteDb, SqliteParam } from './sqlite-utils.js';
-import { hasTable, isSqliteFile, tableColumns, withReadonlySqlite } from './sqlite-utils.js';
+import { closeSqlite, hasTableOrNull, isOpenableSqliteDatabase, isSqliteFile, openReadonlySqlite, tableColumns } from './sqlite-utils.js';
+import { degradedWarnings } from './sources.js';
 import { readDbDetail } from './openclaw-readers.js';
 import type { Dirent } from './scan-utils.js';
 
@@ -103,9 +104,15 @@ function parseSessionId(sessionId: string) {
 
 type OpenClawFileSession = { filePath: string; mtime: number; fileName: string; agentId: string };
 
-async function scanAgentSessionFiles(agentId: string, sessionsDir: string, activeThresholdMs: number): Promise<OpenClawFileSession[]> {
+/**
+ * One agent's legacy rows, plus whether its `sessions/` could be listed. A
+ * per-AGENT readdir failure loses that agent's rows while every other agent's
+ * survive, so it is a per-ITEM warning — the audit's "one bad path" shape, and the
+ #157 containment this adapter's contract has to preserve.
+ */
+async function scanAgentSessionFiles(agentId: string, sessionsDir: string, activeThresholdMs: number): Promise<{ sessions: OpenClawFileSession[]; dirsUnreadable: number }> {
   const results: OpenClawFileSession[] = [];
-  if (!fs.existsSync(sessionsDir)) return results;
+  if (!fs.existsSync(sessionsDir)) return { sessions: results, dirsUnreadable: 0 };
   const now = Date.now();
 
   try {
@@ -127,9 +134,10 @@ async function scanAgentSessionFiles(agentId: string, sessionsDir: string, activ
     for (const r of fileResults) if (r) results.push(r);
   } catch (err) {
     reportUnreadableDir(`scanAgentSessionFiles (agent ${agentId})`, sessionsDir, err);
+    return { sessions: results, dirsUnreadable: 1 };
   }
 
-  return results;
+  return { sessions: results, dirsUnreadable: 0 };
 }
 
 // ─── SQLite discovery ─────────────────────────────────────
@@ -217,71 +225,151 @@ function sessionWindowSql(db: SqliteDb, threshold: number): { sql: string; param
 
 type DbScan = {
   sessions: AgentSessionSummary[];
+  /**
+   * How many agent databases were found at all. Zero means the database half is
+   * ABSENT, not "answered with nothing" — a distinction `getActiveSessions` needs
+   * or an empty `rows` from a source that never read anything would mask an
+   * unreadable `agents/` root and answer `ok: true` for a provider that could not
+   * be read.
+   */
+  databaseCount: number;
   /** Agents whose listing came from the database, so their legacy scan is redundant. */
   dbBackedAgents: Set<string>;
+  /**
+   * Why an agent's database could not be read, one per agent.
+   *
+   * NOT a failure: the agent's legacy JSONL scan still runs, which is what #157
+   * fixed, so these become `warnings` in `getActiveSessions`. They are counted and
+   * kept only so the operator is told WHY an agent is showing its older half.
+   */
+  failures: Array<{ agentId: string; code: AdapterErrorCode }>;
 };
+
+/**
+ * One agent database's answer. `null` means "this database did not answer", and
+ * the three ways it can fail now say which:
+ *
+ * - `store-unreadable` — the handle would not open, or the file is not a
+ *   database. `withReadonlySqlite` folds those into one `null`, and `hasTable`
+ *   folds a third ("this is not a database") into a `false`, so the distinction is
+ *   recovered by asking the open directly rather than through the wrapper.
+ * - `schema-incompatible` — it opened and has the tables, but the window read
+ *   cannot be planned against the installed columns. #144 made this degrade to a
+ *   legacy scan instead of losing the agent's whole listing.
+ * - `unknown` — the query planned and the READ raised.
+ *
+ * Every one of them is the SAME `null` to the pre-contract code, which is exactly
+ * why one unusable database could not be told from an agent with no sessions.
+ */
+type AgentDbRead =
+  | { kind: 'rows'; sessions: AgentSessionSummary[]; warnings: AdapterWarning[] }
+  | { kind: 'failed'; code: AdapterErrorCode };
+
+/** Why an agent's database was skipped, without naming a path that holds a username. */
+const agentFailure = (agentId: string, code: AdapterErrorCode): { agentId: string; code: AdapterErrorCode } => ({ agentId, code });
+
+function readAgentDatabase(agentId: string, dbPath: string, threshold: number): AgentDbRead {
+  if (!isOpenableSqliteDatabase(dbPath, 'openclaw')) {
+    return { kind: 'failed', code: 'store-unreadable' };
+  }
+
+  const db = openReadonlySqlite(dbPath, 'openclaw');
+  if (!db) return { kind: 'failed', code: 'store-unreadable' };
+
+  try {
+    // `hasTableOrNull`, not `hasTable`: `hasTable` folds "there is no such table"
+    // and "this file is not a database" into one `false`.
+    const windows = hasTableOrNull(db, 'session_windows');
+    if (windows === null) return { kind: 'failed', code: 'store-unreadable' };
+    if (!windows) return { kind: 'failed', code: 'schema-incompatible' };
+    const events = hasTableOrNull(db, 'transcript_events');
+    if (events === null) return { kind: 'failed', code: 'store-unreadable' };
+    if (!events) return { kind: 'failed', code: 'schema-incompatible' };
+
+    const query = sessionWindowSql(db, threshold);
+    if (!query) return { kind: 'failed', code: 'schema-incompatible' };
+
+    // Deliberately not `queryAll`: at this TOP-LEVEL call site a throw is not a
+    // regression — nothing here is inside a `.map()` over sibling rows that a
+    // throw would abort, and the legacy scan is the fallback either way.
+    let rows: SessionWindowRow[];
+    try {
+      rows = db.prepare(query.sql).all(...query.params) as SessionWindowRow[];
+    } catch (err) {
+      debugAdapterError('openclaw', 'getDbSessions rows', err, dbPath);
+      return { kind: 'failed', code: 'unknown' };
+    }
+
+    const seen = new Set<string>();
+    const sessions: AgentSessionSummary[] = [];
+    let degraded = 0;
+    for (const row of rows) {
+      const key = row.session_key || row.session_id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const { detail, degraded: rowDegraded } = readDbDetail(db, row.session_id);
+      if (rowDegraded) degraded += 1;
+      const model = row.model || detail.model || 'unknown';
+
+      sessions.push({
+        sessionId: buildSessionId(agentId, row.session_id),
+        provider: 'openclaw',
+        agentId,
+        displayName: row.display_name || agentId || null,
+        agentType: 'main',
+        model,
+        status: 'active',
+        lastActivity: row.transcript_updated_at || row.updated_at || 0,
+        project: buildProjectKey(agentId, detail.project),
+        lastMessage: detail.lastMessage,
+        lastTool: detail.lastTool,
+        lastToolInput: detail.lastToolInput,
+        parentSessionId: null,
+        filePath: dbPath,
+      });
+    }
+
+    return {
+      kind: 'rows',
+      sessions,
+      // Audit instance 10: the per-session events query runs inside the row loop
+      // and its failure is confined to that one row (`readDbDetail`'s `queryAll`
+      // swallow is load-bearing there — a throw would abort the loop and lose
+      // every sibling row). The listing stands, so it is a warning.
+      warnings: degradedWarnings(degraded, 'schema-incompatible', 'session(s)'),
+    };
+  } finally {
+    closeSqlite(db);
+  }
+}
 
 /**
  * Read every agent database. `dbBackedAgents` records which agents the database
  * ACTUALLY answered for, which is what decides whether an agent's legacy JSONL
  * scan runs — so an agent whose database is missing, will not open, or is too
  * far from the expected shape keeps its legacy listing instead of losing both
- * halves to one unusable path.
+ * halves to one unusable path. `failures` says why, per agent.
  */
 async function getDbSessions(activeThresholdMs: number): Promise<DbScan> {
   const databases = findAgentDatabases();
-  const sessions: any[] = [];
+  const sessions: AgentSessionSummary[] = [];
   const dbBackedAgents = new Set<string>();
+  const failures: DbScan['failures'] = [];
   const threshold = Date.now() - activeThresholdMs;
 
   for (const { agentId, dbPath } of databases) {
-    const agentSessions = withReadonlySqlite(dbPath, 'openclaw', (db) => {
-      // null, not []: the database did not answer, which is what tells
-      // `getActiveSessions` to fall back rather than to report "no sessions".
-      if (!hasTable(db, 'session_windows') || !hasTable(db, 'transcript_events')) return null;
-      const query = sessionWindowSql(db, threshold);
-      if (!query) return null;
-      // Deliberately not `queryAll`: at this TOP-LEVEL call site a throw is not a
-      // regression — `withReadonlySqlite` catches it, logs the cause and answers
-      // `null`, which is the same legacy fallback a missing table gives.
-      const rows = db.prepare(query.sql).all(...query.params) as SessionWindowRow[];
+    const answer = readAgentDatabase(agentId, dbPath, threshold);
 
-      const seen = new Set<string>();
-      const results: any[] = [];
-      for (const row of rows) {
-        const key = row.session_key || row.session_id;
-        if (seen.has(key)) continue;
-        seen.add(key);
-
-        const detail = readDbDetail(db, row.session_id);
-        const model = row.model || detail.model || 'unknown';
-
-        results.push({
-          sessionId: buildSessionId(agentId, row.session_id),
-          provider: 'openclaw',
-          agentId,
-          displayName: row.display_name || agentId || null,
-          agentType: 'main',
-          model,
-          status: 'active',
-          lastActivity: row.transcript_updated_at || row.updated_at || 0,
-          project: buildProjectKey(agentId, detail.project),
-          lastMessage: detail.lastMessage,
-          lastTool: detail.lastTool,
-          lastToolInput: detail.lastToolInput,
-          parentSessionId: null,
-          filePath: dbPath,
-        });
-      }
-      return results;
-    });
-
-    if (agentSessions === null) continue;
+    if (answer.kind === 'failed') {
+      failures.push(agentFailure(agentId, answer.code));
+      continue;
+    }
     dbBackedAgents.add(agentId);
-    sessions.push(...agentSessions);
+    sessions.push(...answer.sessions);
   }
 
-  return { sessions, dbBackedAgents };
+  return { sessions, databaseCount: databases.length, dbBackedAgents, failures };
 }
 
 export { OPENCLAW_DIR, AGENTS_DIR, AGENT_DB_FILENAME, readAgentDirs, encodeSessionKey, decodeSessionKey, buildSessionId, buildProjectKey, parseSessionId, OpenClawFileSession, scanAgentSessionFiles, AgentDatabase, findAgentDatabases, findAgentDatabase, SessionWindowRow, SESSION_WINDOW_COLUMNS, sessionWindowSql, DbScan, getDbSessions };

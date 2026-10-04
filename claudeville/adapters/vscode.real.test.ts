@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 type LoadedAdapter = InstanceType<typeof import('./vscode.ts').VSCodeAdapter>;
 
@@ -108,7 +109,7 @@ describe('VSCodeAdapter real module coverage', () => {
 
       expect(adapter.isAvailable()).toBe(true);
 
-      const sessions = await adapter.getActiveSessions(60_000);
+      const sessions = await sessionsOf(adapter, 60_000);
       expect(sessions).toHaveLength(3);
 
       const debugSession = sessions.find((session) => session.sessionId.endsWith(':session-debug'));
@@ -168,7 +169,7 @@ describe('VSCodeAdapter real module coverage', () => {
       writeResourceContent(copilotDir, 'shared-session', 'toolu_gamma', 'Resource loses', 250);
 
       const adapter = await loadAdapter(vscodeUserDir, insidersUserDir);
-      const sessions = await adapter.getActiveSessions(60_000);
+      const sessions = await sessionsOf(adapter, 60_000);
 
       expect(sessions).toHaveLength(1);
       expect(sessions[0]).toMatchObject({
@@ -211,7 +212,7 @@ describe('VSCodeAdapter real module coverage', () => {
       ]);
 
       const adapter = await loadAdapter(vscodeUserDir, insidersUserDir);
-      const sessions = await adapter.getActiveSessions(60_000);
+      const sessions = await sessionsOf(adapter, 60_000);
 
       // Only sessions with real activity should be reported
       expect(sessions).toHaveLength(2);
@@ -249,7 +250,7 @@ describe('VSCodeAdapter real module coverage', () => {
       const resourceFilePath = writeResourceContent(resourceCopilotDir, 'resource-detail', 'toolu_beta', 'Second resource detail', 1_000);
 
       const adapter = await loadAdapter(vscodeUserDir, insidersUserDir);
-      const sessions = await adapter.getActiveSessions(60_000);
+      const sessions = await sessionsOf(adapter, 60_000);
       const debugSession = sessions.find((session) => session.sessionId.endsWith(':detail-session'));
       const resourceSession = sessions.find((session) => session.sessionId.endsWith(':resource-detail'));
 
@@ -296,7 +297,7 @@ describe('VSCodeAdapter real module coverage', () => {
       ], 10 * 60 * 1000);
 
       const adapter = await loadAdapter(vscodeUserDir, insidersUserDir, '60000');
-      const sessions = await adapter.getActiveSessions(60_000);
+      const sessions = await sessionsOf(adapter, 60_000);
       expect(sessions).toEqual([]);
 
       const missingDetail = await adapter.getSessionDetail('not-a-vscode-session', workspaceProject);

@@ -39,65 +39,16 @@ const DB_PATH = path.join(HERMES_DIR, 'state.db');
 type SessionFile = { filePath: string; sessionId: string; mtime: number };
 
 // ─── The error contract ──────────────────────────────────
+//
+// `SourceListing`, `combineSources` and `sourceDetail` now live in
+// `sources.ts`, shared with all nine adapters. They were hermes-local when
+// hermes was the only adapter on the union, and the note that said so named the
+// hoist as the next step for the second adapter. `sourceDetail` is bound here
+// because hermes reports against `HERMES_DIR` and every adapter binds its own.
+import { combineSources, degradedWarnings, sourceDetail as baseDetail, type SourceListing } from './sources.js';
 
-/**
- * One read source of the listing — the `state.db` half or the legacy-files half.
- * Three states, and the third is the whole point: `absent` is "nothing to read
- * here", `rows` is "this source answered" (`[]` included, because an empty answer
- * is DATA — this install has no sessions), and `failed` is "this source could not
- * be read", carrying the code that says why.
- *
- * `rows` carries its own `warnings` for degradations INSIDE the source, which is
- * what keeps a per-session failure from ever reaching `failed`.
- */
-type SourceListing =
-  | { kind: 'absent' }
-  | { kind: 'rows'; sessions: AgentSessionSummary[]; warnings: AdapterWarning[] }
-  | { kind: 'failed'; code: AdapterErrorCode; detail: string };
+const sourceDetail = (what: string) => baseDetail(what, HERMES_DIR);
 
-/**
- * The rule, in one place, because it is the thing every adapter has to get right:
- *
- * - a failure and NO source that answered ⇒ `ok: false`. The provider could not
- *   be read at all, so an empty listing would be a lie about an install that has
- *   sessions in it.
- * - anything else ⇒ `ok: true`, and every failure becomes a `warning`. A source
- *   that answered, even with zero rows, means the provider WAS read.
- *
- * The asymmetry is deliberate. `ok: false` over one bad record is the regression
- * this contract exists to prevent (`#156`, `#157`), so an adapter that cannot
- * classify a failure belongs here rather than in `error`.
- *
- * PILOT (PR E1): this is hermes-local because exactly one adapter needs it yet.
- * The second adapter to need it hoists it into a shared `adapters/` module —
- * do not copy it a ninth time.
- */
-function combineSources(sources: SourceListing[]): AdapterSessionsResult {
-  const failures = sources.filter((source): source is Extract<SourceListing, { kind: 'failed' }> => source.kind === 'failed');
-  const answered = sources.some((source) => source.kind === 'rows');
-  const warnings = sources.flatMap<AdapterWarning>((source) => {
-    if (source.kind === 'rows') return source.warnings;
-    if (source.kind === 'failed') return [{ code: source.code, detail: source.detail }];
-    return [];
-  });
-
-  if (failures.length > 0 && !answered) {
-    const { code, detail: message } = failures[0];
-    return { ok: false, error: { code, message } };
-  }
-  return {
-    ok: true,
-    sessions: sources.flatMap((source) => (source.kind === 'rows' ? source.sessions : [])),
-    warnings,
-  };
-}
-
-/**
- * Operator-facing detail, and deliberately free of absolute paths: `HERMES_DIR`
- * usually contains a username, and this string reaches a log and, later, a UI.
- * The directory's own BASENAME is enough to tell two installs apart.
- */
-const sourceDetail = (what: string) => `${what} (${path.basename(HERMES_DIR)})`;
 
 /**
  * The legacy-files half. Discovery and row-building are separate phases here for
@@ -142,7 +93,7 @@ async function discoverSessionFiles(activeThresholdMs: number): Promise<FileList
       // read — permission on the DIRECTORY it is already listed through. Only a
       // race removes it in between. The branch stays because a dropped file is
       // exactly the kind of loss the audit flagged, and it costs one subtraction.
-      warnings: dropped > 0 ? [{ code: 'root-unreadable', detail: `${dropped} session file(s)` }] : [],
+      warnings: degradedWarnings(dropped, 'root-unreadable', 'session file(s)'),
     };
   } catch (err) {
     debugAdapterError('hermes', 'discoverSessionFiles readdir', err, SESSIONS_DIR);
@@ -393,7 +344,7 @@ function readDbListing(activeThresholdMs: number): SourceListing {
       // the installed install does not have. A corrupt store surfaces as
       // `unknown` from the rows read above instead, which is why the two are not
       // merged here.
-      warnings: degraded > 0 ? [{ code: 'schema-incompatible', detail: `${degraded} session(s)` }] : [],
+      warnings: degradedWarnings(degraded, 'schema-incompatible', 'session(s)'),
     };
   } finally {
     closeSqlite(db);

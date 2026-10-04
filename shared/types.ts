@@ -127,6 +127,27 @@ export interface AdapterWarning {
  * When an adapter cannot classify a failure as one of the four codes, the answer
  * belongs in `warnings`, not in `error`.
  */
+/**
+ * One adapter's WHOLE-adapter failure, as it reaches a payload consumer — the
+ * `/api/sessions` body and the `init` / `update` WebSocket frames.
+ *
+ * This is the audit's instance 14 made reportable: before the union, an adapter
+ * that could not be read vanished from the payload with nothing to distinguish it
+ * from an idle provider, and the only trace was a `console.error` line. A
+ * consumer that wants to say "hermes could not be read (store-unreadable)" rather
+ * than "hermes has no sessions" reads this.
+ */
+export interface AdapterErrorReport {
+  provider: string;
+  error: AdapterError;
+}
+
+/** One adapter's PER-ITEM degradation, as it reaches the same consumers. */
+export interface AdapterWarningReport {
+  provider: string;
+  warning: AdapterWarning;
+}
+
 export type AdapterSessionsResult =
   | { ok: true; sessions: AgentSessionSummary[]; warnings: AdapterWarning[] }
   | { ok: false; error: AdapterError };

@@ -20,11 +20,12 @@
 import fs from 'fs';
 import path from 'path';
 
-import type { AdapterSessionDetail, AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionDetail, AdapterSessionsResult, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
 import { hasTable, isOpenableSqliteDatabase, queryAll, withReadonlySqlite } from './sqlite-utils.js';
 import { toolBlockInfo, normalizeTokenUsage, decodeEventRows, parseSession, getToolHistory, getRecentMessages } from './openclaw-readers.js';
 import { OPENCLAW_DIR, AGENTS_DIR, AGENT_DB_FILENAME, readAgentDirs, buildSessionId, buildProjectKey, parseSessionId, scanAgentSessionFiles, findAgentDatabase, getDbSessions } from './openclaw-scan.js';
 import { extractText } from './text-utils.js';
+import { combineSources, degradedWarnings, sourceDetail, type SourceListing } from './sources.js';
 import type { Dirent } from './scan-utils.js';
 
 // ─── Adapter class ────────────────────────────────────────
@@ -38,22 +39,33 @@ export class OpenClawAdapter implements AgentAdapter {
     return fs.existsSync(AGENTS_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs: number) {
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
     // SQLite-backed sessions (current OpenClaw)
-    const { sessions: dbSessions, dbBackedAgents } = await getDbSessions(activeThresholdMs);
+    const { sessions: dbSessions, databaseCount, dbBackedAgents, failures: dbFailures } = await getDbSessions(activeThresholdMs);
 
     // Legacy JSONL sessions, for every agent the database did NOT answer for.
-    const legacySessions: any[] = [];
+    const legacySessions: AgentSessionSummary[] = [];
+    let dirsUnreadable = 0;
+    let agentsUnreadable: string[] = [];
     if (fs.existsSync(AGENTS_DIR)) {
       // null and [] are the same walk — nothing enumerable — but only one of them
       // is silent, and `readAgentDirs` has already said which case this is.
       const agentDirs = readAgentDirs('getActiveSessions');
 
+      if (agentDirs === null) {
+        // The provider's own agent root could not be listed, so NOTHING under it
+        // was looked at — no database and no legacy half. The loss is unavoidable
+        // (a directory that cannot be read cannot be walked) but it is no longer
+        // silent, which is what #157 asked for and what this contract finishes.
+        agentsUnreadable = ['agents'];
+      }
+
       for (const dir of agentDirs ?? []) {
         if (dbBackedAgents.has(dir.name)) continue;
         const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
         const fileSessions = await scanAgentSessionFiles(dir.name, sessionsDir, activeThresholdMs);
-        for (const { filePath, mtime, fileName, agentId } of fileSessions) {
+        dirsUnreadable += fileSessions.dirsUnreadable;
+        for (const { filePath, mtime, fileName, agentId } of fileSessions.sessions) {
           const detail = await parseSession(filePath);
           legacySessions.push({
             sessionId: buildSessionId(agentId, fileName),
@@ -75,7 +87,55 @@ export class OpenClawAdapter implements AgentAdapter {
       }
     }
 
-    return [...dbSessions, ...legacySessions].sort((a, b) => b.lastActivity - a.lastActivity);
+    // Two sources, and the classification is the shared rule. The agents root is
+    // one of them: when it could not be listed, neither the database nor any
+    // legacy file was read, so the provider failed with `root-unreadable` rather
+    // than reporting an empty listing that reads as "no openclaw agents
+    // installed" — which is what #157's `console.error` alone could not fix.
+    //
+    // The per-agent database failures are NOT that. Each one still has its legacy
+    // JSONL scan below, so the listing stands and each becomes a `warning`
+    // (audit instance 8, and #157's whole point).
+    const dbSource: SourceListing = databaseCount === 0
+      ? { kind: 'absent' }
+      : dbFailures.length > 0 && !dbBackedAgents.size
+        ? {
+          kind: 'failed',
+          code: dbFailures[0].code,
+          detail: sourceDetail(`${dbFailures.length} agent database(s) could not be read`, OPENCLAW_DIR),
+        }
+        : {
+          kind: 'rows',
+          sessions: dbSessions,
+          // Each unreadable database is a WARNING while any other agent answered or
+          // has a legacy scan below: that agent keeps its rows, so the listing
+          // stands. Reporting it as a failure is the #157 regression.
+          warnings: dbFailures.map((failure) => ({
+            code: failure.code,
+            detail: `1 agent database (${failure.agentId})`,
+          })),
+        };
+
+    const legacySource: SourceListing = agentsUnreadable.length > 0
+      ? { kind: 'failed', code: 'root-unreadable', detail: sourceDetail('agents directory could not be listed', OPENCLAW_DIR) }
+      : fs.existsSync(AGENTS_DIR)
+        ? {
+          kind: 'rows',
+          sessions: legacySessions,
+          warnings: degradedWarnings(dirsUnreadable, 'root-unreadable', 'agent sessions directory(ies)'),
+        }
+        : { kind: 'absent' };
+
+    const combined = combineSources([dbSource, legacySource]);
+    if (!combined.ok) return combined;
+    return {
+      ok: true,
+      // `?? 0` because `AgentSessionSummary.lastActivity` is optional, exactly as
+      // in `collectFromAdapters`. Every openclaw row sets it to a number, so this
+      // only decides what an absent value sorts as, and the order is unchanged.
+      sessions: combined.sessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)),
+      warnings: combined.warnings,
+    };
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null): Promise<AdapterSessionDetail> {

@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let projectDir = '';
@@ -60,7 +61,7 @@ describe('OpenClawAdapter fixtures', () => {
 
     expect(adapter.isAvailable()).toBe(true);
 
-    const sessions = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+    const sessions = await sessionsOf(adapter, Number.MAX_SAFE_INTEGER);
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({
       sessionId: 'openclaw:agent-alpha:session-1',

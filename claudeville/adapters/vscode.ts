@@ -8,10 +8,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import { parseSession, hasRealActivity, getToolHistory, getRecentMessages, getTokenUsage } from './vscode-readers.js';
 import type { Dirent } from './scan-utils.js';
+import { combineSources, degradedWarnings, sourceDetail, type SourceListing } from './sources.js';
 
 const VSCODE_USER_DIR = process.env.VSCODE_USER_DATA_DIR
   || path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User');
@@ -99,12 +100,45 @@ function parseSessionId(sessionId: string): { channel: string; workspaceId: stri
   };
 }
 
-async function scanAllSessions(activeThresholdMs: number) {
+/**
+ * One storage root's read outcome. `workspaceStorage` is VS Code's own state, not
+ * a ClaudeVille store, and it is routinely missing on a machine that has never
+ * opened a folder in that editor — so "this root has no `workspaceStorage`" is
+ * ABSENCE (a fact about the install), and only a root that EXISTS and cannot be
+ * listed is a failure.
+ */
+type RootRead = { channel: string; workspaceStorageDir: string; unreadable: boolean };
+
+/**
+ * The scan, plus the two failure scopes.
+ *
+ * VS Code fans out over up to four storage roots and three directories under each
+ * (`debug-logs`, `transcripts`, `chat-session-resources`), and every one of those
+ * `readdir` catches answered `[]` — reported only through `debugAdapterError`,
+ * which is a no-op unless `DEBUG` is set. That made a locked workspace directory
+ * indistinguishable from a workspace with no chat sessions in it (audit instance
+ * 19's mechanism, at directory scale).
+ *
+ * The split follows the tree. A STORAGE ROOT that cannot be listed is a
+ * whole-adapter failure for that channel — nothing under it was looked at — and
+ * since `isAvailable()` accepts a provider when ANY root is present, the provider
+ * itself fails only when every present root failed. A directory one or two levels
+ * below is a per-ITEM loss whose siblings were listed and survive, so it is a
+ * `warning`.
+ */
+async function scanAllSessions(activeThresholdMs: number): Promise<{ records: ResourceSessionCandidate[]; roots: RootRead[]; dirsUnreadable: number }> {
   const now = Date.now();
   const effectiveThresholdMs = Math.max(Number(activeThresholdMs || 0), MIN_ACTIVE_WINDOW_MS);
   const results: ResourceSessionCandidate[] = [];
+  let dirsUnreadable = 0;
 
-  for (const root of STORAGE_ROOTS) {
+  const roots: RootRead[] = STORAGE_ROOTS.map((root) => ({
+    channel: root.channel,
+    workspaceStorageDir: root.workspaceStorageDir,
+    unreadable: false,
+  }));
+
+  for (const root of roots) {
     if (!fs.existsSync(root.workspaceStorageDir)) continue;
 
     let workspaceDirs: Dirent[] = [];
@@ -112,6 +146,7 @@ async function scanAllSessions(activeThresholdMs: number) {
       workspaceDirs = await fs.promises.readdir(root.workspaceStorageDir, { withFileTypes: true });
     } catch (err) {
       debugAdapterError('vscode', 'scanAllSessions readdir workspaceStorage', err, root.workspaceStorageDir);
+      root.unreadable = true;
       continue;
     }
 
@@ -134,6 +169,7 @@ async function scanAllSessions(activeThresholdMs: number) {
             debugLogDirs = await fs.promises.readdir(debugLogsDir, { withFileTypes: true });
           } catch (err) {
             debugAdapterError('vscode', 'scanAllSessions readdir debug-logs', err, debugLogsDir);
+            dirsUnreadable += 1;
             debugLogDirs = [];
           }
 
@@ -175,6 +211,7 @@ async function scanAllSessions(activeThresholdMs: number) {
             transcriptFiles = await fs.promises.readdir(transcriptsDir, { withFileTypes: true });
           } catch (err) {
             debugAdapterError('vscode', 'scanAllSessions readdir transcripts', err, transcriptsDir);
+            dirsUnreadable += 1;
             transcriptFiles = [];
           }
 
@@ -214,6 +251,7 @@ async function scanAllSessions(activeThresholdMs: number) {
             sessionDirs = await fs.promises.readdir(resourcesDir, { withFileTypes: true });
           } catch (err) {
             debugAdapterError('vscode', 'scanAllSessions readdir resources', err, resourcesDir);
+            dirsUnreadable += 1;
             sessionDirs = [];
           }
 
@@ -226,6 +264,7 @@ async function scanAllSessions(activeThresholdMs: number) {
                 toolDirs = await fs.promises.readdir(sessionRoot, { withFileTypes: true });
               } catch (err) {
                 debugAdapterError('vscode', 'scanAllSessions readdir resource session', err, sessionRoot);
+                dirsUnreadable += 1;
                 return null;
               }
 
@@ -289,7 +328,7 @@ async function scanAllSessions(activeThresholdMs: number) {
     }
   }
 
-  return results;
+  return { records: results, roots, dirsUnreadable };
 }
 
 export class VSCodeAdapter implements AgentAdapter {
@@ -303,9 +342,9 @@ export class VSCodeAdapter implements AgentAdapter {
     return STORAGE_ROOTS.some(root => fs.existsSync(root.workspaceStorageDir));
   }
 
-  async getActiveSessions(activeThresholdMs: number) {
-    const logs = await scanAllSessions(activeThresholdMs);
-    const sessions = await Promise.all(logs.map(async ({ channel, workspaceId, rawSessionId, filePath, project, mtime }) => {
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
+    const { records, roots, dirsUnreadable } = await scanAllSessions(activeThresholdMs);
+    const sessions = await Promise.all(records.map(async ({ channel, workspaceId, rawSessionId, filePath, project, mtime }) => {
       const detail = await parseSession(filePath);
       return {
         sessionId: buildSessionId(channel, workspaceId, rawSessionId),
@@ -325,7 +364,32 @@ export class VSCodeAdapter implements AgentAdapter {
       };
     }));
 
-    return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+    // One source per PRESENT storage root. A root with no `workspaceStorage` was
+    // never installed and is not a failure, so it is not a source at all; a root
+    // that exists and cannot be listed is `failed`. When at least one root
+    // answered, `combineSources` turns each failed root into a `warning` and keeps
+    // the sessions the other roots produced — which is the whole point of the rule,
+    // because one locked channel must not blank the other three. With no present
+    // root at all the list is empty, which the rule reads as `ok: true` and zero
+    // rows: this provider is simply not installed.
+    const present = roots.filter((root) => fs.existsSync(root.workspaceStorageDir));
+    const failedRoots = present.filter((root) => root.unreadable);
+    const sources: SourceListing[] = [];
+
+    if (failedRoots.length < present.length) {
+      sources.push({
+        kind: 'rows',
+        sessions: sessions.sort((a, b) => b.lastActivity - a.lastActivity),
+        warnings: degradedWarnings(dirsUnreadable, 'root-unreadable', 'chat director(y/ies)'),
+      });
+    }
+    sources.push(...failedRoots.map((root): SourceListing => ({
+      kind: 'failed',
+      code: 'root-unreadable',
+      detail: sourceDetail(`workspaceStorage could not be listed (${root.channel})`, root.workspaceStorageDir),
+    })));
+
+    return combineSources(sources);
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
@@ -341,8 +405,8 @@ export class VSCodeAdapter implements AgentAdapter {
     const parsed = parseSessionId(sessionId);
     if (!parsed) return { toolHistory: [], messages: [] };
 
-    const sessions = await scanAllSessions(30 * 60 * 1000);
-    const found = sessions.find(s => (
+    const { records } = await scanAllSessions(30 * 60 * 1000);
+    const found = records.find(s => (
       s.channel === parsed.channel
       && s.workspaceId === parsed.workspaceId
       && s.rawSessionId === parsed.debugLogId

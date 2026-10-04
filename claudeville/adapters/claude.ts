@@ -5,14 +5,29 @@
 import fs from 'fs';
 import path from 'path';
 
-import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionsResult, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines } from './jsonl-utils.js';
 import { CLAUDE_DIR, resolveProjectDisplayPath, getSessionFileActivity, getSessionDetail, getSubAgentDetail, getToolHistory, getRecentMessages, getTokenUsage, resolveSessionFilePath } from './claude-readers.js';
 import type { Dirent } from './scan-utils.js';
+import { combineSources, degradedWarnings, sourceDetail, type SourceListing } from './sources.js';
 
 const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const TEAMS_DIR = path.join(CLAUDE_DIR, 'teams');
 const TASKS_DIR = path.join(CLAUDE_DIR, 'tasks');
+
+/**
+ * What one `projects/` walk produced, plus the failures it used to fold into an
+ * empty array. Shared by the two scans that read the same root.
+ */
+type ClaudeProjectScan = {
+  sessions: AgentSessionSummary[];
+  /** `projects/` itself could not be listed: a whole-source failure. */
+  projectsUnreadable: boolean;
+  /** One project directory (or one `subagents/`) could not be listed. */
+  dirsUnreadable: number;
+  /** One session file could not be stat-ed. */
+  filesUnstattable: number;
+};
 
 // ─── Adapter class ──────────────────────────────────────
 
@@ -25,7 +40,7 @@ export class ClaudeAdapter implements AgentAdapter {
     return fs.existsSync(CLAUDE_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs: number) {
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
     const lines = await readLines(HISTORY_FILE, { count: 1000, scope: 'claude' });
     const entries = parseJsonLines(lines, 'claude');
     const now = Date.now();
@@ -90,16 +105,52 @@ export class ClaudeAdapter implements AgentAdapter {
     // Orphan sessions (not in history.jsonl or subagents/)
     const knownIds = new Set([
       ...Array.from(sessionsMap.keys()),
-      ...subAgents.map(s => s.sessionId.replace('subagent-', '')),
+      ...subAgents.sessions.map(s => s.sessionId.replace('subagent-', '')),
     ]);
     const orphans = await this._getOrphanSessions(activeThresholdMs, projectPathMap, knownIds);
 
-    return [...mainSessions, ...subAgents, ...orphans];
+    // Claude has three independent sources, and the two that live under
+    // `projects/` share one root, so the classification is the shared rule with
+    // one extra wrinkle: `projects/` being unreadable fails BOTH of them at once,
+    // and that is still only a warning while `history.jsonl` answered. An install
+    // whose history file is absent AND whose `projects/` cannot be listed has
+    // nothing readable at all, which is the `ok: false` case.
+    const projectsFailed: SourceListing = {
+      kind: 'failed',
+      code: 'root-unreadable',
+      detail: sourceDetail('projects directory could not be listed', CLAUDE_DIR),
+    };
+    const projectsWarnings = [
+      ...degradedWarnings(subAgents.dirsUnreadable + orphans.dirsUnreadable, 'root-unreadable', 'project directory(ies)'),
+      ...degradedWarnings(subAgents.filesUnstattable + orphans.filesUnstattable, 'root-unreadable', 'session file(s)'),
+    ];
+
+    const projectsAnswered = subAgents.projectsUnreadable || orphans.projectsUnreadable;
+    const projects: SourceListing = projectsAnswered
+      ? projectsFailed
+      : { kind: 'rows', sessions: [...subAgents.sessions, ...orphans.sessions], warnings: projectsWarnings };
+
+    return combineSources([
+      fs.existsSync(HISTORY_FILE) ? { kind: 'rows', sessions: mainSessions, warnings: [] } : { kind: 'absent' },
+      projects,
+    ]);
   }
 
-  async _getActiveSubAgents(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map()) {
+  /**
+   * Sub-agent rows, plus the failures that used to answer `[]`.
+   *
+   * Three levels, three catches, one shape: `projects/` unreadable, ONE project
+   * directory unreadable, and ONE `subagents/` unreadable all produced an empty
+   * array, reported only through `debugAdapterError` (a no-op unless `DEBUG` is
+   * set). The first is a whole-source failure; the other two are per-ITEM losses
+   * whose siblings were listed and are still here.
+   *
+   * These WANT directories, so every level filters on `isDirectory()` — a
+   * regular file named like a project would be walked as one.
+   */
+  async _getActiveSubAgents(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map()): Promise<ClaudeProjectScan> {
     const projectsDir = path.join(CLAUDE_DIR, 'projects');
-    if (!fs.existsSync(projectsDir)) return [];
+    if (!fs.existsSync(projectsDir)) return { sessions: [], projectsUnreadable: false, dirsUnreadable: 0, filesUnstattable: 0 };
 
     const now = Date.now();
 
@@ -109,9 +160,11 @@ export class ClaudeAdapter implements AgentAdapter {
         .filter((d: Dirent) => d.isDirectory());
     } catch (err) {
       debugAdapterError('claude', 'getActiveSubAgents readdir projects', err, projectsDir);
-      return [];
+      return { sessions: [], projectsUnreadable: true, dirsUnreadable: 0, filesUnstattable: 0 };
     }
 
+    let dirsUnreadable = 0;
+    let filesUnstattable = 0;
     const projectResults = await Promise.all(projDirs.map(async (projDir: Dirent) => {
       const projPath = path.join(projectsDir, projDir.name);
 
@@ -121,6 +174,7 @@ export class ClaudeAdapter implements AgentAdapter {
           .filter((d: Dirent) => d.isDirectory());
       } catch (err) {
         debugAdapterError('claude', 'getActiveSubAgents readdir project', err, projPath);
+        dirsUnreadable += 1;
         return [];
       }
 
@@ -134,6 +188,7 @@ export class ClaudeAdapter implements AgentAdapter {
             .filter((d: Dirent) => d.isFile() && d.name.startsWith('agent-') && d.name.endsWith('.jsonl'));
         } catch (err) {
           debugAdapterError('claude', 'getActiveSubAgents readdir subagents', err, subagentsDir);
+          dirsUnreadable += 1;
           return [];
         }
 
@@ -144,6 +199,7 @@ export class ClaudeAdapter implements AgentAdapter {
             stat = await fs.promises.stat(filePath);
           } catch (err) {
             debugAdapterError('claude', 'getActiveSubAgents stat', err, filePath);
+            filesUnstattable += 1;
             return null;
           }
 
@@ -175,12 +231,18 @@ export class ClaudeAdapter implements AgentAdapter {
       return sessionResults.flat();
     }));
 
-    return projectResults.flat().filter(Boolean);
+    return { sessions: projectResults.flat().filter(Boolean), projectsUnreadable: false, dirsUnreadable, filesUnstattable };
   }
 
-  async _getOrphanSessions(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map(), knownIds: Set<string> = new Set()) {
+  /**
+   * Orphan rows, plus the failures that used to answer `[]` — the same three
+   * levels and the same split as {@link _getActiveSubAgents}, over the SAME
+   * `projects/` root. Both scans therefore fail together when that root cannot be
+   * listed, which is why the classification joins them into one source.
+   */
+  async _getOrphanSessions(activeThresholdMs: number, projectPathMap: Map<string, string> = new Map(), knownIds: Set<string> = new Set()): Promise<ClaudeProjectScan> {
     const projectsDir = path.join(CLAUDE_DIR, 'projects');
-    if (!fs.existsSync(projectsDir)) return [];
+    if (!fs.existsSync(projectsDir)) return { sessions: [], projectsUnreadable: false, dirsUnreadable: 0, filesUnstattable: 0 };
 
     const now = Date.now();
 
@@ -190,9 +252,11 @@ export class ClaudeAdapter implements AgentAdapter {
         .filter((d: Dirent) => d.isDirectory());
     } catch (err) {
       debugAdapterError('claude', 'getOrphanSessions readdir projects', err, projectsDir);
-      return [];
+      return { sessions: [], projectsUnreadable: true, dirsUnreadable: 0, filesUnstattable: 0 };
     }
 
+    let dirsUnreadable = 0;
+    let filesUnstattable = 0;
     const projectResults = await Promise.all(projDirs.map(async (projDir: Dirent) => {
       const projPath = path.join(projectsDir, projDir.name);
 
@@ -202,6 +266,7 @@ export class ClaudeAdapter implements AgentAdapter {
           .filter((d: Dirent) => d.isFile() && d.name.endsWith('.jsonl') && !d.name.startsWith('.'));
       } catch (err) {
         debugAdapterError('claude', 'getOrphanSessions readdir project', err, projPath);
+        dirsUnreadable += 1;
         return [];
       }
 
@@ -215,6 +280,7 @@ export class ClaudeAdapter implements AgentAdapter {
           stat = await fs.promises.stat(filePath);
         } catch (err) {
           debugAdapterError('claude', 'getOrphanSessions stat', err, filePath);
+          filesUnstattable += 1;
           return null;
         }
 
@@ -241,7 +307,7 @@ export class ClaudeAdapter implements AgentAdapter {
       return fileResults.filter((r) => r !== null);
     }));
 
-    return projectResults.flat().filter(Boolean);
+    return { sessions: projectResults.flat().filter(Boolean), projectsUnreadable: false, dirsUnreadable, filesUnstattable };
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {

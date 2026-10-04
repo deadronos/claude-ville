@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ClaudeAdapter } from './claude';
+import { sessionsOf } from './fixtureHelpers';
 const path = require('path');
 
 describe('claude adapter', () => {
@@ -1167,17 +1168,16 @@ describe('claude adapter', () => {
   });
 
   describe('getActiveSessions behavior', () => {
-    it('getActiveSessions returns array (may be empty if not available)', async () => {
+    it('getActiveSessions answers the union, and a readable home means ok', async () => {
       const adapter = new ClaudeAdapter();
-      const sessions = adapter.getActiveSessions(120000);
-      // Returns either a promise or array depending on implementation
-      if (Array.isArray(sessions)) {
-        expect(Array.isArray(sessions)).toBe(true);
-      } else {
-        // It's a promise
-        const result = await sessions;
-        expect(Array.isArray(result)).toBe(true);
-      }
+      // The old assertion was `Array.isArray(await ...)`, which pinned the
+      // PRE-contract shape: a bare array, where an unreadable `~/.claude` and an
+      // install with no sessions looked identical. It is replaced rather than
+      // kept because it asserts the thing this contract changes.
+      const result = await adapter.getActiveSessions(120000);
+      expect(result.ok).toBe(true);
+      expect(Array.isArray(result.ok ? result.sessions : [])).toBe(true);
+      expect(result.ok ? result.warnings : []).toEqual([]);
     });
   });
 
@@ -1208,10 +1208,12 @@ describe('claude adapter', () => {
       // This test verifies that when there are multiple active sessions,
       // getActiveSessions fetches details for all of them in parallel (not sequentially).
       // We test this by checking the method returns a Promise and resolves properly.
-      const result = await adapter.getActiveSessions(120000);
       // If we get here without hanging, the async implementation is working.
       // The actual concurrency is verified by timing - sequential would be much slower.
-      expect(Array.isArray(result)).toBe(true);
+      // Asserted through `sessionsOf`, so a whole-adapter failure fails loudly
+      // rather than reading as "no sessions" — the pre-contract `Array.isArray`
+      // assertion passed for both.
+      expect(Array.isArray(await sessionsOf(adapter, 120000))).toBe(true);
     });
 
     it('getSessionDetail is async and returns a Promise', async () => {

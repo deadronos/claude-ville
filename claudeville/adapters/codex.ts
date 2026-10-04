@@ -12,9 +12,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionsResult, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines, collectJsonl, foldJsonl } from './jsonl-utils.js';
 import { extractText } from './text-utils.js';
+import { combineSources, degradedWarnings, sourceDetail } from './sources.js';
 import type { Dirent } from './scan-utils.js';
 
 const CODEX_DIR = path.join(os.homedir(), '.codex');
@@ -178,10 +179,37 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
 /**
  * Scan rollout files from recent date directories
  */
-async function scanRecentRollouts(activeThresholdMs: number) {
-  type ScanResult = { filePath: string; mtime: number; fileName: string };
+type ScanResult = { filePath: string; mtime: number; fileName: string };
+
+type ScanOutcome = {
+  records: ScanResult[];
+  /** `sessions/` itself could not be listed: a whole-adapter failure. */
+  rootUnreadable: boolean;
+  /** A year / month / day directory could not be listed: one per-ITEM loss. */
+  levelsUnreadable: number;
+  /** A rollout file could not be stat-ed: one per-ITEM loss. */
+  filesUnstattable: number;
+};
+
+/**
+ * The walk down `sessions/YYYY/MM/DD/`, plus the three failure scopes.
+ *
+ * Codex nests three levels and each level has its own `readdir` catch, so the
+ * audit's collapse applied three times over: a `sessions/` that cannot be listed,
+ * a year that cannot be listed and a day that cannot be listed all produced the
+ * same partial-or-empty array, each reported only through `debugAdapterError`
+ * (a no-op unless `DEBUG` is set).
+ *
+ * The split is the contract's, not a guess. The ROOT is the provider's session
+ * directory, so failing it means the provider could not be read at all and is
+ * `ok: false`. Anything below it is one bucket of a deep tree whose siblings were
+ * listed and are still here, so it is a per-ITEM `warning` — reporting it as a
+ * whole-adapter failure is the regression this design exists to prevent.
+ */
+async function scanRecentRollouts(activeThresholdMs: number): Promise<ScanOutcome> {
   const results: ScanResult[] = [];
-  if (!fs.existsSync(SESSIONS_DIR)) return results;
+  const failure = { rootUnreadable: false, levelsUnreadable: 0, filesUnstattable: 0 };
+  if (!fs.existsSync(SESSIONS_DIR)) return { records: results, ...failure };
 
   const now = Date.now();
 
@@ -227,12 +255,14 @@ async function scanRecentRollouts(activeThresholdMs: number) {
                     return { filePath, mtime: stat.mtimeMs, fileName: file.name };
                   } catch (err) {
                     debugAdapterError('codex', 'scanRecentRollouts stat', err, filePath);
+                    failure.filesUnstattable += 1;
                     return null;
                   }
                 }));
                 return fileResults.filter((result): result is ScanResult => result !== null);
               } catch (err) {
                 debugAdapterError('codex', 'scanRecentRollouts readdir day', err, dayDir);
+                failure.levelsUnreadable += 1;
                 return [];
               }
             }));
@@ -240,6 +270,7 @@ async function scanRecentRollouts(activeThresholdMs: number) {
             return dayResults.flat() as ScanResult[];
           } catch (err) {
             debugAdapterError('codex', 'scanRecentRollouts readdir month', err, monthDir);
+            failure.levelsUnreadable += 1;
             return [];
           }
         }));
@@ -247,6 +278,7 @@ async function scanRecentRollouts(activeThresholdMs: number) {
         return monthResults.flat() as ScanResult[];
       } catch (err) {
         debugAdapterError('codex', 'scanRecentRollouts readdir year', err, yearDir);
+        failure.levelsUnreadable += 1;
         return [];
       }
     }));
@@ -256,9 +288,10 @@ async function scanRecentRollouts(activeThresholdMs: number) {
     }
   } catch (err) {
     debugAdapterError('codex', 'scanRecentRollouts', err, SESSIONS_DIR);
+    failure.rootUnreadable = true;
   }
 
-  return results;
+  return { records: results, ...failure };
 }
 
 type TokenReading = { input: number; output: number };
@@ -323,9 +356,9 @@ export class CodexAdapter implements AgentAdapter {
     return fs.existsSync(CODEX_DIR);
   }
 
-  async getActiveSessions(activeThresholdMs: number) {
-    const rollouts = await scanRecentRollouts(activeThresholdMs);
-    const sessions = await Promise.all(rollouts.map(async ({ filePath, mtime, fileName }) => {
+  async getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult> {
+    const { records, rootUnreadable, levelsUnreadable, filesUnstattable } = await scanRecentRollouts(activeThresholdMs);
+    const sessions = await Promise.all(records.map(async ({ filePath, mtime, fileName }) => {
       const detail = await parseRollout(filePath);
       // Extract session ID from filename: rollout-2025-01-22T10-30-00-abc123.jsonl
       const sessionId = fileName.replace('rollout-', '').replace('.jsonl', '');
@@ -347,7 +380,18 @@ export class CodexAdapter implements AgentAdapter {
       };
     }));
 
-    return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+    return combineSources([
+      rootUnreadable
+        ? { kind: 'failed', code: 'root-unreadable', detail: sourceDetail('sessions directory could not be listed', CODEX_DIR) }
+        : {
+          kind: 'rows',
+          sessions: sessions.sort((a, b) => b.lastActivity - a.lastActivity),
+          warnings: [
+            ...degradedWarnings(levelsUnreadable, 'root-unreadable', 'date directory(ies)'),
+            ...degradedWarnings(filesUnstattable, 'root-unreadable', 'rollout file(s)'),
+          ],
+        },
+    ]);
   }
 
   async getSessionDetail(sessionId: string, project: string | null, filePath: string | null = null) {
@@ -362,9 +406,9 @@ export class CodexAdapter implements AgentAdapter {
 
     // Find file from sessionId
     const cleanId = sessionId.replace('codex-', '');
-    const rollouts = await scanRecentRollouts(30 * 60 * 1000); // Expand to 30 min range
+    const { records } = await scanRecentRollouts(30 * 60 * 1000); // Expand to 30 min range
 
-    for (const { filePath, fileName } of rollouts) {
+    for (const { filePath, fileName } of records) {
       const fileId = fileName.replace('rollout-', '').replace('.jsonl', '');
       if (fileId === cleanId) {
         const [toolHistory, messages, tokenUsage] = await Promise.all([

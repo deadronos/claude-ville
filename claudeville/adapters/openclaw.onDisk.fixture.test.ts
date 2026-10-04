@@ -118,6 +118,7 @@ import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WatchPath } from '../../shared/types.js';
+import { sessionsOf } from './fixtureHelpers';
 
 const MINUTE = 60 * 1000;
 const originalHome = process.env.HOME;
@@ -350,7 +351,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
           provider: adapter.provider,
           homeDir: adapter.homeDir,
           available: adapter.isAvailable(),
-          sessions: await adapter.getActiveSessions(5 * MINUTE),
+          sessions: await sessionsOf(adapter, 5 * MINUTE),
           watch: adapter.getWatchPaths(),
           expectedDir: path.join(home, '.openclaw'),
         };
@@ -402,7 +403,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         expect(adapter.isAvailable()).toBe(true);
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rows).toHaveLength(2);
         const alpha = agentPath(home, 'agent-alpha');
         const first = rowOf(rows, 'openclaw:agent-alpha:session-1');
@@ -466,7 +467,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rows).toHaveLength(2);
         const dbPath = agentPath(home, 'agent-db', 'agent', 'openclaw-agent.sqlite');
         const a = rowOf(rows, 'openclaw:agent-db:sess-a');
@@ -556,7 +557,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rows).toHaveLength(2);
         expect(ids(rows)).toEqual(['openclaw:agent-f:keep-one', 'openclaw:agent-f:keep-two']);
       },
@@ -582,8 +583,8 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual(['openclaw:agent-t:fresh']);
-        expect(ids(await adapter.getActiveSessions(10 * MINUTE)).sort()).toEqual([
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual(['openclaw:agent-t:fresh']);
+        expect(ids(await sessionsOf(adapter, 10 * MINUTE)).sort()).toEqual([
           'openclaw:agent-t:fresh',
           'openclaw:agent-t:stale',
         ]);
@@ -620,14 +621,14 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual([
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual([
           'openclaw:agent-w:w-nomodel',
           'openclaw:agent-w:w-tfresh',
           'openclaw:agent-w:w-tnull',
         ]);
         // The threshold is compared against `>=`, so widening admits exactly the
         // two stale rows and nothing else.
-        expect(ids(await adapter.getActiveSessions(2 * 60 * MINUTE)).sort()).toEqual([
+        expect(ids(await sessionsOf(adapter, 2 * 60 * MINUTE)).sort()).toEqual([
           'openclaw:agent-w:w-nomodel',
           'openclaw:agent-w:w-stale',
           'openclaw:agent-w:w-tfresh',
@@ -636,7 +637,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         ]);
         // `row.model || detail.model || 'unknown'` with nothing on either side falls
         // through to the third term — the same literal the legacy path uses.
-        expect(rowOf(await adapter.getActiveSessions(5 * MINUTE), 'openclaw:agent-w:w-nomodel')!.model).toBe('unknown');
+        expect(rowOf(await sessionsOf(adapter, 5 * MINUTE), 'openclaw:agent-w:w-nomodel')!.model).toBe('unknown');
       },
     );
   });
@@ -656,13 +657,13 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const wide = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+        const wide = await sessionsOf(adapter, Number.MAX_SAFE_INTEGER);
         // `0 || updated_at` → the one-minute-old timestamp, NOT 0.
         expect(rowOf(wide, 'openclaw:agent-la:la-zero')!.lastActivity).toBeCloseTo(Date.now() - 60 * 1000, -2);
         // `0 || 0 || 0` → 0, and 0 is a real `lastActivity`, not null.
         expect(rowOf(wide, 'openclaw:agent-la:la-bothzero')!.lastActivity).toBe(0);
         // The SQL disagrees: COALESCE(0, …) is 0, which is below every threshold.
-        expect(ids(await adapter.getActiveSessions(5 * MINUTE))).toEqual([]);
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual([]);
       },
     );
   });
@@ -692,7 +693,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual([
           'openclaw:agent-d:after-dup',
           'openclaw:agent-d:dup-new',
@@ -720,7 +721,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual([
           'openclaw:agent-one:agent-one-session',
           'openclaw:agent-two:agent-two-session',
@@ -749,7 +750,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['openclaw:agent-no-db:legacy', 'openclaw:agent-with-db:db-session']);
       },
     );
@@ -836,7 +837,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const row = rowOf(await adapter.getActiveSessions(5 * MINUTE), 'openclaw:agent-tok2:u1')!;
+        const row = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'openclaw:agent-tok2:u1')!;
         expect(row.lastMessage).toBe('newest');
         const detail = await adapter.getSessionDetail(row.sessionId, row.project, row.filePath);
         expect(detail.tokenUsage).toEqual({ input: 2, output: 2, totalInput: 2, totalOutput: 2 });
@@ -993,7 +994,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         const row = rowOf(rows, 'openclaw:agent-lim:lim')!;
         expect(row.model).toBe('model-at-151');
         // Event 150 is one step outside the row's 60-event window.
@@ -1038,7 +1039,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         const detail = await adapter.getSessionDetail('openclaw:agent-slice:s1', null, rows[0].filePath);
         expect(detail.toolHistory).toHaveLength(15);
         expect(detail.toolHistory.map((t: any) => t.tool)).toEqual([
@@ -1083,7 +1084,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         expect(LONG_ARGS_JSON).toHaveLength(138);
 
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         const dir = agentPath(home, 'agent-caps', 'sessions');
 
         const stringRow = rowOf(rows, 'openclaw:agent-caps:caps-string')!;
@@ -1207,7 +1208,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         const row = rowOf(rows, 'openclaw:agent-dir:both')!;
         expect(row).toMatchObject({
           model: 'newer-model',
@@ -1262,7 +1263,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const row = rowOf(await adapter.getActiveSessions(5 * MINUTE), 'openclaw:agent-guard:guards')!;
+        const row = rowOf(await sessionsOf(adapter, 5 * MINUTE), 'openclaw:agent-guard:guards')!;
         expect(row).toMatchObject({
           model: 'older-model',
           lastMessage: 'newer msg',
@@ -1303,7 +1304,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(rowOf(rows, 'openclaw:agent-model:two-changes')!.model).toBe('second-model');
         expect(rowOf(rows, 'openclaw:agent-model:unnamed-change')!.model).toBe('only-model');
         expect(rowOf(rows, 'openclaw:agent-model:no-model')!.model).toBe('unknown');
@@ -1371,7 +1372,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         const msgs = await adapter.getSessionDetail('openclaw:agent-win:win-msgs', null, path.join(dir, 'win-msgs.jsonl'));
         expect(msgs.messages).toEqual([{ role: 'assistant', text: 'msg-at-1', ts: tsOf(1) }]);
 
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         // The row's 80-line window, from both sides.
         expect(rowOf(rows, 'openclaw:agent-win:win80in')!.lastMessage).toBe('inside-80');
         expect(rowOf(rows, 'openclaw:agent-win:win80out')!.lastTool).toBeNull();
@@ -1429,7 +1430,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual([
           'openclaw:team%3Aalpha%20beta:pct%25id',
           'openclaw:team%3Aalpha%20beta:sess%3Acolon%2Fx',
@@ -1468,7 +1469,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         // The row is there, with real content read under the TRUE id…
         const mangled = rowOf(rows, 'openclaw:agent-mangle:weird-id')!;
         expect(mangled).toBeDefined();
@@ -1508,7 +1509,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         const dbPath = agentPath(home, 'agent-x', 'agent', 'openclaw-agent.sqlite');
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
 
         // The row's own id is encoded, so it resolves.
         const row = rows[0];
@@ -1686,7 +1687,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         });
         // A real `session_windows` row whose database has no transcript table:
         // no rows in the listing, and an empty detail without `sessionId`.
-        expect(await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER)).toEqual([]);
+        expect(await sessionsOf(adapter, Number.MAX_SAFE_INTEGER)).toEqual([]);
         expect(
           await adapter.getSessionDetail(
             'openclaw:agent-notbl:s1',
@@ -1780,7 +1781,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+        const rows = await sessionsOf(adapter, Number.MAX_SAFE_INTEGER);
         expect(ids(rows)).toEqual(['openclaw:agent-broken:s1']);
         expect(rowOf(rows, 'openclaw:agent-broken:s1')).toMatchObject({
           model: 'legacy-model',
@@ -1859,7 +1860,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['openclaw:agent-drift:drift-1']);
         expect(rowOf(rows, 'openclaw:agent-drift:drift-1')).toMatchObject({
           agentId: 'agent-drift',
@@ -1891,7 +1892,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['openclaw:agent-unusable:legacy']);
         expect(rowOf(rows, 'openclaw:agent-unusable:legacy')).toMatchObject({
           model: 'legacy-model',
@@ -1919,7 +1920,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['openclaw:agent-broken:legacy', 'openclaw:agent-good:good-1']);
         expect(rowOf(rows, 'openclaw:agent-good:good-1')!.filePath.endsWith('openclaw-agent.sqlite')).toBe(true);
         expect(rowOf(rows, 'openclaw:agent-broken:legacy')!.filePath.endsWith('legacy.jsonl')).toBe(true);
@@ -1939,9 +1940,16 @@ describe('OpenClawAdapter on-disk characterization', () => {
   //
   // The sessions themselves cannot be recovered — a directory that cannot be
   // read cannot be enumerated — so the loss stays. What changes is that it is
-  // reported on `console.error`, the unconditional channel
-  // `adapters/index.ts:60` already uses for an adapter about to report less data
-  // than it should, rather than only under `DEBUG`.
+  // reported on `console.error`, the unconditional channel `adapters/index.ts`
+  // already uses for an adapter about to report less data than it should, rather
+  // than only under `DEBUG`.
+  //
+  // It is now ALSO in the typed contract: neither the database half nor any legacy
+  // half could be read, so this is `ok: false` with `root-unreadable`. The
+  // assertion below used to be `expect(await ...).toEqual([])` and could not tell
+  // this apart from an install with no agents — which is the gap this contract
+  // closes. This is the one assertion in this file that changes shape rather than
+  // call style, and it is the whole justification for it.
   it('reports an unreadable agents directory instead of reporting no agents', async () => {
     await withOpenclawHome(
       (home) => {
@@ -1964,8 +1972,17 @@ describe('OpenClawAdapter on-disk characterization', () => {
           const adapter = new OpenClawAdapter();
           // The install is still there …
           expect(adapter.isAvailable()).toBe(true);
-          // … but nothing can be enumerated, so nothing is listed.
-          expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
+          // … but nothing can be enumerated, so nothing is listed — and the
+          // adapter says the provider could not be read, rather than answering an
+          // empty listing that is the exact shape of "no openclaw installed".
+          const result = await adapter.getActiveSessions(5 * MINUTE);
+          expect(result.ok).toBe(false);
+          if (result.ok) throw new Error('unreachable: expected a whole-adapter failure');
+          expect(result.error.code).toBe('root-unreadable');
+          expect(result.error.message).toContain('agents directory could not be listed');
+          // The operator detail names the provider, never the absolute path, which
+          // carries a username.
+          expect(result.error.message).not.toContain(home);
           expect(adapter.getWatchPaths()).toEqual([]);
 
           // Three sites enumerate AGENTS_DIR and all three said nothing before:
@@ -2005,7 +2022,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         try {
           const adapter = new OpenClawAdapter();
           expect(adapter.isAvailable()).toBe(true);
-          expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
+          expect(await sessionsOf(adapter, 5 * MINUTE)).toEqual([]);
           expect(adapter.getWatchPaths()).toEqual([]);
           expect(errors).toEqual([]);
         } finally {
@@ -2040,7 +2057,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         });
         try {
           const adapter = new OpenClawAdapter();
-          const rows = await adapter.getActiveSessions(5 * MINUTE);
+          const rows = await sessionsOf(adapter, 5 * MINUTE);
           // Good data survives: only the locked agent is missing.
           expect(ids(rows)).toEqual(['openclaw:agent-open:s']);
           expect(rowOf(rows, 'openclaw:agent-open:s')!.lastMessage).toBe('readable');
@@ -2074,7 +2091,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         // The real session, and only the real session. Before the fix the ghost
         // carried `model: 'unknown'` and null everywhere else — the phantom this
         // case used to document.
@@ -2111,7 +2128,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+        const rows = await sessionsOf(adapter, Number.MAX_SAFE_INTEGER);
         expect(ids(rows)).toEqual(['openclaw:agent-dir-db:s1']);
         expect(rowOf(rows, 'openclaw:agent-dir-db:s1')).toMatchObject({
           model: 'legacy-model',
@@ -2150,7 +2167,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual(['openclaw:agent-bad:legacy', 'openclaw:agent-good:sess-1']);
         expect(rowOf(rows, 'openclaw:agent-good:sess-1')).toMatchObject({
           model: 'good-model',
@@ -2198,7 +2215,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
         expect(ids(rows)).toEqual([
           'openclaw:agent-bad:empty',
           'openclaw:agent-bad:garbage',

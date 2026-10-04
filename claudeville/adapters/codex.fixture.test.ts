@@ -41,6 +41,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let CodexAdapter: any;
@@ -292,7 +293,7 @@ describe('CodexAdapter fixtures', () => {
   // in-body.
   it('lists in-window rollouts newest-first, with the full summary field set', async () => {
     const adapter = new CodexAdapter();
-    const sessions = await adapter.getActiveSessions(5 * MINUTE);
+    const sessions = await sessionsOf(adapter, 5 * MINUTE);
 
     expect(sessions).toHaveLength(3);
     expect(sessions.map((s: any) => s.sessionId)).toEqual([EPSILON_ID, ALPHA_ID, GAMMA_ID]);
@@ -336,7 +337,7 @@ describe('CodexAdapter fixtures', () => {
 
   it('falls back to model "codex" when no entry names one', async () => {
     const adapter = new CodexAdapter();
-    const sessions = await adapter.getActiveSessions(5 * MINUTE);
+    const sessions = await sessionsOf(adapter, 5 * MINUTE);
     const gamma = sessions.find((s: any) => s.sessionId === GAMMA_ID);
 
     // Neither session_meta.payload.model, turn_context.payload.model nor
@@ -375,7 +376,7 @@ describe('CodexAdapter fixtures', () => {
     backdate(stale, 40 * MINUTE);
 
     try {
-      const wide = await adapter.getActiveSessions(45 * MINUTE);
+      const wide = await sessionsOf(adapter, 45 * MINUTE);
       expect(wide.map((s: any) => s.sessionId)).toContain(sessionIdOf('rollout-stale1.jsonl'));
       // The four base fixtures stay in at both widths — 45 and 35 minutes are
       // far outside their 1–8 minute ages.
@@ -383,7 +384,7 @@ describe('CodexAdapter fixtures', () => {
         expect(wide.map((s: any) => s.sessionId)).toContain(id);
       }
 
-      const narrow = await adapter.getActiveSessions(35 * MINUTE);
+      const narrow = await sessionsOf(adapter, 35 * MINUTE);
       expect(narrow.map((s: any) => s.sessionId)).not.toContain(sessionIdOf('rollout-stale1.jsonl'));
       for (const id of [ALPHA_ID, DELTA_ID, EPSILON_ID, GAMMA_ID]) {
         expect(narrow.map((s: any) => s.sessionId)).toContain(id);
@@ -400,7 +401,7 @@ describe('CodexAdapter fixtures', () => {
   // the year fan-out is under test.
   it('scans at most the 3 newest year directories', async () => {
     const adapter = new CodexAdapter();
-    expect((await adapter.getActiveSessions(30 * MINUTE)).map((s: any) => s.sessionId)).toContain(ALPHA_ID);
+    expect((await sessionsOf(adapter, 30 * MINUTE)).map((s: any) => s.sessionId)).toContain(ALPHA_ID);
 
     rollout('2027', '01', '01', 'yr2027', [
       sessionMeta('yr2027', path.join(tmpHome, 'workspace', 'yr2027')),
@@ -408,7 +409,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const ids = (await adapter.getActiveSessions(30 * MINUTE)).map((s: any) => s.sessionId);
+      const ids = (await sessionsOf(adapter, 30 * MINUTE)).map((s: any) => s.sessionId);
       expect(ids).toContain(sessionIdOf('rollout-yr2027.jsonl'));
       expect(ids).not.toContain(ALPHA_ID);
       expect(ids).toContain(DELTA_ID);
@@ -424,7 +425,7 @@ describe('CodexAdapter fixtures', () => {
   // the one that falls off.
   it('scans at most the 6 newest month directories', async () => {
     const adapter = new CodexAdapter();
-    expect((await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId)).toContain(GAMMA_ID);
+    expect((await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId)).toContain(GAMMA_ID);
 
     const added = ['02', '03', '04', '05', '06', '07'].map((month) => ({
       month,
@@ -436,7 +437,7 @@ describe('CodexAdapter fixtures', () => {
     }));
 
     try {
-      const ids = (await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId);
+      const ids = (await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId);
       for (const { id } of added) expect(ids).toContain(id);
       expect(ids).not.toContain(GAMMA_ID);
     } finally {
@@ -460,7 +461,7 @@ describe('CodexAdapter fixtures', () => {
     }));
 
     try {
-      const ids = (await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId);
+      const ids = (await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId);
       for (const { id } of written.filter(({ day }) => day !== '01')) {
         expect(ids).toContain(id);
       }
@@ -484,7 +485,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === sessionIdOf('rollout-latemeta1.jsonl'),
       );
       expect(row).toMatchObject({
@@ -523,7 +524,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === sessionIdOf('rollout-tail1.jsonl'),
       );
       expect(row).toMatchObject({
@@ -616,7 +617,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === sessionIdOf('rollout-zeta1.jsonl'),
       );
       expect(row).toMatchObject({ model: 'gpt-5-codex', lastTool: 'shell' });
@@ -678,7 +679,7 @@ describe('CodexAdapter fixtures', () => {
     const file = rollout('2026', '09', '01', 'eta1', entries);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === sessionIdOf('rollout-eta1.jsonl'),
       );
       // First-in-window, not last: tool_00 / msg 1, not tool_19 / msg 8.
@@ -727,7 +728,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === sessionIdOf('rollout-cmdexec1.jsonl'),
       );
       expect(row).toMatchObject({ lastTool: 'command_execution' });
@@ -764,7 +765,7 @@ describe('CodexAdapter fixtures', () => {
     fs.writeFileSync(blankPath, '');
 
     try {
-      const ids = (await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId);
+      const ids = (await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId);
       expect(ids).toContain(sessionIdOf('rollout-nots1.jsonl'));
       expect(ids).toContain(sessionIdOf('rollout-blank1.jsonl'));
 
@@ -780,7 +781,7 @@ describe('CodexAdapter fixtures', () => {
       expect(blank.messages).toEqual([]);
       expect(blank.tokenUsage).toBeNull();
 
-      const blankRow = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const blankRow = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === sessionIdOf('rollout-blank1.jsonl'),
       );
       // Still LISTED — the mtime filter is the only gate, and there is no
@@ -816,7 +817,7 @@ describe('CodexAdapter fixtures', () => {
 
   it('reads a thread_token_usage entry even when a newer total_token_usage precedes it', async () => {
     const adapter = new CodexAdapter();
-    const sessions = await adapter.getActiveSessions(5 * MINUTE);
+    const sessions = await sessionsOf(adapter, 5 * MINUTE);
     const row = sessions.find((s: any) => s.sessionId === EPSILON_ID);
     expect(row).toBeDefined();
 
@@ -841,7 +842,7 @@ describe('CodexAdapter fixtures', () => {
   // the FIRST one met walking newest-first.
   it('falls back to the LAST info.total_token_usage when no thread reading exists', async () => {
     const adapter = new CodexAdapter();
-    const sessions = await adapter.getActiveSessions(5 * MINUTE);
+    const sessions = await sessionsOf(adapter, 5 * MINUTE);
     const row = sessions.find((s: any) => s.sessionId === ALPHA_ID);
     expect(row).toBeDefined();
 
@@ -851,7 +852,7 @@ describe('CodexAdapter fixtures', () => {
 
   it('reports null tokenUsage when the rollout carries neither reading', async () => {
     const adapter = new CodexAdapter();
-    const sessions = await adapter.getActiveSessions(5 * MINUTE);
+    const sessions = await sessionsOf(adapter, 5 * MINUTE);
     const row = sessions.find((s: any) => s.sessionId === GAMMA_ID);
     expect(row).toBeDefined();
 
@@ -931,7 +932,7 @@ describe('CodexAdapter fixtures', () => {
       // parseRollout's own extractText handles `text` and `output_text` but not
       // `input_text`, so the row's lastMessage is the first assistant message
       // whose content extractText can read at all.
-      const row = (await adapter.getActiveSessions(5 * MINUTE)).find(
+      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
         (s: any) => s.sessionId === sessionIdOf('rollout-theta1.jsonl'),
       );
       expect(row).toMatchObject({ lastMessage: 'text block kind' });
@@ -949,7 +950,7 @@ describe('CodexAdapter fixtures', () => {
   it('resolves a session by id through its own 30-minute window', async () => {
     const adapter = new CodexAdapter();
 
-    const fiveMinutes = (await adapter.getActiveSessions(5 * MINUTE)).map((s: any) => s.sessionId);
+    const fiveMinutes = (await sessionsOf(adapter, 5 * MINUTE)).map((s: any) => s.sessionId);
     expect(fiveMinutes).not.toContain(DELTA_ID);
 
     const viaId = await adapter.getSessionDetail(DELTA_ID, workspaceDelta);
@@ -964,7 +965,7 @@ describe('CodexAdapter fixtures', () => {
     expect(viaPath.tokenUsage).toEqual({ input: 333, output: 33 });
 
     // Widening the listing window picks DELTA up and pins its row.
-    const thirtyMinutes = await adapter.getActiveSessions(30 * MINUTE);
+    const thirtyMinutes = await sessionsOf(adapter, 30 * MINUTE);
     expect(thirtyMinutes.map((s: any) => s.sessionId)).toEqual([EPSILON_ID, ALPHA_ID, GAMMA_ID, DELTA_ID]);
     expect(thirtyMinutes[3]).toEqual({
       sessionId: DELTA_ID,
@@ -1062,7 +1063,7 @@ describe('CodexAdapter fixtures', () => {
       );
       fs.mkdirSync(decoy, { recursive: true });
 
-      const rows = await new Adapter().getActiveSessions(10 * MINUTE);
+      const rows = await sessionsOf(new Adapter(), 10 * MINUTE);
       // Nothing else exists in this tree, so the listing is an exact set.
       expect(rows.map((r: any) => r.sessionId)).toEqual(['codex-2024-01-22T10-30-00-real1']);
       // …and the decoy really is a directory, so the exact set above is the

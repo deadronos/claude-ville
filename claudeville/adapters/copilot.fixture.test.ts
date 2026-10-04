@@ -15,6 +15,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let workspaceDir = '';
@@ -91,7 +92,7 @@ describe('CopilotAdapter fixtures', () => {
     const adapter = new CopilotAdapter();
     expect(adapter.isAvailable()).toBe(true);
 
-    const sessions = await adapter.getActiveSessions(5 * 60 * 1000);
+    const sessions = await sessionsOf(adapter, 5 * 60 * 1000);
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({
       sessionId: `copilot-${SESSION_UUID}`,
@@ -226,7 +227,7 @@ describe('CopilotAdapter fixtures', () => {
     const adapter = new reimported.CopilotAdapter();
 
     try {
-      const sessions = await adapter.getActiveSessions(5 * 60 * 1000);
+      const sessions = await sessionsOf(adapter, 5 * 60 * 1000);
       const session = sessions.find((s: any) => s.sessionId === `copilot-${LONG_SESSION_UUID}`);
       expect(session).toBeDefined();
 
@@ -360,7 +361,7 @@ describe('CopilotAdapter fixtures', () => {
     const adapter = new reimported.CopilotAdapter();
 
     try {
-      const sessions = await adapter.getActiveSessions(5 * 60 * 1000);
+      const sessions = await sessionsOf(adapter, 5 * 60 * 1000);
 
       // copilot.ts:102 — parseSession's tool_call branch. The reverse scan
       // reaches the LAST tool-bearing entry first, so input 0 is the one pinned

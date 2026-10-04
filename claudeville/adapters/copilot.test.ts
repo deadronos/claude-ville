@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CopilotAdapter } from './copilot';
 import { extractText } from './text-utils';
+import { sessionsOf } from './fixtureHelpers';
 const fs = require('fs');
 
 describe('copilot adapter', () => {
@@ -577,13 +578,13 @@ describe('copilot adapter', () => {
 
     it('getActiveSessions returns array', async () => {
       const adapter = new CopilotAdapter();
-      const sessions = await adapter.getActiveSessions(120000);
+      const sessions = await sessionsOf(adapter, 120000);
       expect(Array.isArray(sessions)).toBe(true);
     });
 
     it('session objects have required properties', async () => {
       const adapter = new CopilotAdapter();
-      const sessions = await adapter.getActiveSessions(120000);
+      const sessions = await sessionsOf(adapter, 120000);
       for (const session of sessions) {
         expect(session).toHaveProperty('sessionId');
         expect(session).toHaveProperty('provider');
@@ -598,7 +599,7 @@ describe('copilot adapter', () => {
 
     it('sessions are sorted by lastActivity descending', async () => {
       const adapter = new CopilotAdapter();
-      const sessions = await adapter.getActiveSessions(120000);
+      const sessions = await sessionsOf(adapter, 120000);
       for (let i = 1; i < sessions.length; i++) {
         expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
       }
@@ -654,7 +655,7 @@ describe('copilot adapter', () => {
         const adapter = new OrderedAdapter();
         expect(adapter.isAvailable()).toBe(true);
 
-        const sessions = await adapter.getActiveSessions(60 * 60 * 1000);
+        const sessions = await sessionsOf(adapter, 60 * 60 * 1000);
         expect(sessions).toHaveLength(3);
         expect(sessions.map((s: any) => s.sessionId)).toEqual([
           'copilot-copilot-order-03',
@@ -723,7 +724,7 @@ describe('copilot adapter', () => {
         const { CopilotAdapter: TiedAdapter } = await import('./copilot');
         const adapter = new TiedAdapter();
 
-        const sessions = await adapter.getActiveSessions(60 * 60 * 1000);
+        const sessions = await sessionsOf(adapter, 60 * 60 * 1000);
         expect(sessions).toHaveLength(3);
         expect(sessions.map((s: any) => s.sessionId)).toEqual(readdirOrder);
         // Precondition: the tie really is a tie, so this is not passing by luck.
