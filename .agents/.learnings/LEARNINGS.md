@@ -459,3 +459,71 @@ Corollary: when a subagent contradicts the brief, check the source before dismis
 - Source: self_correction
 - Related Files: claudeville/adapters/codex.fixture.test.ts, claudeville/adapters/gemini.fixture.test.ts, claudeville/adapters/claude.fixture.test.ts, claudeville/adapters/vscode.fixture.test.ts
 - Tags: mutation-testing, characterization, testing, false-confidence
+## [LRN-20261005-001] knowledge_gap
+
+**Logged**: 2026-10-05T00:00:00Z
+**Priority**: high
+**Status**: pending
+**Area**: config
+
+### Summary
+`npm run typecheck` covers NO test file at all — `tsconfig.json` excludes `**/*.test.ts`, so type errors inside tests are invisible.
+
+### Details
+`tsconfig.json` has `"include": ["**/*.ts", "**/*.tsx"]` and an `exclude` of `["node_modules", "dist", "widget", "**/*.test.ts", "vite.config.ts"]`. So the exclude wins and every `*.test.ts` / `*.test.tsx` file is outside the program. Verified rather than inferred: appending `const _probe: number = "not a number"; void _probe;` to `claudeville/adapters/pi.fixture.test.ts` left `npm run typecheck` completely silent, while the identical probe appended to `claudeville/adapters/fixtureHelpers.ts` produced `error TS2322`.
+
+Two consequences that bit or nearly bit this task:
+- `strict: true` implies `noImplicitAny`, but that never applies in a test file. Writing `result.sessions.map((s) => s.sessionId)` where `result` is `any` is silently fine there, and so is a genuine type error. A task constraint like "no new `any`" is therefore a *style* rule in test files, not one `tsc` will enforce — check the diff for annotations rather than trusting a clean typecheck.
+- The upside: a test-only helper that is NOT named `*.test.ts` (e.g. `fixtureHelpers.ts`) IS typechecked AND linted, which is why shared test scaffolding is put there. Proving coverage is a one-liner — inject a deliberate type error and confirm `tsc` names the file.
+
+### Suggested Action
+Treat a green `npm run typecheck` as evidence about production code only. When reviewing test changes, read the diff for type correctness rather than inferring it from the passing check; and when adding shared test helpers, deliberately keep the non-`.test.ts` name so they fall inside the program.
+
+### Metadata
+- Source: error
+- Related Files: tsconfig.json, claudeville/adapters/fixtureHelpers.ts, claudeville/adapters/pi.fixture.test.ts
+- Tags: typescript, tsconfig, vitest, tests, typecheck
+- See Also: LRN-20260930-002
+
+---
+
+## [LRN-20261005-002] best_practice
+
+**Logged**: 2026-10-05T00:00:00Z
+**Priority**: medium
+**Status**: pending
+**Area**: tests
+
+### Summary
+Verify an `it.skipIf(ROOT_CANNOT_BE_DENIED)` guard really reports SKIPPED by preloading a `getuid` override through `NODE_OPTIONS=--require`.
+
+### Details
+Several adapter suites guard permission-based cases with
+`it.skipIf(ROOT_CANNOT_BE_DENIED)`, because `chmod 000` cannot deny uid 0. Verifying that guard needs `process.getuid()` to answer 0 *before collection*, since `ROOT_CANNOT_BE_DENIED` is a module-level const read when the test file is imported. `vi.stubGlobal` inside a test body is too late.
+
+Vitest 5 runs files in the `forks` pool (its summary says "N workers spawned"), so a CJS preload reaches every worker:
+
+```js
+// force-root.cjs
+process.getuid = () => 0;
+```
+
+```sh
+NODE_OPTIONS="--require /abs/path/force-root.cjs" npm test
+```
+
+Whole suite reported `1562 passed | 5 skipped (1567)` against a real-uid
+`1567 passed`, and `--reporter=verbose` rendered each guarded case as `↓`. That is
+the evidence that a root run is visibly less covered rather than quietly green.
+Note this works because the guard lives in a *module*; the same trick would not
+work if it were computed inside the test body.
+
+### Suggested Action
+Keep the preload file outside the repo (a temp dir) so it cannot be committed by accident, and record the skipped count rather than just "tests pass" — a run with a green exit code and silent skips is exactly the failure mode the guard exists to expose.
+
+### Metadata
+- Source: conversation
+- Related Files: claudeville/adapters/fixtureHelpers.ts, claudeville/adapters/pi.fixture.test.ts, claudeville/adapters/adapterErrorContract.perAdapter.test.ts
+- Tags: vitest, skipIf, chmod, uid, fixtures, verification
+
+---

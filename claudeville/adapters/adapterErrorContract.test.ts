@@ -29,19 +29,10 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { sessionsOf } from './fixtureHelpers.js';
+import { ROOT_CANNOT_BE_DENIED, sessionsOf } from './fixtureHelpers.js';
 
 const MINUTE = 60 * 1000;
 
-/**
- * `chmod 000` denies every uid but root, so the permission-based case below can
- * only deny anything under a non-root uid.
- *
- * A MODULE-level const, not a check inside the test: `it.skipIf` is evaluated at
- * collection time, and the point is to report the case as SKIPPED rather than as
- * a pass that asserted nothing.
- */
-const ROOT_CANNOT_BE_DENIED = typeof process.getuid === 'function' && process.getuid() === 0;
 
 /** A `sessions` table with the columns hermes projects. */
 const SESSIONS_SQL = `
@@ -164,7 +155,8 @@ describe('hermes whole-adapter failures: one test per AdapterErrorCode', () => {
   // `it.skipIf` is what makes that visible: the run summary counts it as SKIPPED
   // rather than PASSED, so a root CI run is visibly less covered than a normal one.
   // An early `return` reported as a pass is the same failure class as a mutation
-  // that never applied and still reported green.
+  // that never applied and still reported green. The general form of that
+  // reasoning now lives once, in `ROOT_CANNOT_BE_DENIED`.
   it.skipIf(ROOT_CANNOT_BE_DENIED)('report root-unreadable when the sessions directory exists but cannot be listed', async () => {
     await withAdapter(
       (dir) => {

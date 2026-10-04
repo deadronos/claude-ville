@@ -23,18 +23,10 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ROOT_CANNOT_BE_DENIED } from './fixtureHelpers.js';
+
 const MINUTE = 60 * 1000;
 
-/**
- * `chmod` does not deny uid 0, so a permission-based case would pass vacuously
- * under root.
- *
- * A MODULE-level const, not a check inside the test: `it.skipIf` is evaluated at
- * collection time, and the point is to report the case as SKIPPED in the run
- * summary rather than as a pass that asserted nothing. An early `return` buried
- * in a `console.warn` is the same overstatement as a mutation that never applied.
- */
-const ROOT_CANNOT_BE_DENIED = typeof process.getuid === 'function' && process.getuid() === 0;
 
 const originalHome = process.env.HOME;
 const originalVscode = process.env.VSCODE_USER_DATA_DIR;
@@ -191,7 +183,8 @@ describe('codex', () => {
   // `isDirectory()` and a regular file is dropped by that filter before any
   // `readdir` — so a FILE cannot reach this catch at all. Only a permission the
   // caller lacks can, which means the case needs a uid `chmod 000` denies and is
-  // declared skipped rather than passed when there is not one.
+  // declared skipped rather than passed when there is not one; the shared guard's
+  // rationale is `ROOT_CANNOT_BE_DENIED`.
   it.skipIf(ROOT_CANNOT_BE_DENIED)('warn, not fail, when one year directory cannot be listed', async () => {
     const result = await withAdapter({}, (dir) => {
       const sessions = path.join(dir, '.codex', 'sessions');

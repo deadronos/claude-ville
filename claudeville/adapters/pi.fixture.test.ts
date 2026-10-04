@@ -5,9 +5,19 @@
  * existed: it redefines readLines/parseJsonLines/extractText/parseSession/
  * scanAllSessionFiles inline and asserts against those copies, so it would stay
  * green through an arbitrary rewrite of the shipped adapter. Its only assertion
- * that touches shipped code — the `tokenUsage` sum — is a single happy path, so
- * no truncation cap, no maxItems slice, no mtime filter and no `.jsonl`
- * extension filter is pinned anywhere in the suite.
+ * that touches shipped code was a single happy-path `tokenUsage` sum, so when
+ * this file was written no truncation cap, no maxItems slice, no mtime filter and
+ * no `.jsonl` extension filter was pinned anywhere in the suite.
+ *
+ * That last sentence described the SUITE and has since gone stale — this file is
+ * what closed the gaps, not pi.test.ts — so where each one is pinned now:
+ *
+ * | what | pinned by |
+ * |---|---|
+ * | all four truncation caps (60 / 80 / 200 / 80) | `caps payloads at 60/80/200 chars…` |
+ * | both maxItems slices (15 tools, 5 messages) | same case |
+ * | the mtime filter, including the comparison's SIGN | `backdate`, read by the 5- and 30-minute windows |
+ * | the `.jsonl` extension filter | the exact length of the 5-minute listing, beside `notes.txt` and `alpha-1.jsonl.bak` |
  *
  * This file drives the SHIPPED PiAdapter against a synthetic
  * ~/.pi/agent/sessions/<projectDir>/*.jsonl tree so that a later conversion to
@@ -19,7 +29,7 @@ import os from 'os';
 import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { detailOf, sessionsOf } from './fixtureHelpers';
+import { ROOT_CANNOT_BE_DENIED, detailOf, sessionsOf } from './fixtureHelpers';
 
 let tmpHome = '';
 let workspaceAlpha = '';
@@ -76,6 +86,49 @@ function backdate(file: string, msAgo: number) {
 
 function removeProjectDir(projectDir: string) {
   fs.rmSync(path.join(sessionsRoot(), projectDir), { recursive: true, force: true });
+}
+
+
+/** `sessionFile`/`writeSession` against a THROWAWAY root instead of the suite's. */
+const sessionsRootAt = (root: string) => path.join(root, '.pi', 'agent', 'sessions');
+
+/**
+ * Write one project directory's session file into a THROWAWAY root, with a fresh
+ * mtime so no age threshold can filter it out. `writeSession` cannot be reused:
+ * it resolves against the suite's own `tmpHome`, and these cases need a tree
+ * nothing else in this file can see.
+ */
+function writeSessionIn(root: string, projectDir: string, fileName: string, entries: unknown[]): string {
+  const file = path.join(sessionsRootAt(root), projectDir, fileName);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const when = new Date();
+  fs.utimesSync(file, when, when);
+  return file;
+}
+
+/**
+ * One minimal session file that resolves EVERY field: a `model_change` for the
+ * model, a toolCall for the tool history, a text block for the message. An empty
+ * detail would satisfy the same assertions as a fully-read one, so the loss of a
+ * readable sibling has to be visible in the values themselves.
+ */
+function sessionEntries(cwd: string, id: string, text: string) {
+  return [
+    { type: 'session', version: 3, id, timestamp: at(0), cwd },
+    { type: 'model_change', provider: 'anthropic', modelId: 'claude-sonnet-4', timestamp: at(1) },
+    {
+      type: 'message',
+      timestamp: at(2),
+      message: { role: 'assistant', content: [{ type: 'toolCall', name: 'bash', arguments: { command: 'ls' } }] },
+    },
+    { type: 'message', timestamp: at(3), message: { role: 'assistant', content: [{ type: 'text', text }] } },
+  ];
+}
+
+/** `chmod` the directories — `0o000` to lock them, and back again to let the temp root be removed. */
+function chmodDirectories(dirs: string[], mode: number) {
+  for (const dir of dirs) fs.chmodSync(dir, mode);
 }
 
 /**
@@ -673,6 +726,171 @@ describe('PiAdapter fixtures', () => {
       // …and the decoy really is a directory, so the exact set above is the
       // `isFile()` guard rather than a missing fixture.
       expect(fs.statSync(decoy).isDirectory()).toBe(true);
+    });
+  });
+
+  // ─── #161 follow-up: the PER-ITEM unreadable-project-directory counter ───
+  //
+  // pi.ts is the adapter whose `fileFor` ENUMERATES a project directory
+  // (`readdirSync` at pi.ts:278), so it is the only one of the three converted
+  // adapters where an unreadable project directory is a real, reachable
+  // condition — every other level is filtered on `isDirectory()` and a regular
+  // file is dropped before any read (scan-utils.ts:119). The throw is caught at
+  // scan-utils.ts:125 and reported as `onUnreadable('child', …)`, which pi.ts:295
+  // counts, and `childrenUnreadable` feeds `degradedWarnings` on BOTH the listing
+  // (pi.ts:343) and the detail (pi.ts:368) path.
+  //
+  // Hence `chmod 000`, and hence the uid dependency: there is NO uid-independent
+  // way to make `readdirSync` fail on a directory that has already passed an lstat
+  // `isDirectory()` check. A mocked readdir would assert the handler rather than
+  // the shipped path, and this suite drives the real adapter. GitHub's runners are
+  // non-root so these run for real in CI; under root they report as SKIPPED — see
+  // `ROOT_CANNOT_BE_DENIED` for why that has to be visible rather than a pass.
+  //
+  // TWO locked directories, not one: `detail` is the count, so a single loss
+  // cannot tell "counted the directories" from "reported that something went
+  // wrong" apart.
+  const PROJ_LOCKED_A = '--Users-test-Github-lockedA--';
+  const PROJ_LOCKED_B = '--Users-test-Github-lockedB--';
+  const PROJ_OPEN_ONE = '--Users-test-Github-openone--';
+  const PROJ_OPEN_TWO = '--Users-test-Github-opentwo--';
+  const EXPECTED_DEGRADED = [{ code: 'root-unreadable', detail: '2 project directory(ies)' }];
+
+  /** Two readable project directories beside two that cannot be listed. */
+  function buildMixedTree(root: string) {
+    const workspace = path.join(root, 'workspace');
+    fs.mkdirSync(workspace, { recursive: true });
+    const openOne = writeSessionIn(root, PROJ_OPEN_ONE, 'openone-1.jsonl', sessionEntries(workspace, 'openone-1', 'open one done'));
+    writeSessionIn(root, PROJ_OPEN_TWO, 'opentwo-1.jsonl', sessionEntries(workspace, 'opentwo-1', 'open two done'));
+    writeSessionIn(root, PROJ_LOCKED_A, 'lockedA-1.jsonl', sessionEntries(workspace, 'lockedA-1', 'never read A'));
+    writeSessionIn(root, PROJ_LOCKED_B, 'lockedB-1.jsonl', sessionEntries(workspace, 'lockedB-1', 'never read B'));
+    const locked = [PROJ_LOCKED_A, PROJ_LOCKED_B].map((dir) => path.join(sessionsRootAt(root), dir));
+    chmodDirectories(locked, 0o000);
+    return { openOne, locked };
+  }
+
+  it.skipIf(ROOT_CANNOT_BE_DENIED)('warns once per unreadable project directory and still lists the readable ones', async () => {
+    await withTempPiHome(async (Adapter, root) => {
+      const { openOne, locked } = buildMixedTree(root);
+      const openOneMtime = fs.statSync(openOne).mtimeMs;
+
+      try {
+        // NOT `sessionsOf`: it unwraps the union and throws `warnings` away, and
+        // the warnings are the thing under test here. Direct call, narrowed on ok
+        // by hand, exactly as adapterErrorContract.test.ts does.
+        const result = await new Adapter().getActiveSessions(5 * MINUTE);
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error('unreachable');
+
+        // The two readable projects, and NOT the two locked ones. `readdir` order
+        // is not guaranteed, so both sides are sorted rather than assumed.
+        expect(result.sessions.map((s) => s.sessionId).sort()).toEqual(
+          [sessionIdOf(PROJ_OPEN_ONE, 'openone-1.jsonl'), sessionIdOf(PROJ_OPEN_TWO, 'opentwo-1.jsonl')].sort(),
+        );
+
+        // The readable sibling is UNAFFECTED, not merely present: every field
+        // still resolves. This is the whole per-item/whole-adapter distinction —
+        // a sibling that came back degraded would make this a different contract.
+        expect(result.sessions.find((s) => s.sessionId === sessionIdOf(PROJ_OPEN_ONE, 'openone-1.jsonl'))).toEqual({
+          sessionId: sessionIdOf(PROJ_OPEN_ONE, 'openone-1.jsonl'),
+          provider: 'pi',
+          agentId: null,
+          displayName: null,
+          agentType: 'main',
+          model: 'claude-sonnet-4',
+          status: 'active',
+          lastActivity: openOneMtime,
+          project: path.join(root, 'workspace'),
+          lastMessage: 'open one done',
+          lastTool: 'bash',
+          lastToolInput: '{"command":"ls"}',
+          parentSessionId: null,
+          filePath: openOne,
+        });
+
+        // Two directories lost, counted as TWO. Drop the `childrenUnreadable`
+        // accumulation at pi.ts:295 and this reads `1`; drop the increment's
+        // reporting entirely and the array is empty.
+        expect(result.warnings).toStrictEqual(EXPECTED_DEGRADED);
+      } finally {
+        chmodDirectories(locked, 0o755);
+      }
+    });
+  });
+
+  it.skipIf(ROOT_CANNOT_BE_DENIED)('carries the same degradation on the getSessionDetail path', async () => {
+    await withTempPiHome(async (Adapter, root) => {
+      const { locked } = buildMixedTree(root);
+      const adapter = new Adapter();
+
+      try {
+        // No `filePath`: the detail counter is only reachable through the id-only
+        // rescan at pi.ts:359, because the filePath short-circuit above it returns
+        // before any scan runs. Handing one in would silently skip the whole case.
+        const lost = await adapter.getSessionDetail(sessionIdOf(PROJ_LOCKED_A, 'lockedA-1.jsonl'), null);
+        expect(lost.ok).toBe(true);
+        if (!lost.ok) throw new Error('unreachable');
+
+        // Its project directory could not be listed, so the file behind this id was
+        // never reached. Asserted per FIELD rather than as a whole object: the miss
+        // shape is deliberately not frozen here (see the unknown-id case above), and
+        // these two are the contractual part of it.
+        expect(lost.detail.messages).toEqual([]);
+        expect(lost.detail.toolHistory).toEqual([]);
+        expect(lost.warnings).toStrictEqual(EXPECTED_DEGRADED);
+
+        // …and it is a WARNING, not the `ok: false` the root-unreadable branch at
+        // pi.ts:362 returns. Its siblings were searched; only this tree was not.
+        // The readable sibling resolving completely below is what makes that
+        // distinction observable rather than asserted.
+        const found = await adapter.getSessionDetail(sessionIdOf(PROJ_OPEN_ONE, 'openone-1.jsonl'), null);
+        expect(found.ok).toBe(true);
+        if (!found.ok) throw new Error('unreachable');
+        expect(found.detail.sessionId).toBe(sessionIdOf(PROJ_OPEN_ONE, 'openone-1.jsonl'));
+        expect(found.detail.messages).toEqual([
+          { role: 'assistant', text: 'open one done', ts: new Date(at(3)).getTime() },
+        ]);
+        expect(found.detail.toolHistory).toEqual([
+          { tool: 'bash', detail: '{"command":"ls"}', ts: new Date(at(2)).getTime() },
+        ]);
+        expect(found.detail.tokenUsage).toBeNull();
+        // The warning belongs to the SCAN, not to the one session asked for: a
+        // session that WAS found still carries the loss elsewhere in the tree.
+        // Reading it as per-session would make the sibling's own detail suspect.
+        expect(found.warnings).toStrictEqual(EXPECTED_DEGRADED);
+      } finally {
+        chmodDirectories(locked, 0o755);
+      }
+    });
+  });
+
+  // The other half of the contract, and the reason `degradedWarnings` has the
+  // `count > 0 ? … : []` guard at sources.ts:99: a clean install must report
+  // NOTHING. Without this, a change that warned unconditionally — or that counted
+  // a readable directory as unreadable, or fired `onUnreadable` for an absent
+  // root — would add a warning that no other assertion in this file can see,
+  // because every other case here goes through `sessionsOf`/`detailOf` and
+  // discards the warnings. No chmod needed, so no skip.
+  it('reports no warning at all when every project directory can be listed', async () => {
+    await withTempPiHome(async (Adapter, root) => {
+      const workspace = path.join(root, 'workspace');
+      fs.mkdirSync(workspace, { recursive: true });
+      writeSessionIn(root, PROJ_OPEN_ONE, 'openone-1.jsonl', sessionEntries(workspace, 'openone-1', 'open one done'));
+      writeSessionIn(root, PROJ_OPEN_TWO, 'opentwo-1.jsonl', sessionEntries(workspace, 'opentwo-1', 'open two done'));
+      const adapter = new Adapter();
+
+      const result = await adapter.getActiveSessions(5 * MINUTE);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('unreachable');
+      // Both projects ARE listed — the empty warnings array is not a symptom of
+      // an empty scan.
+      expect(result.sessions).toHaveLength(2);
+      expect(result.warnings).toEqual([]);
+
+      const detail = await adapter.getSessionDetail(sessionIdOf(PROJ_OPEN_ONE, 'openone-1.jsonl'), null);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) throw new Error('unreachable');
+      expect(detail.warnings).toEqual([]);
     });
   });
 });

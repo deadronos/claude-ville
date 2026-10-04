@@ -1,12 +1,31 @@
 /**
- * TEST-ONLY helpers for the adapter fixtures.
+ * TEST-ONLY helpers for the adapter test suite.
  *
  * Not a `.test.ts` file, so `tsconfig.json` typechecks it and `eslint` lints it,
- * and not reachable from any production import — nothing outside the fixtures
+ * and not reachable from any production import — nothing outside the tests
  * imports this module. It lives here rather than in `shared/` because it is a
  * test convenience with no production consumer.
  */
 import type { AdapterSessionDetail, AgentAdapter, AgentSessionSummary } from '../../shared/types.js';
+
+/**
+ * `chmod 000` denies every uid but root, so a case that makes a directory
+ * unreadable by PERMISSION can only deny anything under a non-root uid. Under
+ * uid 0 the `readdir` succeeds, nothing is reported, and the case would assert
+ * nothing while still reporting green.
+ *
+ * A MODULE-level const, not a check inside the test: `it.skipIf` is evaluated at
+ * collection time, and the point is to report the case as SKIPPED in the run
+ * summary rather than as a pass that asserted nothing. An early `return` is the
+ * same overstatement as a mutation that never applied and still reported green.
+ *
+ * Read it as "the condition this case needs CANNOT be created here" — a fact
+ * about the environment, not about the adapter — which is why it lives beside
+ * the other shared fixtures rather than in any adapter's own test file. Four call
+ * sites used to carry private copies, and a drifted copy would show up as a suite
+ * that skips on one machine and not on another.
+ */
+export const ROOT_CANNOT_BE_DENIED = typeof process.getuid === 'function' && process.getuid() === 0;
 
 /**
  * `getActiveSessions` answers a union, and a fixture that is pinning an adapter's
