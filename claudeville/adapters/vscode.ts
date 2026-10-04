@@ -148,15 +148,7 @@ type SessionDetail = {
   tokens: { input: number; output: number } | null;
 };
 
-/**
- * The one window every JSONL reader below reads: the LAST 300 lines.
- *
- * `parseSession`, `getToolHistory` and `getRecentMessages` share it, and a drift
- * between them is invisible in review and subtle in the UI — a shorter window
- * drops old records from one pane and not the other. The fixture pins `300`
- * exactly for all three. `from: 'end'` is also the `readLines` default, so it is
- * stated rather than relied on.
- */
+/** The one window every JSONL reader below reads: the LAST 300 lines. */
 const SESSION_TAIL = { from: 'end', count: 300, scope: 'vscode' } as const;
 
 /**
@@ -232,9 +224,8 @@ async function parseSession(filePath: string) {
   };
 
 // A `content.txt` is not JSONL at all: the whole file is one message, so it is
-  // read as text — whole, trimmed, head-capped — and there is nothing to fold. A
-  // >300-line `content.txt` therefore reports its HEAD, unlike the JSONL path, so
-  // routing this branch through a JSONL helper would silently take its tail.
+  // read as text — whole, trimmed, head-capped. A >300-line `content.txt`
+  // therefore reports its HEAD, unlike the JSONL path.
   if (filePath.endsWith('content.txt')) {
     try {
       const text = await fs.promises.readFile(filePath, 'utf-8');
@@ -265,13 +256,11 @@ async function parseSession(filePath: string) {
   return foldEntries<SessionDetail>([...entries].reverse(), {
     init: detail,
     onEntry: foldSessionEntry,
-    // The old `break`. `foldEntries` consults `until` after every entry, exactly
-    // where the `break` sat. A pure optimisation — every write sits behind a
-    // guard — but kept so the early exit stays visible.
+    // `until` sits exactly where the old `break` did. A pure optimisation —
+    // every write is already guarded — kept so the early exit stays visible.
     until: acc => Boolean(acc.model && acc.lastMessage && acc.lastTool),
   });
 }
-
 
 type ToolEvent = { tool: string; detail: string; ts: number };
 
@@ -411,8 +400,7 @@ async function getRecentMessages(filePath: string, maxItems = 5) {
     },
   });
 
-  // GROUPED BY TYPE — agent_response rows, then assistant.message rows — not
-  // file order. See `MessageBuckets`.
+  // Grouped by type, not file order — see `MessageBuckets`.
   messages.push(...buckets.agentResponse, ...buckets.assistantMessage);
 
   return messages.slice(-maxItems);
