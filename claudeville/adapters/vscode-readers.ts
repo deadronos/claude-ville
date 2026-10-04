@@ -7,8 +7,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { debugAdapterError, readLines, readJsonlEntries, foldEntries, foldJsonl } from './jsonl-utils.js';
-
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
+import type { Dirent } from './scan-utils.js';
 
 function summarizeJson(value: unknown, maxLength = 80) {
   if (value === null || value === undefined) return '';

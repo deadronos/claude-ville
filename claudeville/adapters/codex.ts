@@ -15,12 +15,10 @@ import os from 'os';
 import type { AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError, readLines, parseJsonLines, collectJsonl, foldJsonl } from './jsonl-utils.js';
 import { extractText } from './text-utils.js';
+import type { Dirent } from './scan-utils.js';
 
 const CODEX_DIR = path.join(os.homedir(), '.codex');
 const SESSIONS_DIR = path.join(CODEX_DIR, 'sessions');
-
-// Type for directory entries from readdirSync with withFileTypes: true
-type Dirent = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 // ─── Utility ─────────────────────────────────────────────
 

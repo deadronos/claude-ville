@@ -58,16 +58,19 @@ returns an array literal outright; the other eight push onto an empty array, and
 `claude`, `hermes`, `openclaw` and `opencode` also emit `type: 'file'` entries),
 and none of it is logic to remove. `vscode.ts` was 748 lines / 569 code-only
 before the split below — it merges four storage roots across four editor channels
-(`vscode`, `vscode-insiders`, `cursor`, `offset` — `vscode.ts:24`) and cannot
+(`vscode`, `vscode-insiders`, `cursor`, `offset` — `vscode.ts:25`) and cannot
 honestly reach 400 by removing boilerplate, which is why it was split into files
-rather than trimmed. See **File layout** below.
+rather than trimmed. See **File layout** below, which records all five oversized
+adapters — `vscode`, `openclaw`, `claude`, `hermes`, `opencode` — and their
+measured results.
 
 Three helpers landed, `copilot` the reference consumer (321 → 281 lines):
 `jsonl-utils` owns `readJsonlEntries`, `collectJsonl` (the read → parse → fold
 → catch → slice envelope behind `getToolHistory` / `getRecentMessages`),
 `foldEntries` (`jsonl-utils.ts:147`) and `foldJsonl` (`:192`), the two
 accumulator folders;
-`scan-utils` owns `collectScanByMtime` (readdir → stat → mtime-filter); and
+`scan-utils` owns `collectScanByMtime` (readdir → stat → mtime-filter) and the
+single exported `Dirent` type (`scan-utils.ts:43`); and
 `sanitize` owns `summarizeToolInput`. A fourth, `buildSessionSummary`, was
 measured against all nine summary literals and deferred — they are not uniform:
 `openclaw` and `pi` add `displayName`, `agentType` is `'main'` / `'sub-agent'` /
@@ -122,7 +125,7 @@ Caveats for anyone converting an adapter:
   session row reports a stale tool. Same guards, opposite direction, opposite
   correctness — codex's is a real defect, deliberately unfixed. Anyone copying
   either reader verbatim needs to know which way round it is, so the contrast is
-  now written into both files (`claude.ts:78`, `codex.ts:274`) rather than left
+  now written into both files (`claude-readers.ts:76`, `codex.ts:274`) rather than left
   to be re-derived from the fold helpers' defaults.
 - `vscode` makes it a THIRD file, and splits **within** one adapter.
   `parseSession` (`vscode-readers.ts:163`) is newest-first — `readJsonlEntries`, then
@@ -159,23 +162,23 @@ Caveats for anyone converting an adapter:
       `string[]`, and what added the `<operation> resolve` label for a throwing
       callback (`pi.ts:260`).
     - `openclaw` and `hermes` enumerate **files** in the session directory
-      directly, with no project-dir level to descend through (`openclaw.ts:245`,
-      `hermes.ts:240`), so `fileFor` still has nothing to map there and the
+      directly, with no project-dir level to descend through (`openclaw.ts:88`,
+      `hermes.ts:36`), so `fileFor` still has nothing to map there and the
       `isDirectory()` filter would drop every candidate.
     - `gemini` nests one level deeper than `pi`: project dir → `chats/` →
-      session files (`gemini.ts:333` joins the `chats` subdirectory before
+      session files (`gemini.ts:148` joins the `chats` subdirectory before
       reading). It **is** converted, on `pi`'s many-paths `fileFor` — the project
       directory is the child and `fileFor` hands back the whole `session-*`
       listing beneath it, which is also how `projectHash` reaches the record,
       since `build` receives the child directory as `name`. `fileFor` is called
-      synchronously, so that listing is a `readdirSync` (`gemini.ts:337`); see the
+      synchronously, so that listing is a `readdirSync` (`gemini.ts:152`); see the
       Compliance note below.
     - `opencode` **does** apply a threshold: `getSessionFiles(activeThresholdMs)`
-      (`opencode.ts:205`) stats each candidate and drops anything older
-      (`opencode.ts:212`), fed live from `getActiveSessions` (`opencode.ts:412`).
+      (`opencode.ts:55`) stats each candidate and drops anything older
+      (`opencode.ts:61`), fed live from `getActiveSessions` (`opencode.ts:209`).
       What does not fit is the *shape*, not the absence of a threshold —
       discovery and filtering are **two separate phases**. `collectJsonFiles`
-      (`opencode.ts:42`) is an unbounded recursive walk that never stats and
+      (`opencode.ts:35`) is an unbounded recursive walk that never stats and
       yields arbitrary `.json` paths at any depth; the stat runs afterwards as a
       second pass over that result. `collectScanByMtime` fuses readdir → stat →
       build across child *directories* in one pass, so it cannot express a
@@ -186,13 +189,13 @@ Caveats for anyone converting an adapter:
       back` has nowhere to put a per-level prune. That is inexpressible here; it
       needs a deeper abstraction, not an adapter tweak. `codex` is therefore
       **fold-only**: its three readers are on `collectJsonl` / `foldJsonl`, while
-      `scanRecentRollouts` (`codex.ts:183`) was left alone on purpose. That is
+      `scanRecentRollouts` (`codex.ts:181`) was left alone on purpose. That is
       also why `codex.ts` GREW where `gemini.ts` shrank — the converted logic is
       3 lines shorter, against four added `type` aliases and a dozen comment lines
       carrying the direction trap above.
     - `claude` is readers-only too, and **not** for `codex`'s reason. Its scan is
       also four levels — `projects/` → session dir → `subagents/` →
-      `agent-*.jsonl` (`claude.ts:383`) — so the shapes look alike, but the
+      `agent-*.jsonl` (`claude.ts:128`) — so the shapes look alike, but the
       blocking difference is **async**. `collectScanByMtime` calls `fileFor`
       SYNCHRONOUSLY (`scan-utils.ts:74`, the sanctioned exception in Compliance
       below), and every `fs` call in claude's scan is async, fanning out with a
@@ -245,7 +248,7 @@ Every adapter method that performs file or network I/O must be implemented as an
 - **Synchronous `fileFor` (the one sanctioned exception)**: `collectScanByMtime`
   calls `fileFor` synchronously (`scan-utils.ts:74`), so an adapter that has to
   enumerate a directory in order to answer must do so with `fs.readdirSync`.
-  `pi.ts:262` and `gemini.ts:337` are the cases in the tree today. This exception
+  `pi.ts:262` and `gemini.ts:152` are the cases in the tree today. This exception
   is bounded by the helper rather than open-ended: a throw is caught, logged as
   `<operation> resolve`, and confined to that one child directory, so a failing
   enumeration cannot take down its siblings.
@@ -253,7 +256,7 @@ Every adapter method that performs file or network I/O must be implemented as an
   `shared/types.ts:89` declares it as `getWatchPaths(): WatchPath[]` and the
   registry calls it without awaiting (`adapters/index.ts:91`). The three adapters
   that must enumerate a directory to answer it therefore use `fs.readdirSync`
-  inside it — `claude.ts:493`, `gemini.ts:465`, `openclaw.ts:599`. That is a
+  inside it — `claude.ts:275`, `gemini.ts:240`, `openclaw.ts:361`. That is a
   structural consequence of the interface, not the "must be async" rule being
   deliberately broken; converting these needs an interface change first.
 - **Concurrent scans**: When iterating over multiple directories or files, use `Promise.all` to run operations in parallel rather than sequential `for` loops.
@@ -263,19 +266,19 @@ Every adapter method that performs file or network I/O must be implemented as an
 Note that the rules above are not uniformly held, and the eight remaining
 `fs.readdirSync` sites breach them in two different ways:
 
-- `claude.ts:493`, `gemini.ts:460`, `openclaw.ts:599` — inside `getWatchPaths()`,
+- `claude.ts:275`, `gemini.ts:235`, `openclaw.ts:361` — inside `getWatchPaths()`,
   so they cannot be async at all without an interface change.
-- `openclaw.ts:276` — inside the synchronous helper `findAgentDatabases()`, called
+- `openclaw.ts:120` — inside the synchronous helper `findAgentDatabases()`, called
   from async paths.
-- `gemini.ts:92,110` — inside synchronous project-path resolution, called from
+- `gemini.ts:91,109` — inside synchronous project-path resolution, called from
   async paths.
-- `openclaw.ts:465,519` — inside async methods, so these breach the "use
-  `fs.promises`" rule without breaching the "must be async" rule. `openclaw.ts:519`
+- `openclaw.ts:227,281` — inside async methods, so these breach the "use
+  `fs.promises`" rule without breaching the "must be async" rule. `openclaw.ts:281`
   additionally has no try of its own.
 
 All are pre-existing and unconverted; converting those adapters is what retires
 them. Widening `fileFor` to accept a promise would likewise retire `pi.ts:262`
-and `gemini.ts:337` — it is a real option, but it belongs in its own change with
+and `gemini.ts:152` — it is a real option, but it belongs in its own change with
 its own concurrency tests rather than in an adapter conversion.
 
 The `getAllSessions` function in `adapters/index.ts` calls all adapters concurrently. If any adapter blocks on synchronous I/O, it blocks the entire scan for all providers.
@@ -318,7 +321,67 @@ count.
 | File | Total | Code-only | Owns |
 | --- | --- | --- | --- |
 | `vscode.ts` | 380 | 317 | adapter class, storage roots, candidate merge, `scanAllSessions` |
-| `vscode-readers.ts` | 382 | 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
+| `vscode-readers.ts` | 381 | 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
 
 Down from 748 / 569 in one file. If one file is ever not enough, add
 `<name>-scan.ts`; prefer the fewest files.
+
+Five more were then split the same way — `openclaw`, `claude`, `hermes`,
+`opencode`, `gemini` — and the measured result, all six adapters:
+
+| Adapter | Before (total / code-only) | `<name>.ts` | `<name>-readers.ts` | Readers own |
+| --- | --- | --- | --- | --- |
+| `vscode` | 748 / 569 | 380 / 317 | 381 / 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
+| `openclaw` | 619 / 486 | 381 / 294 | 250 / 198 | legacy-JSONL and SQLite-transcript readers, `toolBlockInfo`, `normalizeTokenUsage` |
+| `claude` | 626 / 486 | 371 / 303 | 269 / 188 | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
+| `hermes` | 517 / 420 | 257 / 204 | 274 / 224 | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
+| `opencode` | 470 / 417 | 267 / 238 | 213 / 186 | part/tool/message shaping, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
+| `gemini` | 473 / 324 | 248 / 175 | 234 / 152 | `readJsonFile`, `loadSessionMessages`, `parseSession`, tool/message readers, `getTokenUsage`, `TokenFold` |
+
+The split boundary is uniform: **everything above `export class XAdapter` is the
+format-specific layer.** Within that block, what stays on the `<name>.ts` side is
+whatever the **scan** needs, and what moves is whatever only the readers need —
+so two of the five needed the line drawn on a *shared value* rather than on
+readership, which is where the one-way rule bit:
+
+- `claude` needed `CLAUDE_DIR`, because `getSessionDetail`,
+  `resolveSessionFilePath` and `getSessionFileActivity` all resolve paths under
+  it while the class needs it for `homeDir` and `getWatchPaths`. It moved **to
+  the readers side** and `claude.ts` imports it back; leaving it behind would
+  have made the dependency two-way.
+- `opencode` and `hermes` instead kept their `queryDb` / `getSessionFiles` /
+  `readDbSessionDetail` on the `<name>.ts` side, because those need `DB_FILE`,
+  `SESSION_DIR` and `DB_PATH`. `getDbMessages` stayed for the same reason: it
+  reads through `queryDb`, so moving it while `queryDb` stayed would have been a
+  two-way reference. What stays is therefore "what the scan needs", not "what is
+  named `scan*`".
+- `gemini` needed no such exception, which is the rule working rather than the
+  rule being bent: the scan keeps `GEMINI_DIR`, `TMP_DIR`, `resolveProjectPath`
+  and `scanActiveSessions`, and not one of the four readers touches any of them.
+  The readers side needed only `fs`, so the boundary fell exactly where "what the
+  scan needs" says it should.
+
+Neither `openclaw` nor the others needed a third file. `openclaw.ts` is the
+tightest at 381 lines, and it got there only because the shared event/usage
+shapers (`toolBlockInfo`, `normalizeTokenUsage`, `decodeEventRows`,
+`applyEventsToDetail`, `readDbDetail`) are all genuinely reader-side; they are
+used by the class's `readDbSessionDetail` too, which imports them back in the
+same one-way direction `vscode.ts` uses for `parseSession`.
+
+**`Dirent` lives in `scan-utils.ts` and is declared once** (`scan-utils.ts:43`).
+It was declared seven times: the wide `{ name, isDirectory, isFile }` in `codex`,
+`opencode`, `claude`, `vscode`, `vscode-readers` and `openclaw`, and a **narrower**
+`{ name, isDirectory }` in `scan-utils` itself. The reconciled shape is the wide
+one, and that direction is load-bearing rather than cosmetic: the narrow shape is
+a subset, so every call site that only calls `isDirectory()` still type-checks,
+whereas narrowing the shared type back breaks `opencode`'s `collectJsonFiles`,
+whose `(entry: Dirent)` callback calls `isFile()`. `scan-utils` is the home
+because it is the shared, provider-agnostic module that already hosted one of the
+seven copies — a dedicated one-type module would have been a sixth shared file
+for no gain. `gemini` still imports `Dirent` from `fs`: that is a *use* of Node's
+canonical type, not an eighth declaration.
+
+Known duplication, deliberately not consolidated: `opencode`'s `readJson`
+duplicates gemini's `readJsonFile` shape (read → `JSON.parse` → catch). Unifying
+them would touch `gemini`, which is already merged, and buys no size — both
+adapters are now under the criterion.
