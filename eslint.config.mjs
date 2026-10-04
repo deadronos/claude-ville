@@ -45,6 +45,10 @@ export default tseslint.config(
   {
     files: [
       'claudeville/server.ts',
+      'claudeville/server-config.ts',
+      'claudeville/server-http.ts',
+      'claudeville/server-ws.ts',
+      'claudeville/server-watch.ts',
       'claudeville/adapters/**/*.{ts,js}',
       'claudeville/services/**/*.ts',
       'collector/**/*.{ts,js}',
