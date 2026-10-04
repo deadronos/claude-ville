@@ -82,7 +82,7 @@ export function parseJsonLines(lines: string[], scope = 'jsonl-utils') {
  * back — `claude`, `codex`, `copilot`, `gemini`, `hermes`, `openclaw`, `pi`,
  * `vscode` — and this is where that pairing is expressed once. `opencode` is
  * the exception and never calls either: it stores whole `.json` documents, so
- * it reads them with its own `readJson` (`opencode.ts:58`) and takes its index
+ * it reads them with its own `readJson` (`opencode-readers.ts:20`) and takes its index
  * from SQLite rather than from a JSONL stream.
  */
 export async function readJsonlEntries(
