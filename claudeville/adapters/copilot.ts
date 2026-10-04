@@ -212,10 +212,14 @@ async function getTokenUsage(filePath: string): Promise<{ input: number; output:
  *
  * `fileFor` is `existsSync`-free by design: copilot's layout is
  * `session-state/{uuid}/events.jsonl`, so there is no per-child enumeration that
- * could fail. A missing or unstattable candidate is a per-ITEM loss contained by
- * `collectScanByMtime`'s own `stat` catch, and copilot has no cheap signal for it,
- * so it stays un-reported (audit instance 22 rated `getTokenUsage` the same way:
- * per-row tolerant by construction).
+ * could fail. A missing candidate is the common case rather than an edge — a
+ * session directory Copilot created but has not written to yet — and it reaches
+ * `onUnreadable` under the `'stat'` scope, where it is dropped on purpose: an
+ * empty directory is absence, not a lost session, and counting it would warn on
+ * every in-flight session. A candidate that exists but cannot be statted is the
+ * genuinely lossy case and copilot has no cheap signal to tell it apart, so it
+ * rides in the shared helper's `debugAdapterError` (audit instance 22 rated
+ * `getTokenUsage` the same way: per-row tolerant by construction).
  */
 async function scanAllSessions(activeThresholdMs: number): Promise<{ records: CopilotScanRecord[]; rootUnreadable: boolean }> {
   let rootUnreadable = false;
@@ -227,7 +231,12 @@ async function scanAllSessions(activeThresholdMs: number): Promise<{ records: Co
     fileFor: (name) => path.join(SESSION_STATE_DIR, name, 'events.jsonl'),
     build: ({ name, filePath, mtimeMs }) => ({ filePath, mtime: mtimeMs, sessionId: name }),
     onUnreadable: (scope, err, dir) => {
-      // Copilot's `fileFor` never enumerates a child, so only the root can fail.
+      // Only the root can fail for copilot. `'child'` cannot happen — `fileFor`
+      // never enumerates — and `'stat'` is the routine `ENOENT` for a
+      // `session-state/{uuid}/` holding no `events.jsonl`, which is an empty
+      // directory rather than a lost session. Counting it would warn on every
+      // session dir Copilot has created but not yet written, so it is read and
+      // dropped deliberately here, not by accident of the default.
       if (scope !== 'root') return;
       rootUnreadable = true;
       debugAdapterError('copilot', 'scanAllSessions root', err, dir);

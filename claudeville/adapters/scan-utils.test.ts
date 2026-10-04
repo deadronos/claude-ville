@@ -176,6 +176,46 @@ describe('collectScanByMtime', () => {
     expect(idsOf(result)).toEqual(['present']);
   });
 
+  it('reports an unstattable candidate as scope stat, naming the file', async () => {
+    // The per-FILE failure that `debugAdapterError` alone left invisible: it is a
+    // no-op unless DEBUG is set, so the skip used to reach nothing an operator
+    // could see. `'stat'` carries it now, which is what lets copilot tell this
+    // apart from `'root'` and decide — deliberately, see copilot.ts — that an
+    // `existsSync`-free candidate is absence rather than loss.
+    //
+    // Reachable without any race: `fileFor` returning a path for a child that
+    // holds no such file is copilot's ordinary shape, not a filesystem trick.
+    makeSession('present');
+    fs.mkdirSync(path.join(sessionDir(), 'empty'), { recursive: true });
+    const calls: { scope: string; path: string }[] = [];
+
+    const result = await collectScanByMtime<ScanRecord>(scanOptions({
+      onUnreadable: (scope, _err, dir) => calls.push({ scope, path: dir }),
+    }));
+
+    expect(idsOf(result)).toEqual(['present']);
+    expect(calls).toStrictEqual([{ scope: 'stat', path: eventsFile('empty') }]);
+  });
+
+  it('keeps a stat failure from being reported as a lost child directory', async () => {
+    // pi and gemini both count `'child'` in units of project directories, and
+    // both exclude `'stat'` deliberately — a stat failure is one file removed in
+    // between, not a directory that could not be read. This drives the exact
+    // shape both adapters use (`else if (scope === 'child')`) with a missing
+    // candidate present, so folding `'stat'` into that counter turns this red.
+    makeSession('present');
+    fs.mkdirSync(path.join(sessionDir(), 'empty'), { recursive: true });
+    let childrenUnreadable = 0;
+
+    await collectScanByMtime<ScanRecord>(scanOptions({
+      onUnreadable: (scope) => {
+        if (scope === 'child') childrenUnreadable += 1;
+      },
+    }));
+
+    expect(childrenUnreadable).toBe(0);
+  });
+
   it('builds one record per path when fileFor returns an array, in the order returned', async () => {
     // pi's shape: one child directory holding many *.jsonl files. The two paths
     // are returned in REVERSE alphabetical order on purpose, so a helper that

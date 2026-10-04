@@ -85,6 +85,16 @@ export async function collectScanByMtime<T>(
      *   adapter has another source.
      * - `'child'` — one child directory could not be enumerated. Its siblings
      *   survive, so this is a per-ITEM degradation and belongs in `warnings`.
+     * - `'stat'` — one candidate FILE could not be statted. Reachable, and for
+     *   copilot routinely so: its `fileFor` is `existsSync`-free by design, so a
+     *   `session-state/{uuid}/` holding no `events.jsonl` reaches `stat` and
+     *   raises `ENOENT`. That is absence rather than loss — the directory simply
+     *   has no session in it yet — which is why copilot reads `'stat'` and
+     *   deliberately counts nothing. It is in the union so the channel is
+     *   COMPLETE: a caller that has to tell "this file could not be read" from
+     *   "there was no file here" can, rather than inferring it from the absence
+     *   of a callback. The `dir` argument is the file's own path for `'stat'`
+     *   and a directory for the other two.
      *
      * Never called for a root that simply does not exist: `existsSync` already
      * answered, and absence is data, not failure.
@@ -96,7 +106,7 @@ export async function collectScanByMtime<T>(
      * adapters AND every assertion in this helper's own suite, for no extra
      * information. A callback keeps the one new channel opt-in and local.
      */
-    onUnreadable?: (scope: 'root' | 'child', err: unknown, dir: string) => void;
+    onUnreadable?: (scope: 'root' | 'child' | 'stat', err: unknown, dir: string) => void;
   },
 ): Promise<T[]> {
   const { dir, scope, operation, thresholdMs, fileFor, build, onUnreadable } = opts;
@@ -131,6 +141,7 @@ export async function collectScanByMtime<T>(
           return await build({ name: child.name, filePath, mtimeMs: stat.mtimeMs });
         } catch (err) {
           debugAdapterError(scope, `${operation} stat`, err, filePath);
+          onUnreadable?.('stat', err, filePath);
           return null;
         }
       }));
