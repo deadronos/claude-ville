@@ -7,7 +7,7 @@ import { setCorsHeaders, sendError } from '../shared/http-utils.js';
 import { createApiRouteHandler } from '../shared/api-routes.js';
 import { flattenHistoryEntries } from '../shared/history-utils.js';
 import {
-  getAllSessions,
+  collectFromAdapters,
   getSessionDetailByProvider,
   getActiveProviders,
 } from './adapters/index.js';
@@ -29,14 +29,25 @@ import { startFileWatcher, stopFileWatcher } from './server-watch.js';
 
 // Shared read API surface; this server sources data from live adapter pulls.
 const handleApiRoute = createApiRouteHandler({
-  getSessions: async () => ({ sessions: await getAllSessions(ACTIVE_THRESHOLD_MS) }),
+  // The adapter error contract's REST surface. `errors` names every provider
+  // that could not be read at all and `warnings` every record set that was
+  // degraded but still listed, which is what turns "hermes has no sessions" into
+  // "hermes could not be read (store-unreadable)". Both are additive fields; the
+  // sessions are byte-for-byte what they were.
+  getSessions: async () => {
+    const { sessions, errors, warnings } = await collectFromAdapters(ACTIVE_THRESHOLD_MS);
+    return { sessions, errors, warnings };
+  },
   getTeams: async () => (claudeAdapter?.getTeams ? claudeAdapter.getTeams() : []),
   getTasks: async () => (claudeAdapter?.getTasks ? claudeAdapter.getTasks() : []),
   getProviders: () => getActiveProviders(),
   getUsage: () => usageQuota.fetchUsage(),
   getSessionDetail: (sessionId, project, provider) => getSessionDetailByProvider(provider, sessionId, project),
   getHistory: async (limit) => {
-    const sessions = await getAllSessions(ACTIVE_THRESHOLD_MS);
+    // History is a flattened view of the session rows, so it takes the sessions
+    // alone. The diagnostics belong to `/api/sessions`, which is where the
+    // question "why is this provider missing?" is asked.
+    const { sessions } = await collectFromAdapters(ACTIVE_THRESHOLD_MS);
     return flattenHistoryEntries(
       sessions.map((session) => ({
         provider: session.provider,
