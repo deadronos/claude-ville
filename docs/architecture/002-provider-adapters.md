@@ -162,7 +162,7 @@ Caveats for anyone converting an adapter:
       `string[]`, and what added the `<operation> resolve` label for a throwing
       callback (`pi.ts:260`).
     - `openclaw` and `hermes` enumerate **files** in the session directory
-      directly, with no project-dir level to descend through (`openclaw.ts:88`,
+      directly, with no project-dir level to descend through (`openclaw.ts:126`,
       `hermes.ts:36`), so `fileFor` still has nothing to map there and the
       `isDirectory()` filter would drop every candidate.
     - `gemini` nests one level deeper than `pi`: project dir → `chats/` →
@@ -258,7 +258,7 @@ sessions.
 The house rule, which this was the last violation of, is: **select the raw column
 and parse it per row in JS.** `normalizeDbJson` (`opencode-readers.ts:77-84`,
 returning the raw string on a parse failure), `safeJsonParse`
-(`sqlite-utils.ts:104-111`, returning `null`) and `decodeEventRows` in
+(`sqlite-utils.ts:147-154`, returning `null`) and `decodeEventRows` in
 `openclaw-readers.ts` all do this, and `getDbMessages` had always done it on the
 same `message.data` column that `getDbSessions` was reaching into SQL forty lines
 away. After the fix one malformed row costs **that one session** its model and
@@ -276,6 +276,61 @@ listing. A table too far from the expected shape to answer still returns null an
 takes the legacy-file path, which is what that fallback is genuinely for — a
 migrated install has no `sessions/` directory for it to find.
 
+**A database that will not open must not suppress the agent's legacy listing.**
+`openclaw` is the one HYBRID adapter: every agent can have both a SQLite
+transcript and a legacy `sessions/*.jsonl` directory, and `getActiveSessions`
+skips the legacy half for an agent whose database produced its listing. Deciding
+that from "a path exists where the database should be" is a guess, and a wrong
+one is total: a DIRECTORY named `openclaw-agent.sqlite` and a regular file of
+garbage both register as "this agent has a database", both then fail to open, and
+the agent loses **both** halves of its sessions — while `getWatchPaths` still
+advertises the path as a `type: 'file'` watch entry, so the UI also watches
+something that can never produce data. There are now three tiers, each with its
+own question:
+
+- **`isSqliteFile`** (`sqlite-utils.ts:20`) — "is this a regular file?" This is
+  what `findAgentDatabases` (`openclaw.ts:167`) gates on, so a directory-shaped
+  path is not an agent database at all. It deliberately does NOT read the
+  header: it only asks `statSync().isFile()`, so a regular file that is not a
+  database passes it, and `openReadonlySqlite`'s own gate answers that case.
+- **The open itself** — `getDbSessions` returns which agents the database
+  **actually answered for**, and `getActiveSessions` skips the legacy scan for
+  exactly those (`dbBackedAgents`, `openclaw.ts:323`). This replaced a set
+  computed from path existence *before* any read, so the fallback is now driven
+  by an observation rather than a second guess.
+- **`isOpenableSqliteDatabase`** (`sqlite-utils.ts:105`) — "will this actually
+  be read?" `getWatchPaths` (`openclaw.ts:458`) gates on it, because a
+  `type: 'file'` watch entry is a promise that the path yields data. The check
+  opens a read-only handle **and reads one row**: `better-sqlite3` opens lazily,
+  so a file of garbage yields a usable handle and only raises `file is not a
+  database` on the first read — "the open succeeded" is not the answer on its
+  own.
+
+**A table that is too far from the expected shape is `null`, not `[]`.** Within
+that open, `openclaw`'s window query is projected from `pragma_table_info`
+(`sessionWindowSql`, `openclaw.ts:211`) exactly as `hermes.ts` projects its
+`sessions` query, because the literal it replaced named `transcript_updated_at`
+unconditionally and drift made the agent report zero sessions instead of the one
+it held. Missing a required table, missing `session_id`, or missing every activity
+column answers `null` — "the database did not answer", which is what sends the
+agent to its legacy listing — while a query that ran and found nothing answers
+`[]`, which is data. An empty array from a *failed* query is the third state the
+audit called out, and it is the one that has to be kept separate from the second.
+
+**A directory that exists but cannot be read is not an empty directory.**
+`readAgentDirs` (`openclaw.ts:68`) answers `null` for "could not enumerate" against
+`[]` for "there are no agents", and reports the failure on `console.error` — the
+unconditional channel `adapters/index.ts:60` already uses for an adapter about to
+report less data than it should. `debugAdapterError` is the wrong channel for
+this: it is a no-op unless `DEBUG` is set, which is why an unreadable
+`~/.openclaw/agents` was indistinguishable from an install with no openclaw agents
+in it (`isAvailable()` kept answering `true` throughout). `scanAgentSessionFiles`
+has the same collapse one level down, for a single agent's `sessions/`, and is
+reported the same way; its per-FILE `stat` catch stays on `debugAdapterError`,
+because one unstattable file is noise rather than a collapsed listing. The third
+`AGENTS_DIR` readdir, in `getSessionDetail`'s id-only scan, still has no `try` of
+its own and therefore throws rather than collapsing — recorded below, not fixed.
+
 **`queryAll`'s swallow stays.** It answers `[]` for both "no rows" and "the query
 failed", which is wrong as a *signal* and load-bearing as *containment*: three call
 sites run it inside a `.map()` — `hermes.ts` per session, and
@@ -284,11 +339,17 @@ enclosing loop, be caught by `withReadonlySqlite`, and return `null` for the WHO
 listing. The swallow is what confines a failure to one row. So tolerance is fixed
 per call site, and where a call site must distinguish failure from emptiness it
 uses `db.prepare` inside its own `try`, as `hermes.ts` does for the `sessions`-by-id
-read that feeds `tokenUsage` (catching it in the `withReadonlySqlite` callback
-instead would answer null for the whole callback and lose the messages too).
-The unresolved half is observability, not data: `adapters/index.ts` still reduces
-every adapter failure to "this provider has no sessions", so a reader failure
-remains indistinguishable from an idle agent.
+read that feeds `tokenUsage`, and as `openclaw.ts` now does for its window read
+(catching it in the `withReadonlySqlite` callback instead would answer `null` for
+the whole callback and take the agent's listing with it). Two `sqlite-utils.ts`
+siblings came out of this — `isOpenableSqliteDatabase` and `tableColumns` — rather
+than a change to `queryAll` or `hasTable`, whose behaviour is shared with `hermes`
+and `opencode`. `tableColumns` is the helper `hermes.ts` already had privately, so
+it lives in the shared module rather than becoming a second byte-identical copy;
+`hermes.ts`'s own copy is left for a separate change. The unresolved half is
+observability, not data: `adapters/index.ts` still reduces every adapter failure to
+"this provider has no sessions", so a reader failure remains indistinguishable from
+an idle agent.
 
 ## Compliance
 
@@ -306,7 +367,7 @@ Every adapter method that performs file or network I/O must be implemented as an
   `shared/types.ts:89` declares it as `getWatchPaths(): WatchPath[]` and the
   registry calls it without awaiting (`adapters/index.ts:91`). The three adapters
   that must enumerate a directory to answer it therefore use `fs.readdirSync`
-  inside it — `claude.ts:275`, `gemini.ts:240`, `openclaw.ts:361`. That is a
+  inside it — `claude.ts:275`, `gemini.ts:240`, `openclaw.ts:449`. That is a
   structural consequence of the interface, not the "must be async" rule being
   deliberately broken; converting these needs an interface change first.
 - **Concurrent scans**: When iterating over multiple directories or files, use `Promise.all` to run operations in parallel rather than sequential `for` loops.
@@ -316,15 +377,21 @@ Every adapter method that performs file or network I/O must be implemented as an
 Note that the rules above are not uniformly held, and the eight remaining
 `fs.readdirSync` sites breach them in two different ways:
 
-- `claude.ts:275`, `gemini.ts:235`, `openclaw.ts:361` — inside `getWatchPaths()`,
-  so they cannot be async at all without an interface change.
-- `openclaw.ts:120` — inside the synchronous helper `findAgentDatabases()`, called
-  from async paths.
+- `claude.ts:275`, `gemini.ts:235`, `openclaw.ts:449` — inside `getWatchPaths()`,
+  so they cannot be async at all without an interface change. `openclaw`'s is now
+  inside `readAgentDirs`, shared with the two scan sites below.
+- `openclaw.ts:70` — inside the synchronous helper `readAgentDirs()`, called from
+  `findAgentDatabases` (`:156`), `getActiveSessions` (`:320`) and
+  `getWatchPaths` (`:449`), all from async paths. It used to be three separate
+  sites, at `openclaw.ts:120`, `:227` and `:361`.
 - `gemini.ts:91,109` — inside synchronous project-path resolution, called from
   async paths.
-- `openclaw.ts:227,281` — inside async methods, so these breach the "use
-  `fs.promises`" rule without breaching the "must be async" rule. `openclaw.ts:281`
-  additionally has no try of its own.
+- `openclaw.ts:370` — inside `getSessionDetail`, so it breaches the "use
+  `fs.promises`" rule without breaching the "must be async" rule. It additionally
+  has no try of its own, so an unreadable agents directory THROWS there rather
+  than collapsing; `adapters/index.ts:78` catches it to an empty detail for one
+  session. Still unconverted and still unfixed — it is the one `AGENTS_DIR`
+  enumeration with neither a try nor a legibility report.
 
 All are pre-existing and unconverted; converting those adapters is what retires
 them. Widening `fileFor` to accept a promise would likewise retire `pi.ts:262`
@@ -382,11 +449,18 @@ Five more were then split the same way — `openclaw`, `claude`, `hermes`,
 | Adapter | Before (total / code-only) | `<name>.ts` | `<name>-readers.ts` | Readers own |
 | --- | --- | --- | --- | --- |
 | `vscode` | 748 / 569 | 380 / 317 | 381 / 258 | `parseSession`, tool/message readers, `getTokenUsage`, `hasRealActivity` |
-| `openclaw` | 619 / 486 | 381 / 294 | 250 / 198 | legacy-JSONL and SQLite-transcript readers, `toolBlockInfo`, `normalizeTokenUsage` |
+| `openclaw` | 619 / 486 | 470 / 318 | 250 / 198 | legacy-JSONL and SQLite-transcript readers, `toolBlockInfo`, `normalizeTokenUsage` |
 | `claude` | 626 / 486 | 371 / 303 | 269 / 188 | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
 | `hermes` | 517 / 420 | 257 / 204 | 274 / 224 | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
 | `opencode` | 470 / 417 | 267 / 238 | 213 / 186 | part/tool/message shaping, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
 | `gemini` | 473 / 324 | 248 / 175 | 234 / 152 | `readJsonFile`, `loadSessionMessages`, `parseSession`, tool/message readers, `getTokenUsage`, `TokenFold` |
+
+`openclaw`'s `<name>.ts` cell is the only one that has grown since its row was
+measured: 381 / 294 → 470 / 318, from the `pragma_table_info` projection above and
+the `readAgentDirs` legibility work. Both are decisions about which database and
+which directory to read, which is the scan's own business, so they stayed on this
+side of the boundary rather than becoming reader code. It is still under the
+criterion on code-only lines, which is the one the boundary is drawn on.
 
 The split boundary is uniform: **everything above `export class XAdapter` is the
 format-specific layer.** Within that block, what stays on the `<name>.ts` side is
@@ -439,12 +513,14 @@ hides by swallowing the `EISDIR`. The eight sites are `claude.ts:133` (`agent-*.
 under `subagents/`), `claude.ts:201` (`*.jsonl` under a project),
 `claude.ts:339` (`*.json` under a task group), `codex.ts:220` (`rollout-*.jsonl`
 at the day level), `gemini.ts:152` (`session-*.json`/`.jsonl` in `chats/`),
-`openclaw.ts:88` (`isPrimarySessionFile` in `sessions/`), `pi.ts:262` (`*.jsonl`
+`openclaw.ts:126` (`isPrimarySessionFile` in `sessions/`), `pi.ts:262` (`*.jsonl`
 in a project directory) and `vscode.ts:181` (`*.jsonl` in `transcripts/`).
 `hermes.ts:36-38` and `opencode.ts:37-41` always had the guard.
 
 This is distinct from the `isDirectory()` filters on the directory-level fan-out
-(`claude.ts:109`/`:121`/`:190`, `openclaw.ts:121`/`:228`/`:282`/`:362`,
+(`claude.ts:109`/`:121`/`:190`, `openclaw.ts:71` — now the single filter inside
+`readAgentDirs`, reached from `findAgentDatabases`/`getActiveSessions`/`getWatchPaths`
+— and `openclaw.ts:371` (in `getSessionDetail`, the one left with its own readdir),
 `codex.ts:191`/`:201`/`:211`), which want directories — including `codex`'s
 per-level `.sort().reverse().slice(0, 3)`/`6`/`14` prune, which is why a stray
 `README.md` cannot evict a real year there. `gemini.ts:109` stays a bare
