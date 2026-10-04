@@ -425,3 +425,37 @@ After applying line-scoped doc edits, grep the whole doc (and sibling docs) for 
 - Source: user_feedback
 - Related Files: docs/architecture/005-react-components.md, docs/architecture/006-r3f-components.md, claudeville/src/presentation/react/world/hooks/useSelectedAgentOverlay.ts, claudeville/src/presentation/react/world/WorldView.tsx
 - Tags: docs, consistency, review
+
+---
+
+## [LRN-20261004-001] error
+
+**Logged**: 2026-10-04T00:00:00Z
+**Priority**: high
+**Status**: pending
+**Area**: testing
+
+### Summary
+A mutation sweep reports "green" when the mutation never applied to the file under test. This produced fake confidence three separate times during the #117 adapter conversions, twice reporting a passing result over a dirty or unmutated file.
+
+### Details
+1. **B2c gemini** — `sed` targeted `from './gemini.js'` but the fixture loads the module via dynamic `import()`, so 56 mutations ran against the unmutated file and reported green.
+2. **B3b vscode, first run** — the runner applied post-sweep overrides during the pre-sweep, and a REFUSED mutation failed to restore pristine bytes. 44 mutations were scored against a dirty file, yielding a bogus 87 RED / 4 GREEN split. Caught because 4 cells came back green against expectations.
+3. **B3b vscode, second run** — same class again, when an earlier brief's direction claim ("`extractDetailFromEntries` walks forward") was wrong and the real loop was newest-first. Here the *failure* was in the brief, not the sweep: the characterization agent's result contradicted the brief and was correct.
+
+The tell in every case is the same: **a suspiciously high green count, or a mutation expected to be red coming back green.** A green result carries no information unless the sweep can prove the edit landed.
+
+### Suggested Action
+Any mutation sweep must, before trusting a green:
+- **positive control** — mutate something the suite definitely asserts, confirm RED, and abort the sweep if it is not;
+- **refuse** any mutation whose pattern is not present *exactly once* in the file (catches 3 bad patterns that previously "passed");
+- **re-hash the target after each write** to confirm the bytes changed;
+- require exit ≠ 0 **with zero suite-level errors** to score RED — a non-compiling file must not count as a pass, since it cannot distinguish a wrong fold from a wrong splice;
+- **sha-verify every restore**, and have a *different* pass re-run the sweep from scratch rather than trusting the report.
+
+Corollary: when a subagent contradicts the brief, check the source before dismissing it. Two of the three incidents above would have been shipped as bugs if the agent had deferred.
+
+### Metadata
+- Source: self_correction
+- Related Files: claudeville/adapters/codex.fixture.test.ts, claudeville/adapters/gemini.fixture.test.ts, claudeville/adapters/claude.fixture.test.ts, claudeville/adapters/vscode.fixture.test.ts
+- Tags: mutation-testing, characterization, testing, false-confidence
