@@ -93,6 +93,32 @@ const rollout = (year: string, month: string, day: string, name: string, entries
   writeRollout(year, month, day, `rollout-${name}.jsonl`, entries);
 
 /**
+ * Runs `fn` against a THROWAWAY home directory with its own fresh module
+ * instance, then restores HOME and leaves the suite's own adapter alone.
+ * `SESSIONS_DIR` is derived from `os.homedir()` at module load (codex.ts:20-21),
+ * so pointing HOME elsewhere and re-importing is what moves the tree. Cases that
+ * build their own tree use this so that — with the suite running in shuffled order
+ * and in parallel with the other adapters' fixtures — they cannot perturb the
+ * shared fixture's exact-set assertions. Same re-import shape as
+ * claude.fixture.test.ts's `withTempClaudeDir`.
+ */
+async function withTempCodexHome<T>(fn: (Adapter: any, root: string) => Promise<T>): Promise<T> {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudeville-codex-case-'));
+  const prior = process.env.HOME;
+  process.env.HOME = root;
+  vi.resetModules();
+  try {
+    const { CodexAdapter: Fresh } = await import('./codex.js');
+    return await fn(Fresh, root);
+  } finally {
+    if (prior === undefined) delete process.env.HOME;
+    else process.env.HOME = prior;
+    vi.resetModules();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+/**
  * codex.ts:229 compares `now - stat.mtimeMs > activeThresholdMs` against a `now`
  * captured once at the top of the scan (codex.ts:189). The ages below are minutes
  * or tens of minutes against thresholds of the same magnitude, which leaves no
@@ -997,5 +1023,51 @@ describe('CodexAdapter fixtures', () => {
     const wrongProject = await adapter.getSessionDetail(DELTA_ID, workspaceAlpha);
     expect(wrongProject.sessionId).toBe(DELTA_ID);
     expect(wrongProject.messages).toEqual([{ role: 'assistant', text: 'delta output', ts: tsOf(2) }]);
+  });
+
+  // ─── #144: a DIRECTORY whose NAME matches the session-file filter ───
+  //
+  // The day-level listing (codex.ts:220) is a BARE `readdir`, so its entries
+  // arrive as `string[]` and the `rollout-*.jsonl` filter can ask about the NAME
+  // and nothing else. A DIRECTORY named to match therefore passes, `stat`s
+  // successfully (size 64, mtime now) and is emitted as a session row whose detail
+  // is all null — `readLines` swallows the EISDIR (jsonl-utils.ts:57), so the
+  // failure is silent. Drop the `isFile()` term at codex.ts:221 and this goes red.
+  //
+  // Note the YEAR/MONTH/DAY fan-out above it DOES filter `isDirectory()`
+  // (codex.ts:191/201/211), which is what a stray `README.md` needs — so the
+  // positional eviction the issue describes cannot reach this site. What is left
+  // is the file-level name filter, and that is what this case pins.
+  it('emits no session row for a directory named rollout-*.jsonl', async () => {
+    await withTempCodexHome(async (Adapter, root) => {
+      const workspace = path.join(root, 'workspace');
+      fs.mkdirSync(workspace, { recursive: true });
+
+      /** `writeRollout` is bound to the suite's `tmpHome`; this one is not. */
+      const writeAt = (segments: string[], entries: unknown[]) => {
+        const file = path.join(root, ...segments);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n');
+        return file;
+      };
+
+      const real = writeAt(
+        ['.codex', 'sessions', '2024', '01', '22', 'rollout-2024-01-22T10-30-00-real1.jsonl'],
+        [sessionMeta('real1', workspace, { model: 'gpt-5-codex' }), assistantMessage('real done', 2)],
+      );
+      backdate(real, 2 * MINUTE);
+      // The decoy: a DIRECTORY whose name satisfies both halves of the filter.
+      const decoy = path.join(
+        root, '.codex', 'sessions', '2024', '01', '22', 'rollout-2024-01-22T10-30-00-dirdecoy.jsonl',
+      );
+      fs.mkdirSync(decoy, { recursive: true });
+
+      const rows = await new Adapter().getActiveSessions(10 * MINUTE);
+      // Nothing else exists in this tree, so the listing is an exact set.
+      expect(rows.map((r: any) => r.sessionId)).toEqual(['codex-2024-01-22T10-30-00-real1']);
+      // …and the decoy really is a directory, so the exact set above is the
+      // `isFile()` guard rather than a missing fixture.
+      expect(fs.statSync(decoy).isDirectory()).toBe(true);
+    });
   });
 });

@@ -229,6 +229,31 @@ function windowLines(markerAt: number | null, markerLine: string) {
 }
 
 /**
+ * Runs `fn` with DEBUG on, collecting what `debugAdapterError` wrote to
+ * `console.debug`. Restores both DEBUG and the spy in `finally`, so a failing
+ * assertion cannot leak DEBUG=1 into a later case. Same shape as
+ * jsonl-utils.test.ts's `withDebug` — `debugAdapterError` reads
+ * `process.env.DEBUG` at CALL time (jsonl-utils.ts:17), so no module reload is
+ * needed here.
+ */
+async function withDebug<T>(fn: () => Promise<T>): Promise<{ result: T; lines: string[] }> {
+  const lines: string[] = [];
+  const original = process.env.DEBUG;
+  const spy = vi.spyOn(console, 'debug').mockImplementation((...args: unknown[]) => {
+    lines.push(args.map(String).join(' '));
+  });
+  process.env.DEBUG = '1';
+  try {
+    const result = await fn();
+    return { result, lines };
+  } finally {
+    spy.mockRestore();
+    if (original === undefined) delete process.env.DEBUG;
+    else process.env.DEBUG = original;
+  }
+}
+
+/**
  * Builds a throwaway four-root tree, re-reads the module so the STORAGE_ROOTS
  * consts pick the new dirs up, then tears it all down. Cases that need
  * `getActiveSessions` use this so that — with the suite running shuffled and in
@@ -1160,6 +1185,48 @@ describe('vscode readers', () => {
       ]);
       expect(sessions.map((s: any) => s.lastActivity)).toEqual([mtimeOf(newer), mtimeOf(older)]);
       expect(sessions.map((s: any) => s.lastMessage)).toEqual(['newer', 'older']);
+    });
+  });
+
+  // ─── #144: a DIRECTORY whose NAME matches the session-file filter ───
+  //
+  // The transcripts listing (vscode.ts:175, filtered four lines later at :182) is
+  // a BARE `readdir`, so its entries arrive as `string[]` and the `.jsonl` filter
+  // can ask about the NAME and nothing else. Note the filter is NOT adjacent to
+  // its `readdir` — a mechanical "add isFile() next to the readdir" pass misses
+  // it, which is why this case pins the observable rather than the line.
+  //
+  // A DIRECTORY named to match passes, `stat`s fine and is stat'd again by
+  // `hasRealActivity`, which then reads it: `readLines` gets EISDIR and returns
+  // zero lines (jsonl-utils.ts:57), so `hasRealActivity` answers false and the
+  // candidate is dropped. The phantom row therefore NEVER reaches the listing —
+  // this site SELF-NEUTRALISES, and a row-count assertion cannot be made red.
+  // The observable is whether the adapter ATTEMPTED the read at all, which is
+  // exactly what the `isFile()` term decides. Both halves are asserted.
+  it('reads no transcript through a directory named *.jsonl, and does not try to read it', async () => {
+    await withVscodeTree(async (Adapter, userDir) => {
+      const transcriptsDir = path.join(
+        userDir, 'workspaceStorage', 'ws-dir', 'GitHub.copilot-chat', 'transcripts',
+      );
+      fs.mkdirSync(transcriptsDir, { recursive: true });
+      const real = path.join(transcriptsDir, 'real1.jsonl');
+      fs.writeFileSync(real, [
+        JSON.stringify({ type: 'session_start', attrs: {} }),
+        JSON.stringify({ type: 'assistant.message', data: { content: 'real done' }, timestamp: 1 }),
+        '',
+      ].join('\n'));
+      // The decoy: a DIRECTORY whose name satisfies the `.jsonl` filter.
+      const decoy = path.join(transcriptsDir, 'dirdecoy.jsonl');
+      fs.mkdirSync(decoy, { recursive: true });
+
+      const { result, lines } = await withDebug(() => Adapter.getActiveSessions(ACTIVE_WINDOW_MS));
+
+      expect(result.map((s: any) => s.sessionId)).toEqual(['vscode:vscode:ws-dir:real1']);
+      // No `readLines(start)` envelope from the `vscode-activity` scope for ANY
+      // transcript: the decoy is dropped by `isFile()` before the read, not
+      // rescued by the catch after it.
+      expect(lines.filter((l) => l.includes('readLines(start)') && l.includes('transcripts'))).toEqual([]);
+      expect(fs.statSync(decoy).isDirectory()).toBe(true);
     });
   });
 });
