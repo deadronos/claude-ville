@@ -150,12 +150,19 @@ export class OpenClawAdapter implements AgentAdapter {
           : detailOk({ toolHistory: [], messages: [] });
     }
 
-    // Without one, the agent's own database is tried and then the legacy JSONL,
+// Without one, the agent's own database is tried and then the legacy JSONL,
     // so the two are combined rather than cascaded: a database that will not open
-    // used to fall through to the legacy scan and out as an empty detail, which is
-    // how audit instance 8's corrupt `openclaw-agent.sqlite` read as "this session
+    // used to fall through to the legacy scan and out as an empty detail, which
+    // is how audit instance 8's corrupt `openclaw-agent.sqlite` read as "this session
     // has no messages".
-    const sources: DetailSource[] = [];
+    //
+    // The database's own verdict is `failures` and the legacy JSONL is `primary`,
+    // so the priority between the two halves is a named argument rather than the
+    // order they happen to be pushed in. See `combineDetailSources`. A database
+    // that DOES answer returns above via `detailOk`, so only its failures reach
+    // here.
+    const failures: DetailSource[] = [];
+    let primary: DetailSource = { kind: 'absent' };
 
     if (!filePath || !filePath.endsWith('.jsonl')) {
       // The `agents/` root is what makes the id-only lookup possible at all, so a
@@ -173,7 +180,7 @@ export class OpenClawAdapter implements AgentAdapter {
         // Content-less or failed: the legacy scan below is still consulted, so this
         // is carried as a source and decides only whether the legacy scan failing to
         // answer leaves a `warning` or an `ok: false`.
-        if (answer.kind === 'failed') sources.push(answer);
+        if (answer.kind === 'failed') failures.push(answer);
       }
     }
 
@@ -191,7 +198,7 @@ export class OpenClawAdapter implements AgentAdapter {
     }
 
     if (target && fs.existsSync(target)) {
-      sources.push({
+      primary = {
         kind: 'detail',
         detail: {
           toolHistory: await getToolHistory(target),
@@ -199,10 +206,10 @@ export class OpenClawAdapter implements AgentAdapter {
           sessionId,
         },
         warnings: [],
-      });
+      };
     }
 
-    return combineDetailSources(sources);
+    return combineDetailSources({ primary, fallbacks: failures });
   }
 
   /**

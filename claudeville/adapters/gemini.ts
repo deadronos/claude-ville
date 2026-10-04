@@ -180,7 +180,12 @@ async function scanActiveSessions(activeThresholdMs: number): Promise<{ records:
     onUnreadable: (scope, err, dir) => {
       debugAdapterError('gemini', `scanActiveSessions ${scope}`, err, dir);
       if (scope === 'root') rootUnreadable = true;
-      else childrenUnreadable += 1;
+      // `'stat'` is excluded on purpose. Gemini's `fileFor` enumerates `chats/`
+      // first, so every path it returns was in a listing moments ago and a stat
+      // failure means the file was removed in between — not a whole project
+      // directory lost. Folding it into `childrenUnreadable` would report "1
+      // project directory(ies)" for what is one vanished file.
+      else if (scope === 'child') childrenUnreadable += 1;
     },
   });
   return { records, rootUnreadable, childrenUnreadable };

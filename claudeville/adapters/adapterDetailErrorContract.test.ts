@@ -21,8 +21,10 @@
  * | `unknown` | an `opencode.db` whose `message` table has no `time_created` |
  *
  * The `root-unreadable` case is the only one that depends on the environment: it
- * needs a uid `chmod 000` actually denies, which is every uid but root. It skips
- * itself under root rather than passing vacuously.
+ * needs a uid `chmod 000` actually denies, which is every uid but root. It is
+ * declared `it.skipIf(ROOT_CANNOT_BE_DENIED)`, so under root vitest counts it as
+ * SKIPPED and the run summary shows the coverage gap rather than hiding it behind
+ * a pass that asserted nothing.
  */
 import fs from 'fs';
 import os from 'os';
@@ -34,6 +36,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdapterDetailResult } from '../../shared/types.js';
 
 const MINUTE = 60 * 1000;
+
+/**
+ * `chmod 000` denies every uid but root, so the permission-based case below can
+ * only deny anything under a non-root uid.
+ *
+ * A MODULE-level const, not a check inside the test: `it.skipIf` is evaluated at
+ * collection time, and the point is to report the case as SKIPPED rather than as
+ * a pass that asserted nothing.
+ */
+const ROOT_CANNOT_BE_DENIED = typeof process.getuid === 'function' && process.getuid() === 0;
 
 /** A `sessions` table with the columns hermes projects. */
 const SESSIONS_SQL = `
@@ -165,12 +177,11 @@ afterEach(() => {
 });
 
 describe('getSessionDetail: one test per AdapterErrorCode, on the detail path', () => {
-  it('report root-unreadable when the sessions directory exists but cannot be listed', async () => {
-    if (typeof process.getuid === 'function' && process.getuid() === 0) {
-      console.warn('skipping root-unreadable: running as uid 0, chmod 000 does not deny');
-      return;
-    }
-
+  // `chmod 000` denies every uid but root, so this case can only deny anything
+  // under a non-root uid. `it.skipIf` counts it as SKIPPED in the run summary
+  // rather than as a pass that asserted nothing — the same overstatement a
+  // mutation that never applied and still reported green would make.
+  it.skipIf(ROOT_CANNOT_BE_DENIED)('report root-unreadable when the sessions directory exists but cannot be listed', async () => {
     const { home } = withTrees(({ home: h }) => {
       const sessions = path.join(h, '.codex', 'sessions');
       fs.mkdirSync(sessions, { recursive: true });

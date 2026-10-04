@@ -288,7 +288,11 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<{ records
     onUnreadable: (scope, err, dir) => {
       debugAdapterError('pi', `scanAllSessionFiles ${scope}`, err, dir);
       if (scope === 'root') rootUnreadable = true;
-      else childrenUnreadable += 1;
+      // `'stat'` is excluded on purpose, for the same reason as in `gemini`:
+      // `fileFor` enumerated the project directory, so a stat failure is one file
+      // removed in between rather than a project directory that could not be read,
+      // and `childrenUnreadable` is reported in those units.
+      else if (scope === 'child') childrenUnreadable += 1;
     },
   });
   return { records, rootUnreadable, childrenUnreadable };

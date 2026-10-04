@@ -151,6 +151,10 @@ export function isOpenableSqliteDatabase(filePath: string | null | undefined, sc
  * lose every sibling row. Reading a column list is a separate question from
  * "should this query throw", and answering it here keeps that swallow intact.
  * Returns an empty set for a missing table, which callers treat as "unusable".
+ *
+ * `hermes` carried a byte-identical private copy for its schema-drift
+ * projection; it is now this one. Two copies of a query that decides which
+ * columns exist is exactly the drift this helper exists to prevent.
  */
 export function tableColumns(db: SqliteDb, table: string): Set<string> {
   const rows = queryAll<{ name: string }>(db, 'SELECT name FROM pragma_table_info(?)', [table]);
