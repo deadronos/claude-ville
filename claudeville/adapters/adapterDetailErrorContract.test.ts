@@ -35,17 +35,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AdapterDetailResult } from '../../shared/types.js';
 
+import { ROOT_CANNOT_BE_DENIED } from './fixtureHelpers.js';
+
 const MINUTE = 60 * 1000;
 
-/**
- * `chmod 000` denies every uid but root, so the permission-based case below can
- * only deny anything under a non-root uid.
- *
- * A MODULE-level const, not a check inside the test: `it.skipIf` is evaluated at
- * collection time, and the point is to report the case as SKIPPED rather than as
- * a pass that asserted nothing.
- */
-const ROOT_CANNOT_BE_DENIED = typeof process.getuid === 'function' && process.getuid() === 0;
 
 /** A `sessions` table with the columns hermes projects. */
 const SESSIONS_SQL = `
@@ -180,7 +173,8 @@ describe('getSessionDetail: one test per AdapterErrorCode, on the detail path', 
   // `chmod 000` denies every uid but root, so this case can only deny anything
   // under a non-root uid. `it.skipIf` counts it as SKIPPED in the run summary
   // rather than as a pass that asserted nothing — the same overstatement a
-  // mutation that never applied and still reported green would make.
+  // mutation that never applied and still reported green would make. The general
+  // form of that reasoning now lives once, in `ROOT_CANNOT_BE_DENIED`.
   it.skipIf(ROOT_CANNOT_BE_DENIED)('report root-unreadable when the sessions directory exists but cannot be listed', async () => {
     const { home } = withTrees(({ home: h }) => {
       const sessions = path.join(h, '.codex', 'sessions');

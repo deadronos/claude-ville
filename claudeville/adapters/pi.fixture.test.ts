@@ -769,7 +769,7 @@ describe('PiAdapter fixtures', () => {
     return { openOne, locked };
   }
 
-  it.skipIf(ROOT_CANNOT_BE_DENIED)('counts the unreadable project directories in one warning and still lists the readable ones', async () => {
+  it.skipIf(ROOT_CANNOT_BE_DENIED)('warns once per unreadable project directory and still lists the readable ones', async () => {
     await withTempPiHome(async (Adapter, root) => {
       const { openOne, locked } = buildMixedTree(root);
       const openOneMtime = fs.statSync(openOne).mtimeMs;
