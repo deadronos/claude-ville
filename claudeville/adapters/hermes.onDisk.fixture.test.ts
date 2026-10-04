@@ -85,7 +85,7 @@
  *
  * Three defects are pinned rather than fixed:
  *
- * - DEFECT (not fixed here): a session id present in `sessions` but with NO
+ * - DEFECT (pinned): a session id present in `sessions` but with NO
  *   `messages` rows does produce a `tokenUsage`, yet `getSessionDetail`'s
  *   `if (dbDetail.toolHistory.length || dbDetail.messages.length)` (:225) is false,
  *   so the method falls through and returns `{ toolHistory: [], messages: [] }` —
@@ -96,10 +96,13 @@
  *   (`:228`, `:235`), so a session whose metadata `session_id` differs from its
  *   own file name — which is the id `getActiveSessions` reports (:195) — cannot be
  *   read back even when the caller passes the exact `filePath` the row reported.
- * - DEFECT (pinned): a `sessions` table missing the `archived` column makes
- *   `queryAll` swallow `no such column` and answer `[]`, so every DB session
- *   silently disappears and the adapter falls through to the file scan. Pinned so
- *   the fragility is visible rather than latent.
+ *
+ * A fourth defect — a `sessions` table missing the `archived` / `hidden` columns,
+ * which made `queryAll` swallow `no such column` and answer `[]` so that every DB
+ * session silently disappeared into the file-scan fallback — has been FIXED. The
+ * active-session query is now projected from the columns the installed table has,
+ * so a missing gate column is not gated on; the case below asserts the DB sessions
+ * survive, both alongside legacy files and on a fully migrated install.
  *
  * TWENTY-FOUR MUTATIONS SCORE GREEN, and every one is genuinely unobservable rather
  * than a gap in this file. A 124-mutation sweep confirms each; the reasons are grouped
@@ -291,10 +294,13 @@ const MESSAGES_SQL = `
 `;
 
 /**
- * The `sessions` table with the two gate columns REMOVED. `DB_SESSIONS_SQL` names
- * `archived` and `hidden`, so `queryAll` swallows `no such column` and answers
- * `[]` — every DB session then silently disappears and the adapter falls through
- * to the file scan. Pinned as a fragility, not as intended behaviour.
+ * The `sessions` table with the two gate columns REMOVED — a `state.db` written by
+ * a Hermes whose `sessions` table has no `archived` / `hidden`. The active-session
+ * query used to name both unconditionally, so SQLite raised `no such column`,
+ * `queryAll` swallowed it into `[]`, and every DB session disappeared into the
+ * file-scan fallback. The query is now projected from the columns the installed
+ * table HAS, so this schema lists its sessions and simply is not gated on the two
+ * columns it lacks. Pinned by the case below.
  */
 const SESSIONS_SQL_NO_GATES = `
   CREATE TABLE sessions (
@@ -314,6 +320,35 @@ const SESSIONS_SQL_NO_GATES = `
     last_activity_at REAL,
     ended_at REAL,
     parent_session_id TEXT
+  );
+`;
+
+/**
+ * The `sessions` table with two PROJECTED columns removed — `display_name` and
+ * `origin_json` — and both gate columns still present. This is the other half of
+ * the drift: a column the query selects, rather than one it gates on. The
+ * projection drops it from the row, and the row reads as though the column were
+ * NULL: `dbProjectName` then reaches `cwd`, which is the behaviour those columns'
+ * absence is supposed to have.
+ */
+const SESSIONS_SQL_NO_LABELS = `
+  CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    source TEXT,
+    model TEXT,
+    title TEXT,
+    cwd TEXT,
+    billing_provider TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    estimated_cost_usd REAL,
+    message_count INTEGER,
+    started_at REAL,
+    last_activity_at REAL,
+    ended_at REAL,
+    parent_session_id TEXT,
+    archived INTEGER,
+    hidden INTEGER
   );
 `;
 
@@ -369,6 +404,10 @@ const SESSION_INSERTS: Record<string, string> = {
       billing_provider, input_tokens, output_tokens, estimated_cost_usd, message_count, started_at,
       last_activity_at, ended_at, parent_session_id)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  'no display_name, no origin_json': `INSERT INTO sessions (id, source, model, title, cwd,
+      billing_provider, input_tokens, output_tokens, estimated_cost_usd, message_count, started_at,
+      last_activity_at, ended_at, parent_session_id, archived, hidden)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 };
 
 /** Creates `<dir>/state.db` with `schema` and returns typed inserters for it. */
@@ -378,9 +417,10 @@ function openDb(dir: string, schema: string): HermesDb {
   const db = new Database(target);
   db.exec(schema);
   const hasGates = schema.includes('archived INTEGER');
+  const hasOrigin = schema.includes('origin_json TEXT');
   const hasSessions = schema.includes('CREATE TABLE sessions');
   const insertSession = hasSessions
-    ? db.prepare(SESSION_INSERTS[hasGates ? 'archived, hidden' : 'no gates'])
+    ? db.prepare(SESSION_INSERTS[hasGates ? (hasOrigin ? 'archived, hidden' : 'no display_name, no origin_json') : 'no gates'])
     : null;
   const insertMessage = schema.includes('CREATE TABLE messages')
     ? db.prepare(
@@ -405,8 +445,7 @@ function openDb(dir: string, schema: string): HermesDb {
         row.model ?? null,
         row.title ?? null,
         row.cwd ?? null,
-        row.displayName ?? null,
-        row.originJson ?? null,
+        ...(hasOrigin ? [row.displayName ?? null, row.originJson ?? null] : []),
         row.billingProvider ?? null,
         row.inputTokens ?? null,
         row.outputTokens ?? null,
@@ -1114,12 +1153,12 @@ describe('HermesAdapter on-disk characterization', () => {
   });
 
   // The other half of the guard: a database file that EXISTS but yields nothing
-  // must fall through to the files. Two ways to reach zero rows — no `sessions`
-  // table at all (`hasTable`, hermes.ts:102) and a `sessions` table whose
-  // `archived` column is missing, which makes `queryAll` swallow `no such column`
-  // and answer `[]` (a real fragility, pinned here).
+  // must fall through to the files. One way to reach zero rows is no `sessions`
+  // table at all (`hasTable`, hermes.ts:102). A `sessions` table that is merely
+  // DRIFTED used to reach zero rows too, because `queryAll` swallowed
+  // `no such column` and answered `[]` — that case no longer belongs here and is
+  // asserted after this one, where the DB sessions survive instead.
   it('fall through to the session files when state.db yields no rows', async () => {
-    // (a) a `state.db` with only a `messages` table, so `hasTable('sessions')` fails
     await withHermesDir(
       (dir) => {
         writeJson(path.join(sessionsDir(dir), 'session_fileone.json'), { session_id: 'fileone', session_start: at(0) });
@@ -1130,18 +1169,81 @@ describe('HermesAdapter on-disk characterization', () => {
         expect(ids(await new HermesAdapter().getActiveSessions(5 * MINUTE))).toEqual(['hermes-fileone']);
       },
     );
+  });
 
-    // (b) DEFECT: a `sessions` table missing `archived` / `hidden` — the SQL names
-    // them, `queryAll` swallows the error, and every DB session vanishes.
+  // FIXED: a `sessions` table that lacks a column `DB_SESSIONS_SQL` names —
+  // `archived` and `hidden` here, exactly as an older or newer `state.db` does.
+  // SQLite RAISES `no such column`, `queryAll` swallowed that into `[]`, and the
+  // `dbSessions.length > 0` gate (hermes.ts:179) cannot tell it from an empty
+  // database — so every DB session disappeared and the adapter fell through to
+  // the legacy files.
+  //
+  // WHY THE FALLBACK WAS NOT A RESCUE: it is a fallback for a database that has
+  // nothing to say. The audit's scenario B3 is the case below, where the install
+  // has migrated and `sessions/` does not exist — there is nothing for the
+  // fallback to find, so the drift reads to the user as an empty provider. Both
+  // sub-cases are asserted here: with legacy files present the DB wins outright,
+  // and with none present the DB sessions are the ONLY thing there is.
+  //
+  // The query is now projected from the columns the installed table actually has,
+  // so a missing gate column is simply not gated on.
+  it('list the state.db sessions when the sessions table lacks a column the query names', async () => {
+    // (a) With a legacy file alongside. Before the fix the DB row vanished and the
+    // file scan answered `['hermes-fileone']`.
     await withHermesDir(
       (dir) => {
         writeJson(path.join(sessionsDir(dir), 'session_fileone.json'), { session_id: 'fileone', session_start: at(0) });
         const { db, addSession } = openDb(dir, SESSIONS_SQL_NO_GATES);
-        addSession({ id: 'db-missing-columns' });
+        addSession({ id: 'db-missing-columns', model: 'db-model' });
         db.close();
       },
       async (HermesAdapter) => {
-        expect(ids(await new HermesAdapter().getActiveSessions(5 * MINUTE))).toEqual(['hermes-fileone']);
+        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        // The DB answer wins (hermes.ts:179), and it is no longer empty — so the
+        // legacy file is not consulted at all.
+        expect(ids(rows)).toEqual(['hermes-db-missing-columns']);
+        expect(rowOf(rows, 'hermes-db-missing-columns').model).toBe('db-model');
+      },
+    );
+
+    // (b) Fully migrated: a `state.db` and no `sessions/` directory at all. Before
+    // the fix this was `[]` — the provider looked idle while holding two sessions.
+    await withHermesDir(
+      (dir) => {
+        const { db, addSession, addMessage } = openDb(dir, SESSIONS_SQL_NO_GATES + MESSAGES_SQL);
+        addSession({ id: 'drifted-one', model: 'm1' });
+        addMessage({ sessionId: 'drifted-one', role: 'assistant', content: 'first', timestamp: nowSeconds() - 5 });
+        addSession({ id: 'drifted-two', model: 'm2' });
+        addMessage({ sessionId: 'drifted-two', role: 'assistant', content: 'second', timestamp: nowSeconds() - 4 });
+        db.close();
+      },
+      async (HermesAdapter, dir) => {
+        expect(fs.existsSync(sessionsDir(dir))).toBe(false);
+        const rows = await new HermesAdapter().getActiveSessions(5 * MINUTE);
+        expect(ids(rows)).toEqual(['hermes-drifted-one', 'hermes-drifted-two']);
+        // And the per-session message read still reaches the `messages` table, which
+        // is untouched by the sessions-table drift.
+        expect(rowOf(rows, 'hermes-drifted-one').lastMessage).toBe('first');
+      },
+    );
+
+    // (c) The other half of the drift: a column the query SELECTS rather than gates
+    // on. `display_name` and `origin_json` are gone, so they are left out of the
+    // projection and the row reads as though they were NULL — which is what makes
+    // `dbProjectName` fall through to `cwd`. Before the fix the query named them
+    // unconditionally, so this schema emptied the listing exactly like (b).
+    await withHermesDir(
+      (dir) => {
+        const { db, addSession } = openDb(dir, SESSIONS_SQL_NO_LABELS);
+        addSession({ id: 'no-labels', model: 'm1', cwd: '/w/no-labels', displayName: 'ignored' });
+        db.close();
+      },
+      async (HermesAdapter) => {
+        const row = rowOf(await new HermesAdapter().getActiveSessions(5 * MINUTE), 'hermes-no-labels');
+        expect(row.model).toBe('m1');
+        // `origin_json` would have produced a `<platform>:<chat>` label had the
+        // column existed; `cwd` is the rung below it.
+        expect(row.project).toBe('/w/no-labels');
       },
     );
   });
