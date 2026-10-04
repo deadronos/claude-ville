@@ -217,14 +217,14 @@ async function scanRecentRollouts(activeThresholdMs: number) {
             const dayResults = await Promise.all(days.map(async (day: string) => {
               const dayDir = path.join(monthDir, day);
               try {
-                const rolloutFiles = (await fs.promises.readdir(dayDir))
-                  .filter((f: string) => f.startsWith('rollout-') && f.endsWith('.jsonl'));
-                const fileResults = await Promise.all(rolloutFiles.map(async (file: string): Promise<ScanResult | null> => {
-                  const filePath = path.join(dayDir, file);
+                const rolloutFiles = (await fs.promises.readdir(dayDir, { withFileTypes: true }))
+                  .filter((d: Dirent) => d.isFile() && d.name.startsWith('rollout-') && d.name.endsWith('.jsonl'));
+                const fileResults = await Promise.all(rolloutFiles.map(async (file: Dirent): Promise<ScanResult | null> => {
+                  const filePath = path.join(dayDir, file.name);
                   try {
                     const stat = await fs.promises.stat(filePath);
                     if (now - stat.mtimeMs > activeThresholdMs) return null;
-                    return { filePath, mtime: stat.mtimeMs, fileName: file };
+                    return { filePath, mtime: stat.mtimeMs, fileName: file.name };
                   } catch (err) {
                     debugAdapterError('codex', 'scanRecentRollouts stat', err, filePath);
                     return null;

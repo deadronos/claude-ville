@@ -134,9 +134,13 @@ type ScanResult = { filePath: string; mtime: number; fileName: string; projectHa
  * the "one child, many files" case the helper was widened for. What is preserved
  * exactly: the single `now` taken before the readdir, the mtime comparison and
  * its sign, the `isDirectory` filter on the root, the per-child `existsSync`
- * guard, the `session-` name filter, readdir order, and the fact that a
- * DIRECTORY named `session-x.json` still stats through as a session (the readdir
- * here has no `withFileTypes`, exactly as before — see the report).
+ * guard, the `session-` name filter, and readdir order.
+ *
+ * NOT preserved — a DELIBERATE change (#144). This listing used to be a bare
+ * `readdirSync`, so a DIRECTORY named `session-x.json` passed the name filter,
+ * `stat`ed through and was emitted as a session row with all-null detail. It is
+ * now read with `withFileTypes` and gated on `isFile()`, like `hermes` and
+ * `opencode` always were.
  */
 async function scanActiveSessions(activeThresholdMs: number) {
   return collectScanByMtime<ScanResult>({
@@ -149,9 +153,9 @@ async function scanActiveSessions(activeThresholdMs: number) {
       if (!fs.existsSync(chatsDir)) return null;
       // CALLED SYNCHRONOUSLY, so this is a readdirSync. Same list, same order.
       return fs
-        .readdirSync(chatsDir)
-        .filter((f: string) => f.startsWith('session-') && (f.endsWith('.json') || f.endsWith('.jsonl')))
-        .map((f: string) => path.join(chatsDir, f));
+        .readdirSync(chatsDir, { withFileTypes: true })
+        .filter((d: Dirent) => d.isFile() && d.name.startsWith('session-') && (d.name.endsWith('.json') || d.name.endsWith('.jsonl')))
+        .map((d: Dirent) => path.join(chatsDir, d.name));
     },
     build: ({ name, filePath, mtimeMs }) => ({
       filePath,

@@ -170,18 +170,18 @@ async function scanAllSessions(activeThresholdMs: number) {
         // transcript jsonl
         const transcriptsDir = path.join(copilotChatDir, 'transcripts');
         if (fs.existsSync(transcriptsDir)) {
-          let transcriptFiles: string[] = [];
+          let transcriptFiles: Dirent[] = [];
           try {
-            transcriptFiles = await fs.promises.readdir(transcriptsDir);
+            transcriptFiles = await fs.promises.readdir(transcriptsDir, { withFileTypes: true });
           } catch (err) {
             debugAdapterError('vscode', 'scanAllSessions readdir transcripts', err, transcriptsDir);
             transcriptFiles = [];
           }
 
           const transcriptEntries = await Promise.all(transcriptFiles
-            .filter((f: string) => f.endsWith('.jsonl'))
-            .map(async (file: string): Promise<ResourceSessionCandidate | null> => {
-              const transcriptPath = path.join(transcriptsDir, file);
+            .filter((d: Dirent) => d.isFile() && d.name.endsWith('.jsonl'))
+            .map(async (file: Dirent): Promise<ResourceSessionCandidate | null> => {
+              const transcriptPath = path.join(transcriptsDir, file.name);
               try {
                 const stat = await fs.promises.stat(transcriptPath);
                 if (now - stat.mtimeMs > effectiveThresholdMs) return null;
@@ -190,7 +190,7 @@ async function scanAllSessions(activeThresholdMs: number) {
                 return {
                   channel: root.channel,
                   workspaceId,
-                  rawSessionId: file.replace('.jsonl', ''),
+                  rawSessionId: file.name.replace('.jsonl', ''),
                   sourceType: 'transcript',
                   filePath: transcriptPath,
                   project: workspaceProject || `vscode:${root.channel}:${workspaceId}`,
