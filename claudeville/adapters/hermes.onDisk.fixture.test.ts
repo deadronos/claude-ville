@@ -111,8 +111,12 @@
  *   alongside legacy files and on a fully migrated install.
  *
  * TWENTY-FOUR MUTATIONS SCORE GREEN, and every one is genuinely unobservable rather
- * than a gap in this file. A 124-mutation sweep confirms each; the reasons are grouped
- * so the next reader does not re-derive them. (The list was 31 before the gaps listed
+ * than a gap in this file. A 124-mutation sweep measured each when this fixture was
+ * written; the reasons are grouped so the next reader does not re-derive them. NOTE:
+ * those counts predate the schema-drift and `tokenUsage`-proxy fixes, so they have
+ * NOT been re-measured since. Treat them as a record of the sweep at that date, not
+ * as a current fact — and re-run the sweep before relying on them.
+ * (The list was 31 before the gaps listed
  * here were closed — the anchored-strip decoys, an unavailable-install case, a future
  * `updated_at`, an unparseable transcript clock, an argument-key pair, the two
  * metadata-path caps, and the assistant preference were all real gaps, and closing them

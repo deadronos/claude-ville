@@ -90,8 +90,12 @@
  *   SINGLE replace. `opencode-db:opencode-db:x` therefore resolves to the session id
  *   `opencode-db:x`, which exists only if a session is literally named that.
  * NINETEEN MUTATIONS SCORE GREEN, and every one of them is genuinely
- * unobservable rather than a gap in this file. A 145-mutation sweep confirms each;
- * the reasons are grouped here so the next reader does not re-derive them:
+ * unobservable rather than a gap in this file. A 145-mutation sweep measured each
+ * when this fixture was written; the reasons are grouped here so the next reader
+ * does not re-derive them. NOTE: those counts predate #153 (the `isFile()` guard),
+ * #155 (the bounded `getSessionDetail` retry) and the `json_extract` fix, so they
+ * have NOT been re-measured since. Treat them as a record of the sweep at that
+ * date, not as a current fact — and re-run the sweep before relying on them.
  *
  * - DEAD, because the row literal never reads them. `getDbMessages` copies
  *   `modelID` / `providerID` off `message.data` (opencode.ts:110-111) into the
