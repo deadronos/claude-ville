@@ -25,10 +25,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const MINUTE = 60 * 1000;
 
-/** `chmod` does not deny uid 0, so a permission-based case would pass vacuously. */
-function rootCannotBeDenied(): boolean {
-  return typeof process.getuid === 'function' && process.getuid() === 0;
-}
+/**
+ * `chmod` does not deny uid 0, so a permission-based case would pass vacuously
+ * under root.
+ *
+ * A MODULE-level const, not a check inside the test: `it.skipIf` is evaluated at
+ * collection time, and the point is to report the case as SKIPPED in the run
+ * summary rather than as a pass that asserted nothing. An early `return` buried
+ * in a `console.warn` is the same overstatement as a mutation that never applied.
+ */
+const ROOT_CANNOT_BE_DENIED = typeof process.getuid === 'function' && process.getuid() === 0;
 
 const originalHome = process.env.HOME;
 const originalVscode = process.env.VSCODE_USER_DATA_DIR;
@@ -184,12 +190,9 @@ describe('codex', () => {
   // `chmod`, not a FILE in a directory's place, because this level filters on
   // `isDirectory()` and a regular file is dropped by that filter before any
   // `readdir` — so a FILE cannot reach this catch at all. Only a permission the
-  // caller lacks can, which means the case needs a uid `chmod 000` denies.
-  it('warn, not fail, when one year directory cannot be listed', async () => {
-    if (rootCannotBeDenied()) {
-      console.warn('skipping codex per-item year case: running as uid 0, chmod 000 does not deny');
-      return;
-    }
+  // caller lacks can, which means the case needs a uid `chmod 000` denies and is
+  // declared skipped rather than passed when there is not one.
+  it.skipIf(ROOT_CANNOT_BE_DENIED)('warn, not fail, when one year directory cannot be listed', async () => {
     const result = await withAdapter({}, (dir) => {
       const sessions = path.join(dir, '.codex', 'sessions');
       freshen(touch(path.join(sessions, '2024', '06', '07', 'rollout-2024-06-07T00-00-00-abc.jsonl'), ''));
