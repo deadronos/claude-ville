@@ -53,6 +53,28 @@ export interface AdapterSessionDetail {
   sessionId?: string;
 }
 
+/**
+ * What `/api/session-detail` answers with.
+ *
+ * The detail fields stay AT THE TOP LEVEL, which is the deliberate part: the
+ * frontend reads `data.toolHistory` and `data.messages` off this body directly
+ * (`claudeville/src/infrastructure/sessionDetailApi.ts`), so wrapping the detail
+ * in `{ ok, detail }` would make every existing client see an empty session. The
+ * two new fields are therefore ADDITIVE, as `errors`/`warnings` are on
+ * `SessionsPayload`.
+ *
+ * `error` is present only when the reader FAILED — never for a session that
+ * genuinely has nothing stored, which is `ok: true` and the fields alone. That
+ * distinction is the point of the field: before it, "this session has no detail"
+ * and "the reader could not answer" were the same 200 response.
+ */
+export interface SessionDetailPayload extends AdapterSessionDetail {
+  /** Why the reader failed. Absent on every success, including an empty detail. */
+  error?: AdapterError;
+  /** Degradations inside THIS session's detail. The detail still stands. */
+  warnings?: AdapterWarning[];
+}
+
 export interface AgentSessionSummary extends Omit<Session, 'displayName'> {
   project: string | null;
   detail?: AdapterSessionDetail | null;
@@ -152,6 +174,33 @@ export type AdapterSessionsResult =
   | { ok: true; sessions: AgentSessionSummary[]; warnings: AdapterWarning[] }
   | { ok: false; error: AdapterError };
 
+/**
+ * What `getSessionDetail` answers with. The same discriminator as
+ * {@link AdapterSessionsResult}, and the same asymmetry: a per-item degradation
+ * inside ONE session's detail is a `warning`, never `error`, because the session
+ * it belongs to was still read.
+ *
+ * There are THREE outcomes here, not two, and collapsing them was the whole
+ * defect:
+ *
+ * 1. the session genuinely has no stored detail, or the lookup is unsupported
+ *    for it ⇒ `ok: true` with an EMPTY detail. This is a legitimate answer, not a
+ *    failure, and it is the answer most sessions get: a provider with nothing
+ *    stored for a session that has never been selected must not become an error,
+ *    or every not-yet-selected session reads as a failure.
+ * 2. the reader ran and produced a detail ⇒ `ok: true` with it.
+ * 3. the reader FAILED — the store would not open, a path is a directory,
+ *    permission was denied, the schema is not one we understand ⇒ `ok: false`.
+ *
+ * Before the union all three answered the same `{ toolHistory: [], messages: [] }`.
+ * That is why the `tokenUsage` a `sessions` table had answered with was
+ * indistinguishable from a session that has none (audit instance 5), and why a
+ * failed message query was indistinguishable from an empty one (instance 6).
+ */
+export type AdapterDetailResult =
+  | { ok: true; detail: AdapterSessionDetail; warnings: AdapterWarning[] }
+  | { ok: false; error: AdapterError };
+
 export interface AgentAdapter {
   name: string;
   provider: string;
@@ -160,16 +209,17 @@ export interface AgentAdapter {
   /**
    * Returns a discriminated union rather than a bare array: an empty array is
    * ambiguous between "this provider is idle" and "this provider could not be
-   * read", and the registry used to reduce the second to the first. `getSessionDetail`
-   * still answers the un-typed shape and is deliberately OUT OF SCOPE for this
-   * contract — see `docs/architecture/002-provider-adapters.md`.
+   * read", and the registry used to reduce the second to the first.
    */
   getActiveSessions(activeThresholdMs: number): Promise<AdapterSessionsResult>;
   /**
-   * Returns the stored detail for a session. Unknown sessions (or unsupported
-   * lookups) must resolve to a detail with empty `toolHistory` and `messages`
-   * arrays, never `null`/`undefined`. Optional `tokenUsage`/`sessionId` fields
-   * may accompany them when the source exposes them.
+   * Returns the stored detail for a session, or `ok: false` when the READER
+   * failed. The three outcomes are spelled out on {@link AdapterDetailResult}; the
+   * one to keep in mind is that "unknown session" is `ok: true` with an empty
+   * detail. `detail` therefore never resolves to `null`/`undefined` on the
+   * success branch: a caller that legitimately gets nothing still gets
+   * `{ toolHistory: [], messages: [] }`. Optional `tokenUsage`/`sessionId` fields
+   * may accompany it when the source exposes them.
    */
   getSessionDetail(sessionId: string, project: string | null, filePath?: string | null): Promise<AdapterSessionDetail>;
   getWatchPaths(): WatchPath[];
