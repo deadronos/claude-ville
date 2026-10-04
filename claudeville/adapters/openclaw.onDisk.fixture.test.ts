@@ -87,7 +87,8 @@
  *   children (openclaw.ts:121, :228, :281, :361). Unlike `claude`'s equivalent
  *   — whose `getWatchPaths` pushes the CHILD path, so a loose `README.md` would
  *   be watched — every use here immediately joins `agent/` or `sessions/` onto
- *   `dir.name` and gates the result on `existsSync`, so a loose file can only
+ *   `dir.name` and gates the result on a file check (`existsSync`, or
+ *   `isSqliteFile` for the database at `:125`/`:366`), so a loose file can only
  *   ever contribute a path that does not exist. `notes.txt` and a file named
  *   `agent-four` are written under `agents/` below so the claim stays honest:
  *   no assertion in this file can pin those four filters, and a 90-mutation
@@ -115,6 +116,8 @@ import { zstdCompressSync } from 'node:zlib';
 
 import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+
+import type { WatchPath } from '../../shared/types.js';
 
 const MINUTE = 60 * 1000;
 const originalHome = process.env.HOME;
@@ -229,6 +232,25 @@ function openAgentDb(home: string, agent: string): OpenDb {
 }
 
 // ─── record builders ─────────────────────────────────────
+
+/**
+ * A database whose `session_windows` has DRIFTED from `AGENT_DB_SCHEMA`:
+ * `windowsDdl` replaces that table wholesale, and the one window row is
+ * inserted by its own column names, so a fixture can drop a column the shipped
+ * queries name. `transcript_events` is always created in the real shape — only
+ * the window table drifts in these cases.
+ */
+function openDriftedDb(home: string, agent: string, windowsDdl: string, window: Record<string, string | number | null>) {
+  const dbPath = agentPath(home, agent, 'agent', 'openclaw-agent.sqlite');
+  mkdirp(path.dirname(dbPath));
+  const db = new Database(dbPath);
+  db.exec(windowsDdl);
+  const columns = Object.keys(window);
+  db.prepare(
+    `INSERT INTO session_windows (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+  ).run(...columns.map((column) => window[column]));
+  return { db, dbPath };
+}
 
 const T0 = Date.UTC(2024, 0, 1, 0, 0, 0);
 const at = (i: number) => new Date(T0 + i * 1000).toISOString();
@@ -569,10 +591,11 @@ describe('OpenClawAdapter on-disk characterization', () => {
     );
   });
 
-  // ─── SESSION_WINDOW_SQL: COALESCE and its argument order ─
+  // ─── the window query: COALESCE and its argument order ─
 
   // `WHERE COALESCE(transcript_updated_at, updated_at) >= ?` with
-  // `threshold = now - activeThresholdMs` (openclaw.ts:154, :161). `w-tnull`
+  // `threshold = now - activeThresholdMs` (`sessionWindowSql`, and the
+  // threshold in `getDbSessions`). `w-tnull`
   // proves `transcript_updated_at` is COALESCEd from `updated_at`; `w-tfresh`
   // (stale `updated_at`, fresh transcript) and `w-uold` (fresh `updated_at`,
   // stale transcript) are the pair that pins the ARGUMENT ORDER — a
@@ -706,8 +729,8 @@ describe('OpenClawAdapter on-disk characterization', () => {
     );
   });
 
-  // `if (agentsWithDb.has(dir.name)) continue;` (openclaw.ts:234): an agent that
-  // HAS a database contributes no legacy sessions at all, even when its
+  // `if (dbBackedAgents.has(dir.name)) continue;` in `getActiveSessions`: an
+  // agent whose database ANSWERED contributes no legacy sessions at all, even when its
   // `sessions/` directory holds a readable one. An agent without a database
   // contributes all of its primaries. Both agents are named here so a widened
   // `continue` would add exactly one row and fail the exact length.
@@ -1713,7 +1736,7 @@ describe('OpenClawAdapter on-disk characterization', () => {
         // An agent with a sessions directory but no database at all.
         mkdirp(agentPath(home, 'agent-two', 'sessions'));
         // An agent with an `agent/` directory but no database FILE: contributes
-        // nothing, because the watch path is gated on `existsSync(dbPath)`.
+        // nothing, because the watch path is gated on the database being openable.
         mkdirp(agentPath(home, 'agent-three', 'agent'));
         // Neither of these is a directory.
         writeRaw(agentPath(home, 'notes.txt'), 'loose file\n');
@@ -1738,31 +1761,294 @@ describe('OpenClawAdapter on-disk characterization', () => {
     );
   });
 
-  // A database the adapter cannot OPEN is still advertised as a watch path —
-  // `getWatchPaths` gates on `existsSync`, never on readability — and it still
-  // counts as "this agent has a database", which is what suppresses the agent's
-  // legacy sessions. So one unreadable file costs a whole agent its JSONL
-  // listing. Pinned as-is; see the report.
-  it('watches an unreadable database and lets it suppress that agent\'s legacy sessions', async () => {
+  // FIXED (audit instance 8). This assertion previously pinned the DEFECT: a
+  // database the adapter cannot OPEN still counted as "this agent has a
+  // database", so `agentsWithDb` (openclaw.ts:217) suppressed the agent's legacy
+  // sessions and `getWatchPaths` advertised a `type: 'file'` entry for a file
+  // that can never yield a row. One non-database file cost a whole agent its
+  // JSONL listing. `isSqliteFile` cannot catch this case — a regular file that is
+  // not a database passes it — so the gate became the OPEN: the agent now keeps
+  // its legacy listing unless its database actually answered, and a file that
+  // will not open is not advertised.
+  it('falls back to the legacy listing, and does not watch, a database that will not open', async () => {
     await withOpenclawHome(
       (home) => {
         writeRaw(agentPath(home, 'agent-broken', 'agent', 'openclaw-agent.sqlite'), 'not a database at all');
         writeJsonl(agentPath(home, 'agent-broken', 'sessions', 's1.jsonl'), [
-          message([textBlock('never listed')], { model: 'legacy-model' }, 1),
+          message([textBlock('listed now')], { model: 'legacy-model' }, 1),
         ]);
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        expect(await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER)).toEqual([]);
+        const rows = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+        expect(ids(rows)).toEqual(['openclaw:agent-broken:s1']);
+        expect(rowOf(rows, 'openclaw:agent-broken:s1')).toMatchObject({
+          model: 'legacy-model',
+          lastMessage: 'listed now',
+          filePath: agentPath(home, 'agent-broken', 'sessions', 's1.jsonl'),
+        });
+        // Only the sessions directory: the database file is a real file, so
+        // `isSqliteFile` admits it, but it cannot be opened and watching it
+        // could never produce data.
         expect(adapter.getWatchPaths()).toEqual([
-          { type: 'file', path: agentPath(home, 'agent-broken', 'agent', 'openclaw-agent.sqlite') },
           { type: 'directory', path: agentPath(home, 'agent-broken', 'sessions'), filter: '.jsonl' },
         ]);
         // The id-only path probes the database, gets nothing, and falls through
         // to the legacy scan, so the session IS readable by id.
         expect((await adapter.getSessionDetail('openclaw:agent-broken:s1', null)).messages).toEqual([
-          { role: 'assistant', text: 'never listed', ts: tsOf(1) },
+          { role: 'assistant', text: 'listed now', ts: tsOf(1) },
         ]);
+      },
+    );
+  });
+
+  // ─── schema drift in `session_windows` ───────────────────
+
+  // A drifted `session_windows` table — here `transcript_updated_at` and
+  // `display_name` are gone — used to make the literal `SESSION_WINDOW_SQL`
+  // raise `no such column`, which `queryAll` swallowed into `[]`, which made
+  // `withReadonlySqlite` answer an empty array that `agentsWithDb` then read as
+  // "this agent answered", so the agent showed ZERO sessions instead of the one
+  // its database held. The query is now projected from
+  // `pragma_table_info`: drift costs the two absent fields, not the listing.
+  const DRIFTED_WINDOWS_DDL = `
+    CREATE TABLE session_windows (
+      session_id TEXT PRIMARY KEY,
+      session_key TEXT,
+      model TEXT,
+      updated_at INTEGER
+    );
+    CREATE TABLE transcript_events (
+      session_id TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      event_json TEXT,
+      event_zstd BLOB,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (session_id, seq)
+    );
+  `;
+
+  // A `session_windows` with neither `session_id` nor any activity column is too
+  // far from the expected shape to answer: there is no id to build a session id
+  // from and nothing to threshold against. That is `null` — "the database did
+  // not answer", so the agent keeps its legacy listing — rather than the empty
+  // array that used to read as "this agent has no sessions".
+  const UNUSABLE_WINDOWS_DDL = `
+    CREATE TABLE session_windows (model TEXT);
+    CREATE TABLE transcript_events (
+      session_id TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      event_json TEXT,
+      event_zstd BLOB,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (session_id, seq)
+    );
+  `;
+
+  it('lists a session from a drifted session_windows table, losing only the absent fields', async () => {
+    const updatedAt = Date.now() - 1000;
+    await withOpenclawHome(
+      (home) => {
+        const { db } = openDriftedDb(home, 'agent-drift', DRIFTED_WINDOWS_DDL, {
+          session_id: 'drift-1',
+          session_key: 'k',
+          model: 'drift-model',
+          updated_at: updatedAt,
+        });
+        db.close();
+      },
+      async (OpenClawAdapter, home) => {
+        const adapter = new OpenClawAdapter();
+        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        expect(ids(rows)).toEqual(['openclaw:agent-drift:drift-1']);
+        expect(rowOf(rows, 'openclaw:agent-drift:drift-1')).toMatchObject({
+          agentId: 'agent-drift',
+          // `display_name` is gone, so the row falls back to the agent id …
+          displayName: 'agent-drift',
+          agentType: 'main',
+          // … and `transcript_updated_at` is gone, so the gate and the ORDER BY
+          // both fall back to `updated_at` on their own.
+          lastActivity: updatedAt,
+          status: 'active',
+          project: 'openclaw:agent-drift',
+          filePath: agentPath(home, 'agent-drift', 'agent', 'openclaw-agent.sqlite'),
+        });
+        // The row came from the DATABASE, not from a legacy file: `model` is the
+        // column the drifted table still has, and `filePath` is the database.
+        expect(rowOf(rows, 'openclaw:agent-drift:drift-1')!.model).toBe('drift-model');
+      },
+    );
+  });
+
+  it('falls back to the legacy listing when session_windows is too far from the expected shape', async () => {
+    await withOpenclawHome(
+      (home) => {
+        const { db } = openDriftedDb(home, 'agent-unusable', UNUSABLE_WINDOWS_DDL, { model: 'ignored' });
+        db.close();
+        writeJsonl(agentPath(home, 'agent-unusable', 'sessions', 'legacy.jsonl'), [
+          message([textBlock('recovered from the file')], { model: 'legacy-model' }, 1),
+        ]);
+      },
+      async (OpenClawAdapter, home) => {
+        const adapter = new OpenClawAdapter();
+        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        expect(ids(rows)).toEqual(['openclaw:agent-unusable:legacy']);
+        expect(rowOf(rows, 'openclaw:agent-unusable:legacy')).toMatchObject({
+          model: 'legacy-model',
+          lastMessage: 'recovered from the file',
+          filePath: agentPath(home, 'agent-unusable', 'sessions', 'legacy.jsonl'),
+        });
+      },
+    );
+  });
+
+  // One agent's database being unusable must not reach a healthy sibling's
+  // listing: the usable agent is still read from its database, the unusable one
+  // falls back to its file, and the exact two-id set says both happened in one
+  // pass.
+  it('keeps a healthy agent on its database when a sibling agent\'s database cannot be read', async () => {
+    await withOpenclawHome(
+      (home) => {
+        const { db: good, addWindow } = openAgentDb(home, 'agent-good');
+        addWindow({ sessionId: 'good-1', key: 'k', model: 'good-model' });
+        good.close();
+        writeRaw(agentPath(home, 'agent-broken', 'agent', 'openclaw-agent.sqlite'), 'not a database at all');
+        writeJsonl(agentPath(home, 'agent-broken', 'sessions', 'legacy.jsonl'), [
+          message([textBlock('broken agent legacy')], { model: 'legacy-model' }, 1),
+        ]);
+      },
+      async (OpenClawAdapter) => {
+        const adapter = new OpenClawAdapter();
+        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        expect(ids(rows)).toEqual(['openclaw:agent-broken:legacy', 'openclaw:agent-good:good-1']);
+        expect(rowOf(rows, 'openclaw:agent-good:good-1')!.filePath.endsWith('openclaw-agent.sqlite')).toBe(true);
+        expect(rowOf(rows, 'openclaw:agent-broken:legacy')!.filePath.endsWith('legacy.jsonl')).toBe(true);
+      },
+    );
+  });
+
+  // ─── an unreadable agents directory ─────────────────────
+
+  // FIXED (audit instance 18). `readdirSync(AGENTS_DIR)` used to be caught into
+  // an empty array at all three enumeration sites, and the only report was a
+  // `debugAdapterError` line — a no-op unless `DEBUG` is set. So an install
+  // whose agents directory could not be listed reported ZERO agents, which is
+  // the exact shape a machine with no openclaw agents installed reports, and
+  // `isAvailable()` still answered `true` throughout. Three sessions measured
+  // here went to zero and back; the going to zero must now be LOUD.
+  //
+  // The sessions themselves cannot be recovered — a directory that cannot be
+  // read cannot be enumerated — so the loss stays. What changes is that it is
+  // reported on `console.error`, the unconditional channel
+  // `adapters/index.ts:60` already uses for an adapter about to report less data
+  // than it should, rather than only under `DEBUG`.
+  it('reports an unreadable agents directory instead of reporting no agents', async () => {
+    await withOpenclawHome(
+      (home) => {
+        for (const agent of ['agent-one', 'agent-two', 'agent-three']) {
+          writeJsonl(agentPath(home, agent, 'sessions', 's.jsonl'), [
+            message([textBlock('never listed')], { model: 'm' }, 1),
+          ]);
+        }
+        // `chmod 000` as the owner still denies `readdir`, while `existsSync`
+        // keeps answering `true` — which is the whole trap.
+        fs.chmodSync(path.join(home, '.openclaw', 'agents'), 0o000);
+      },
+      async (OpenClawAdapter, home) => {
+        const agentsDir = path.join(home, '.openclaw', 'agents');
+        const errors: string[] = [];
+        const spy = vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+          errors.push(parts.map(String).join(' '));
+        });
+        try {
+          const adapter = new OpenClawAdapter();
+          // The install is still there …
+          expect(adapter.isAvailable()).toBe(true);
+          // … but nothing can be enumerated, so nothing is listed.
+          expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
+          expect(adapter.getWatchPaths()).toEqual([]);
+
+          // Three sites enumerate AGENTS_DIR and all three said nothing before:
+          // the database scan (`findAgentDatabases`), the legacy scan
+          // (`getActiveSessions`) and `getWatchPaths`. Each names its operation
+          // and the directory it could not read.
+          expect(errors.length).toBeGreaterThanOrEqual(3);
+          for (const operation of ['findAgentDatabases', 'getActiveSessions', 'getWatchPaths']) {
+            expect(errors.some((line) => line.includes(operation) && line.includes(agentsDir))).toBe(true);
+          }
+          // The reason, not just the fact: EACCES/EPERM on this platform.
+          expect(errors.some((line) => /EACCES|EPERM/.test(line))).toBe(true);
+        } finally {
+          // Restore before the harness deletes the tree, or `rmSync` cannot
+          // descend into it and `afterEach` fails on a leaked home.
+          spy.mockRestore();
+          fs.chmodSync(agentsDir, 0o755);
+        }
+      },
+    );
+  });
+
+  // The other half of "distinguishable from no agents installed": a directory
+  // that CAN be read and simply has no agents in it must stay silent. Without
+  // this, warning unconditionally on every enumeration would be indistinguishable
+  // from the real failure in the other direction.
+  it('stays silent when the agents directory is readable and holds no agents', async () => {
+    await withOpenclawHome(
+      (home) => {
+        mkdirp(path.join(home, '.openclaw', 'agents'));
+      },
+      async (OpenClawAdapter) => {
+        const errors: unknown[][] = [];
+        const spy = vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+          errors.push(parts);
+        });
+        try {
+          const adapter = new OpenClawAdapter();
+          expect(adapter.isAvailable()).toBe(true);
+          expect(await adapter.getActiveSessions(5 * MINUTE)).toEqual([]);
+          expect(adapter.getWatchPaths()).toEqual([]);
+          expect(errors).toEqual([]);
+        } finally {
+          spy.mockRestore();
+        }
+      },
+    );
+  });
+
+  // `scanAgentSessionFiles` has the same collapse one level down: a readdir of a
+  // single agent's `sessions/` that fails answers `[]`, so that agent's rows are
+  // gone while every other agent's survive. The blast radius is one agent rather
+  // than the whole provider, and the exact two-id set below is what holds the
+  // containment in place — but the failure is reported on the same channel, so
+  // it is not silent either.
+  it('reports an unreadable sessions directory for one agent and still lists the others', async () => {
+    await withOpenclawHome(
+      (home) => {
+        writeJsonl(agentPath(home, 'agent-locked', 'sessions', 's.jsonl'), [
+          message([textBlock('locked out')], { model: 'locked-model' }, 1),
+        ]);
+        writeJsonl(agentPath(home, 'agent-open', 'sessions', 's.jsonl'), [
+          message([textBlock('readable')], { model: 'open-model' }, 1),
+        ]);
+        fs.chmodSync(agentPath(home, 'agent-locked', 'sessions'), 0o000);
+      },
+      async (OpenClawAdapter, home) => {
+        const sessionsDir = agentPath(home, 'agent-locked', 'sessions');
+        const errors: string[] = [];
+        const spy = vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+          errors.push(parts.map(String).join(' '));
+        });
+        try {
+          const adapter = new OpenClawAdapter();
+          const rows = await adapter.getActiveSessions(5 * MINUTE);
+          // Good data survives: only the locked agent is missing.
+          expect(ids(rows)).toEqual(['openclaw:agent-open:s']);
+          expect(rowOf(rows, 'openclaw:agent-open:s')!.lastMessage).toBe('readable');
+          expect(errors.some((line) => line.includes('scanAgentSessionFiles') && line.includes(sessionsDir))).toBe(true);
+        } finally {
+          spy.mockRestore();
+          fs.chmodSync(sessionsDir, 0o755);
+        }
       },
     );
   });
@@ -1801,29 +2087,93 @@ describe('OpenClawAdapter on-disk characterization', () => {
     );
   });
 
-  // A `.sqlite` path that is a DIRECTORY is registered as an agent database by
-  // `existsSync` (openclaw.ts:125), so the agent's legacy sessions are
-  // suppressed, `withReadonlySqlite` returns null because `isSqliteFile` wants a
-  // file (sqlite-utils.ts:22), and `getWatchPaths` advertises a `type: 'file'`
-  // entry pointing at a directory. Pinned as-is; see the report.
-  it('registers a directory named openclaw-agent.sqlite as that agent\'s database', async () => {
+  // FIXED (audit instance 9). This assertion previously pinned the DEFECT: a
+  // DIRECTORY named `openclaw-agent.sqlite` was registered as that agent's
+  // database by `existsSync` (openclaw.ts:125), which made `agentsWithDb`
+  // (openclaw.ts:217) suppress the agent's legacy sessions, made `withReadonlySqlite`
+  // answer null because `isSqliteFile` wants a regular file (sqlite-utils.ts:23),
+  // and made `getWatchPaths` advertise a `type: 'file'` entry pointing at a
+  // directory — so one bad path cost the agent BOTH halves of its sessions while
+  // the UI watched a path that could never produce data.
+  //
+  // `findAgentDatabases` and `getWatchPaths` now gate on `isSqliteFile`, so a
+  // non-file is not an agent database at all: the agent falls back to its legacy
+  // listing, and the directory is not advertised. The decoy still holds a file, so
+  // it `stat`s cleanly and would be registered again if the `isFile()` term came
+  // back.
+  it('ignores a directory named openclaw-agent.sqlite, so the agent still lists its legacy sessions', async () => {
     await withOpenclawHome(
       (home) => {
         writeRaw(agentPath(home, 'agent-dir-db', 'agent', 'openclaw-agent.sqlite', 'inside.txt'), 'x\n');
         writeJsonl(agentPath(home, 'agent-dir-db', 'sessions', 's1.jsonl'), [
-          message([textBlock('suppressed')], { model: 'm' }, 1),
+          message([textBlock('listed again')], { model: 'legacy-model' }, 1),
         ]);
       },
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
-        expect(await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER)).toEqual([]);
-        const paths = adapter.getWatchPaths();
-        expect(paths).toHaveLength(2);
-        expect(paths[0]).toEqual({
-          type: 'file',
-          path: agentPath(home, 'agent-dir-db', 'agent', 'openclaw-agent.sqlite'),
+        const rows = await adapter.getActiveSessions(Number.MAX_SAFE_INTEGER);
+        expect(ids(rows)).toEqual(['openclaw:agent-dir-db:s1']);
+        expect(rowOf(rows, 'openclaw:agent-dir-db:s1')).toMatchObject({
+          model: 'legacy-model',
+          lastMessage: 'listed again',
+          filePath: agentPath(home, 'agent-dir-db', 'sessions', 's1.jsonl'),
         });
+        // The directory is not a database, so it is not watched as a FILE either.
+        // Its `sessions/` directory still is.
+        expect(adapter.getWatchPaths()).toEqual([
+          { type: 'directory', path: agentPath(home, 'agent-dir-db', 'sessions'), filter: '.jsonl' },
+        ]);
         expect(fs.statSync(agentPath(home, 'agent-dir-db', 'agent', 'openclaw-agent.sqlite')).isDirectory()).toBe(true);
+      },
+    );
+  });
+
+  // The blast radius is per AGENT, so one agent's unusable database path must not
+  // reach another's. `agent-good` has a real database and one SQLite session;
+  // `agent-bad` has a DIRECTORY where its database should be and one legacy
+  // session. Before the `isSqliteFile` gate the whole listing was `[]` and both
+  // watch-path entries for `agent-bad` lied. The exact two-id set is what holds
+  // each half in place: drop the gate and the legacy id disappears; keep it but
+  // gate `getWatchPaths` too loosely and the third assertion fails.
+  it('lists a healthy agent\'s sessions and the broken agent\'s legacy ones when one database path is a directory', async () => {
+    await withOpenclawHome(
+      (home) => {
+        const { db, addWindow, addEvent } = openAgentDb(home, 'agent-good');
+        addWindow({ sessionId: 'sess-1', key: 'k', model: 'good-model' });
+        addEvent('sess-1', 1, message([textBlock('from the database')], { model: 'good-model' }, 1));
+        db.close();
+        mkdirp(agentPath(home, 'agent-good', 'sessions'));
+        writeRaw(agentPath(home, 'agent-bad', 'agent', 'openclaw-agent.sqlite', 'inside.txt'), 'x\n');
+        writeJsonl(agentPath(home, 'agent-bad', 'sessions', 'legacy.jsonl'), [
+          message([textBlock('from the legacy file')], { model: 'legacy-model' }, 1),
+        ]);
+      },
+      async (OpenClawAdapter, home) => {
+        const adapter = new OpenClawAdapter();
+        const rows = await adapter.getActiveSessions(5 * MINUTE);
+        expect(ids(rows)).toEqual(['openclaw:agent-bad:legacy', 'openclaw:agent-good:sess-1']);
+        expect(rowOf(rows, 'openclaw:agent-good:sess-1')).toMatchObject({
+          model: 'good-model',
+          lastMessage: 'from the database',
+          filePath: agentPath(home, 'agent-good', 'agent', 'openclaw-agent.sqlite'),
+        });
+        expect(rowOf(rows, 'openclaw:agent-bad:legacy')).toMatchObject({
+          model: 'legacy-model',
+          lastMessage: 'from the legacy file',
+        });
+
+        const paths = adapter.getWatchPaths();
+        expect(paths).toHaveLength(3);
+        expect(paths).toEqual(
+          expect.arrayContaining([
+            { type: 'file', path: agentPath(home, 'agent-good', 'agent', 'openclaw-agent.sqlite') },
+            { type: 'directory', path: agentPath(home, 'agent-good', 'sessions'), filter: '.jsonl' },
+            { type: 'directory', path: agentPath(home, 'agent-bad', 'sessions'), filter: '.jsonl' },
+          ]),
+        );
+        expect(paths.map((entry: WatchPath) => entry.path)).not.toContain(
+          agentPath(home, 'agent-bad', 'agent', 'openclaw-agent.sqlite'),
+        );
       },
     );
   });

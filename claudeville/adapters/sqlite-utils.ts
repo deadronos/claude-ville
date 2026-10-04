@@ -89,6 +89,49 @@ export function hasTable(db: SqliteDb, name: string): boolean {
   }
 }
 
+/**
+ * Sibling of {@link isSqliteFile}, for the call sites that must not act on a
+ * path they cannot actually read.
+ *
+ * `isSqliteFile` only asks `statSync().isFile()`, so a regular file that is not a
+ * database — an unrelated `.sqlite` file, a truncated download, an empty file —
+ * passes it and then fails to read. `openReadonlySqlite` answers `null` for
+ * those once a query runs, and `hermes.ts` / `opencode.ts` depend on that
+ * `null`; a caller that wants to know "can this be read?" before it advertises
+ * or suppresses anything needs the answer directly. Opens a read-only handle,
+ * reads one row to force the header check and closes, so it never leaves a
+ * descriptor behind and never throws.
+ */
+export function isOpenableSqliteDatabase(filePath: string | null | undefined, scope: string): boolean {
+  if (!filePath || !isSqliteFile(filePath)) return false;
+  return (
+    withReadonlySqlite(filePath, scope, (db) => {
+      // better-sqlite3 opens LAZILY: a file of garbage yields a usable handle and
+      // the `file is not a database` error only surfaces on the first read, so
+      // "the open succeeded" is not the answer. A throw here becomes
+      // `withReadonlySqlite`'s `null`, which is the whole point of the check.
+      db.prepare('SELECT name FROM sqlite_master LIMIT 1').get();
+      return true;
+    }) === true
+  );
+}
+
+/**
+ * The columns `table` actually has, so a query can project only those and a
+ * drifted schema costs one field instead of the whole result set.
+ *
+ * A sibling rather than a change to `queryAll`/`hasTable`, both of which are
+ * shared with `hermes` and `opencode`: `queryAll`'s swallow is load-bearing at
+ * the NESTED call sites, where a throw would abort the enclosing `.map()` and
+ * lose every sibling row. Reading a column list is a separate question from
+ * "should this query throw", and answering it here keeps that swallow intact.
+ * Returns an empty set for a missing table, which callers treat as "unusable".
+ */
+export function tableColumns(db: SqliteDb, table: string): Set<string> {
+  const rows = queryAll<{ name: string }>(db, 'SELECT name FROM pragma_table_info(?)', [table]);
+  return new Set(rows.map((row) => row.name));
+}
+
 export function decodeZstdText(value: Buffer | Uint8Array | null | undefined): string | null {
   if (!value) return null;
   try {

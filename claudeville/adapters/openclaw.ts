@@ -21,9 +21,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import type { AdapterSessionDetail, AgentAdapter, WatchPath } from '../../shared/types.js';
+import type { AdapterSessionDetail, AgentAdapter, AgentSessionSummary, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
-import { hasTable, queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import type { SqliteDb, SqliteParam } from './sqlite-utils.js';
+import { hasTable, isOpenableSqliteDatabase, isSqliteFile, queryAll, tableColumns, withReadonlySqlite } from './sqlite-utils.js';
 import { toolBlockInfo, normalizeTokenUsage, decodeEventRows, parseSession, getToolHistory, getRecentMessages, readDbDetail } from './openclaw-readers.js';
 import { extractText } from './text-utils.js';
 import type { Dirent } from './scan-utils.js';
@@ -36,6 +37,42 @@ const AGENT_DB_FILENAME = 'openclaw-agent.sqlite';
 
 function isPrimarySessionFile(fileName: string) {
   return fileName.endsWith('.jsonl') && !fileName.endsWith('.trajectory.jsonl');
+}
+
+/**
+ * Report a directory that exists but cannot be enumerated, and say what the
+ * reader is giving up.
+ *
+ * The loss is unavoidable — a directory that cannot be read cannot be walked —
+ * but the SILENCE was not defensible. A failed `readdirSync` used to be caught
+ * into an empty array and reported only through `debugAdapterError`, which is a
+ * no-op unless `DEBUG` is set, so an unreadable directory produced exactly the
+ * shape a machine with no sessions installed produces. This is `console.error`
+ * because `console.error` is the unconditional channel `adapters/index.ts:60`
+ * already uses for an adapter that is about to report less data than it should.
+ */
+function reportUnreadableDir(operation: string, dirPath: string, err: unknown) {
+  console.error(
+    `[openclaw] ${operation} could not read ${dirPath}; listing what is in it is skipped`,
+    err instanceof Error ? err.message : String(err),
+  );
+}
+
+/**
+ * The agent directories under `AGENTS_DIR`, or `null` when they cannot be read.
+ *
+ * `null` and `[]` are different answers and must stay different: `[]` is "there
+ * are no agents", which is a fact about the install, and `null` is "the install
+ * cannot be listed", which is a fact about this process.
+ */
+function readAgentDirs(operation: string): Dirent[] | null {
+  try {
+    return fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
+      .filter((d: Dirent) => d.isDirectory());
+  } catch (err) {
+    reportUnreadableDir(operation, AGENTS_DIR, err);
+    return null;
+  }
 }
 
 // ─── Session ID utilities ─────────────────────────────────
@@ -102,7 +139,7 @@ async function scanAgentSessionFiles(agentId: string, sessionsDir: string, activ
     );
     for (const r of fileResults) if (r) results.push(r);
   } catch (err) {
-    debugAdapterError('openclaw', 'scanAgentSessionFiles readdir', err, sessionsDir);
+    reportUnreadableDir(`scanAgentSessionFiles (agent ${agentId})`, sessionsDir, err);
   }
 
   return results;
@@ -116,16 +153,18 @@ function findAgentDatabases(): AgentDatabase[] {
   const databases: AgentDatabase[] = [];
   if (!fs.existsSync(AGENTS_DIR)) return databases;
 
-  try {
-    const agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-      .filter((d: Dirent) => d.isDirectory());
+  const agentDirs = readAgentDirs('findAgentDatabases');
+  if (agentDirs === null) return databases;
 
-    for (const dir of agentDirs) {
-      const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
-      if (fs.existsSync(dbPath)) databases.push({ agentId: dir.name, dbPath });
-    }
-  } catch (err) {
-    debugAdapterError('openclaw', 'findAgentDatabases', err, AGENTS_DIR);
+  for (const dir of agentDirs) {
+    const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
+    // `isSqliteFile`, not `existsSync`: `existsSync` is true for a DIRECTORY
+    // named `openclaw-agent.sqlite`, and this list is also what decides, in
+    // `getActiveSessions`, that the agent has a database and so does NOT get
+    // its legacy scan. `withReadonlySqlite` refuses a non-file anyway
+    // (sqlite-utils.ts:30), so registering one cost the agent BOTH halves of
+    // its sessions.
+    if (isSqliteFile(dbPath)) databases.push({ agentId: dir.name, dbPath });
   }
 
   return databases;
@@ -148,22 +187,77 @@ type SessionWindowRow = {
   display_name: string | null;
 };
 
-const SESSION_WINDOW_SQL = `
-  SELECT session_id, session_key, model, model_provider, status, updated_at, transcript_updated_at, display_name
-  FROM session_windows
-  WHERE COALESCE(transcript_updated_at, updated_at) >= ?
-  ORDER BY COALESCE(transcript_updated_at, updated_at) DESC
-`;
+/**
+ * The columns the window read projects. `SESSION_WINDOW_SQL` used to name all of
+ * them in one literal, so a `session_windows` table missing ANY of them made
+ * SQLite raise `no such column`, which `queryAll` swallowed into `[]` — an empty
+ * answer indistinguishable from "this agent has no sessions".
+ */
+const SESSION_WINDOW_COLUMNS = [
+  'session_id', 'session_key', 'model', 'model_provider', 'status',
+  'updated_at', 'transcript_updated_at', 'display_name',
+] as const;
 
-async function getDbSessions(activeThresholdMs: number) {
+/**
+ * The window read, projected from the columns the installed table HAS: a missing
+ * projected column is simply absent from the row (every reader already treats an
+ * absent column as falsy) and a missing gate column is simply not gated on, so
+ * drift costs one field instead of the listing.
+ *
+ * Returns null when the table is too far from the expected shape to answer — no
+ * `session_id` to build a session id from, or no activity column to threshold
+ * against — which is the one case the legacy-file fallback is genuinely for.
+ */
+function sessionWindowSql(db: SqliteDb, threshold: number): { sql: string; params: SqliteParam[] } | null {
+  const columns = tableColumns(db, 'session_windows');
+  if (!columns.has('session_id')) return null;
+
+  const activity = columns.has('transcript_updated_at') && columns.has('updated_at')
+    ? 'COALESCE(transcript_updated_at, updated_at)'
+    : columns.has('transcript_updated_at')
+      ? 'transcript_updated_at'
+      : columns.has('updated_at')
+        ? 'updated_at'
+        : null;
+  if (!activity) return null;
+
+  const projected = SESSION_WINDOW_COLUMNS.filter((column) => columns.has(column));
+  return {
+    sql: `SELECT ${projected.join(', ')} FROM session_windows WHERE ${activity} >= ? ORDER BY ${activity} DESC`,
+    params: [threshold],
+  };
+}
+
+type DbScan = {
+  sessions: AgentSessionSummary[];
+  /** Agents whose listing came from the database, so their legacy scan is redundant. */
+  dbBackedAgents: Set<string>;
+};
+
+/**
+ * Read every agent database. `dbBackedAgents` records which agents the database
+ * ACTUALLY answered for, which is what decides whether an agent's legacy JSONL
+ * scan runs — so an agent whose database is missing, will not open, or is too
+ * far from the expected shape keeps its legacy listing instead of losing both
+ * halves to one unusable path.
+ */
+async function getDbSessions(activeThresholdMs: number): Promise<DbScan> {
   const databases = findAgentDatabases();
   const sessions: any[] = [];
+  const dbBackedAgents = new Set<string>();
   const threshold = Date.now() - activeThresholdMs;
 
   for (const { agentId, dbPath } of databases) {
     const agentSessions = withReadonlySqlite(dbPath, 'openclaw', (db) => {
-      if (!hasTable(db, 'session_windows') || !hasTable(db, 'transcript_events')) return [];
-      const rows = queryAll<SessionWindowRow>(db, SESSION_WINDOW_SQL, [threshold]);
+      // null, not []: the database did not answer, which is what tells
+      // `getActiveSessions` to fall back rather than to report "no sessions".
+      if (!hasTable(db, 'session_windows') || !hasTable(db, 'transcript_events')) return null;
+      const query = sessionWindowSql(db, threshold);
+      if (!query) return null;
+      // Deliberately not `queryAll`: at this TOP-LEVEL call site a throw is not a
+      // regression — `withReadonlySqlite` catches it, logs the cause and answers
+      // `null`, which is the same legacy fallback a missing table gives.
+      const rows = db.prepare(query.sql).all(...query.params) as SessionWindowRow[];
 
       const seen = new Set<string>();
       const results: any[] = [];
@@ -195,10 +289,12 @@ async function getDbSessions(activeThresholdMs: number) {
       return results;
     });
 
-    if (agentSessions) sessions.push(...agentSessions);
+    if (agentSessions === null) continue;
+    dbBackedAgents.add(agentId);
+    sessions.push(...agentSessions);
   }
 
-  return sessions;
+  return { sessions, dbBackedAgents };
 }
 
 // ─── Adapter class ────────────────────────────────────────
@@ -213,25 +309,18 @@ export class OpenClawAdapter implements AgentAdapter {
   }
 
   async getActiveSessions(activeThresholdMs: number) {
-    const databases = findAgentDatabases();
-    const agentsWithDb = new Set(databases.map((entry) => entry.agentId));
-
     // SQLite-backed sessions (current OpenClaw)
-    const dbSessions = await getDbSessions(activeThresholdMs);
+    const { sessions: dbSessions, dbBackedAgents } = await getDbSessions(activeThresholdMs);
 
-    // Legacy JSONL sessions for agents that have no SQLite database
+    // Legacy JSONL sessions, for every agent the database did NOT answer for.
     const legacySessions: any[] = [];
     if (fs.existsSync(AGENTS_DIR)) {
-      let agentDirs: Dirent[] = [];
-      try {
-        agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-          .filter((d: Dirent) => d.isDirectory());
-      } catch (err) {
-        debugAdapterError('openclaw', 'getActiveSessions readdir agents', err, AGENTS_DIR);
-      }
+      // null and [] are the same walk — nothing enumerable — but only one of them
+      // is silent, and `readAgentDirs` has already said which case this is.
+      const agentDirs = readAgentDirs('getActiveSessions');
 
-      for (const dir of agentDirs) {
-        if (agentsWithDb.has(dir.name)) continue;
+      for (const dir of agentDirs ?? []) {
+        if (dbBackedAgents.has(dir.name)) continue;
         const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
         const fileSessions = await scanAgentSessionFiles(dir.name, sessionsDir, activeThresholdMs);
         for (const { filePath, mtime, fileName, agentId } of fileSessions) {
@@ -357,23 +446,23 @@ export class OpenClawAdapter implements AgentAdapter {
     const paths: WatchPath[] = [];
     if (!fs.existsSync(AGENTS_DIR)) return paths;
 
-    try {
-      const agentDirs = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-        .filter((d: Dirent) => d.isDirectory());
+    const agentDirs = readAgentDirs('getWatchPaths');
+    if (agentDirs === null) return paths;
 
-      for (const dir of agentDirs) {
-        const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
-        if (fs.existsSync(dbPath)) {
-          paths.push({ type: 'file', path: dbPath });
-        }
-
-        const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
-        if (fs.existsSync(sessionsDir)) {
-          paths.push({ type: 'directory', path: sessionsDir, filter: '.jsonl' });
-        }
+    for (const dir of agentDirs) {
+      const dbPath = path.join(AGENTS_DIR, dir.name, 'agent', AGENT_DB_FILENAME);
+      // `isOpenableSqliteDatabase`, not `isSqliteFile`: a `type: 'file'` watch
+      // entry is a promise that this path yields data, and a regular file that
+      // is not a database can never do that. `getWatchPaths` runs once, at
+      // watcher setup, so the extra open costs nothing per scan.
+      if (isOpenableSqliteDatabase(dbPath, 'openclaw')) {
+        paths.push({ type: 'file', path: dbPath });
       }
-    } catch (err) {
-      debugAdapterError('openclaw', 'getWatchPaths', err, AGENTS_DIR);
+
+      const sessionsDir = path.join(AGENTS_DIR, dir.name, 'sessions');
+      if (fs.existsSync(sessionsDir)) {
+        paths.push({ type: 'directory', path: sessionsDir, filter: '.jsonl' });
+      }
     }
 
     return paths;
