@@ -346,10 +346,104 @@ siblings came out of this — `isOpenableSqliteDatabase` and `tableColumns` — 
 than a change to `queryAll` or `hasTable`, whose behaviour is shared with `hermes`
 and `opencode`. `tableColumns` is the helper `hermes.ts` already had privately, so
 it lives in the shared module rather than becoming a second byte-identical copy;
-`hermes.ts`'s own copy is left for a separate change. The unresolved half is
-observability, not data: `adapters/index.ts` still reduces every adapter failure to
-"this provider has no sessions", so a reader failure remains indistinguishable from
-an idle agent.
+`hermes.ts`'s own copy is left for a separate change.
+
+### The error contract: `getActiveSessions` answers a union
+
+`getActiveSessions` used to answer `AgentSessionSummary[]`, which made two states
+indistinguishable: *this provider has no sessions* and *this provider could not be
+read*. Everything above was about stopping data disappearing; this is about being
+able to say **why**. It returns `AdapterSessionsResult` (`shared/types.ts`):
+
+```ts
+type AdapterSessionsResult =
+  | { ok: true; sessions: AgentSessionSummary[]; warnings: AdapterWarning[] }
+  | { ok: false; error: AdapterError };
+```
+
+`ok: false` is a WHOLE-ADAPTER failure — the provider could not be read at all —
+and `error.code` is one of four:
+
+| code | meaning |
+|---|---|
+| `root-unreadable` | the provider's base directory exists but could not be listed |
+| `store-unreadable` | a database would not open, or is not a database |
+| `schema-incompatible` | it opened and answered, but the shape is not one we understand |
+| `unknown` | a failure fitting none of the above — the last-resort bucket, so a new failure mode is visible rather than silent |
+
+`ok: true` with `warnings` is a PER-ITEM degradation: some records were skipped or
+degraded and the rest are good. `warnings` is where the tolerated failures go, and
+**it is the branch that makes `queryAll`'s load-bearing swallow reportable**. A
+`messages` table missing the `active` column makes `DB_MESSAGES_SQL` raise; that
+read runs inside `rows.map()`, where a throw would abort the map and lose every
+sibling session, so the containment stays exactly where it is — and the failure is
+now a `warning` instead of a silent `lastMessage: null`.
+
+**The classification rule, which is the part that is easy to get wrong:**
+
+> A failure with **no source that answered** is `ok: false`. Anything else is
+> `ok: true`, and each failure becomes a `warning`.
+
+`hermes` states it once, in `combineSources`, over a three-state `SourceListing`
+(`absent` / `rows` / `failed`), because that is the shape every adapter needs.
+`absent` is separate from `rows` for the same reason `ok` is separate from
+`sessions`: **`[]` from a source that answered is DATA** — this install has no
+sessions — and only a source that could not be read is a failure.
+
+**Do not convert a per-item degradation into a whole-adapter failure.** That is the
+regression the union exists to prevent. It forces an adapter to either fail wholly
+over one bad record — undoing `opencode`'s per-row JS parse (#156) and
+`openclaw`'s per-agent legacy fallback (#157) — or keep swallowing and leave the
+union decorative. The regression is pinned as a test, not just described: an
+unreadable `state.db` beside readable legacy files is a warning **with the files'
+sessions intact**, because `ok: false` there would drop sessions the provider
+demonstrably holds.
+
+Two reading helpers came out of it. `hasTableOrNull` (`sqlite-utils.ts`) keeps
+`hasTable`'s third state, because `hasTable` folding *no such table* and *not a
+database* into one `false` is how a `state.db` of plain text came to read as a
+provider with no sessions; `hasTable` is now the coercing wrapper, so there is
+still one probe. `closeSqlite` is `withReadonlySqlite`'s own close, extracted so a
+caller that must classify what went wrong INSIDE the callback can close the handle
+without inheriting the wrapper's "throw and could-not-open are both `null`"
+collapse.
+
+`collectFromAdapters` (`adapters/index.ts`) is the new shape at the single
+production call site: sessions, plus one entry per adapter that could not be read,
+plus one per degraded record set. `getAllSessions` is a thin wrapper returning the
+sessions alone, so the WS payload and the REST route are untouched — wiring
+`errors` / `warnings` into those payloads is the follow-up, deliberately not done
+here because it would change two payload contracts in a PR whose subject is the
+adapter contract.
+
+**PILOT: only `hermes` is converted.** The union is declared for all nine but the
+other eight still answer a bare array, so `npm run typecheck` reports them as
+incompatible and `unwrapSessions` (`adapters/index.ts`) accepts both shapes until
+they are converted. That is deliberate: it keeps the diff to one adapter, so the
+only classifications in it are ones somebody actually reasoned about, and it keeps
+the other eight's fixtures green and untouched. Convert an adapter by moving its
+read sources into the `absent` / `rows` / `failed` shape, hoisting
+`combineSources` into a shared `adapters/` module as soon as a second adapter
+needs it, and deleting the `unwrapSessions` array branch.
+
+### The known limitation: `getSessionDetail` still swallows
+
+**`getSessionDetail` has the same problem and is deliberately OUT OF SCOPE for this
+contract.** It answers `AdapterSessionDetail` unconditionally: `index.ts:71-81`
+turns a throw into `{ toolHistory: [], messages: [] }`, which is the same
+"indistinguishable from nothing" collapse, and the adapters do the same inside
+themselves — `hermes`' `readDbSessionDetail` answers `null` for a database that
+could not be read, and `openclaw`'s per-session events query degrades to an empty
+detail.
+
+It needs its own union and its own PR rather than half-doing it here. Until then,
+two audited hermes instances stay invisible: the session whose message query
+FAILED and the session with no messages both arrive as the same empty message
+list, and the `tokenUsage` the `sessions` table answered with is indistinguishable
+from a session that has none. Note the boundary this leaves: `getActiveSessions`
+reports instance 4 (a message read that costs one listing row its detail), while
+instances 5 and 6 live on the `getSessionDetail` path and are therefore still
+silent.
 
 ## Compliance
 
