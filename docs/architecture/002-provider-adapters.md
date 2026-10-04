@@ -629,8 +629,42 @@ a diagnostics channel is a separate decision.
 
 ### Still uncovered
 
-Four audited mechanisms remain outside the contract, each for a stated reason rather
-than by omission:
+**Three of the four mechanisms this section originally listed are now closed**, each
+by the change named:
+
+- **`collectScanByMtime`'s per-file `stat` failure used to be silent; it is now a
+  reported scope.** The earlier entry here called it "unreachable by construction",
+  and that was half right, which is worse than being wrong. A *permission* failure is
+  indeed unreachable: `stat` needs only execute on a directory already listed
+  through. But the failure is not only `EACCES`. `copilot`'s `fileFor` is
+  `existsSync`-free by design, so a `session-state/{uuid}/` holding no
+  `events.jsonl` reaches `stat` and raises `ENOENT` — routinely, on every session
+  directory Copilot has created but not yet written. `onUnreadable`'s scope is now
+  `'root' | 'child' | 'stat'`, and each caller DECIDES rather than inheriting a
+  default: `copilot` drops `'stat'` because an empty directory is absence rather than
+  loss, while `pi` and `gemini` keep it out of `childrenUnreadable`, which counts in
+  units of project directories and would otherwise report "1 project directory(ies)"
+  for one file removed in between. The channel is complete even though the two
+  adapters that could act on it differently both decline to count it, and that
+  decline is now written down at each site.
+- **`combineDetailSources` answered with the FIRST source that answered**, which made
+  the priority between a store and its legacy files an incidental property of the
+  order a caller pushed in — push the low-priority one first and it silently wins,
+  with no failure to notice. There is exactly one `primary` slot now and `fallbacks`
+  are consulted in order only when it did not answer, so the priority is stated where
+  it is visible and cannot be expressed by accident. `combineSources` deliberately
+  did NOT change: it concatenates every answering source rather than picking one,
+  because a session in one half of an install but not the other still belongs in the
+  listing. Only its choice of which failure to report when nothing answered is
+  positional, and that is now pinned by a test.
+- **`hermes` had a private `tableColumns` byte-identical to the shared export.** Two
+  definitions of "which columns does this installed table have" could drift, and a
+  drift there is silent — the query projects a column the table lacks and `queryAll`
+  swallows the raise into `[]`, which is the whole failure this projection exists to
+  prevent. `openclaw-scan.ts` already used the shared one.
+
+Three mechanisms remain outside the contract, each for a stated reason rather than by
+omission:
 
 - **`jsonl-utils.readLines` answering `[]` on any read error** (audit instance 20) is
   what still makes a single JSONL file's detail silently empty — a permission-denied
@@ -638,14 +672,6 @@ than by omission:
   failure. It is shared by eight adapters and every one relies on it not throwing.
   Making it report means threading a result shape through `collectJsonl`, `foldJsonl`
   and every caller: a change to the shared JSONL pipeline, not to the error contract.
-- **`collectScanByMtime`'s per-file `stat` failure is unreachable by construction.**
-  The helper catches it, logs it and calls `onUnreadable('child', …)` for the sibling
-  case, but a candidate that survives `readdir`'s `isFile()` is a regular file that
-  existed moments ago, and `stat` needs execute — not read — permission on a directory
-  it is already listed through. Only a race removes it in between, so a test would
-  have to be a race. It is counted by `codex`'s and `vscode`'s listings and feeds
-  their warnings; on the detail path it rides in `incomplete` rather than being
-  separately reportable.
 - **`opencode`'s `readJson` answering `null` for a message file it could not read.**
   The `filePath` branch has no way to tell "this file is not JSON" from "this file is
   unreadable", so it falls through to the session-file search and, if that finds
@@ -656,6 +682,28 @@ than by omission:
   `openclaw` gates on `isOpenableSqliteDatabase`. Every site that needed to
   distinguish EACCES from *not a database* stopped asking `isSqliteFile` to tell
   them apart.
+- **`pi`'s per-item detail counter is unreachable from a fixture.** `pi`'s
+  `getSessionDetail` reports an unlistable project directory as a `warning` on the
+  detail (`incomplete`, in units of project directories), which is the right
+  classification. No case reaches it: the counter is only non-zero when
+  `collectScanByMtime`'s `fileFor` throws, which for `pi` means a `readdirSync` of
+  the project directory failed, and building that needs a permission the calling uid
+  does not have — so under a non-root uid the case would work, and no suite builds
+  one because the existing permission-based cases already needed `chmod 000`. The
+  LISTING side of the same counter IS covered
+  (`adapterErrorContract.perAdapter.test.ts`, codex's year directory), so this is a
+  fixture gap rather than an unclassified path.
+
+### A reported skip is not a passing test
+
+A case that cannot run on the uid doing the running must be REPORTED as skipped.
+Three permission-based cases across the contract suites used to `return` early with a
+`console.warn`, so vitest counted each as PASSED while it asserted nothing — the same
+overstatement as a mutation that never applied and still reported green, and easy to
+miss because the warning is buried in the output. They are declared
+`it.skipIf(ROOT_CANNOT_BE_DENIED)` now, so a root CI run reports 3 skipped and is
+visibly less covered than a normal one. Verified by running the three files with
+`process.getuid` stubbed to 0.
 
 ## Compliance
 
@@ -770,8 +818,8 @@ grep -vE '^\s*(//|/\*|\*|\*/)' <file> | grep -vE '^\s*$' | wc -l
 This changed because the total-line reading did not survive contact with the work.
 Three files were split under it — `vscode` 748 → 380/381, `gemini` 473 →
 248/234, `openclaw` 470 → 202/251/288 — and **every one grew back over** as
-later changes documented their traps. `hermes.ts` is now 496 lines, of which 199
-are comments and blanks, for 297 lines of logic.
+later changes documented their traps. `hermes.ts` is 541 lines total, of which 222
+are comments and blanks, for 319 lines of logic.
 
 That comment load is not padding. It is why the swallows stayed: `hermes`'s
 `queryAll` call sits inside `rows.map()`, and a comment saying so is what stops a
@@ -787,7 +835,7 @@ Every production file passes today. The largest, in code-only lines:
 | `vscode.ts` | 354 |
 | `claude.ts` | 350 |
 | `opencode.ts` | 343 |
-| `hermes.ts` | 323 |
+| `hermes.ts` | 319 |
 | `codex.ts` | 323 |
 | `pi.ts` | 289 |
 | `copilot.ts` | 233 |
