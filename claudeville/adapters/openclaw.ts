@@ -85,15 +85,15 @@ async function scanAgentSessionFiles(agentId: string, sessionsDir: string, activ
   const now = Date.now();
 
   try {
-    const sessionFiles = await fs.promises.readdir(sessionsDir);
-    const jsonlFiles = sessionFiles.filter((f: string) => isPrimarySessionFile(f));
+    const sessionFiles = await fs.promises.readdir(sessionsDir, { withFileTypes: true });
+    const jsonlFiles = sessionFiles.filter((d: Dirent) => d.isFile() && isPrimarySessionFile(d.name));
     const fileResults = await Promise.all(
-      jsonlFiles.map(async (file: string) => {
-        const filePath = path.join(sessionsDir, file);
+      jsonlFiles.map(async (file: Dirent) => {
+        const filePath = path.join(sessionsDir, file.name);
         try {
           const stat = await fs.promises.stat(filePath);
           if (now - stat.mtimeMs > activeThresholdMs) return null;
-          return { filePath, mtime: stat.mtimeMs, fileName: file, agentId };
+          return { filePath, mtime: stat.mtimeMs, fileName: file.name, agentId };
         } catch (err) {
           debugAdapterError('openclaw', 'scanAgentSessionFiles stat', err, filePath);
           return null;

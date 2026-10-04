@@ -77,6 +77,32 @@ function removeProjectDir(projectDir: string) {
   fs.rmSync(path.join(sessionsRoot(), projectDir), { recursive: true, force: true });
 }
 
+/**
+ * Runs `fn` against a THROWAWAY home directory with its own fresh module
+ * instance, then restores HOME and leaves the suite's own adapter alone.
+ * `SESSIONS_DIR` is derived from `os.homedir()` at module load (pi.ts:21-22), so
+ * pointing HOME elsewhere and re-importing is what moves the tree. Cases that
+ * build their own tree use this so that — with the suite running in shuffled order
+ * and in parallel with the other adapters' fixtures — they cannot perturb the
+ * shared fixture's exact-set assertions. Same re-import shape as
+ * claude.fixture.test.ts's `withTempClaudeDir`.
+ */
+async function withTempPiHome<T>(fn: (Adapter: any, root: string) => Promise<T>): Promise<T> {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudeville-pi-case-'));
+  const prior = process.env.HOME;
+  process.env.HOME = root;
+  vi.resetModules();
+  try {
+    const { PiAdapter: Fresh } = await import('./pi.js');
+    return await fn(Fresh, root);
+  } finally {
+    if (prior === undefined) delete process.env.HOME;
+    else process.env.HOME = prior;
+    vi.resetModules();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 const at = (i: number) => new Date(Date.UTC(2024, 0, 1, 0, 0, i)).toISOString();
 
 const MINUTE = 60 * 1000;
@@ -612,6 +638,40 @@ describe('PiAdapter fixtures', () => {
     await expect(adapter.getSessionDetail('pi:no-such-project:no-such-session', workspaceAlpha)).resolves.toMatchObject({
       toolHistory: [],
       messages: [],
+    });
+  });
+
+  // ─── #144: a DIRECTORY whose NAME matches the session-file filter ───
+  //
+  // `fileFor` lists each project directory with a BARE `readdirSync` (pi.ts:262),
+  // so its entries arrive as `string[]` and the `.jsonl` filter can ask about the
+  // NAME and nothing else. A DIRECTORY named to match therefore passes, `stat`s
+  // successfully (size 64, mtime now) and is emitted as a session row whose detail
+  // is all null — `readLines` swallows the EISDIR (jsonl-utils.ts:57), so the
+  // failure is silent. Drop the `isFile()` term at pi.ts:263 and this goes red.
+  it('emits no session row for a directory named *.jsonl in a project directory', async () => {
+    await withTempPiHome(async (Adapter, root) => {
+      const workspace = path.join(root, 'workspace');
+      fs.mkdirSync(workspace, { recursive: true });
+      const projectDir = '--Users-test-Github-case--';
+      const projectPath = path.join(root, '.pi', 'agent', 'sessions', projectDir);
+      fs.mkdirSync(projectPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectPath, 'real1.jsonl'),
+        `${JSON.stringify({ type: 'session', version: 3, id: 'real1', timestamp: at(0), cwd: workspace })}\n`
+        + `${JSON.stringify({ type: 'message', timestamp: at(1), message: { role: 'assistant', content: [{ type: 'text', text: 'real done' }], model: 'm' } })}\n`,
+      );
+      // The decoy: a DIRECTORY whose name satisfies the `.jsonl` filter.
+      const decoy = path.join(projectPath, 'dirdecoy.jsonl');
+      fs.mkdirSync(decoy, { recursive: true });
+
+      const rows = await new Adapter().getActiveSessions(5 * MINUTE);
+      // Nothing else exists in this tree, so the listing is an exact set — and
+      // sessionIdOf encodes both halves exactly as pi.ts's buildSessionId does.
+      expect(rows.map((r: any) => r.sessionId)).toEqual([sessionIdOf(projectDir, 'real1.jsonl')]);
+      // …and the decoy really is a directory, so the exact set above is the
+      // `isFile()` guard rather than a missing fixture.
+      expect(fs.statSync(decoy).isDirectory()).toBe(true);
     });
   });
 });

@@ -196,6 +196,31 @@ async function withTempClaudeDir<T>(fn: (Adapter: any, root: string) => Promise<
   }
 }
 
+/**
+ * Runs `fn` with DEBUG on, collecting what `debugAdapterError` wrote to
+ * `console.debug`. Restores both DEBUG and the spy in `finally`, so a failing
+ * assertion cannot leak DEBUG=1 into a later case. Same shape as
+ * jsonl-utils.test.ts's `withDebug` and scan-utils.test.ts's — `debugAdapterError`
+ * reads `process.env.DEBUG` at CALL time (jsonl-utils.ts:17), so no module reload
+ * is needed here.
+ */
+async function withDebug<T>(fn: () => Promise<T>): Promise<{ result: T; lines: string[] }> {
+  const lines: string[] = [];
+  const original = process.env.DEBUG;
+  const spy = vi.spyOn(console, 'debug').mockImplementation((...args: unknown[]) => {
+    lines.push(args.map(String).join(' '));
+  });
+  process.env.DEBUG = '1';
+  try {
+    const result = await fn();
+    return { result, lines };
+  } finally {
+    spy.mockRestore();
+    if (original === undefined) delete process.env.DEBUG;
+    else process.env.DEBUG = original;
+  }
+}
+
 describe('ClaudeAdapter fixtures', () => {
   beforeAll(async () => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claudeville-claude-'));
@@ -1094,6 +1119,81 @@ describe('ClaudeAdapter fixtures', () => {
       // An empty history.jsonl is not an error either: `readLines` short-circuits
       // on `stat.size === 0`.
       expect(await adapter.getActiveSessions(MINUTE)).toEqual([]);
+    });
+  });
+
+  // ─── #144: a DIRECTORY whose NAME matches a session-file filter ───
+  //
+  // The three file-level listings below — `subagents/agent-*.jsonl` (claude.ts:133),
+  // `projects/<proj>/*.jsonl` (claude.ts:201) and `tasks/<group>/*.json`
+  // (claude.ts:339) — are read with a BARE `readdir`, so the entries arrive as
+  // `string[]` and the filter can ask about the NAME and nothing else. A DIRECTORY
+  // named to match therefore passes the filter, `stat`s successfully, and is
+  // emitted as a real row. Each case below pins the fix at its own site: drop that
+  // site's `isFile()` term and the case goes red again.
+  //
+  // Every decoy is an EMPTY directory. An empty directory still `stat`s (size 64),
+  // which is what makes the defect observable, and `readLines` swallows the EISDIR
+  // (jsonl-utils.ts:57) — so the failure is silent and the row just has null detail.
+
+  // Site 1 — claude.ts:133. The decoy becomes a `sub-agent` row.
+  it('emits no sub-agent row for a directory named agent-*.jsonl', async () => {
+    await withTempClaudeDir(async (Adapter, root) => {
+      writeJsonl(root, ['history.jsonl'], []);
+      writeJsonl(root, ['projects', '-p', 'ses-parent', 'subagents', 'agent-real.jsonl'], [
+        assistant([textBlock('real sub')], 'real-sub-model', 1),
+      ]);
+      const decoy = mkdir(root, ['projects', '-p', 'ses-parent', 'subagents', 'agent-dirdecoy.jsonl']);
+
+      // Nothing else exists in this tree, so the listing is an exact set.
+      const rows = await new Adapter().getActiveSessions(10 * MINUTE);
+      expect(rows.map((r: any) => r.sessionId)).toEqual(['subagent-real']);
+      // …and the decoy really is a directory, so the exact set above is the
+      // `isFile()` guard rather than a missing fixture.
+      expect(fs.statSync(decoy).isDirectory()).toBe(true);
+    });
+  });
+
+  // Site 2 — claude.ts:201. The decoy becomes a `team-member` row. The real
+  // sibling file exercises the filter's other half: without `isFile()` the set
+  // gains the decoy, and the real row proves the filter still admits files.
+  it('emits no team-member row for a directory named *.jsonl under a project', async () => {
+    await withTempClaudeDir(async (Adapter, root) => {
+      writeJsonl(root, ['history.jsonl'], []);
+      writeJsonl(root, ['projects', '-p', 'orph-real.jsonl'], [
+        assistant([textBlock('real orphan')], 'real-orphan-model', 1),
+      ]);
+      const decoy = mkdir(root, ['projects', '-p', 'orph-dirdecoy.jsonl']);
+
+      const rows = await new Adapter().getActiveSessions(10 * MINUTE);
+      expect(rows.map((r: any) => r.sessionId)).toEqual(['orph-real']);
+      expect(fs.statSync(decoy).isDirectory()).toBe(true);
+    });
+  });
+
+  // Site 3 — claude.ts:339. This one SELF-NEUTRALISES: `readFile` on a directory
+  // raises EISDIR, the `getTasks read/parse task` catch swallows it and returns
+  // null (claude.ts:346), and `tasks` is filtered — so `count` is 1 either way and
+  // a row-count assertion CANNOT be made red. The observable is whether the
+  // adapter ATTEMPTED the read at all, which is exactly what the `isFile()` term
+  // decides. Both halves are asserted: the row set (which documents the
+  // self-neutralisation) and the empty envelope.
+  it('reads no task through a directory named *.json, and does not try to read it', async () => {
+    await withTempClaudeDir(async (Adapter, root) => {
+      writeJsonl(root, ['history.jsonl'], []);
+      mkdir(root, ['tasks', 'group-one']);
+      writeText(root, ['tasks', 'group-one', 'task-1.json'], JSON.stringify({ id: 1, subject: 'real' }));
+      const decoy = mkdir(root, ['tasks', 'group-one', 'task-2.json']);
+
+      const { result, lines } = await withDebug(() => new Adapter().getTasks());
+
+      expect(result).toEqual([
+        { groupName: 'group-one', tasks: [{ id: 1, subject: 'real' }], count: 1 },
+      ]);
+      // No `getTasks read/parse task` envelope for ANY entry: the decoy is dropped
+      // by `isFile()` before the read, not rescued by the catch after it.
+      expect(lines.filter((l) => l.includes('getTasks read/parse task'))).toEqual([]);
+      expect(fs.statSync(decoy).isDirectory()).toBe(true);
     });
   });
 });

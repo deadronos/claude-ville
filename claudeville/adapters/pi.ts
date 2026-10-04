@@ -17,6 +17,7 @@ import { debugAdapterError, collectJsonl, foldJsonl } from './jsonl-utils.js';
 import { collectScanByMtime } from './scan-utils.js';
 import { summarizeToolInput } from './sanitize.js';
 import { extractText } from './text-utils.js';
+import type { Dirent } from './scan-utils.js';
 
 const PI_DIR = path.join(os.homedir(), '.pi');
 const SESSIONS_DIR = path.join(PI_DIR, 'agent', 'sessions');
@@ -259,9 +260,9 @@ async function scanAllSessionFiles(activeThresholdMs: number): Promise<ScanResul
     // `resolve` label.
     fileFor: (projectDir) => {
       const dirPath = path.join(SESSIONS_DIR, projectDir);
-      return fs.readdirSync(dirPath)
-        .filter((f: string) => f.endsWith('.jsonl'))
-        .map((f: string) => path.join(dirPath, f));
+      return fs.readdirSync(dirPath, { withFileTypes: true })
+        .filter((d: Dirent) => d.isFile() && d.name.endsWith('.jsonl'))
+        .map((d: Dirent) => path.join(dirPath, d.name));
     },
     build: ({ name, filePath, mtimeMs }) => ({
       filePath,

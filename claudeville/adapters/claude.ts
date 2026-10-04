@@ -128,17 +128,17 @@ export class ClaudeAdapter implements AgentAdapter {
         const subagentsDir = path.join(projPath, sessionDir.name, 'subagents');
         if (!fs.existsSync(subagentsDir)) return [];
 
-        let agentFiles: string[] = [];
+        let agentFiles: Dirent[] = [];
         try {
-          agentFiles = (await fs.promises.readdir(subagentsDir))
-            .filter((f: string) => f.startsWith('agent-') && f.endsWith('.jsonl'));
+          agentFiles = (await fs.promises.readdir(subagentsDir, { withFileTypes: true }))
+            .filter((d: Dirent) => d.isFile() && d.name.startsWith('agent-') && d.name.endsWith('.jsonl'));
         } catch (err) {
           debugAdapterError('claude', 'getActiveSubAgents readdir subagents', err, subagentsDir);
           return [];
         }
 
-        const agentResults = await Promise.all(agentFiles.map(async (agentFile: string) => {
-          const filePath = path.join(subagentsDir, agentFile);
+        const agentResults = await Promise.all(agentFiles.map(async (agentFile: Dirent) => {
+          const filePath = path.join(subagentsDir, agentFile.name);
           let stat;
           try {
             stat = await fs.promises.stat(filePath);
@@ -149,7 +149,7 @@ export class ClaudeAdapter implements AgentAdapter {
 
           if (now - stat.mtimeMs > activeThresholdMs) return null;
 
-          const agentId = agentFile.replace('agent-', '').replace('.jsonl', '');
+          const agentId = agentFile.name.replace('agent-', '').replace('.jsonl', '');
           const detail = await getSubAgentDetail(filePath);
           const decodedProject = resolveProjectDisplayPath(projectPathMap, projDir.name);
 
@@ -196,20 +196,20 @@ export class ClaudeAdapter implements AgentAdapter {
     const projectResults = await Promise.all(projDirs.map(async (projDir: Dirent) => {
       const projPath = path.join(projectsDir, projDir.name);
 
-      let files: string[] = [];
+      let files: Dirent[] = [];
       try {
-        files = (await fs.promises.readdir(projPath))
-          .filter((f: string) => f.endsWith('.jsonl') && !f.startsWith('.'));
+        files = (await fs.promises.readdir(projPath, { withFileTypes: true }))
+          .filter((d: Dirent) => d.isFile() && d.name.endsWith('.jsonl') && !d.name.startsWith('.'));
       } catch (err) {
         debugAdapterError('claude', 'getOrphanSessions readdir project', err, projPath);
         return [];
       }
 
-      const fileResults = await Promise.all(files.map(async (file: string) => {
-        const sessionId = file.replace('.jsonl', '');
+      const fileResults = await Promise.all(files.map(async (file: Dirent) => {
+        const sessionId = file.name.replace('.jsonl', '');
         if (knownIds.has(sessionId)) return null;
 
-        const filePath = path.join(projPath, file);
+        const filePath = path.join(projPath, file.name);
         let stat;
         try {
           stat = await fs.promises.stat(filePath);
@@ -336,15 +336,15 @@ export class ClaudeAdapter implements AgentAdapter {
         .map(async (dir: Dirent) => {
           const groupDir = path.join(TASKS_DIR, dir.name);
           try {
-            const files = await fs.promises.readdir(groupDir);
-            const jsonFiles = files.filter((f: string) => f.endsWith('.json'));
+            const files = await fs.promises.readdir(groupDir, { withFileTypes: true });
+            const jsonFiles = files.filter((f: Dirent) => f.isFile() && f.name.endsWith('.json'));
 
-            const taskPromises = jsonFiles.map(async (file: string) => {
+            const taskPromises = jsonFiles.map(async (file: Dirent) => {
               try {
-                const content = await fs.promises.readFile(path.join(groupDir, file), 'utf-8');
+                const content = await fs.promises.readFile(path.join(groupDir, file.name), 'utf-8');
                 return JSON.parse(content);
               } catch (err) {
-                debugAdapterError('claude', 'getTasks read/parse task', err, path.join(groupDir, file));
+                debugAdapterError('claude', 'getTasks read/parse task', err, path.join(groupDir, file.name));
                 return null;
               }
             });

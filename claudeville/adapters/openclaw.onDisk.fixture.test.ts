@@ -1767,16 +1767,19 @@ describe('OpenClawAdapter on-disk characterization', () => {
     );
   });
 
-  // ─── the phantom session ────────────────────────────────
+  // ─── a directory named *.jsonl in sessions/ ─────────────
 
-  // DEFECT, pinned: `scanAgentSessionFiles` lists `sessions/` by NAME and stats
-  // each entry, so a DIRECTORY named `*.jsonl` passes `isPrimarySessionFile`,
-  // stats successfully and becomes a session row whose unreadable body leaves
-  // `model: 'unknown'` and every other detail field null. This is the shape
-  // issue #148's queued `isFile()` fix targets at openclaw.ts:88, and this
-  // assertion is the one such a fix has to update — the file would otherwise be
-  // a change detector for the fix rather than a guard on it.
-  it('turns a directory named *.jsonl in sessions/ into a phantom session row', async () => {
+  // FIXED (#144). This assertion previously pinned the DEFECT — a DIRECTORY named
+  // `*.jsonl` becoming a session row — and said of itself: "this assertion is the
+  // one such a fix has to update — the file would otherwise be a change detector
+  // for the fix rather than a guard on it." `scanAgentSessionFiles` now lists
+  // `sessions/` with `withFileTypes` and gates the `isPrimarySessionFile` filter
+  // on `isFile()` (openclaw.ts:88-89), so the directory is dropped before it is
+  // ever stat'ed.
+  //
+  // The decoy still contains a file, so it `stat`s cleanly and would still become
+  // a row if the `isFile()` term came back: remove it and this goes red again.
+  it('emits no session row for a directory named *.jsonl in sessions/', async () => {
     await withOpenclawHome(
       (home) => {
         const dir = agentPath(home, 'agent-ph', 'sessions');
@@ -1786,29 +1789,14 @@ describe('OpenClawAdapter on-disk characterization', () => {
       async (OpenClawAdapter, home) => {
         const adapter = new OpenClawAdapter();
         const rows = await adapter.getActiveSessions(5 * MINUTE);
-        expect(rows).toHaveLength(2);
-        const ghost = rowOf(rows, 'openclaw:agent-ph:ghost')!;
-        expect(ghost).toMatchObject({
-          agentId: 'agent-ph',
-          displayName: 'agent-ph',
-          model: 'unknown',
-          status: 'active',
-          lastMessage: null,
-          lastTool: null,
-          lastToolInput: null,
-          parentSessionId: null,
-          project: 'openclaw:agent-ph',
-          filePath: agentPath(home, 'agent-ph', 'sessions', 'ghost.jsonl'),
-        });
-        // `lastActivity` is the DIRECTORY's mtime, read by the same stat the
-        // threshold uses.
-        expect(ghost.lastActivity).toBe(fs.statSync(agentPath(home, 'agent-ph', 'sessions', 'ghost.jsonl')).mtimeMs);
-        // Its detail is empty: reading a directory as a file yields no lines.
-        expect(await adapter.getSessionDetail(ghost.sessionId, ghost.project, ghost.filePath)).toEqual({
-          toolHistory: [],
-          messages: [],
-          sessionId: 'openclaw:agent-ph:ghost',
-        });
+        // The real session, and only the real session. Before the fix the ghost
+        // carried `model: 'unknown'` and null everywhere else — the phantom this
+        // case used to document.
+        expect(rows.map((r: any) => r.sessionId)).toEqual(['openclaw:agent-ph:real']);
+        expect(rowOf(rows, 'openclaw:agent-ph:ghost')).toBeUndefined();
+        // …and the decoy really is a directory on disk, so the exact set above is
+        // the `isFile()` guard rather than a missing fixture.
+        expect(fs.statSync(agentPath(home, 'agent-ph', 'sessions', 'ghost.jsonl')).isDirectory()).toBe(true);
       },
     );
   });

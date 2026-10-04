@@ -1128,4 +1128,39 @@ describe('GeminiAdapter fixtures', () => {
       listed.remove();
     }
   });
+
+  // ─── #144: a DIRECTORY whose NAME matches the session-file filter ───
+  //
+  // `fileFor` lists `chats/` with a BARE `readdirSync` (gemini.ts:152), so its
+  // entries arrive as `string[]` and the `session-*.json` / `session-*.jsonl`
+  // filter can ask about the NAME and nothing else. A DIRECTORY named to match
+  // therefore passes, `stat`s successfully (size 64, mtime now) and is emitted as
+  // a session row whose detail is all null — `readLines` swallows the EISDIR
+  // (jsonl-utils.ts:57), so the failure is silent. Drop the `isFile()` term at
+  // gemini.ts:153 and this goes red.
+  //
+  // Both suffixes get a decoy, since the filter is an `||` over the two.
+  it('emits no session row for a directory named session-*.json or session-*.jsonl', async () => {
+    const adapter = new GeminiAdapter();
+    const listed = listedSessions();
+    listed.jsonl('real1', [geminiMsg('real done', 1)]);
+    const jsonDecoy = path.join(listed.dir, 'session-dirdecoy.json');
+    const jsonlDecoy = path.join(listed.dir, 'session-dirdecoyl.jsonl');
+    fs.mkdirSync(jsonDecoy);
+    fs.mkdirSync(jsonlDecoy);
+
+    try {
+      const rows = await adapter.getActiveSessions(5 * MINUTE);
+      // `getActiveSessions` scans every project directory under TMP_DIR, so the
+      // base fixture `abc` (line 239) is in the listing too and the assertion is
+      // the FULL set: it plus the real file, and neither decoy.
+      expect(rows.map((s: any) => s.sessionId).sort()).toEqual(['gemini-abc', 'gemini-real1l']);
+      // …and both decoys really are directories, so the exact set above is the
+      // `isFile()` guard rather than a missing fixture.
+      expect(fs.statSync(jsonDecoy).isDirectory()).toBe(true);
+      expect(fs.statSync(jsonlDecoy).isDirectory()).toBe(true);
+    } finally {
+      listed.remove();
+    }
+  });
 });

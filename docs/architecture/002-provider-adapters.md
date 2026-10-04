@@ -381,6 +381,25 @@ seven copies — a dedicated one-type module would have been a sixth shared file
 for no gain. `gemini` still imports `Dirent` from `fs`: that is a *use* of Node's
 canonical type, not an eighth declaration.
 
+**Every session-file listing is `isFile()`-guarded.** The eight file-level filters
+run over `readdir(dir, { withFileTypes: true })` and test `d.isFile()` before the
+name test, so a **directory** whose name matches is dropped instead of `stat`ing
+cleanly and being emitted as a row with null detail — a failure `readLines` then
+hides by swallowing the `EISDIR`. The eight sites are `claude.ts:133` (`agent-*.jsonl`
+under `subagents/`), `claude.ts:201` (`*.jsonl` under a project),
+`claude.ts:339` (`*.json` under a task group), `codex.ts:220` (`rollout-*.jsonl`
+at the day level), `gemini.ts:152` (`session-*.json`/`.jsonl` in `chats/`),
+`openclaw.ts:88` (`isPrimarySessionFile` in `sessions/`), `pi.ts:262` (`*.jsonl`
+in a project directory) and `vscode.ts:181` (`*.jsonl` in `transcripts/`).
+`hermes.ts:36-38` and `opencode.ts:37-41` always had the guard.
+
+This is distinct from the `isDirectory()` filters on the directory-level fan-out
+(`claude.ts:109`/`:121`/`:190`, `openclaw.ts:121`/`:228`/`:282`/`:362`,
+`codex.ts:191`/`:201`/`:211`), which want directories — including `codex`'s
+per-level `.sort().reverse().slice(0, 3)`/`6`/`14` prune, which is why a stray
+`README.md` cannot evict a real year there. `gemini.ts:109` stays a bare
+`readdirSync` for the same reason: it wants directories.
+
 Known duplication, deliberately not consolidated: `opencode`'s `readJson`
 duplicates gemini's `readJsonFile` shape (read → `JSON.parse` → catch). Unifying
 them would touch `gemini`, which is already merged, and buys no size — both
