@@ -25,7 +25,9 @@ So the private methods must **remain callable on the instance and remain spy-abl
 - **(A) delegating wrappers** — the logic moves to module-level functions taking the sprite as the first argument; `AgentSprite` keeps one-line methods that forward. Class hierarchy unchanged. Requires substituting `this.` → `sprite.` in the moved bodies.
 - **(C) a base class** — the draw methods move verbatim into `abstract class AgentSpriteRenderBase` and `AgentSprite extends` it. Bodies need **zero** edits. But it changes `AgentSprite`'s prototype chain, and `AgentSprite` is constructed in **9 places** across `src/presentation/react/world/`.
 
-**Chosen: (A).** Putting a base class in the hierarchy purely to move code between files is a real change to a type used in nine places, and the substitution in (A) is provably total and reversible, so it loses nothing in verification strength. Do not switch to (C) without asking.
+**Chosen: (A).** The wrappers keep the class hierarchy flat and add no base type for no behavioural reason, and `AgentSprite` values cross the `character-mode` → `react/world` boundary — held by `useWorldSprites`, `WorldView`, `MinimapOverlay`, `SelectionOverlay`, `BubbleDebugOverlay` and the overlay hooks. The substitution in (A) is provably total and reversible, so it loses nothing in verification strength. Do not switch to (C) without asking.
+
+> **Correction.** An earlier draft of this line justified (A) over (C) by claiming `AgentSprite` is "constructed in nine places". That was **wrong** — it counted the files that *mention* the type, not construction sites. There is exactly **one** production `new AgentSprite(`, in `useWorldSprites.ts:9`, plus four in `AgentSprite.test.ts`. The count does not support the decision and is struck out; (A) stands on the reasoning above.
 
 ## Verification — a move, modulo one substitution
 
@@ -33,7 +35,7 @@ For every moved draw method:
 
 1. The body must be **byte-identical after substituting `this.` → `sprite.`**. Report the substitution count per method and confirm the substituted body equals the original exactly. That count also proves the substitution applied everywhere it should and nowhere else.
 2. The rendering module must **not** import anything from `AgentSprite.ts` beyond the `import type` it needs for the state it reads — otherwise the dependency is circular. Prefer declaring the state it needs as a **structural type** (the draw block reads only `x`, `y`, `_zoom`, `agent`, `chatting`, `walkFrame`, `statusAnim`, `selected`, `moving`, `facingLeft`, `chatBubbleAnim`) so the renderer does not depend on the class at all.
-3. `_bubblePath` and `_drawBubble` are only called from within the draw block, so they move with no wrapper. Verify rather than assume.
+3. `_bubblePath` and `_drawBubble` are called only from within the draw block. They were given wrappers anyway: `AgentSprite.test.ts` spies on `_drawStatus`, and `draw`/`drawStatus` must keep calling **through the instance** for those spies to fire. Wrapping all nine keeps the substitution uniform, which is what makes the byte-identity proof checkable row by row. `bubblePath` reads no sprite state, so its transform is the empty substitution.
 4. Byte-identical: the simulation methods, the field declarations, and the class declaration itself.
 5. `npm run typecheck && npm run lint && npm test && npm run build:frontend`.
 

@@ -78,7 +78,7 @@ Infrastructure adapters provide transport and data access:
 UI rendering is split by runtime surface:
 
 - `react/` for the React shell, controller, mirrored world store, and R3F world composition
-- `character-mode/AgentSprite.ts` for the long-lived sprite model rendered by the React world (`useWorldSprites`)
+- `character-mode/AgentSprite.ts` for the long-lived sprite model rendered by the React world (`useWorldSprites`), with its canvas rendering half in `character-mode/agentSpriteRender.ts`
 - `shared/` for helpers shared by the React shell and the alternate frontends (`dashboardViewModel`, `textSizePresets`)
 
 The legacy imperative DOM shell (`App.ts`, `dashboard-mode/`, most of `character-mode/`, `ModeManager`, `NotificationService`) was removed in Phase 2; git history preserves it.

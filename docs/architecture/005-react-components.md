@@ -24,7 +24,8 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 | `claudeville/src/pixivillage/PixiVillageApp.tsx` | PixiJS alternate frontend | Root component for the alternate 2D observability view. |
 | `claudeville/src/voxelvillage/VoxelVillageApp.tsx` | Voxel alternate frontend | Root component for the Minecraft-like R3F village view served at `/voxel.html`. |
 | `claudeville/src/presentation/react/components/GradientAvatar.tsx` | Generative visualizer | Generates unique circular gradient avatars based on agent IDs. |
-| `claudeville/src/presentation/character-mode/AgentSprite.ts` | Sprite model | Long-lived mutable sprite state (movement, chat pairing, appearance) rendered by the React world via `useWorldSprites`. |
+| `claudeville/src/presentation/character-mode/AgentSprite.ts` | Sprite model | Long-lived mutable sprite state (movement, chat pairing, appearance) rendered by the React world via `useWorldSprites`. Simulation only — fields, targeting, `update`, chat state, `hitTest` — plus one-line wrappers that forward the draw methods to the render module. |
+| `claudeville/src/presentation/character-mode/agentSpriteRender.ts` | Sprite rendering | The nine canvas-drawing methods moved out of `AgentSprite` for file size: `drawSprite`, hair/eyes/accessory, status bubble, chat effect, name tag. A layout split only — no behaviour change. |
 
 ## Ownership model
 
@@ -35,6 +36,7 @@ This document covers `claudeville/src/presentation/react`, the modern React shel
 - `WorldScene` owns frame-by-frame scene mutation through refs, `useFrame`, and ECS system helpers.
 - `DashboardView` and `ActivityPanel` own their detail-fetch hooks, but not camera or world-selection state.
 - `AgentSprite` objects are long-lived mutable models, not React state.
+- **The sprite model's rendering half lives in `agentSpriteRender.ts`.** The dependency is **one-way**: `AgentSprite.ts` imports the draw functions, and `agentSpriteRender.ts` never imports `AgentSprite` — it types the sprite as the structural `AgentSpriteRenderState` (the eleven fields the draw block reads, plus the `_draw*` methods), so there is no cycle and the renderer's surface stays minimal. `AgentSprite` keeps its `_draw*` methods as one-line instance wrappers rather than a base class or direct local calls, because `AgentSprite.test.ts` calls them directly and spies on `_drawStatus`, `_drawChatEffect` and `_drawNameTag`, then asserts `draw` still invokes them; routing the render module's internal calls through the instance is what keeps those spies firing.
 
 ## Data flow
 
