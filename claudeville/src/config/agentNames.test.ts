@@ -12,21 +12,27 @@ import {
 } from './agentNames.js';
 
 // Inline helper: mirrors getNameMode logic from agentNames.ts
-// Tests the logic independently of the module-level window capture
-function getNameModeInline(config, lsValue, provider = null) {
+// Tests the logic independently of the module-level window capture.
+// The two fields mirror the casts getNameMode itself makes off RuntimeConfig,
+// whose `[key: string]: unknown` index signature leaves them untyped.
+function getNameModeInline(
+  config: { providerNameModes?: Record<string, string>; nameMode?: string } | null,
+  lsValue: string | null,
+  provider: string | null = null,
+) {
   const providerMode = provider && config?.providerNameModes ? config.providerNameModes[provider] : null;
   if (providerMode) return providerMode;
   return lsValue || config?.nameMode || 'autodetected';
 }
 
 // Inline helper: mirrors setNameMode logic
-function setNameModeInline(mode, store) {
+function setNameModeInline(mode: string, store: Record<string, string> | null | undefined) {
   const nextMode = mode === 'pooled' ? 'pooled' : 'autodetected';
   if (store) store['claudeville-name-mode'] = nextMode;
 }
 
-// Inline helper: mirrors isRawIdentifier logic
-function isRawIdentifierInline(value) {
+// Inline helper: mirrors isRawIdentifier logic, which takes `unknown`
+function isRawIdentifierInline(value: unknown) {
   if (!value) return false;
   const text = String(value).trim();
   if (text.length < 16) return false;
@@ -37,8 +43,10 @@ function isRawIdentifierInline(value) {
   return text.length >= 24;
 }
 
-// Inline helper: mirrors abbreviateIdentifier logic
-function abbreviateIdentifierInline(value) {
+// Inline helper: mirrors abbreviateIdentifier logic. That one is private and
+// declares `value: string`, but this mirror's body does `String(value || '')`
+// and its cases pass `null`, so `string | null | undefined` is what it accepts.
+function abbreviateIdentifierInline(value: string | null | undefined) {
   const text = String(value || '').trim();
   if (!text) return '';
   if (text.length <= 12) return text;
@@ -72,8 +80,11 @@ describe('agentNames (real module)', () => {
       expect(n1).not.toBe(n2);
     });
 
-    it('handles null/undefined seed (falls back to agent)', () => {
-      const name = generateAgentDisplayName(null);
+    it('handles an undefined seed (falls back to agent)', () => {
+      // `generateAgentDisplayName` declares `seed: string | undefined`. Its body
+      // is `String(seed || 'agent')`, so `undefined` and `null` take the same
+      // path, and `undefined` is the spelling the signature allows.
+      const name = generateAgentDisplayName(undefined);
       expect(typeof name).toBe('string');
       expect(name.length).toBeGreaterThan(0);
     });
@@ -110,7 +121,15 @@ describe('agentNames (real module)', () => {
     });
 
     it('returns agent kind when session has non-main agentType', () => {
-      const result = resolveAgentDisplayName({ sessionId: 's1', agentType: 'reviewer' }, null);
+      // `resolveAgentDisplayName` declares a session WITHOUT `agentType`, but it
+      // hands the session straight to `getNameKind`, which reads
+      // `session.agentType` and answers 'agent' for anything but 'main'. The
+      // declaration is missing a field the implementation depends on; this case
+      // is real coverage of that path. Assigning through a variable instead of
+      // passing a fresh object literal keeps the call honest with no `as` cast,
+      // because excess-property checking only applies to literals.
+      const session = { sessionId: 's1', agentType: 'reviewer' };
+      const result = resolveAgentDisplayName(session, null);
       expect(result.nameKind).toBe('agent');
     });
 
