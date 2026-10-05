@@ -292,6 +292,11 @@ describe('collector and legacy server entrypoints', () => {
     });
     const collector = startTsx(collectorEntrypoint, {
       HUB_URL: `http://127.0.0.1:${port}`,
+      // `load-local-env` fills any var the child does not already define from
+      // `.env.local`, which sets HUB_HTTP_URL=http://localhost:3030. The collector
+      // prefers HUB_HTTP_URL (matching runtime-config and server-http), so the
+      // stale file would shadow HUB_URL here without this override.
+      HUB_HTTP_URL: `http://127.0.0.1:${port}`,
       HUB_AUTH_TOKEN: authToken,
       COLLECTOR_ID: 'collector-test',
       COLLECTOR_HOST: 'collector-host',
