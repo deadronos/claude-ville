@@ -108,9 +108,9 @@ A session's project is spelled `project` everywhere: adapters emit it,
 The value is a grouping key, not necessarily a filesystem path. OpenClaw uses
 `openclaw:<agentId>` and VS Code falls back to `vscode:<channel>:<workspaceId>`,
 so no layer may assume it is a filesystem path or resolve it as one. Splitting it
-on `/` is legitimate only for display-label fallbacks (`AgentManager.ts:137`,
-`pixivillage/model.ts:199`, `shortProjectName` in
-`presentation/shared/dashboardViewModel.ts:128`), where a synthetic key simply
+on `/` is legitimate only for display-label fallbacks (`claudeville/src/application/AgentManager.ts:137`,
+`claudeville/src/pixivillage/model.ts:199`, `shortProjectName` in
+`claudeville/src/presentation/shared/dashboardViewModel.ts:128`), where a synthetic key simply
 yields the whole string.
 
 `shared/project-field-contract.test.ts` enforces the spelling. The check exists
@@ -128,7 +128,7 @@ holds only the bootstrap; the concerns around it are split by line range.
 
 | module | owns |
 | --- | --- |
-| `server.ts` | `http.createServer` handler, `upgrade` handler, `ASCII_LOGO`, `server.listen`, the `error` handler, the `process` handlers |
+| `server.ts` | `http.createServer` handler, `upgrade` handler, `ASCII_LOGO`, `server.listen`, the `error` handler, the `process` handlers, and the API-handler wiring (`handleApiRoute`, which binds `collectFromAdapters` / `getSessionDetailByProvider` into the REST surface) |
 | `server-config.ts` | `PORT`, `boundPort`, `ACTIVE_THRESHOLD_MS`, `claudeAdapter`, `HttpRequest`, `HttpResponse` |
 | `server-http.ts` | `parseRequestUrl`, `handleStaticFile`, `handleRuntimeConfig`, `__filename` / `__dirname`, `BUILT_FRONTEND_DIR`, `STATIC_DIR` |
 | `server-ws.ts` | `wsServer`, `wsClients`, `handleWebSocketConnection`, `handleTextMessage`, `wsSend`, `wsBroadcast`, `sendInitialData`, `broadcastUpdate` |
@@ -161,8 +161,10 @@ own bindings:
   imports `server-watch.ts` except the bootstrap.
 
 This was a **layout change only**: same routes, ports, upgrade handling and
-startup side effects. All function bodies are byte-identical to the single-file
-version.
+startup side effects. All function bodies were byte-identical to the single-file
+version **at the time of the split**; the error contract (#159) has since added
+`errors`/`warnings` to the session payload, so that sentence describes the #150
+tree, not today's.
 
 ## Data flow
 

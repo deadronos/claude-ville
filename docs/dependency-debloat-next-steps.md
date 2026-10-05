@@ -2,6 +2,13 @@
 
 Date: 2026-04-30
 
+> **Status note (2026-10-09):** this is a historical analysis, not a current
+> inventory. In particular the line below claiming `@react-three/drei` was
+> removable is **wrong as written**: drei is still in `package.json` and is
+> imported by `voxelvillage/` (`OrbitControls`, `Billboard`, `Text`). The
+> main React world no longer uses it, but the dependency cannot be dropped
+> while the voxel frontend does.
+
 ## Scope
 
 This is a follow-up to `docs/dependency-debloat-analysis.md` after the first low-risk cleanup pass. It now records the second cleanup pass that removed the five next-step targets.

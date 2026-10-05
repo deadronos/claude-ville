@@ -2,6 +2,11 @@
 
 **Date:** 26 April 2026  
 **Scope:** Correctness, code quality, async/nonblocking operations, testing, build infrastructure  
+
+> **Status note (2026-10-09):** historical review. §2 ("no authentication") is
+> superseded: split-stack auth now uses `HUB_AUTH_TOKEN` as a shared bearer
+> token (`shared/hub-auth.ts`), checked in `hubreceiver` routes. Only the
+> legacy/origin path remains unauthenticated by design.  
 **Repository:** `honorstudio/claude-ville` (branch: `main`)
 
 ---
