@@ -1,4 +1,5 @@
 // Local ECS world implementation for the render path.
+import type { Appearance } from '../../../../domain/value-objects/Appearance.js';
 //
 // The optional fields below are the component payload from `components.ts`. An
 // entity is a bare `{}` when `createEntity` returns it and each component key is
@@ -13,7 +14,8 @@ export type Entity = {
   name?: string;
   status?: string;
   bubbleText?: string | null;
-  appearance?: any;
+  /** `Appearance`, assigned by `useEcsWorld` for agents only — a building entity has none. */
+  appearance?: Appearance;
   /** `Position`. */
   x?: number;
   y?: number;

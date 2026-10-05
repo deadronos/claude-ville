@@ -4,6 +4,7 @@ import * as THREE from 'three';
 
 import { THEME } from '../../../../config/theme.js';
 import { AgentStatus } from '../../../../domain/value-objects/AgentStatus.js';
+import type { Appearance } from '../../../../domain/value-objects/Appearance.js';
 import type { BubbleConfig, CameraModel, InteractionModel } from '../types.js';
 import { useInverseZoom } from '../hooks/useInverseZoom.js';
 import { Accessory, Eyes, Hair } from './agent/AvatarParts.js';
@@ -25,7 +26,7 @@ export function AgentActor({
     name: string;
     status: string;
     bubbleText: string | null;
-    appearance: any;
+    appearance: Appearance;
     x: number;
     y: number;
     z?: number;

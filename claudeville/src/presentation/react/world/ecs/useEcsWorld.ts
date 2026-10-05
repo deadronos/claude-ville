@@ -1,13 +1,14 @@
 import { useRef } from 'react';
 import { createWorld, ECSWorld, type Entity } from './world.js';
 import { isoToScreen } from '../utils.js';
+import type { Appearance } from '../../../../domain/value-objects/Appearance.js';
 
 export interface Agent {
   id: string;
   name: string;
   status: string;
   bubbleText: string | null;
-  appearance: any;
+  appearance: Appearance;
   position?: { tileX: number; tileY: number };
 }
 
