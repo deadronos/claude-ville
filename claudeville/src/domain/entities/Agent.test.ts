@@ -9,7 +9,20 @@ beforeEach(() => {
 
 import { Agent } from './Agent.js';
 
-const makeProps = (overrides: Record<string, any> = {}) => ({
+/**
+ * Typed from `Agent`'s shipped constructor parameter, so the props this helper
+ * builds are checked against the real `AgentParams` instead of an open
+ * `Record<string, any>`. Without the annotation `status: 'working'` widened to
+ * `string` and every `new Agent(makeProps(...))` call was an argument error.
+ *
+ * The old base carried `_lastMessage: null`, which is not a constructor param at
+ * all - the constructor destructures `lastMessage` - so the Agent constructor
+ * silently ignored it and the field it claimed to seed was never set. Tests that
+ * want it pass the real `lastMessage` param.
+ */
+type AgentParams = ConstructorParameters<typeof Agent>[0];
+
+const makeProps = (overrides: Partial<AgentParams> = {}): AgentParams => ({
   id: 'agent-1',
   name: 'TestAgent',
   model: 'claude-sonnet-4-5',
@@ -22,7 +35,6 @@ const makeProps = (overrides: Record<string, any> = {}) => ({
   provider: 'claude',
   lastTool: null,
   lastToolInput: null,
-  _lastMessage: null, // maps to constructor param: lastMessage
   ...overrides,
 });
 
@@ -35,32 +47,32 @@ describe('Agent', () => {
     });
 
     it('defaults model to unknown', () => {
-      const agent = new Agent(makeProps({ model: undefined as any }));
+      const agent = new Agent(makeProps({ model: undefined }));
       expect(agent.model).toBe('unknown');
     });
 
     it('defaults status to IDLE', () => {
-      const agent = new Agent(makeProps({ status: undefined as any }));
+      const agent = new Agent(makeProps({ status: undefined }));
       expect(agent.status).toBe('idle');
     });
 
     it('defaults role to general', () => {
-      const agent = new Agent(makeProps({ role: undefined as any }));
+      const agent = new Agent(makeProps({ role: undefined }));
       expect(agent.role).toBe('general');
     });
 
     it('defaults tokens to zero', () => {
-      const agent = new Agent(makeProps({ tokens: undefined as any }));
+      const agent = new Agent(makeProps({ tokens: undefined }));
       expect(agent.tokens).toEqual({ input: 0, output: 0 });
     });
 
     it('defaults provider to claude', () => {
-      const agent = new Agent(makeProps({ provider: undefined as any }));
+      const agent = new Agent(makeProps({ provider: undefined }));
       expect(agent.provider).toBe('claude');
     });
 
     it('defaults usage to null and stores provided usage', () => {
-      const bare = new Agent(makeProps({ usage: undefined as any }));
+      const bare = new Agent(makeProps({ usage: undefined }));
       expect(bare.usage).toBeNull();
 
       const withUsage = new Agent(makeProps({ usage: { contextPercent: 50 } }));
@@ -68,7 +80,7 @@ describe('Agent', () => {
     });
 
     it('sets nameSeed from id when nameSeed not provided', () => {
-      const agent = new Agent(makeProps({ nameSeed: undefined as any }));
+      const agent = new Agent(makeProps({ nameSeed: undefined }));
       expect(agent.nameSeed).toBe('agent-1');
     });
 
@@ -83,15 +95,15 @@ describe('Agent', () => {
     });
 
     it('defaults messages to empty array', () => {
-      const agent = new Agent(makeProps({ messages: undefined as any }));
+      const agent = new Agent(makeProps({ messages: undefined }));
       expect(agent.messages).toEqual([]);
     });
 
     it('defaults lastTool/currentToolInput/lastMessage to null', () => {
       const agent = new Agent(makeProps({
-        lastTool: undefined as any,
-        lastToolInput: undefined as any,
-        lastMessage: undefined as any,
+        lastTool: undefined,
+        lastToolInput: undefined,
+        lastMessage: undefined,
       }));
       expect(agent.currentTool).toBeNull();
       expect(agent.currentToolInput).toBeNull();
@@ -299,7 +311,7 @@ describe('Agent', () => {
     });
 
     it('returns null when no tool and no lastMessage', () => {
-      const agent = new Agent(makeProps({ lastTool: null, _lastMessage: null }));
+      const agent = new Agent(makeProps({ lastTool: null, lastMessage: null }));
       expect(agent.bubbleText).toBeNull();
     });
 
@@ -311,7 +323,7 @@ describe('Agent', () => {
 
   describe('generateName', () => {
     it('returns a string name', () => {
-      const agent = new Agent(makeProps({ name: undefined as any }));
+      const agent = new Agent(makeProps({ name: undefined }));
       expect(typeof agent.name).toBe('string');
       expect(agent.name.length).toBeGreaterThan(0);
     });
