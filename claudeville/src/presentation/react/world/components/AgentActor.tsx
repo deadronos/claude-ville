@@ -4,7 +4,7 @@ import * as THREE from 'three';
 
 import { THEME } from '../../../../config/theme.js';
 import { AgentStatus } from '../../../../domain/value-objects/AgentStatus.js';
-import type { Appearance } from '../../../../domain/value-objects/Appearance.js';
+import type { AgentEntity } from '../ecs/world.js';
 import type { BubbleConfig, CameraModel, InteractionModel } from '../types.js';
 import { useInverseZoom } from '../hooks/useInverseZoom.js';
 import { Accessory, Eyes, Hair } from './agent/AvatarParts.js';
@@ -21,20 +21,7 @@ export function AgentActor({
   onSelect,
   interactionRef,
 }: {
-  entity: {
-    id: string;
-    name: string;
-    status: string;
-    bubbleText: string | null;
-    appearance: Appearance;
-    x: number;
-    y: number;
-    z?: number;
-    moving: boolean;
-    walkFrame: number;
-    facingLeft: boolean;
-    chatting?: boolean;
-  };
+  entity: AgentEntity;
   selected: boolean;
   showUi: boolean;
   cameraRef: MutableRefObject<CameraModel>;
@@ -45,7 +32,7 @@ export function AgentActor({
   const groupRef = useRef<THREE.Group | null>(null);
 
   const inverseZoom = useInverseZoom(cameraRef);
-  const walkTime = entity.walkFrame * 4;
+  const walkTime = (entity.walkFrame ?? 0) * 4;
   const swing = entity.moving ? Math.sin(walkTime) * 4 : 0;
   const hop = entity.moving ? Math.abs(Math.sin(walkTime)) * 3 : 0;
   const squash = entity.moving ? 1.0 - Math.abs(Math.sin(walkTime)) * 0.1 : 1.0;
@@ -64,12 +51,12 @@ export function AgentActor({
     return (Math.abs(hash) % 1000) * 0.000001;
   }, [entity.id]);
 
-  const depth = 20 + entity.y * 0.001 + entity.x * 0.00001 + idHash;
+  const depth = 20 + (entity.y ?? 0) * 0.001 + (entity.x ?? 0) * 0.00001 + idHash;
 
   return (
     <group
       ref={groupRef}
-      position={[Math.round(entity.x), Math.round(entity.y), depth]}
+      position={[Math.round(entity.x ?? 0), Math.round(entity.y ?? 0), depth]}
       onClick={(event) => {
         event.stopPropagation();
         if (interactionRef.current.moved) {
