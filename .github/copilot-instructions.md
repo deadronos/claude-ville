@@ -27,7 +27,8 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 
 ### Run tests
 
-- `npm run typecheck` — TypeScript check (`tsc --noEmit`)
+- `npm run typecheck` — TypeScript check of production code (`tsc --noEmit`)
+- `npm run typecheck:tests` — TypeScript check that INCLUDES test files (`tsc -p tsconfig.test.json`). `tsconfig.json` excludes every `*.test.ts` file, so `npm run typecheck` alone checks no test file at all. This config's file set is a strict superset of the base's, so it covers production code too — running it alone loses nothing. It currently reports inherited debt, so CI runs the ratchet `npm run typecheck:tests:baseline` instead, which fails only if the count grows above `scripts/test-typecheck-baseline.txt`.
 - `npm run test` — Vitest suite
 - `npm run test:coverage` — Vitest coverage run
 - There is no `node --test` step: `claudeville/` contains no `.test.js` files (all 64 there are `.test.ts`), and the widget's `.test.js` files run under Vitest too via `**/*.test.js` in `vitest.config.ts`.

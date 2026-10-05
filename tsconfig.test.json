@@ -1,0 +1,24 @@
+{
+  // Extends the base config on purpose (#163). The base excludes
+  // `**/*.test.ts`, so `npm run typecheck` checks no test file at all. A
+  // separate file that restated the base compilerOptions would let the two
+  // drift; extending means the test gate inherits every future change to the
+  // base and only adds back what the exclude took away.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The base emits declaration output for `build`. This config only
+    // typechecks, so emitting is dead work.
+    "noEmit": true,
+    // eslint already enforces unused-local rules on `.test.ts` via
+    // `@typescript-eslint/no-unused-vars`. Duplicating it here produced
+    // overlapping noise in the 987-error baseline, so it stays off and eslint
+    // remains the single gate for it.
+    "noUnusedLocals": false
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  // `**/*.test.ts` from the base is intentionally absent: including it is the
+  // entire point of this file. Everything else the base skips (build output,
+  // the Swift widget, the vite config, which `tsc` cannot resolve `?url` for)
+  // is still skipped.
+  "exclude": ["node_modules", "dist", "widget", "vite.config.ts"]
+}

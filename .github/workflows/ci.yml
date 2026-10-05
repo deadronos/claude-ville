@@ -43,6 +43,29 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # `tsconfig.json` excluded every `*.test.ts` file until #163, so this gate
+      # typechecked NO test file for the life of the repo — 124 suites / 1567
+      # tests with no static checking at all. Closing that gap surfaces an
+      # inherited backlog rather than a set of mistakes in this PR, and turning a
+      # gate red with 923 errors nobody can clear in one commit is how a gate
+      # gets learned-ignored: the lint and typecheck gates were BOTH silently off
+      # until #135 re-enabled them, and nothing enforced them for the life of the
+      # project. That is the failure mode this step is shaped to avoid.
+      #
+      # So it is a RATCHET, not a pass/fail: `scripts/test-typecheck-baseline.mjs`
+      # compares the current count against `scripts/test-typecheck-baseline.txt`
+      # and fails ONLY on growth above the recorded number. Existing debt does not
+      # block; new debt cannot land. When the count drops, the script says so and
+      # the baseline is expected to be lowered, so the recorded number cannot rot
+      # upward OR drift stale after a fix.
+      #
+      # The step writes the count and the full per-file breakdown into the run
+      # summary, so the backlog is visible on every run instead of living only in
+      # this comment. When the last error is gone, delete the baseline file and
+      # reduce this step to `npm run typecheck:tests`.
+      - name: Typecheck tests (advisory ratchet — blocks only on growth)
+        run: npm run typecheck:tests:baseline
+
       - name: Lint
         run: npm run lint
 

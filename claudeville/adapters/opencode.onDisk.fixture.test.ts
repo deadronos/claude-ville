@@ -178,6 +178,9 @@ import path from 'path';
 
 import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+
+import type { AdapterSessionDetail } from '../../shared/types.js';
+
 import { detailOf, sessionsOf } from './fixtureHelpers';
 
 const MINUTE = 60 * 1000;
@@ -406,6 +409,18 @@ const toolBlock = (tool: string | undefined, input: unknown) => ({
   ...(input === undefined ? {} : { input }),
 });
 
+/**
+ * One entry of a message's `parts`.
+ *
+ * `fileMessage` forwards `parts` as `unknown[]` because the reader parses whatever it
+ * finds, so a single list has to accept a text block AND a tool block. That is exactly
+ * what the `slice(-15)` / `slice(-5)` cases build, and it is why this is a named union
+ * of the OPTIONAL-field shape rather than inferred from whichever builder seeded the
+ * array: a tool block spliced into an array inferred from `textBlock` is not a text
+ * block, and TypeScript was right to say so.
+ */
+type MessagePart = { type: string; text?: string; tool?: string; input?: unknown };
+
 /** A file-path message: `parts` is the array shape `extractDetail` reads. */
 const fileMessage = (
   role: string,
@@ -448,10 +463,18 @@ async function withOpencodeDir<T>(
   }
 }
 
+// `ids`/`rowOf` keep their pre-existing `any[]` on purpose: typing them as
+// `AgentSessionSummary[]` is correct but surfaces 45 more TS2532/TS18048 in this
+// file, because `rows[0]` and `rowOf(...)` are then possibly-undefined. That is
+// the legacy grind, not this fix (#163).
 const ids = (rows: any[]) => rows.map((r: any) => r.sessionId).sort();
 const rowOf = (rows: any[], sessionId: string) => rows.find((r: any) => r.sessionId === sessionId);
-const texts = (entries: Array<{ text: string }>) => entries.map((e) => e.text);
-const toolNames = (entries: Array<{ tool: string }>) => entries.map((e) => e.tool);
+// Typed off `AdapterSessionDetail` rather than as `{ text: string }[]` / `{ tool: string }[]`:
+// the detail's own fields are all OPTIONAL (`text?`, `tool?`), so the narrower shapes did not
+// accept what `detailOf` actually returns and every call site was a TS2345. The reader may
+// legitimately omit a text or a tool name, and these helpers must be able to say so.
+const texts = (entries: AdapterSessionDetail['messages']) => entries.map((e) => e.text);
+const toolNames = (entries: AdapterSessionDetail['toolHistory']) => entries.map((e) => e.tool);
 
 describe('OpenCodeAdapter on-disk characterization', () => {
   afterEach(() => {
@@ -1914,7 +1937,7 @@ describe('OpenCodeAdapter on-disk characterization', () => {
   it('keep the last 15 tools and last 5 messages, on both paths, with no reversal', async () => {
     await withOpencodeDir(
       (dir) => {
-        const parts = Array.from({ length: 20 }, (_, i) => textBlock(`msg_${i}`));
+        const parts: MessagePart[] = Array.from({ length: 20 }, (_, i) => textBlock(`msg_${i}`));
         parts.splice(10, 0, toolBlock('runner', { command: 'npm test' }));
         writeSession(dir, 'proj', 'wide.json', { id: 'wide', time: { created: T0, updated: T0 } });
         writeMessages(dir, 'proj', 'wide.json', [fileMessage('assistant', parts, 1)]);

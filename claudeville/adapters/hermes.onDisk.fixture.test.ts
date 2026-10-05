@@ -210,6 +210,8 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { AdapterSessionDetail } from '../../shared/types.js';
+
 import { detailOf, sessionsOf } from './fixtureHelpers.js';
 
 const MINUTE = 60 * 1000;
@@ -578,10 +580,18 @@ async function withHermesDir<T>(
   }
 }
 
+// `ids`/`rowOf` keep their pre-existing `any[]` on purpose: typing them as
+// `AgentSessionSummary[]` is correct but surfaces more TS2532/TS18048 in this file,
+// because `rows[0]` and `rowOf(...)` are then possibly-undefined. That is the legacy
+// grind, not this fix (#163).
 const ids = (rows: any[]) => rows.map((r: any) => r.sessionId).sort();
 const rowOf = (rows: any[], sessionId: string) => rows.find((r: any) => r.sessionId === sessionId);
-const texts = (entries: Array<{ text: string }>) => entries.map((e) => e.text);
-const toolNames = (entries: Array<{ tool: string }>) => entries.map((e) => e.tool);
+// Typed off `AdapterSessionDetail` rather than as `{ text: string }[]` / `{ tool: string }[]`:
+// the detail's own fields are all OPTIONAL (`text?`, `tool?`), so the narrower shapes did not
+// accept what `detailOf` actually returns and every call site was a TS2345. The reader may
+// legitimately omit a text or a tool name, and these helpers must be able to say so.
+const texts = (entries: AdapterSessionDetail['messages']) => entries.map((e) => e.text);
+const toolNames = (entries: AdapterSessionDetail['toolHistory']) => entries.map((e) => e.tool);
 
 describe('HermesAdapter on-disk characterization', () => {
   afterEach(() => {
@@ -1049,7 +1059,13 @@ describe('HermesAdapter on-disk characterization', () => {
         const detail = await detailOf(adapter, 'hermes-db-one', rows[0].project, rows[0].filePath);
         expect(texts(detail.messages)).toEqual(['update the docs', 'inspecting']);
         // Ascending, and in SECONDS — the raw column value, not milliseconds.
-        expect(detail.messages[0].ts).toBeLessThan(detail.messages[1].ts);
+        // `messages[n].ts` is OPTIONAL on `AdapterSessionDetail`, so the second
+        // message's stamp is narrowed out before it is compared rather than
+        // coerced: `?? 0` here would let a dropped `ts` read as "older than
+        // everything" and pass.
+        const secondTs = detail.messages[1]?.ts;
+        if (secondTs === undefined) throw new Error('expected a ts on the second message');
+        expect(detail.messages[0].ts).toBeLessThan(secondTs);
         expect(detail.messages[0].ts).toBeLessThan(100_000_000_000);
         expect(toolNames(detail.toolHistory)).toEqual(['read_file']);
         expect(detail.sessionId).toBe('hermes-db-one');
@@ -1987,7 +2003,9 @@ describe('HermesAdapter on-disk characterization', () => {
         const detail = await detailOf(new HermesAdapter(), 'hermes-deep', null, null);
         expect(detail.toolHistory).toHaveLength(15);
         expect(detail.toolHistory[0].tool).toBe('tool_5');
-        expect(detail.toolHistory.at(-1).tool).toBe('tool_19');
+        // `?.` and not `!`: an empty history yields `undefined`, which still fails
+        // `toBe('tool_19')`. The optional chain narrows without asserting one.
+        expect(detail.toolHistory.at(-1)?.tool).toBe('tool_19');
       },
     );
   });

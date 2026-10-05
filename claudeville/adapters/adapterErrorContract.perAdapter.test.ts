@@ -23,6 +23,8 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { AdapterSessionsResult, AgentAdapter } from '../../shared/types.js';
+
 import { ROOT_CANNOT_BE_DENIED } from './fixtureHelpers.js';
 
 const MINUTE = 60 * 1000;
@@ -72,12 +74,18 @@ afterEach(() => {
  * the module-level path constants see the fixture. `HOME` covers the seven
  * adapters that read `~/.something`; `OPENCODE_DATA_DIR` and
  * `VSCODE_USER_DATA_DIR` are read from their own variables.
+ *
+ * `load` returns `Record<string, unknown>` rather than a namespace of
+ * constructors because a module namespace is HETEROGENEOUS: `pi.js` exports three
+ * plain functions beside its class. Declaring every export a constructor was a
+ * lie that only `pi` — the one module here with non-class exports — was caught
+ * by. The adapter class is picked out by name and narrowed by `isAdapterClass`.
  */
 async function withAdapter<T>(
   env: { home?: string; vscode?: string; opencode?: string; claude?: string },
   build: (dir: string) => void,
-  load: () => Promise<Record<string, new () => { getActiveSessions: (ms: number) => Promise<AdapterResult> }>>,
-  fn: (adapter: { getActiveSessions: (ms: number) => Promise<AdapterResult> }, dir: string) => Promise<T> | T,
+  load: () => Promise<Record<string, unknown>>,
+  fn: (adapter: AgentAdapter, dir: string) => Promise<T> | T,
 ): Promise<T> {
   const dir = tempDir('claudeville-contract-');
   // ALWAYS repointed, not only when a case asks: every one of these adapters reads
@@ -93,17 +101,31 @@ async function withAdapter<T>(
     build(dir);
     vi.resetModules();
     const module = await load();
-    const Adapter = module[Object.keys(module).find((key) => key.endsWith('Adapter')) as string];
-    return await fn(new Adapter(), dir);
+    const key = Object.keys(module).find((name) => name.endsWith('Adapter'));
+    const exported: unknown = key === undefined ? undefined : module[key];
+    if (!isAdapterClass(exported)) throw new Error(`no *Adapter class exported by ${String(key)}`);
+    return await fn(new exported(), dir);
   } finally {
     vi.resetModules();
   }
 }
 
-/** The union, narrowed enough to assert on without a cast at every call site. */
-type AdapterResult =
-  | { ok: true; sessions: Array<{ sessionId: string; lastMessage?: string | null }>; warnings: Array<{ code: string; detail: string }> }
-  | { ok: false; error: { code: string; message: string } };
+/**
+ * Narrows a picked module export to a constructor, so the `new` below is checked
+ * against the real `AgentAdapter` rather than reached through a cast.
+ */
+function isAdapterClass(value: unknown): value is new () => AgentAdapter {
+  return typeof value === 'function';
+}
+
+/**
+ * The REAL `AdapterSessionsResult` from `shared/types.js`, not a structural copy
+ * of it. The local copy declared `code: string` where the shared union declares
+ * `AdapterErrorCode`, so it silently accepted any adapter whose union later
+ * changed and stopped accepting the real one — the drift this file's factory
+ * types exposed once the namespace was typed honestly (#163).
+ */
+type AdapterResult = AdapterSessionsResult;
 
 function expectOk(result: AdapterResult) {
   expect(result.ok).toBe(true);
@@ -362,7 +384,14 @@ describe('opencode', () => {
       const result = expectOk(await adapter.getActiveSessions(5 * MINUTE));
       // BOTH sessions are listed — the bad row degrades, it does not delete.
       expect(result.sessions.map((row) => row.sessionId).sort()).toEqual(['opencode-bad', 'opencode-good']);
-      expect(result.errors).toBeUndefined();
+      // This case used to assert `expect(result.errors).toBeUndefined()`. That
+      // property is on `SessionsPayload` — the `/api/sessions` BODY — and never on
+      // an adapter's answer, so the assertion was a tautology from the day it was
+      // written: there was nothing to fail it. The contract it was reaching for is
+      // already asserted by `expectOk`, which throws unless `ok: true`, and the
+      // degradation it was about is the `warnings` assertion below. Deleted rather
+      // than retyped: keeping it would mean asserting on a field that does not
+      // exist, which is the exact failure this static gate exists to surface (#163).
       expect(result.warnings).toStrictEqual([{ code: 'schema-incompatible', detail: '1 session(s)' }]);
     });
   });

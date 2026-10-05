@@ -16,6 +16,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
+    "typecheck:tests:baseline": "node scripts/test-typecheck-baseline.mjs",
     "build": "npm run typecheck && npm run build:frontend",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",

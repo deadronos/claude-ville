@@ -29,7 +29,16 @@ const answered = (text: string, warnings: AdapterWarning[] = []): DetailSource =
   warnings,
 });
 
-const failed = (code: 'store-unreadable' | 'root-unreadable', message: string): DetailSource => ({ kind: 'failed', code, detail: message });
+/**
+ * The `failed` branch, structurally identical in `SourceListing` and
+ * `DetailSource` — `combineSources` takes the first, `combineDetailSources` the
+ * second, and one builder has to drive both. Declaring `failed` as the whole
+ * `DetailSource` union made every listing case a TS2322, because the wider type
+ * is not assignable to the narrower one even though its `failed` member is.
+ */
+type FailedSource = Extract<DetailSource, { kind: 'failed' }>;
+
+const failed = (code: 'store-unreadable' | 'root-unreadable', message: string): FailedSource => ({ kind: 'failed', code, detail: message });
 
 const textOf = (result: ReturnType<typeof combineDetailSources>): string | null => {
   if (!result.ok) return null;
@@ -66,6 +75,11 @@ describe('combineDetailSources: the primary source outranks the fallbacks', () =
     });
 
     expect(result.ok).toBe(true);
+    // `warnings` lives on the SUCCESS branch only, so the union has to be narrowed
+    // before it is read — `expect(result.ok).toBe(true)` asserts at runtime but does
+    // not narrow at compile time, which is why every other case in this file already
+    // pairs the two.
+    if (!result.ok) throw new Error('unreachable');
     expect(result.warnings).toStrictEqual([
       { code: 'unknown', detail: '1 message' },
       { code: 'store-unreadable', detail: 'state.db would not open' },
@@ -86,6 +100,8 @@ describe('combineDetailSources: the primary source outranks the fallbacks', () =
     const result = combineDetailSources({ primary: { kind: 'absent' } });
 
     expect(result.ok).toBe(true);
+    // Narrowed before `warnings` is read — see the first case in this describe.
+    if (!result.ok) throw new Error('unreachable');
     expect(result.warnings).toStrictEqual([]);
     if (!result.ok) throw new Error('unreachable');
     expect(result.detail).toStrictEqual(emptyDetail());
