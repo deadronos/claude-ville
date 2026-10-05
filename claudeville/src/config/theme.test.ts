@@ -5,26 +5,25 @@ import { Building } from '../domain/entities/Building.js';
 type BuildingInit = ConstructorParameters<typeof Building>[0];
 
 /**
- * `Building`'s constructor declares all eight properties as required, but its
- * body still defaults `width`/`height` with `width || 4`, and the cases below
- * assert exactly those defaults. They therefore have to construct with the
- * fields OMITTED, which the declaration forbids.
+ * Builds a `Building` with no cast and no defaults.
  *
- * `BUILDING_DEFS` is the only production construction site and supplies all
- * eight every time, so this is a declaration that is stricter than the behaviour
- * it implements rather than a caller that needs fixing — and the `|| 4` defaults
- * are unreachable from production. Both are reported rather than changed, since
- * the fix is on the production side. Centralised here so the omitted-field
- * intent is stated once instead of at each call site.
+ * `Building` declares all eight constructor fields required and now stores
+ * `width`/`height` exactly as given, so the only thing a caller still has to
+ * invent is the three label fields. It previously defaulted them with `|| 4`,
+ * which fired for `0` and for nothing else — and `BUILDING_DEFS`, the only
+ * construction site in production, is 5x4, 4x3, 4x3, 3x3, 4x3, so the default was
+ * unreachable there. It survived only through a cast that let these tests omit
+ * the fields the declaration requires, which is why two cases below were
+ * asserting a branch no caller could reach.
  */
-function buildingWithOmitted(init: {
-  type: BuildingInit['type'];
-  x: BuildingInit['x'];
-  y: BuildingInit['y'];
-  width?: number | null;
-  height?: number | null;
-}): Building {
-  return new Building(init as unknown as BuildingInit);
+function buildingWithSize(init: Pick<BuildingInit, 'type' | 'x' | 'y' | 'width' | 'height'>): Building {
+  const { type, x, y, width, height } = init;
+  return new Building({
+    type, x, y, width, height,
+    label: `${type} label`,
+    icon: `${type} icon`,
+    description: `${type} description`,
+  });
 }
 
 describe('config/theme', () => {
@@ -87,34 +86,44 @@ describe('domain/entities/Building', () => {
       expect(b.description).toBe('Crafting station');
     });
 
-    it('defaults width and height to 4', () => {
-      const b = buildingWithOmitted({ type: 'house', x: 0, y: 0 });
-      expect(b.width).toBe(4);
-      expect(b.height).toBe(4);
+    it('stores width and height exactly as supplied, including zero', () => {
+      // Zero is a real tile count, not a missing one. `Building` used to answer
+      // `0 || 4` with 4, which no production caller could reach but a test could,
+      // so this case pins the value the constructor is actually given.
+      const b = buildingWithSize({ type: 'house', x: 0, y: 0, width: 0, height: 0 });
+      expect(b.width).toBe(0);
+      expect(b.height).toBe(0);
     });
 
-    it('accepts explicit width/height overrides', () => {
-      const b = buildingWithOmitted({ type: 'barracks', x: 2, y: 2, width: 6, height: 8 });
+    it('stores an explicit non-square width and height', () => {
+      const b = buildingWithSize({ type: 'barracks', x: 2, y: 2, width: 6, height: 8 });
       expect(b.width).toBe(6);
       expect(b.height).toBe(8);
+      // The stored numbers are the tile span, so the far edges stay exclusive.
+      expect(b.containsPoint(7, 9)).toBe(true);
+      expect(b.containsPoint(8, 2)).toBe(false);
     });
 
     it('stores position as Position object', () => {
-      const b = buildingWithOmitted({ type: 'lab', x: 12, y: 15 });
+      const b = buildingWithSize({ type: 'lab', x: 12, y: 15, width: 4, height: 4 });
       expect(b.position).toHaveProperty('tileX');
       expect(b.position).toHaveProperty('tileY');
     });
 
-    it('handles null/undefined width and height', () => {
-      const b = buildingWithOmitted({ type: 'n', x: 0, y: 0, width: null, height: undefined });
-      expect(b.width).toBe(4);
-      expect(b.height).toBe(4);
+    it('a zero-size building contains no tiles', () => {
+      // The other half of the zero case: with width 0 the right edge coincides
+      // with the left, so `tileX < position.tileX + 0` can never hold. This is
+      // what a zero-width building does in the world, and it is why defaulting
+      // 0 to 4 was a behaviour change rather than a harmless fallback.
+      const b = buildingWithSize({ type: 'n', x: 3, y: 4, width: 0, height: 0 });
+      expect(b.containsPoint(3, 4)).toBe(false);
+      expect(b.containsPoint(4, 5)).toBe(false);
     });
   });
 
   describe('containsPoint()', () => {
     function makeBuilding(x: number, y: number, w: number, h: number) {
-      return buildingWithOmitted({ type: 'test', x, y, width: w, height: h });
+      return buildingWithSize({ type: 'test', x, y, width: w, height: h });
     }
 
     it('returns true for point inside the building bounds', () => {
