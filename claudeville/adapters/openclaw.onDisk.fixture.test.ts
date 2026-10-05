@@ -259,7 +259,12 @@ const tsOf = (i: number) => new Date(at(i)).getTime();
 
 const textBlock = (text: string) => ({ type: 'text', text });
 
-const toolBlock = (name: string | undefined, input: unknown) => ({
+// `input` is OPTIONAL and always was: the body below already treats an absent
+// `input` as a real case (`...(input === undefined ? {} : { input })`), and the
+// `session-2` fixture builds exactly such a block by calling `toolBlock('NoArgs')`
+// with no second argument. Declaring it required contradicted the body and made
+// that call site a TS2554 — the signature was the defect, not the call.
+const toolBlock = (name: string | undefined, input?: unknown) => ({
   type: 'tool_use',
   ...(name === undefined ? {} : { name }),
   ...(input === undefined ? {} : { input }),
@@ -438,7 +443,12 @@ describe('OpenClawAdapter on-disk characterization', () => {
         });
 
         // Newest first (openclaw.ts:259), and the two ages are a minute apart.
-        expect(rows[0].lastActivity).toBeGreaterThan(rows[1].lastActivity);
+        // `lastActivity` is optional on the row, so the older row's stamp is
+        // narrowed out rather than coerced — `?? 0` would make a dropped stamp
+        // look like the OLDEST row and pass this comparison.
+        const olderActivity = rows[1]?.lastActivity;
+        if (olderActivity === undefined) throw new Error('expected a lastActivity on the older row');
+        expect(rows[0].lastActivity).toBeGreaterThan(olderActivity);
 
         // …and the filePath the row reports is the one that resolves.
         const detail = await detailOf(adapter, first.sessionId, first.project, first.filePath);

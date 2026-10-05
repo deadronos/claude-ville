@@ -1224,6 +1224,10 @@ describe('claude adapter', () => {
       expect(detailPromise).toBeInstanceOf(Promise);
       const result = await detailPromise;
       expect(result.ok).toBe(true);
+      // `detail` is on the SUCCESS branch only, so the union is narrowed before it
+      // is read. `expect(result.ok).toBe(true)` asserts at runtime but does not
+      // narrow at compile time.
+      if (!result.ok) throw new Error('unreachable: expected a detail for a known session');
       expect(result.detail).toHaveProperty('toolHistory');
       expect(result.detail).toHaveProperty('messages');
     });
