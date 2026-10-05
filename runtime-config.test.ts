@@ -89,17 +89,17 @@ describe('runtime config', () => {
 
   describe('normalizeNameMode logic', () => {
     it('returns autodetected for empty input', () => {
-      const normalizeNameMode = (rawMode: string, fallback = 'autodetected') => {
+      const normalizeNameMode = (rawMode: unknown, fallback = 'autodetected') => {
         const mode = String(rawMode || '').trim().toLowerCase();
         return mode === 'pooled' || mode === 'autodetected' ? mode : fallback;
       };
 
       expect(normalizeNameMode('')).toBe('autodetected');
-      expect(normalizeNameMode(null as any, 'autodetected')).toBe('autodetected');
+      expect(normalizeNameMode(null, 'autodetected')).toBe('autodetected');
     });
 
     it('accepts valid modes', () => {
-      const normalizeNameMode = (rawMode: string, fallback = 'autodetected') => {
+      const normalizeNameMode = (rawMode: unknown, fallback = 'autodetected') => {
         const mode = String(rawMode || '').trim().toLowerCase();
         return mode === 'pooled' || mode === 'autodetected' ? mode : fallback;
       };
@@ -109,7 +109,7 @@ describe('runtime config', () => {
     });
 
     it('returns fallback for invalid modes', () => {
-      const normalizeNameMode = (rawMode: string, fallback = 'autodetected') => {
+      const normalizeNameMode = (rawMode: unknown, fallback = 'autodetected') => {
         const mode = String(rawMode || '').trim().toLowerCase();
         return mode === 'pooled' || mode === 'autodetected' ? mode : fallback;
       };
@@ -118,7 +118,7 @@ describe('runtime config', () => {
     });
 
     it('uses custom fallback', () => {
-      const normalizeNameMode = (rawMode: string, fallback = 'autodetected') => {
+      const normalizeNameMode = (rawMode: unknown, fallback = 'autodetected') => {
         const mode = String(rawMode || '').trim().toLowerCase();
         return mode === 'pooled' || mode === 'autodetected' ? mode : fallback;
       };
@@ -130,7 +130,7 @@ describe('runtime config', () => {
 
   describe('readProviderNameModes logic', () => {
     it('returns empty object for no provider env vars', () => {
-      const readProviderNameModes = (env = {}) => {
+      const readProviderNameModes = (env: NodeJS.ProcessEnv = {}) => {
         const providers = {
           claude: env.CLAUDEVILLE_NAME_MODE_CLAUDE,
           codex: env.CLAUDEVILLE_NAME_MODE_CODEX,
@@ -156,7 +156,7 @@ describe('runtime config', () => {
     });
 
     it('reads CLAUDEVILLE_NAME_MODE_CLAUDE', () => {
-      const readProviderNameModes = (env = {}) => {
+      const readProviderNameModes = (env: NodeJS.ProcessEnv = {}) => {
         const providers = {
           claude: env.CLAUDEVILLE_NAME_MODE_CLAUDE,
           codex: env.CLAUDEVILLE_NAME_MODE_CODEX,
@@ -183,7 +183,7 @@ describe('runtime config', () => {
     });
 
     it('reads multiple provider modes', () => {
-      const readProviderNameModes = (env = {}) => {
+      const readProviderNameModes = (env: NodeJS.ProcessEnv = {}) => {
         const providers = {
           claude: env.CLAUDEVILLE_NAME_MODE_CLAUDE,
           codex: env.CLAUDEVILLE_NAME_MODE_CODEX,
@@ -216,7 +216,7 @@ describe('runtime config', () => {
     });
 
     it('ignores invalid modes', () => {
-      const readProviderNameModes = (env = {}) => {
+      const readProviderNameModes = (env: NodeJS.ProcessEnv = {}) => {
         const providers = {
           claude: env.CLAUDEVILLE_NAME_MODE_CLAUDE,
           codex: env.CLAUDEVILLE_NAME_MODE_CODEX,
@@ -245,7 +245,7 @@ describe('runtime config', () => {
 
   describe('buildRuntimeConfig logic', () => {
     it('uses default values when no env vars set', () => {
-      const buildRuntimeConfig = (env = {}) => {
+      const buildRuntimeConfig = (env: NodeJS.ProcessEnv = {}) => {
         const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:3030';
         const hubWsUrl = env.HUB_WS_URL || `${hubHttpUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws`;
 
@@ -275,7 +275,7 @@ describe('runtime config', () => {
     });
 
     it('uses HUB_URL env var for hubHttpUrl', () => {
-      const buildRuntimeConfig = (env = {}) => {
+      const buildRuntimeConfig = (env: NodeJS.ProcessEnv = {}) => {
         const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:3030';
         return { hubHttpUrl };
       };
@@ -285,7 +285,7 @@ describe('runtime config', () => {
     });
 
     it('uses HUB_HTTP_URL when available', () => {
-      const buildRuntimeConfig = (env = {}) => {
+      const buildRuntimeConfig = (env: NodeJS.ProcessEnv = {}) => {
         const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:3030';
         return { hubHttpUrl };
       };
@@ -299,7 +299,7 @@ describe('runtime config', () => {
     });
 
     it('builds wsUrl from httpUrl', () => {
-      const buildRuntimeConfig = (env = {}) => {
+      const buildRuntimeConfig = (env: NodeJS.ProcessEnv = {}) => {
         const hubHttpUrl = env.HUB_HTTP_URL || env.HUB_URL || 'http://localhost:3030';
         const hubWsUrl = `${hubHttpUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws`;
         return { hubWsUrl, hubHttpUrl };
@@ -313,7 +313,7 @@ describe('runtime config', () => {
     });
 
     it('uses custom agent name pool', () => {
-      const buildRuntimeConfig = (env = {}) => {
+      const buildRuntimeConfig = (env: NodeJS.ProcessEnv = {}) => {
         const normalizeAgentNamePool = (rawPool = '') => {
           const pool = rawPool.split(',').map((item: string) => item.trim()).filter(Boolean);
           return pool.length > 0 ? pool : ['Atlas', 'Nova'];
@@ -330,7 +330,7 @@ describe('runtime config', () => {
     });
 
     it('returns complete config object', () => {
-      const buildRuntimeConfig = (env = {}) => {
+      const buildRuntimeConfig = (env: NodeJS.ProcessEnv = {}) => {
         return {
           hubHttpUrl: env.HUB_HTTP_URL || 'http://localhost:3030',
           hubWsUrl: 'ws://localhost:3030/ws',

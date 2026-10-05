@@ -42,8 +42,16 @@ async function withDebug<T>(fn: () => Promise<T>): Promise<{ result: T; lines: s
   }
 }
 
-type ScanOptions = Parameters<typeof collectScanByMtime>[0];
 type ScanRecord = { sessionId: string; filePath: string; mtime: number };
+
+/**
+ * `collectScanByMtime` is generic, so bare `Parameters<typeof
+ * collectScanByMtime>[0]` resolves `T` to its unconstrained default and types
+ * `build` as returning `unknown` - which no longer accepts this suite's
+ * builders once every call site pins `T = ScanRecord`. Instantiating with
+ * `ScanRecord` is the type the helper actually hands over.
+ */
+type ScanOptions = Parameters<typeof collectScanByMtime<ScanRecord>>[0];
 
 function scanOptions(overrides: Partial<ScanOptions> = {}): ScanOptions {
   return {
