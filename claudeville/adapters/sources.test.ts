@@ -115,7 +115,10 @@ describe('combineDetailSources: the primary source outranks the fallbacks', () =
 describe('combineSources: every answering source contributes, in priority-free order', () => {
   const rows = (ids: string[]): SourceListing => ({
     kind: 'rows',
-    sessions: ids.map((id) => ({ sessionId: id, provider: 'test', project: null })),
+    // `lastActivity` is required on `AgentSessionSummary`. The value is inert
+    // here: `combineSources` is a flatMap with no sort, and this case pins
+    // concatenation order only.
+    sessions: ids.map((id) => ({ sessionId: id, provider: 'test', project: null, lastActivity: 1 })),
     warnings: [],
   });
 
