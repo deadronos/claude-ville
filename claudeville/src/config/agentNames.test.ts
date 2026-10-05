@@ -121,15 +121,12 @@ describe('agentNames (real module)', () => {
     });
 
     it('returns agent kind when session has non-main agentType', () => {
-      // `resolveAgentDisplayName` declares a session WITHOUT `agentType`, but it
-      // hands the session straight to `getNameKind`, which reads
-      // `session.agentType` and answers 'agent' for anything but 'main'. The
-      // declaration is missing a field the implementation depends on; this case
-      // is real coverage of that path. Assigning through a variable instead of
-      // passing a fresh object literal keeps the call honest with no `as` cast,
-      // because excess-property checking only applies to literals.
-      const session = { sessionId: 's1', agentType: 'reviewer' };
-      const result = resolveAgentDisplayName(session, null);
+      // `agentType` is declared on `resolveAgentDisplayName`'s session because
+      // `getNameKind` reads it and answers 'agent' for anything but 'main'. Passed
+      // as a fresh object literal deliberately: excess-property checking applies to
+      // literals, so this call stops compiling if the field is ever dropped from the
+      // declaration again — which is exactly what let the gap survive until now.
+      const result = resolveAgentDisplayName({ sessionId: 's1', agentType: 'reviewer' }, null);
       expect(result.nameKind).toBe('agent');
     });
 
