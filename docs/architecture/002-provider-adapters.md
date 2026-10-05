@@ -705,6 +705,49 @@ miss because the warning is buried in the output. They are declared
 visibly less covered than a normal one. Verified by running the three files with
 `process.getuid` stubbed to 0.
 
+### Test files are typechecked by a SEPARATE command
+
+`tsconfig.json` excludes every `*.test.ts` file, so `npm run typecheck` — the command
+CI gated on until #163 — checked **no** test file at all. Test files are typechecked by
+`npm run typecheck:tests` (`tsc -p tsconfig.test.json`) instead, and this matters for
+adapters specifically because #159 and #160 introduced two discriminated unions,
+`AdapterSessionsResult` and `AdapterDetailResult`, that 247-odd fixture call sites must
+satisfy.
+
+`tsconfig.test.json` EXTENDS the base rather than restating it, so the two cannot drift,
+and its include/exclude set is a strict superset of the base's (verified: every file the
+base compiles is also compiled here, plus 1488 more). So it covers production code too,
+and running `typecheck:tests` alone loses nothing.
+
+Two conventions follow from it, both established by the errors the first run revealed:
+
+- **A fixture that narrows on `ok` must not hand-roll the narrowing inconsistently.**
+  `expect(result.ok).toBe(true)` asserts at runtime but does not narrow at compile time,
+  so reading `.detail` or `.warnings` straight after it is a TS2339. Every case that
+  reads a success-branch field pairs the assertion with a real narrowing — the idiom
+  already used in `sources.test.ts` is
+  `expect(result.ok).toBe(true); if (!result.ok) throw new Error('unreachable');`.
+  `sessionsOf` / `detailOf` in `fixtureHelpers.ts` exist so the ~250 SUCCESS cases do not
+  repeat it; a case that exercises a FAILING adapter calls the adapter directly and
+  narrows itself.
+- **Type the helper parameter off the real type, not a narrower hand-written shape.**
+  `AdapterSessionDetail`'s `messages` and `toolHistory` fields are all OPTIONAL, so a
+  helper declared as `Array<{ text: string }>` does not accept what `detailOf` returns, and
+  every call site is a TS2345. The correct parameter type is
+  `AdapterSessionDetail['messages']`, not a cast at the call site and not `any`.
+
+`fixtureHelpers.ts` is deliberately NOT named `*.test.ts`, so it is typechecked by the base
+config as well as the test one. That asymmetry is kept: the helpers are the boundary the
+fixtures are checked against, so a drift in them should fail the fast gate, not only the
+advisory one.
+
+CI runs `npm run typecheck:tests:baseline`, which compares the current error count against
+`scripts/test-typecheck-baseline.txt` and fails only on GROWTH. The inherited backlog is
+therefore visible on every run without blocking anyone, and the recorded number has to move
+in both directions — the script says so when the count drops. A `continue-on-error` step
+would have been the alternative, but it cannot fail at all, so nothing stops the number from
+rotting; a ratchet keeps the gate green today and still makes new debt impossible to land.
+
 ## Compliance
 
 Every adapter method that performs file or network I/O must be implemented as an `async` function using non-blocking primitives. Specific requirements:
