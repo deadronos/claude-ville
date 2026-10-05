@@ -40,7 +40,7 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 - `hubreceiver/server.ts` accepts snapshots, merges state, and exposes the canonical remote API/WebSocket surface.
 - `vite.config.ts` serves the browser UI from `claudeville/`, injects runtime config during dev, proxies API/WebSocket traffic to the hub, and builds to `dist/frontend` for remote deployments.
 - `claudeville/src/domain`, `application`, `infrastructure`, and `presentation` follow the layered architecture documented in `docs/architecture/000-overall-spec.md`.
-- `claudeville/src/presentation/react` is the current React shell. The legacy imperative shell was removed in Phase 2; `claudeville/src/presentation/character-mode/AgentSprite.ts` (plus its test) is the only remaining module there and is live (used by `useWorldSprites`).
+- `claudeville/src/presentation/react` is the current React shell. The legacy imperative shell was removed in Phase 2; `claudeville/src/presentation/character-mode/` holds the live sprite model — `AgentSprite.ts` (simulation plus wrappers), `agentSpriteRender.ts` (the canvas drawing), and its test — used by `useWorldSprites`.
 
 ## Conventions
 
@@ -63,6 +63,6 @@ ClaudeVille is a TypeScript/React/R3F visualization app for AI coding sessions. 
 
 ## Agent Skills & Learnings
 
-See [`../.agents/AGENTS.md`](.agents/AGENTS.md) for agent-specific skills and learnings. The `../.agents/` folder contains:
-- `../.agents/skills/` — reusable skills (e.g., self-improvement for capturing learnings)
-- `../.agents/.learnings/` — captured learnings during development
+See [`../.agents/AGENTS.md`](../.agents/AGENTS.md) for agent-specific skills and learnings. The `../.agents/` folder contains:
+- [`../.agents/skills/`](../.agents/skills/) — reusable skills (e.g., self-improvement for capturing learnings)
+- [`../.agents/.learnings/`](../.agents/.learnings/) — captured learnings during development
