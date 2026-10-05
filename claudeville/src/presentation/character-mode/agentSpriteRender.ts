@@ -6,12 +6,13 @@
 import { AgentStatus, AgentStatusType } from '../../domain/value-objects/AgentStatus.js';
 import { THEME } from '../../config/theme.js';
 import { getBubbleConfig } from '../../config/bubbleConfig.js';
+import type { Appearance } from '../../domain/value-objects/Appearance.js';
 
 interface AgentSpriteRenderState {
     x: number;
     y: number;
     _zoom: number;
-    agent: { name: string; status: AgentStatusType };
+    agent: { name: string; status: AgentStatusType; appearance: Appearance };
     chatting: boolean;
     walkFrame: number;
     statusAnim: number;
@@ -49,7 +50,7 @@ export function drawSprite(ctx: CanvasRenderingContext2D, sprite: AgentSpriteRen
     ctx.scale(scaleX, 1);
 
     const swing = sprite.moving ? Math.sin(sprite.walkFrame * 4) * 4 : 0;
-    const app = (sprite.agent as any).appearance;
+    const app = sprite.agent.appearance;
 
     ctx.strokeStyle = app.pants;
     ctx.lineWidth = 2;

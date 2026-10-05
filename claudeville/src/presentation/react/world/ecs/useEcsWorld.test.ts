@@ -2,6 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useEcsWorld } from './useEcsWorld';
+import { Appearance } from '../../../../domain/value-objects/Appearance.js';
 import { renderHook } from '@testing-library/react';
 
 const entities: any[] = [];
@@ -41,7 +42,7 @@ describe('useEcsWorld', () => {
 
   it('should sync agents into ECS entities', () => {
     const { result } = renderHook(() =>
-      useEcsWorld([{ id: 'a1', name: 'Alice', status: 'working', bubbleText: null, appearance: {} }], [])
+      useEcsWorld([{ id: 'a1', name: 'Alice', status: 'working', bubbleText: null, appearance: new Appearance({ skin: '#f1c27d', shirt: '#336699', hair: '#222222', hairStyle: 'short', pants: '#224466', accessory: 'none', eyeStyle: 'normal' }) }], [])
     );
     const queryResult = result.current.world.with('Agent');
     expect(queryResult.entities.length).toBe(1);
