@@ -2,13 +2,42 @@ import { describe, it, expect, vi } from 'vitest';
 import { CopilotAdapter } from './copilot';
 import { extractText } from './text-utils';
 import { detailOf, sessionsOf } from './fixtureHelpers';
+// Type-only: the readers this file re-declares inline now live in `copilot.ts`
+// and the shared helpers in `jsonl-utils.ts`. Imported for their SHAPES so the
+// local copies are annotated from the shipped source rather than from a guess.
+import type { parseJsonLines as parseJsonLinesShipped } from './jsonl-utils';
+import type { Dirent } from './scan-utils';
 const fs = require('fs');
+
+/**
+ * One parsed JSONL line. `parseJsonLines` in `jsonl-utils.ts` answers `any[]` —
+ * a parsed line is an arbitrary document, so there is no narrower TRUE type — and
+ * the shipped Copilot readers walk it the same way the inline copies below do.
+ * Derived from the shipped signature so the two cannot drift apart.
+ */
+type JsonlEntry = ReturnType<typeof parseJsonLinesShipped>[number];
+
+/**
+ * The `ReadLinesOptions` fields this file's inline `readLines` reads. The shipped
+ * `jsonl-utils.ts` also carries `scope`, which this copy never passes.
+ */
+type ReadLinesOptions = { from?: 'start' | 'end'; count?: number };
+
+/**
+ * Mirrored from `copilot.ts`, which declares these inline and exports only the
+ * adapter class — so the shipped shapes have to be restated here to annotate the
+ * inline copies with what the adapter really answers.
+ */
+type SessionDetail = { model: string | null; project: string | null; lastTool: string | null; lastToolInput: string | null; lastMessage: string | null };
+type ToolEvent = { tool: string; detail: string; ts: number };
+type ChatMessage = { role: string; text: string; ts: number };
+type CopilotScanRecord = { filePath: string; mtime: number; sessionId: string };
 
 describe('copilot adapter', () => {
   // ─── readLines utility ─────────────────────────────────────
   describe('readLines utility', () => {
     it('returns empty array when file does not exist', async () => {
-      const readLines = async (filePath) => {
+      const readLines = async (filePath: string): Promise<string[]> => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -27,7 +56,7 @@ describe('copilot adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-test-'));
       const file = path.join(tmp, 'events.jsonl');
       fs.writeFileSync(file, 'line1\nline2\nline3\nline4\nline5\n');
-      const readLines = async (filePath, opts = {}) => {
+      const readLines = async (filePath: string, opts: ReadLinesOptions = {}): Promise<string[]> => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -48,7 +77,7 @@ describe('copilot adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-test-'));
       const file = path.join(tmp, 'events.jsonl');
       fs.writeFileSync(file, 'line1\nline2\nline3\nline4\nline5\n');
-      const readLines = async (filePath, opts = {}) => {
+      const readLines = async (filePath: string, opts: ReadLinesOptions = {}): Promise<string[]> => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -69,7 +98,7 @@ describe('copilot adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-test-'));
       const file = path.join(tmp, 'empty.jsonl');
       fs.writeFileSync(file, '');
-      const readLines = async (filePath, opts = {}) => {
+      const readLines = async (filePath: string, opts: ReadLinesOptions = {}): Promise<string[]> => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -87,7 +116,7 @@ describe('copilot adapter', () => {
   // ─── parseJsonLines utility ────────────────────────────────
   describe('parseJsonLines utility', () => {
     it('parses valid JSON lines', () => {
-      const parseJsonLines = (lines) => {
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => {
         const results = [];
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -100,7 +129,7 @@ describe('copilot adapter', () => {
     });
 
     it('skips malformed lines', () => {
-      const parseJsonLines = (lines) => {
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => {
         const results = [];
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -113,7 +142,7 @@ describe('copilot adapter', () => {
     });
 
     it('skips empty and whitespace lines', () => {
-      const parseJsonLines = (lines) => {
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => {
         const results = [];
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -126,7 +155,7 @@ describe('copilot adapter', () => {
     });
 
     it('handles empty array', () => {
-      const parseJsonLines = (lines) => {
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => {
         const results = [];
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -179,7 +208,7 @@ describe('copilot adapter', () => {
         JSON.stringify({ type: 'user.message', data: { content: 'Hello' } }) + '\n',
       ].join('');
       fs.writeFileSync(file, lines);
-      const readLines = async (filePath, opts = {}) => {
+      const readLines = async (filePath: string, opts: ReadLinesOptions = {}): Promise<string[]> => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -188,10 +217,10 @@ describe('copilot adapter', () => {
           return lines.slice(-(opts.count || 50));
         } catch { return []; }
       };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
-      const parseSession = async (filePath) => {
-        const detail = { model: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
+      const parseSession = async (filePath: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
         const firstLines = await readLines(filePath, { from: 'start', count: 5 });
         const firstEntries = parseJsonLines(firstLines);
         for (const entry of firstEntries) {
@@ -229,7 +258,7 @@ describe('copilot adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-test-'));
       const file = path.join(tmp, 'events.jsonl');
       fs.writeFileSync(file, JSON.stringify({ type: 'assistant.message', data: { toolCalls: [{ name: 'Bash', input: 'ls -la' }], content: [{ type: 'text', text: 'Running command' }] }, timestamp: '2024-01-01T00:00:00Z' }) + '\n');
-      const readLines = async (filePath, opts = {}) => {
+      const readLines = async (filePath: string, opts: ReadLinesOptions = {}): Promise<string[]> => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -238,10 +267,10 @@ describe('copilot adapter', () => {
           return lines.slice(-(opts.count || 50));
         } catch { return []; }
       };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
-      const parseSession = async (filePath) => {
-        const detail = { model: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
+      const parseSession = async (filePath: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
         const firstLines = await readLines(filePath, { from: 'start', count: 5 });
         const firstEntries = parseJsonLines(firstLines);
         for (const entry of firstEntries) { if (entry.type === 'session.start' && entry.data) { if (!detail.model && entry.data.selectedModel) detail.model = entry.data.selectedModel; if (!detail.project && entry.data.context && entry.data.context.cwd) detail.project = entry.data.context.cwd; break; } }
@@ -273,7 +302,7 @@ describe('copilot adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-test-'));
       const file = path.join(tmp, 'events.jsonl');
       fs.writeFileSync(file, JSON.stringify({ type: 'tool_call', data: { name: 'Read', input: '/tmp/file.txt' }, timestamp: '2024-01-01T00:00:00Z' }) + '\n');
-      const readLines = async (filePath, opts = {}) => {
+      const readLines = async (filePath: string, opts: ReadLinesOptions = {}): Promise<string[]> => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -282,10 +311,10 @@ describe('copilot adapter', () => {
           return lines.slice(-(opts.count || 50));
         } catch { return []; }
       };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
-      const parseSession = async (filePath) => {
-        const detail = { model: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
+      const parseSession = async (filePath: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
         const firstLines = await readLines(filePath, { from: 'start', count: 5 });
         const firstEntries = parseJsonLines(firstLines);
         for (const entry of firstEntries) { if (entry.type === 'session.start' && entry.data) { if (!detail.model && entry.data.selectedModel) detail.model = entry.data.selectedModel; if (!detail.project && entry.data.context && entry.data.context.cwd) detail.project = entry.data.context.cwd; break; } }
@@ -317,7 +346,7 @@ describe('copilot adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-test-'));
       const file = path.join(tmp, 'events.jsonl');
       fs.writeFileSync(file, JSON.stringify({ type: 'assistant.message', data: { toolCalls: [{ name: 'Bash', input: { command: 'echo hi' } }] }, timestamp: '2024-01-01T00:00:00Z' }) + '\n');
-      const readLines = async (filePath, opts = {}) => {
+      const readLines = async (filePath: string, opts: ReadLinesOptions = {}): Promise<string[]> => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = await fs.promises.readFile(filePath, 'utf-8');
@@ -326,10 +355,10 @@ describe('copilot adapter', () => {
           return lines.slice(-(opts.count || 50));
         } catch { return []; }
       };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
-      const parseSession = async (filePath) => {
-        const detail = { model: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
+      const parseSession = async (filePath: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
         const firstLines = await readLines(filePath, { from: 'start', count: 5 });
         const firstEntries = parseJsonLines(firstLines);
         for (const entry of firstEntries) { if (entry.type === 'session.start' && entry.data) { if (!detail.model && entry.data.selectedModel) detail.model = entry.data.selectedModel; if (!detail.project && entry.data.context && entry.data.context.cwd) detail.project = entry.data.context.cwd; break; } }
@@ -367,9 +396,9 @@ describe('copilot adapter', () => {
         JSON.stringify({ type: 'assistant.message', data: { toolCalls: [{ name: 'Bash', input: 'ls' }] }, timestamp: '2024-01-01T00:00:00Z' }) + '\n' +
         JSON.stringify({ type: 'user.message', data: { content: 'test' }, timestamp: '2024-01-01T00:00:01Z' }) + '\n'
       );
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getToolHistory = async (fp, maxItems = 15) => { const tools = []; try { const lines = await readLines(fp, { from: 'end', count: 100 }); const entries = parseJsonLines(lines); for (const entry of entries) { let tn = null, ti = null, ts = 0; if (entry.type === 'assistant.message' && entry.data) { const msg = entry.data; if (msg.toolCalls && Array.isArray(msg.toolCalls)) { for (const tc of msg.toolCalls) { tn = tc.name || 'tool_call'; ti = tc.input ? (typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; break; } } } if (!tn && entry.type === 'tool_call' && entry.data) { tn = entry.data.name || 'tool_call'; ti = entry.data.input ? (typeof entry.data.input === 'string' ? entry.data.input : JSON.stringify(entry.data.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; } if (tn) tools.push({ tool: tn, detail: ti || '', ts }); } } catch { /* ignore */ } return tools.slice(-maxItems); };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getToolHistory = async (fp: string, maxItems = 15): Promise<ToolEvent[]> => { const tools = []; try { const lines = await readLines(fp, { from: 'end', count: 100 }); const entries = parseJsonLines(lines); for (const entry of entries) { let tn = null, ti = null, ts = 0; if (entry.type === 'assistant.message' && entry.data) { const msg = entry.data; if (msg.toolCalls && Array.isArray(msg.toolCalls)) { for (const tc of msg.toolCalls) { tn = tc.name || 'tool_call'; ti = tc.input ? (typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; break; } } } if (!tn && entry.type === 'tool_call' && entry.data) { tn = entry.data.name || 'tool_call'; ti = entry.data.input ? (typeof entry.data.input === 'string' ? entry.data.input : JSON.stringify(entry.data.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; } if (tn) tools.push({ tool: tn, detail: ti || '', ts }); } } catch { /* ignore */ } return tools.slice(-maxItems); };
       const result = await getToolHistory(file);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
@@ -387,9 +416,9 @@ describe('copilot adapter', () => {
       for (let i = 0; i < 20; i++) {
         fs.writeFileSync(file, JSON.stringify({ type: 'assistant.message', data: { toolCalls: [{ name: `T${i}`, input: `i${i}` }] }, timestamp: `2024-01-01T00:00:${String(i).padStart(2, '0')}Z` }) + '\n', { flag: 'a' });
       }
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getToolHistory = async (fp, maxItems = 15) => { const tools = []; try { const lines = await readLines(fp, { from: 'end', count: 100 }); const entries = parseJsonLines(lines); for (const entry of entries) { let tn = null, ti = null, ts = 0; if (entry.type === 'assistant.message' && entry.data) { const msg = entry.data; if (msg.toolCalls && Array.isArray(msg.toolCalls)) { for (const tc of msg.toolCalls) { tn = tc.name || 'tool_call'; ti = tc.input ? (typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; break; } } } if (!tn && entry.type === 'tool_call' && entry.data) { tn = entry.data.name || 'tool_call'; ti = entry.data.input ? (typeof entry.data.input === 'string' ? entry.data.input : JSON.stringify(entry.data.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; } if (tn) tools.push({ tool: tn, detail: ti || '', ts }); } } catch { /* ignore */ } return tools.slice(-maxItems); };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getToolHistory = async (fp: string, maxItems = 15): Promise<ToolEvent[]> => { const tools = []; try { const lines = await readLines(fp, { from: 'end', count: 100 }); const entries = parseJsonLines(lines); for (const entry of entries) { let tn = null, ti = null, ts = 0; if (entry.type === 'assistant.message' && entry.data) { const msg = entry.data; if (msg.toolCalls && Array.isArray(msg.toolCalls)) { for (const tc of msg.toolCalls) { tn = tc.name || 'tool_call'; ti = tc.input ? (typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; break; } } } if (!tn && entry.type === 'tool_call' && entry.data) { tn = entry.data.name || 'tool_call'; ti = entry.data.input ? (typeof entry.data.input === 'string' ? entry.data.input : JSON.stringify(entry.data.input)).substring(0, 80) : ''; ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0; } if (tn) tools.push({ tool: tn, detail: ti || '', ts }); } } catch { /* ignore */ } return tools.slice(-maxItems); };
       const result = await getToolHistory(file, 5);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(5);
@@ -408,10 +437,10 @@ describe('copilot adapter', () => {
         JSON.stringify({ type: 'user.message', data: { content: 'Hello' }, timestamp: '2024-01-01T00:00:00Z' }) + '\n' +
         JSON.stringify({ type: 'assistant.message', data: { content: 'Hi there' }, timestamp: '2024-01-01T00:00:01Z' }) + '\n'
       );
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
-      const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
+      const getRecentMessages = async (fp: string, maxItems = 5): Promise<ChatMessage[]> => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(2);
@@ -432,10 +461,10 @@ describe('copilot adapter', () => {
         JSON.stringify({ type: 'session.start', data: {} }) + '\n' +
         JSON.stringify({ type: 'user.message', data: {} }) + '\n'
       );
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
-      const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
+      const getRecentMessages = async (fp: string, maxItems = 5): Promise<ChatMessage[]> => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(1);
@@ -451,10 +480,10 @@ describe('copilot adapter', () => {
       for (let i = 0; i < 10; i++) {
         fs.writeFileSync(file, JSON.stringify({ type: 'user.message', data: { content: `msg${i}` }, timestamp: `2024-01-01T00:00:${String(i).padStart(2, '0')}Z` }) + '\n', { flag: 'a' });
       }
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
-      const getRecentMessages = async (fp, maxItems = 5) => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if ((block.type === 'text' || block.type === 'output_text') && block.text) return block.text.trim(); } return ''; };
+      const getRecentMessages = async (fp: string, maxItems = 5): Promise<ChatMessage[]> => { const messages = []; try { const lines = await readLines(fp, { from: 'end', count: 60 }); const entries = parseJsonLines(lines); for (const entry of entries) { if (entry.type !== 'user.message' && entry.type !== 'assistant.message') continue; if (!entry.data || !entry.data.content) continue; const text = extractText(entry.data.content); if (!text) continue; messages.push({ role: entry.type === 'user.message' ? 'user' : 'assistant', text: text.substring(0, 200), ts: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }); } } catch { /* ignore */ } return messages.slice(-maxItems); };
       const result = await getRecentMessages(file, 3);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toHaveLength(3);
@@ -469,13 +498,13 @@ describe('copilot adapter', () => {
       const path = require('path');
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-test-'));
       // Don't create SESSION_STATE_DIR
-      const scanAllSessions = async (dir, activeThresholdMs) => {
-        const results = [];
+      const scanAllSessions = async (dir: string, activeThresholdMs: number): Promise<CopilotScanRecord[]> => {
+        const results: CopilotScanRecord[] = [];
         if (!fs.existsSync(dir)) return results;
         const now = Date.now();
         try {
-          const sessionDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isDirectory());
-          const dirResults = await Promise.all(sessionDirs.map(async (sessionDir) => {
+          const sessionDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter((d: Dirent) => d.isDirectory());
+          const dirResults = await Promise.all(sessionDirs.map(async (sessionDir: Dirent) => {
             const eventsFile = path.join(dir, sessionDir.name, 'events.jsonl');
             if (!fs.existsSync(eventsFile)) return null;
             try {
@@ -501,13 +530,13 @@ describe('copilot adapter', () => {
       const sessionDir = path.join(tmp, 'session-state', 'abc-123-def');
       fs.mkdirSync(sessionDir, { recursive: true });
       fs.writeFileSync(path.join(sessionDir, 'events.jsonl'), JSON.stringify({ type: 'session.start', data: {} }) + '\n');
-      const scanAllSessions = async (dir, activeThresholdMs) => {
-        const results = [];
+      const scanAllSessions = async (dir: string, activeThresholdMs: number): Promise<CopilotScanRecord[]> => {
+        const results: CopilotScanRecord[] = [];
         if (!fs.existsSync(dir)) return results;
         const now = Date.now();
         try {
-          const sessionDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isDirectory());
-          const dirResults = await Promise.all(sessionDirs.map(async (sessionDir) => {
+          const sessionDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter((d: Dirent) => d.isDirectory());
+          const dirResults = await Promise.all(sessionDirs.map(async (sessionDir: Dirent) => {
             const eventsFile = path.join(dir, sessionDir.name, 'events.jsonl');
             if (!fs.existsSync(eventsFile)) return null;
             try {
@@ -601,7 +630,15 @@ describe('copilot adapter', () => {
       const adapter = new CopilotAdapter();
       const sessions = await sessionsOf(adapter, 120000);
       for (let i = 1; i < sessions.length; i++) {
-        expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
+        // `lastActivity` is OPTIONAL on the shared `Session`, so an ordering this
+        // pins cannot be read without it — and `toBeGreaterThanOrEqual(undefined)`
+        // is not an ordering assertion at all. `copilot.ts` sets it from the
+        // events file's mtime on every row, so the precondition is asserted for
+        // the compiler instead of `!`-asserted away.
+        const previous = sessions[i - 1].lastActivity;
+        const current = sessions[i].lastActivity;
+        if (previous === undefined || current === undefined) throw new Error('unreachable: every copilot session row carries lastActivity');
+        expect(previous).toBeGreaterThanOrEqual(current);
       }
     });
 
@@ -666,7 +703,13 @@ describe('copilot adapter', () => {
         expect(sessions.map((s: any) => s.lastActivity)).toEqual(
           [...sessions.map((s: any) => s.lastActivity)].sort((a, b) => b - a),
         );
-        expect(sessions[0].lastActivity).toBeGreaterThan(sessions[2].lastActivity);
+        // Same optional field as the real-HOME case above. This one has teeth — it
+        // drives three sessions with distinct mtimes — so the precondition holds
+        // by construction and is asserted for the compiler rather than cast away.
+        const newest = sessions[0].lastActivity;
+        const oldest = sessions[2].lastActivity;
+        if (newest === undefined || oldest === undefined) throw new Error('unreachable: the three written session dirs all carry lastActivity');
+        expect(newest).toBeGreaterThan(oldest);
       } finally {
         if (originalHome === undefined) delete process.env.HOME;
         else process.env.HOME = originalHome;
