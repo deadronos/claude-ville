@@ -4,8 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentStatus } from '../../domain/value-objects/AgentStatus.js';
 import { AgentSprite } from './AgentSprite.js';
+import type { Agent } from '../../domain/entities/Agent.js';
 
-function makeAgent(overrides: Record<string, unknown> = {}) {
+/**
+ * `AgentSprite` takes a whole `Agent`, and the class declares 22 fields, but these
+ * cases only need the handful the sprite and its renderer read. Building a real
+ * `Agent` instead would mean replacing `appearance` and `position` with
+ * stand-ins anyway — both are value objects with behaviour of their own — so the
+ * stand-in is kept and typed once, here, rather than at each call site.
+ */
+function makeAgent(overrides: Record<string, unknown> = {}): Agent {
   return {
     id: 'agent-1',
     name: 'Alice',
@@ -27,7 +35,20 @@ function makeAgent(overrides: Record<string, unknown> = {}) {
       toScreen: () => ({ x: 10, y: 20 }),
     },
     ...overrides,
-  };
+  } as unknown as Agent;
+}
+
+/**
+ * `Agent.bubbleText` is a GETTER derived from `currentTool`/`lastMessage`, so a
+ * real `Agent` cannot be assigned one — and the renderer reads exactly this
+ * property (`drawStatus` reaches it through `(agent as any).bubbleText`).
+ * `defineProperty` puts an own data property in front of the prototype getter, so
+ * the two cases below can still drive the renderer's long-bubble and empty-bubble
+ * branches. Assigning directly would throw on a real instance and silently work
+ * only because the stand-in above is a plain object.
+ */
+function setBubbleText(agent: Agent, value: string) {
+  Object.defineProperty(agent, 'bubbleText', { value, configurable: true, writable: true });
 }
 
 function makeContext() {
@@ -152,14 +173,14 @@ describe('AgentSprite', () => {
 
     sprite._zoom = 2;
     sprite.agent.status = AgentStatus.WORKING;
-    sprite.agent.bubbleText = 'This status message is intentionally a bit too wide for the bubble';
+    setBubbleText(sprite.agent, 'This status message is intentionally a bit too wide for the bubble');
     sprite._drawStatus(ctx);
 
     sprite.agent.status = AgentStatus.IDLE;
     sprite._drawStatus(ctx);
 
     sprite.agent.status = AgentStatus.WAITING;
-    sprite.agent.bubbleText = '';
+    setBubbleText(sprite.agent, '');
     sprite._drawStatus(ctx);
 
     sprite.chatting = true;

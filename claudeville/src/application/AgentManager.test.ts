@@ -437,13 +437,18 @@ describe('AgentManager', () => {
       expect(mockWorld.addAgent).not.toHaveBeenCalled();
     });
 
+    // `AgentSessionSummary` declares `provider` and `project` as required, and
+    // AgentManager reads both (`session.project` at :137 and :174,
+    // `session.provider` at :178). The fixtures carry the values the existing
+    // fallbacks were already producing — 'claude' and null — so this satisfies
+    // the declared contract without changing what any case exercises.
     it('updates teamMembers when teams included', async () => {
       mockDataSource.getSessions.mockResolvedValue([]);
       mockDataSource.getTeams.mockResolvedValue([]);
       await manager.loadInitialData();
 
       manager.handleWebSocketMessage({
-        sessions: [{ sessionId: 's2', agentId: 'new-member', status: 'active', lastActivity: Date.now() }],
+        sessions: [{ provider: 'claude', project: null, sessionId: 's2', agentId: 'new-member', status: 'active', lastActivity: Date.now() }],
         teams: [{ teamName: 'UpdatedTeam', members: [{ agentId: 'new-member', name: 'Updated' }] }],
       });
 
@@ -502,7 +507,7 @@ describe('AgentManager', () => {
 
       mockWorld.agents.set('s1', { id: 's1', status: AgentStatus.WORKING });
       manager.handleWebSocketMessage({
-        sessions: [{ sessionId: 's1', status: 'active', lastActivity: Date.now(), agentId: 'a1' }],
+        sessions: [{ provider: 'claude', project: null, sessionId: 's1', status: 'active', lastActivity: Date.now(), agentId: 'a1' }],
       });
 
       expect(mockWorld.updateAgent).toHaveBeenCalled();
@@ -518,7 +523,7 @@ describe('AgentManager', () => {
       mockWorld.updateAgent.mockClear();
 
       manager.handleWebSocketMessage({
-        sessions: [{ sessionId: 'new-s1', status: 'active', lastActivity: Date.now(), agentId: 'new-a1' }],
+        sessions: [{ provider: 'claude', project: null, sessionId: 'new-s1', status: 'active', lastActivity: Date.now(), agentId: 'new-a1' }],
       });
 
       expect(mockWorld.addAgent).toHaveBeenCalled();
@@ -533,9 +538,9 @@ describe('AgentManager', () => {
 
       manager.handleWebSocketMessage({
         sessions: [
-          { sessionId: 's1', status: 'active', lastActivity: Date.now(), agentId: 'a1' },
-          { sessionId: 's2', status: 'active', lastActivity: Date.now(), agentId: 'a2' },
-          { sessionId: 's3', status: 'active', lastActivity: Date.now(), agentId: 'a3' },
+          { provider: 'claude', project: null, sessionId: 's1', status: 'active', lastActivity: Date.now(), agentId: 'a1' },
+          { provider: 'claude', project: null, sessionId: 's2', status: 'active', lastActivity: Date.now(), agentId: 'a2' },
+          { provider: 'claude', project: null, sessionId: 's3', status: 'active', lastActivity: Date.now(), agentId: 'a3' },
         ],
       });
 
@@ -556,7 +561,7 @@ describe('AgentManager', () => {
 
       mockWorld.agents.set('s1', { id: 's1', status: AgentStatus.IDLE });
       manager.handleWebSocketMessage({
-        sessions: [{ sessionId: 's1', status: 'active', lastActivity: Date.now(), agentId: 'a1' }],
+        sessions: [{ provider: 'claude', project: null, sessionId: 's1', status: 'active', lastActivity: Date.now(), agentId: 'a1' }],
       });
 
       // Agent is active again, so not removed
