@@ -87,7 +87,14 @@ function adapterFiles(): string[] {
     ts.ScriptKind.TS,
   );
   const imports = new Map<string, string>();
-  let entries: ts.ArrayLiteralExpression | null = null;
+  // Collected in an array rather than assigned to a `let ... | null` from inside
+  // `visit`: TypeScript collapses a nullable `let` that a nested closure writes
+  // to down to `never` at every use site outside that closure, which made
+  // `entries.elements` unreadable. Reading the accumulator afterwards is a
+  // plain `const` narrowing instead. `index.ts` declares exactly one
+  // `adapters` array, and taking the last match preserves the original
+  // last-one-wins behaviour regardless.
+  const found: ts.ArrayLiteralExpression[] = [];
 
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
@@ -106,7 +113,7 @@ function adapterFiles(): string[] {
           && declaration.initializer
           && ts.isArrayLiteralExpression(declaration.initializer)
         ) {
-          entries = declaration.initializer;
+          found.push(declaration.initializer);
         }
       }
     }
@@ -114,6 +121,7 @@ function adapterFiles(): string[] {
   };
   visit(parsed);
 
+  const entries = found[found.length - 1];
   if (!entries) {
     throw new Error('claudeville/adapters/index.ts has no `adapters` array literal to derive the adapter list from.');
   }

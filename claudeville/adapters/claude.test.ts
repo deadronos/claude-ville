@@ -1,7 +1,31 @@
 import { describe, it, expect } from 'vitest';
 import { ClaudeAdapter } from './claude';
 import { detailOf, sessionsOf } from './fixtureHelpers';
+// Type-only: the readers this file re-declares inline were extracted to
+// `claude-readers.ts`, and this file reads `jsonl-utils.ts` only for the shape
+// of one parsed line so the local copies cannot drift from it.
+import type { parseJsonLines as parseJsonLinesShipped } from './jsonl-utils';
+import type { Dirent } from './scan-utils';
 const path = require('path');
+
+/**
+ * One parsed JSONL line. `parseJsonLines` in `jsonl-utils.ts` answers `any[]`
+ * — a parsed line is an arbitrary document, so there is no narrower TRUE type —
+ * and the shipped Claude readers walk it the same way the inline copies below
+ * do. Derived from the shipped signature rather than restated, so the two cannot
+ * drift apart.
+ */
+type JsonlEntry = ReturnType<typeof parseJsonLinesShipped>[number];
+
+/**
+ * The rest of these mirror `claude-readers.ts`, which declares them `type` but
+ * does not export — only its functions are exported. Recovered here so each
+ * inline copy is annotated with the shape the shipped reader actually returns.
+ */
+type ToolEvent = { tool: string; detail: string; ts: number };
+type ChatMessage = { role: string; text: string; ts: number };
+type SessionDetail = { model: string | null; lastTool: string | null; lastMessage: string | null; lastToolInput: string | null };
+type TokenUsage = { totalInput: number; totalOutput: number; cacheRead: number; cacheCreate: number; contextWindow: number; turnCount: number };
 
 describe('claude adapter', () => {
   describe('ClaudeAdapter class', () => {
@@ -65,7 +89,7 @@ describe('claude adapter', () => {
   describe('resolveProjectDisplayPath utility', () => {
     it('returns mapped path when key exists in map', () => {
       // Module-level function: test the logic inline
-      const resolveProjectDisplayPath = (projectPathMap, encodedProjectDirName) => {
+      const resolveProjectDisplayPath = (projectPathMap: Map<string, string>, encodedProjectDirName: string): string => {
         const mapped = projectPathMap.get(encodedProjectDirName);
         if (mapped) return mapped;
         return `claude:projects:${encodedProjectDirName}`;
@@ -75,7 +99,7 @@ describe('claude adapter', () => {
     });
 
     it('returns fallback identifier when key not in map', () => {
-      const resolveProjectDisplayPath = (projectPathMap, encodedProjectDirName) => {
+      const resolveProjectDisplayPath = (projectPathMap: Map<string, string>, encodedProjectDirName: string): string => {
         const mapped = projectPathMap.get(encodedProjectDirName);
         if (mapped) return mapped;
         return `claude:projects:${encodedProjectDirName}`;
@@ -85,7 +109,7 @@ describe('claude adapter', () => {
     });
 
     it('returns fallback even with empty map', () => {
-      const resolveProjectDisplayPath = (projectPathMap, encodedProjectDirName) => {
+      const resolveProjectDisplayPath = (projectPathMap: Map<string, string>, encodedProjectDirName: string): string => {
         const mapped = projectPathMap.get(encodedProjectDirName);
         if (mapped) return mapped;
         return `claude:projects:${encodedProjectDirName}`;
@@ -96,7 +120,7 @@ describe('claude adapter', () => {
 
   describe('readLastLines utility', () => {
     it('returns empty array when file does not exist', () => {
-      const readLastLines = (filePath) => {
+      const readLastLines = (filePath: string): string[] => {
         const fs = require('fs');
         try {
           if (!fs.existsSync(filePath)) return [];
@@ -114,7 +138,7 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const emptyFile = path.join(tmp, 'empty.txt');
       fs.writeFileSync(emptyFile, '');
-      const readLastLines = (filePath) => {
+      const readLastLines = (filePath: string): string[] => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = fs.readFileSync(filePath, 'utf-8');
@@ -134,7 +158,7 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'lines.txt');
       fs.writeFileSync(file, 'line1\nline2\nline3\nline4\nline5\n');
-      const readLastLines = (filePath, lineCount) => {
+      const readLastLines = (filePath: string, lineCount: number): string[] => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = fs.readFileSync(filePath, 'utf-8');
@@ -153,7 +177,7 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'few.txt');
       fs.writeFileSync(file, 'a\nb\n');
-      const readLastLines = (filePath, lineCount) => {
+      const readLastLines = (filePath: string, lineCount: number): string[] => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = fs.readFileSync(filePath, 'utf-8');
@@ -172,7 +196,7 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'single.txt');
       fs.writeFileSync(file, 'only one line\n');
-      const readLastLines = (filePath, lineCount) => {
+      const readLastLines = (filePath: string, lineCount: number): string[] => {
         try {
           if (!fs.existsSync(filePath)) return [];
           const content = fs.readFileSync(filePath, 'utf-8');
@@ -188,7 +212,7 @@ describe('claude adapter', () => {
 
   describe('parseJsonLines utility', () => {
     it('parses valid JSON lines', () => {
-      const parseJsonLines = (lines) => {
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => {
         const results = [];
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -201,7 +225,7 @@ describe('claude adapter', () => {
     });
 
     it('skips malformed lines', () => {
-      const parseJsonLines = (lines) => {
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => {
         const results = [];
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -214,7 +238,7 @@ describe('claude adapter', () => {
     });
 
     it('skips empty and whitespace-only lines', () => {
-      const parseJsonLines = (lines) => {
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => {
         const results = [];
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -227,7 +251,7 @@ describe('claude adapter', () => {
     });
 
     it('handles empty array input', () => {
-      const parseJsonLines = (lines) => {
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => {
         const results = [];
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -247,9 +271,9 @@ describe('claude adapter', () => {
       const file = path.join(tmp, 'session.jsonl');
       const sessionData = JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Read', input: { file_path: '/tmp/test.js' } }], usage: {} }, timestamp: 1000 });
       fs.writeFileSync(file, sessionData + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getToolHistory = (sessionFilePath, maxItems = 15) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getToolHistory = (sessionFilePath: string, maxItems = 15): ToolEvent[] => {
         const tools = [];
         try {
           const lines = readLastLines(sessionFilePath, 100);
@@ -291,9 +315,9 @@ describe('claude adapter', () => {
       const file = path.join(tmp, 'session.jsonl');
       const userData = JSON.stringify({ message: { role: 'user', content: [] }, timestamp: 1000 });
       fs.writeFileSync(file, userData + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getToolHistory = (sessionFilePath, maxItems = 15) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getToolHistory = (sessionFilePath: string, maxItems = 15): ToolEvent[] => {
         const tools = [];
         try {
           const lines = readLastLines(sessionFilePath, 100);
@@ -340,9 +364,9 @@ describe('claude adapter', () => {
         JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name: 'UseMcp', input: { description: 'some mcp tool' } }] }, timestamp: 6 }),
       ];
       fs.writeFileSync(file, entries.map(e => e + '\n').join(''));
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getToolHistory = (sessionFilePath, maxItems = 15) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getToolHistory = (sessionFilePath: string, maxItems = 15): ToolEvent[] => {
         const tools = [];
         try {
           const lines = readLastLines(sessionFilePath, 100);
@@ -388,9 +412,9 @@ describe('claude adapter', () => {
       const file = path.join(tmp, 'session.jsonl');
       const longCmd = 'x'.repeat(200);
       fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Cmd', input: { command: longCmd } }] }, timestamp: 1 }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getToolHistory = (sessionFilePath, maxItems = 15) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getToolHistory = (sessionFilePath: string, maxItems = 15): ToolEvent[] => {
         const tools = [];
         try {
           const lines = readLastLines(sessionFilePath, 100);
@@ -429,9 +453,9 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name: null, input: { pattern: 'x' } }] }, timestamp: 1 }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getToolHistory = (sessionFilePath, maxItems = 15) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getToolHistory = (sessionFilePath: string, maxItems = 15): ToolEvent[] => {
         const tools = [];
         try {
           const lines = readLastLines(sessionFilePath, 100);
@@ -472,9 +496,9 @@ describe('claude adapter', () => {
       for (let i = 0; i < 20; i++) {
         fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name: `T${i}`, input: { pattern: `p${i}` } }] }, timestamp: i }) + '\n', { flag: 'a' });
       }
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getToolHistory = (sessionFilePath, maxItems = 15) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getToolHistory = (sessionFilePath: string, maxItems = 15): ToolEvent[] => {
         const tools = [];
         try {
           const lines = readLastLines(sessionFilePath, 100);
@@ -515,9 +539,9 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: 'Hello world' }] }, timestamp: 1000 }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getRecentMessages = (sessionFilePath, maxItems = 5) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getRecentMessages = (sessionFilePath: string, maxItems = 5): ChatMessage[] => {
         const messages = [];
         try {
           const lines = readLastLines(sessionFilePath, 60);
@@ -550,9 +574,9 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: '  ' }, { type: 'text', text: 'visible' }] }, timestamp: 1 }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getRecentMessages = (sessionFilePath, maxItems = 5) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getRecentMessages = (sessionFilePath: string, maxItems = 5): ChatMessage[] => {
         const messages = [];
         try {
           const lines = readLastLines(sessionFilePath, 60);
@@ -584,9 +608,9 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Read', input: {} }] }, timestamp: 1 }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getRecentMessages = (sessionFilePath, maxItems = 5) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getRecentMessages = (sessionFilePath: string, maxItems = 5): ChatMessage[] => {
         const messages = [];
         try {
           const lines = readLastLines(sessionFilePath, 60);
@@ -617,9 +641,9 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: 'x'.repeat(300) }] }, timestamp: 1 }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getRecentMessages = (sessionFilePath, maxItems = 5) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getRecentMessages = (sessionFilePath: string, maxItems = 5): ChatMessage[] => {
         const messages = [];
         try {
           const lines = readLastLines(sessionFilePath, 60);
@@ -652,9 +676,9 @@ describe('claude adapter', () => {
       for (let i = 0; i < 10; i++) {
         fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: `msg${i}` }] }, timestamp: i }) + '\n', { flag: 'a' });
       }
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getRecentMessages = (sessionFilePath, maxItems = 5) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getRecentMessages = (sessionFilePath: string, maxItems = 5): ChatMessage[] => {
         const messages = [];
         try {
           const lines = readLastLines(sessionFilePath, 60);
@@ -691,9 +715,9 @@ describe('claude adapter', () => {
         JSON.stringify({ message: { role: 'assistant', usage: { input_tokens: 150, output_tokens: 250, cache_read_input_tokens: 60, cache_creation_input_tokens: 40 } } }) + '\n',
       ];
       fs.writeFileSync(file, entries.join(''));
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getTokenUsage = (sessionFilePath) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getTokenUsage = (sessionFilePath: string): TokenUsage => {
         const usage = { totalInput: 0, totalOutput: 0, cacheRead: 0, cacheCreate: 0, contextWindow: 0, turnCount: 0 };
         try {
           const lines = readLastLines(sessionFilePath, 200);
@@ -733,9 +757,9 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant', usage: {} } }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getTokenUsage = (sessionFilePath) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getTokenUsage = (sessionFilePath: string): TokenUsage => {
         const usage = { totalInput: 0, totalOutput: 0, cacheRead: 0, cacheCreate: 0, contextWindow: 0, turnCount: 0 };
         try {
           const lines = readLastLines(sessionFilePath, 200);
@@ -773,9 +797,9 @@ describe('claude adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ message: { role: 'assistant' } }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getTokenUsage = (sessionFilePath) => {
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getTokenUsage = (sessionFilePath: string): TokenUsage => {
         const usage = { totalInput: 0, totalOutput: 0, cacheRead: 0, cacheCreate: 0, contextWindow: 0, turnCount: 0 };
         try {
           const lines = readLastLines(sessionFilePath, 200);
@@ -830,10 +854,10 @@ describe('claude adapter', () => {
         timestamp: 1000,
       });
       fs.writeFileSync(sessionFile, entry + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getSessionDetail = (sessionId, project) => {
-        const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getSessionDetail = (sessionId: string, project: string | null): SessionDetail => {
+        const detail: SessionDetail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
         if (!project) return detail;
         const encoded = project.replace(/\//g, '-');
         const sessionFile = path.join(tmp, 'projects', encoded, `${sessionId}.jsonl`);
@@ -888,10 +912,10 @@ describe('claude adapter', () => {
       const sessionFile = path.join(projDir, 's.jsonl');
       const longText = 'x'.repeat(200);
       fs.writeFileSync(sessionFile, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: longText }] }, timestamp: 1 }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getSessionDetail = (sessionId, project) => {
-        const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getSessionDetail = (sessionId: string, project: string | null): SessionDetail => {
+        const detail: SessionDetail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
         if (!project) return detail;
         const encoded = project.replace(/\//g, '-');
         const sessionFile = path.join(tmp, 'projects', encoded, `${sessionId}.jsonl`);
@@ -929,7 +953,12 @@ describe('claude adapter', () => {
       const result = getSessionDetail('s', projPath);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastMessage).not.toBeNull();
-      expect(result.lastMessage!.length).toBe(80);
+      // `expect(...).not.toBeNull()` above asserts at runtime but does not narrow at
+      // compile time, and the copy returns `SessionDetail` with `lastMessage:
+      // string | null`. The precondition is asserted for the compiler rather than
+      // `!`-asserted away: this file wrote exactly one text block.
+      if (result.lastMessage === null) throw new Error('unreachable: a text block was written, so a message was extracted');
+      expect(result.lastMessage.length).toBe(80);
     });
 
     it('uses command, query, recipient input fields correctly', () => {
@@ -944,10 +973,10 @@ describe('claude adapter', () => {
       const sessionFile = path.join(projDir, 's.jsonl');
       const longCmd = 'x'.repeat(100);
       fs.writeFileSync(sessionFile, JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: longCmd } }] }, timestamp: 1 }) + '\n');
-      const readLastLines = (fp, lc) => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const getSessionDetail = (sessionId, project) => {
-        const detail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
+      const readLastLines = (fp: string, lc: number): string[] => { try { if (!fs.existsSync(fp)) return []; const c = fs.readFileSync(fp, 'utf-8'); return c.trim().split('\n').slice(-lc); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const getSessionDetail = (sessionId: string, project: string | null): SessionDetail => {
+        const detail: SessionDetail = { model: null, lastTool: null, lastMessage: null, lastToolInput: null };
         if (!project) return detail;
         const encoded = project.replace(/\//g, '-');
         const sessionFile = path.join(tmp, 'projects', encoded, `${sessionId}.jsonl`);
@@ -986,13 +1015,15 @@ describe('claude adapter', () => {
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result.lastTool).toBe('Bash');
       expect(result.lastToolInput).not.toBeNull();
-      expect(result.lastToolInput!.length).toBe(60); // truncated at 60
+      // Narrowed rather than `!`-asserted — see the other case in this describe.
+      if (result.lastToolInput === null) throw new Error('unreachable: the fixture wrote a Bash command, so a tool input was extracted');
+      expect(result.lastToolInput.length).toBe(60); // truncated at 60
     });
   });
 
   describe('resolveSessionFilePath utility', () => {
     it('returns null when project is null', () => {
-      const resolveSessionFilePath = (sessionId, project) => {
+      const resolveSessionFilePath = (sessionId: string, project: string | null): string | null => {
         if (!project) return null;
         const encoded = project.replace(/\//g, '-');
         return `/projects/${encoded}/${sessionId}.jsonl`;
@@ -1009,14 +1040,14 @@ describe('claude adapter', () => {
       const encodedProjDir = projPath.replace(/\//g, '-');
       const projDir = path.join(tmp, 'projects', encodedProjDir);
       fs.mkdirSync(projDir, { recursive: true });
-      const resolveSessionFilePath = (sessionId, project) => {
+      const resolveSessionFilePath = (sessionId: string, project: string | null): string | null => {
         if (!project) return null;
         const encoded = project.replace(/\//g, '-');
         const projectsDir = path.join(tmp, 'projects', encoded);
         if (sessionId.startsWith('subagent-')) {
           const agentId = sessionId.replace('subagent-', '');
           try {
-            const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory());
+            const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter((d: Dirent) => d.isDirectory());
             for (const dir of sessionDirs) {
               const agentFile = path.join(projectsDir, dir.name, 'subagents', `agent-${agentId}.jsonl`);
               if (fs.existsSync(agentFile)) return agentFile;
@@ -1042,14 +1073,14 @@ describe('claude adapter', () => {
       const projDir = path.join(tmp, 'projects', encodedProjDir);
       fs.mkdirSync(projDir, { recursive: true });
       fs.writeFileSync(path.join(projDir, 'my-session.jsonl'), '');
-      const resolveSessionFilePath = (sessionId, project) => {
+      const resolveSessionFilePath = (sessionId: string, project: string | null): string | null => {
         if (!project) return null;
         const encoded = project.replace(/\//g, '-');
         const projectsDir = path.join(tmp, 'projects', encoded);
         if (sessionId.startsWith('subagent-')) {
           const agentId = sessionId.replace('subagent-', '');
           try {
-            const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory());
+            const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter((d: Dirent) => d.isDirectory());
             for (const dir of sessionDirs) {
               const agentFile = path.join(projectsDir, dir.name, 'subagents', `agent-${agentId}.jsonl`);
               if (fs.existsSync(agentFile)) return agentFile;
@@ -1076,14 +1107,14 @@ describe('claude adapter', () => {
       const projDir = path.join(tmp, 'projects', encodedProjDir);
       fs.mkdirSync(path.join(projDir, 'session-dir', 'subagents'), { recursive: true });
       fs.writeFileSync(path.join(projDir, 'session-dir', 'subagents', 'agent-abc123.jsonl'), '');
-      const resolveSessionFilePath = (sessionId, project) => {
+      const resolveSessionFilePath = (sessionId: string, project: string | null): string | null => {
         if (!project) return null;
         const encoded = project.replace(/\//g, '-');
         const projectsDir = path.join(tmp, 'projects', encoded);
         if (sessionId.startsWith('subagent-')) {
           const agentId = sessionId.replace('subagent-', '');
           try {
-            const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory());
+            const sessionDirs = fs.readdirSync(projectsDir, { withFileTypes: true }).filter((d: Dirent) => d.isDirectory());
             for (const dir of sessionDirs) {
               const agentFile = path.join(projectsDir, dir.name, 'subagents', `agent-${agentId}.jsonl`);
               if (fs.existsSync(agentFile)) return agentFile;
@@ -1101,7 +1132,7 @@ describe('claude adapter', () => {
     });
 
     it('encodes project path slashes to hyphens', () => {
-      const resolveSessionFilePath = (sessionId, project) => {
+      const resolveSessionFilePath = (sessionId: string, project: string | null): string | null => {
         if (!project) return null;
         const encoded = project.replace(/\//g, '-');
         return encoded;
@@ -1121,7 +1152,7 @@ describe('claude adapter', () => {
       const projDir = path.join(tmp, 'projects', encodedProjDir);
       fs.mkdirSync(projDir, { recursive: true });
       fs.writeFileSync(path.join(projDir, 'active-session.jsonl'), 'test');
-      const getSessionFileActivity = (sessionId, project) => {
+      const getSessionFileActivity = (sessionId: string, project: string | null): number => {
         if (!project) return 0;
         const encoded = project.replace(/\//g, '-');
         const sessionFile = path.join(tmp, 'projects', encoded, `${sessionId}.jsonl`);
@@ -1136,7 +1167,7 @@ describe('claude adapter', () => {
     });
 
     it('returns 0 when project is null', () => {
-      const getSessionFileActivity = (sessionId, project) => {
+      const getSessionFileActivity = (sessionId: string, project: string | null): number => {
         if (!project) return 0;
         return 0;
       };
@@ -1152,7 +1183,7 @@ describe('claude adapter', () => {
       const encodedProjDir = projPath.replace(/\//g, '-');
       const projDir = path.join(tmp, 'projects', encodedProjDir);
       fs.mkdirSync(projDir, { recursive: true });
-      const getSessionFileActivity = (sessionId, project) => {
+      const getSessionFileActivity = (sessionId: string, project: string | null): number => {
         if (!project) return 0;
         const encoded = project.replace(/\//g, '-');
         const sessionFile = path.join(tmp, 'projects', encoded, `${sessionId}.jsonl`);

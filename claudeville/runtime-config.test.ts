@@ -9,7 +9,7 @@ function setWindowLocation(url: string, config?: Record<string, unknown>) {
 
 async function loadRuntimeConfigModule() {
   vi.resetModules();
-  await import('./runtime-config.ts');
+  await import('./runtime-config.js');
   return (globalThis as any).window.__CLAUDEVILLE_CONFIG__;
 }
 

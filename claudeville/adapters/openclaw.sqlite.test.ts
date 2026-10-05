@@ -105,7 +105,9 @@ describe('OpenClawAdapter SQLite sessions', () => {
       lastTool: 'exec',
       lastToolInput: '{"command":"npm test"}',
     });
-    expect(sessions[0].filePath.endsWith('openclaw-agent.sqlite')).toBe(true);
+    // `AgentSessionSummary.filePath` is optional, so `?.` keeps the assertion
+    // exact: a missing path now fails the expectation instead of throwing.
+    expect(sessions[0].filePath?.endsWith('openclaw-agent.sqlite')).toBe(true);
   });
 
   it('parses zstd-compressed and plain transcript events for detail', async () => {

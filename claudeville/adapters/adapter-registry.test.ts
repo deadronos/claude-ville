@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { estimateCost } from '../../shared/cost.js';
 import { detailOf } from './fixtureHelpers.js';
+import type { AgentAdapter } from '../../shared/types.js';
 
 describe('adapter registry logic', () => {
   describe('estimateCost', () => {
@@ -104,12 +105,18 @@ describe('adapter registry logic', () => {
 
     it('fetches detail from matching adapter', async () => {
       const mockDetail = { toolHistory: [{ tool: 'Bash' }], messages: ['hi'] };
-      const adapters = [
+      // `detailOf` takes a whole `AgentAdapter`, so the stand-in carries every
+      // member the interface declares rather than only the one under test.
+      const adapters: AgentAdapter[] = [
         {
           provider: 'claude',
           name: 'Claude',
-          // The union, as the real adapters answer it.
+          homeDir: '/home/test/.claude',
+          isAvailable: () => true,
+          // The unions, as the real adapters answer them.
+          getActiveSessions: vi.fn().mockResolvedValue({ ok: true, sessions: [], warnings: [] }),
           getSessionDetail: vi.fn().mockResolvedValue({ ok: true, detail: mockDetail, warnings: [] }),
+          getWatchPaths: () => [],
         },
       ];
 

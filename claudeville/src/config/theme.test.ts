@@ -2,6 +2,31 @@ import { describe, it, expect } from 'vitest';
 import { THEME } from './theme.js';
 import { Building } from '../domain/entities/Building.js';
 
+type BuildingInit = ConstructorParameters<typeof Building>[0];
+
+/**
+ * `Building`'s constructor declares all eight properties as required, but its
+ * body still defaults `width`/`height` with `width || 4`, and the cases below
+ * assert exactly those defaults. They therefore have to construct with the
+ * fields OMITTED, which the declaration forbids.
+ *
+ * `BUILDING_DEFS` is the only production construction site and supplies all
+ * eight every time, so this is a declaration that is stricter than the behaviour
+ * it implements rather than a caller that needs fixing — and the `|| 4` defaults
+ * are unreachable from production. Both are reported rather than changed, since
+ * the fix is on the production side. Centralised here so the omitted-field
+ * intent is stated once instead of at each call site.
+ */
+function buildingWithOmitted(init: {
+  type: BuildingInit['type'];
+  x: BuildingInit['x'];
+  y: BuildingInit['y'];
+  width?: number | null;
+  height?: number | null;
+}): Building {
+  return new Building(init as unknown as BuildingInit);
+}
+
 describe('config/theme', () => {
   describe('THEME', () => {
     it('has all required color keys', () => {
@@ -63,25 +88,25 @@ describe('domain/entities/Building', () => {
     });
 
     it('defaults width and height to 4', () => {
-      const b = new Building({ type: 'house', x: 0, y: 0 });
+      const b = buildingWithOmitted({ type: 'house', x: 0, y: 0 });
       expect(b.width).toBe(4);
       expect(b.height).toBe(4);
     });
 
     it('accepts explicit width/height overrides', () => {
-      const b = new Building({ type: 'barracks', x: 2, y: 2, width: 6, height: 8 });
+      const b = buildingWithOmitted({ type: 'barracks', x: 2, y: 2, width: 6, height: 8 });
       expect(b.width).toBe(6);
       expect(b.height).toBe(8);
     });
 
     it('stores position as Position object', () => {
-      const b = new Building({ type: 'lab', x: 12, y: 15 });
+      const b = buildingWithOmitted({ type: 'lab', x: 12, y: 15 });
       expect(b.position).toHaveProperty('tileX');
       expect(b.position).toHaveProperty('tileY');
     });
 
     it('handles null/undefined width and height', () => {
-      const b = new Building({ type: 'n', x: 0, y: 0, width: null as any, height: undefined as any });
+      const b = buildingWithOmitted({ type: 'n', x: 0, y: 0, width: null, height: undefined });
       expect(b.width).toBe(4);
       expect(b.height).toBe(4);
     });
@@ -89,7 +114,7 @@ describe('domain/entities/Building', () => {
 
   describe('containsPoint()', () => {
     function makeBuilding(x: number, y: number, w: number, h: number) {
-      return new Building({ type: 'test', x, y, width: w, height: h });
+      return buildingWithOmitted({ type: 'test', x, y, width: w, height: h });
     }
 
     it('returns true for point inside the building bounds', () => {

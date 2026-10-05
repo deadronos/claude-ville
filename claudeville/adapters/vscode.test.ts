@@ -6,7 +6,47 @@ import * as path from 'path';
 import { detailOf } from './fixtureHelpers';
 
 // Inline copies of utility functions to avoid module-level fs interference
-function readLinesInline(filePath, { from = 'end', count = 60 } = {}) {
+// They mirror the private helpers in vscode.ts, so they have no exported
+// signature to recover: the shapes below are what these bodies actually read.
+
+/** One parsed JSONL record. Provider-defined, so every field is probed. */
+type LogEntry = {
+  type?: string;
+  name?: string;
+  ts?: number;
+  timestamp?: number;
+  attrs?: {
+    model?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    args?: unknown;
+    response?: unknown;
+  };
+  data?: {
+    vscodeVersion?: string;
+    toolName?: string;
+    arguments?: unknown;
+    content?: string;
+    toolRequests?: { name?: string; arguments?: unknown }[];
+  };
+};
+
+type ParsedSession = {
+  model: string | null;
+  lastTool: string | null;
+  lastToolInput: string | null;
+  lastMessage: string | null;
+  tokens: { input: number; output: number } | null;
+};
+
+type ToolEntry = { tool: string; detail: string; ts: number };
+type MessageEntry = { role: string; text: string; ts: number };
+
+const SOURCE_PRIORITY = { debug: 3, transcript: 2, resource: 1 } as const;
+
+type SourceCandidate = { sourceType: keyof typeof SOURCE_PRIORITY; mtime: number };
+
+function readLinesInline(filePath: string, { from = 'end', count = 60 }: { from?: 'start' | 'end'; count?: number } = {}) {
   try {
     if (!fs.existsSync(filePath)) return [];
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -18,8 +58,8 @@ function readLinesInline(filePath, { from = 'end', count = 60 } = {}) {
   }
 }
 
-function parseJsonLinesInline(lines) {
-  const results = [];
+function parseJsonLinesInline(lines: string[]): LogEntry[] {
+  const results: LogEntry[] = [];
   for (const line of lines) {
     if (!line.trim()) continue;
     try { results.push(JSON.parse(line)); } catch { /* ignore */ }
@@ -27,19 +67,21 @@ function parseJsonLinesInline(lines) {
   return results;
 }
 
-function toTimestampInline(value) {
+function toTimestampInline(value: string | number | null | undefined) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  const parsed = Date.parse(value || '');
+  // `String(...)` is the coercion `Date.parse` applies to its argument anyway,
+  // so this is the same call with a wider-typed operand.
+  const parsed = Date.parse(String(value || ''));
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function summarizeJsonInline(value, maxLength = 80) {
+function summarizeJsonInline(value: unknown, maxLength = 80) {
   if (value === null || value === undefined) return '';
   const raw = typeof value === 'string' ? value : JSON.stringify(value);
   return raw.substring(0, maxLength);
 }
 
-function extractAssistantTextInline(responseRaw) {
+function extractAssistantTextInline(responseRaw: unknown) {
   if (typeof responseRaw !== 'string' || responseRaw.trim().length === 0) return '';
   try {
     const response = JSON.parse(responseRaw);
@@ -60,9 +102,7 @@ function extractAssistantTextInline(responseRaw) {
   return '';
 }
 
-const SOURCE_PRIORITY = { debug: 3, transcript: 2, resource: 1 };
-
-function shouldReplaceCandidateInline(existing, incoming) {
+function shouldReplaceCandidateInline(existing: SourceCandidate | null, incoming: SourceCandidate) {
   if (!existing) return true;
   const existingPriority = SOURCE_PRIORITY[existing.sourceType] || 0;
   const incomingPriority = SOURCE_PRIORITY[incoming.sourceType] || 0;
@@ -71,8 +111,8 @@ function shouldReplaceCandidateInline(existing, incoming) {
   return incoming.mtime > existing.mtime;
 }
 
-function parseSessionInline(filePath) {
-  const detail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null, tokens: null };
+function parseSessionInline(filePath: string) {
+  const detail: ParsedSession = { model: null, lastTool: null, lastToolInput: null, lastMessage: null, tokens: null };
   if (filePath.endsWith('content.txt')) {
     try {
       const text = fs.readFileSync(filePath, 'utf-8');
@@ -122,8 +162,8 @@ function parseSessionInline(filePath) {
   return detail;
 }
 
-function getToolHistoryInline(filePath, maxItems = 15) {
-  const tools = [];
+function getToolHistoryInline(filePath: string, maxItems = 15) {
+  const tools: ToolEntry[] = [];
   if (filePath.endsWith('content.txt')) return tools.slice(-maxItems);
   try {
     const lines = readLinesInline(filePath, { from: 'end', count: 300 });
@@ -141,8 +181,8 @@ function getToolHistoryInline(filePath, maxItems = 15) {
   return tools.slice(-maxItems);
 }
 
-function getRecentMessagesInline(filePath, maxItems = 5) {
-  const messages = [];
+function getRecentMessagesInline(filePath: string, maxItems = 5) {
+  const messages: MessageEntry[] = [];
   if (filePath.endsWith('content.txt')) {
     try {
       const text = fs.readFileSync(filePath, 'utf-8').trim();
@@ -175,7 +215,7 @@ describe('vscode.ts utilities', () => {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-test-'));
   }
 
-  function rmTmp(tmp) {
+  function rmTmp(tmp: string) {
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 

@@ -30,6 +30,13 @@ import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ROOT_CANNOT_BE_DENIED, detailOf, sessionsOf } from './fixtureHelpers';
+import type { AgentSessionSummary } from '../../shared/types.js';
+// Type-only, so it is erased at runtime and `vi.resetModules()` below still gets
+// a fresh `pi.js`. Aliased because the file already has a `let PiAdapter: any`
+// slot at module scope for the beforeAll import. `PiAdapter` is the shipped
+// class, which is what makes `new Adapter().getActiveSessions(...)` answer the
+// real union instead of `any`.
+import type { PiAdapter as PiAdapterClass } from './pi.js';
 
 let tmpHome = '';
 let workspaceAlpha = '';
@@ -141,7 +148,22 @@ function chmodDirectories(dirs: string[], mode: number) {
  * shared fixture's exact-set assertions. Same re-import shape as
  * claude.fixture.test.ts's `withTempClaudeDir`.
  */
-async function withTempPiHome<T>(fn: (Adapter: any, root: string) => Promise<T>): Promise<T> {
+/**
+ * `Array.prototype.find` answers `T | undefined`. The fixtures below want the
+ * row or a loud failure — the same "assert rather than coerce" rule
+ * `fixtureHelpers.ts` states for the union-returning adapter methods — so this
+ * throws and names the ids it did find, rather than letting the next line read
+ * a property off `undefined`.
+ */
+function sessionRow(rows: AgentSessionSummary[], sessionId: string): AgentSessionSummary {
+  const row = rows.find((s) => s.sessionId === sessionId);
+  if (!row) {
+    throw new Error(`no row for ${sessionId}; found [${rows.map((r) => r.sessionId).join(', ')}]`);
+  }
+  return row;
+}
+
+async function withTempPiHome<T>(fn: (Adapter: typeof PiAdapterClass, root: string) => Promise<T>): Promise<T> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudeville-pi-case-'));
   const prior = process.env.HOME;
   process.env.HOME = root;
@@ -521,7 +543,7 @@ describe('PiAdapter fixtures', () => {
 
     try {
       const sessions = await sessionsOf(adapter, 5 * MINUTE);
-      const session = sessions.find((s: any) => s.sessionId === sessionIdOf(gammaDir, 'gamma-1.jsonl'));
+      const session = sessionRow(sessions, sessionIdOf(gammaDir, 'gamma-1.jsonl'));
       expect(session).toBeDefined();
 
       // pi.ts:92 — parseSession's lastToolInput cap of 60, on the last
@@ -643,7 +665,7 @@ describe('PiAdapter fixtures', () => {
 
     try {
       const sessions = await sessionsOf(adapter, 5 * MINUTE);
-      const session = sessions.find((s: any) => s.sessionId === sessionIdOf(epsilonDir, 'epsilon-1.jsonl'));
+      const session = sessionRow(sessions, sessionIdOf(epsilonDir, 'epsilon-1.jsonl'));
       expect(session).toBeDefined();
 
       // The whole field set, so a regression names the field that moved rather

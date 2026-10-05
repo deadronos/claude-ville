@@ -13,6 +13,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import assert from 'node:assert';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { detailOf, sessionsOf } from './fixtureHelpers';
@@ -228,8 +229,8 @@ describe('CopilotAdapter fixtures', () => {
 
     try {
       const sessions = await sessionsOf(adapter, 5 * 60 * 1000);
-      const session = sessions.find((s: any) => s.sessionId === `copilot-${LONG_SESSION_UUID}`);
-      expect(session).toBeDefined();
+      const session = sessions.find((s) => s.sessionId === `copilot-${LONG_SESSION_UUID}`);
+      assert(session, 'the long session must be discovered');
 
       // copilot.ts:108 — parseSession's tool_call site caps at 60...
       expect(session.lastTool).toBe('tool_19');
@@ -241,8 +242,8 @@ describe('CopilotAdapter fixtures', () => {
 
       // copilot.ts:92 — the same 60-char cap on parseSession's OTHER branch,
       // reached only via an assistant.message toolCalls entry.
-      const assistantSession = sessions.find((s: any) => s.sessionId === `copilot-${ASSISTANT_TOOLS_UUID}`);
-      expect(assistantSession).toBeDefined();
+      const assistantSession = sessions.find((s) => s.sessionId === `copilot-${ASSISTANT_TOOLS_UUID}`);
+      assert(assistantSession, 'the assistant-tools session must be discovered');
       expect(assistantSession.lastTool).toBe('assistant_tool');
       expect(assistantSession.lastToolInput).toBe('{"path":"' + 'p'.repeat(30) + '","q":"' + 'q'.repeat(14));
       expect(assistantSession.lastToolInput).toHaveLength(60);
@@ -366,15 +367,15 @@ describe('CopilotAdapter fixtures', () => {
       // copilot.ts:102 — parseSession's tool_call branch. The reverse scan
       // reaches the LAST tool-bearing entry first, so input 0 is the one pinned
       // on the summary. Delete the guard and this becomes '0'.
-      const toolCallSession = sessions.find((s: any) => s.sessionId === `copilot-${FALSY_TOOL_CALL_UUID}`);
-      expect(toolCallSession).toBeDefined();
+      const toolCallSession = sessions.find((s) => s.sessionId === `copilot-${FALSY_TOOL_CALL_UUID}`);
+      assert(toolCallSession, 'the falsy-tool-call session must be discovered');
       expect(toolCallSession.lastTool).toBe('falsy_zero');
       expect(toolCallSession.lastToolInput).toBeNull();
 
       // copilot.ts:88 — parseSession's OTHER branch, reachable only via an
       // assistant.message toolCalls entry. Delete the guard and this is '0'.
-      const assistantSession = sessions.find((s: any) => s.sessionId === `copilot-${FALSY_ASSISTANT_UUID}`);
-      expect(assistantSession).toBeDefined();
+      const assistantSession = sessions.find((s) => s.sessionId === `copilot-${FALSY_ASSISTANT_UUID}`);
+      assert(assistantSession, 'the falsy-assistant session must be discovered');
       expect(assistantSession.lastTool).toBe('falsy_assistant_zero');
       expect(assistantSession.lastToolInput).toBeNull();
 

@@ -74,12 +74,41 @@ import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { detailOf, sessionsOf } from './fixtureHelpers';
+import type { AgentSessionSummary } from '../../shared/types.js';
 
 let tmpHome = '';
 let workspaceDir = '';
 let projectHash = '';
 let GeminiAdapter: any;
 const originalHome = process.env.HOME;
+
+/**
+ * `Array.prototype.find` answers `T | undefined`. The fixtures below want the
+ * row or a loud failure — the same "assert rather than coerce" rule
+ * `fixtureHelpers.ts` states for the union-returning adapter methods — so this
+ * throws and names the ids it did find, rather than letting the next line read
+ * a property off `undefined`.
+ */
+function sessionRow(rows: AgentSessionSummary[], sessionId: string): AgentSessionSummary {
+  const row = rows.find((s) => s.sessionId === sessionId);
+  if (!row) {
+    throw new Error(`no row for ${sessionId}; found [${rows.map((r) => r.sessionId).join(', ')}]`);
+  }
+  return row;
+}
+
+/**
+ * `Session.lastActivity` is optional, and `toBeGreaterThan` will not accept
+ * `number | undefined`. Comparing the timestamps is the point of the ordering
+ * case, so this asserts each one is really a number instead of letting an
+ * `undefined` take part in the comparison.
+ */
+function activityOf(session: AgentSessionSummary): number {
+  if (typeof session.lastActivity !== 'number') {
+    throw new Error(`session ${session.sessionId} has no lastActivity`);
+  }
+  return session.lastActivity;
+}
 
 function writeJson(filePath: string, value: unknown) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -434,7 +463,7 @@ describe('GeminiAdapter fixtures', () => {
       // relative order is not something the fixture controls.
       expect(wideIds[0]).toBe('gemini-fresh1');
       expect(wideIds[wideIds.length - 1]).toBe('gemini-stale1');
-      expect(wide[0].lastActivity).toBeGreaterThan(wide[wide.length - 1].lastActivity);
+      expect(activityOf(wide[0])).toBeGreaterThan(activityOf(wide[wide.length - 1]));
     } finally {
       listed.remove();
     }
@@ -587,7 +616,7 @@ describe('GeminiAdapter fixtures', () => {
 
     try {
       const rows = await sessionsOf(adapter, 5 * MINUTE);
-      const rowOf = (id: string) => rows.find((s: any) => s.sessionId === id);
+      const rowOf = (id: string) => sessionRow(rows, id);
 
       expect(rowOf('gemini-rowwin1l')).toMatchObject({
         lastTool: null,
@@ -708,7 +737,7 @@ describe('GeminiAdapter fixtures', () => {
       ]);
 
       const rows = await sessionsOf(adapter, 5 * MINUTE);
-      const rowOf = (id: string) => rows.find((s: any) => s.sessionId === id);
+      const rowOf = (id: string) => sessionRow(rows, id);
 
       const cmdRow = rowOf('gemini-caps1l');
       expect(cmdRow.lastTool).toBe('run_shell');
@@ -837,9 +866,7 @@ describe('GeminiAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
-        (s: any) => s.sessionId === 'gemini-blocks1l',
-      );
+      const row = sessionRow(await sessionsOf(adapter, 5 * MINUTE), 'gemini-blocks1l');
       // The newest record wins, and `extractText` trims before the 80-char cap.
       expect(row.lastMessage).toBe('padded and trimmed');
 
@@ -1096,7 +1123,7 @@ describe('GeminiAdapter fixtures', () => {
 
     try {
       const rows = await sessionsOf(adapter, 5 * MINUTE);
-      const rowOf = (id: string) => rows.find((s: any) => s.sessionId === id);
+      const rowOf = (id: string) => sessionRow(rows, id);
 
       expect(rowOf('gemini-fb1l')).toMatchObject({
         lastTool: 'function_call',

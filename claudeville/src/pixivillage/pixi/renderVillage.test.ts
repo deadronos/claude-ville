@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Container } from 'pixi.js';
+import type { FederatedPointerEvent } from 'pixi.js';
+
+/**
+ * Pixi's `emit` types `pointertap` as carrying a `FederatedPointerEvent`, and
+ * `FederatedEvent`'s constructor needs an `EventBoundary`. The handler under
+ * test is registered as `() => view.onSelectBuilding(view.buildingId)` — it
+ * reads nothing off the event — so a blank stand-in is enough to make the call
+ * type-correct, and it matches what the handler is declared to take.
+ */
+function blankPointerEvent(): FederatedPointerEvent {
+  return {} as FederatedPointerEvent;
+}
 
 import { createPixiVillageRenderer } from './renderVillage.js';
 import type { VillageBuilding } from '../model.js';
@@ -76,7 +88,7 @@ describe('createPixiVillageRenderer', () => {
     renderer.update([far, near], null, onSelect, 0);
     // Buildings are in buildingContainer, sorted by depth (near before far)
     const firstBuildingView = buildingContainer.children[0] as Container;
-    firstBuildingView.emit('pointertap');
+    firstBuildingView.emit('pointertap', blankPointerEvent());
 
     renderer.update([
       { ...far, status: 'idle' },
@@ -84,7 +96,7 @@ describe('createPixiVillageRenderer', () => {
     ], null, onSelect, 1);
     // First building view should still be 'near' (depth order unchanged)
     const reFoundFirstBuildingView = buildingContainer.children[0] as Container;
-    reFoundFirstBuildingView.emit('pointertap');
+    reFoundFirstBuildingView.emit('pointertap', blankPointerEvent());
 
     expect(onSelect).toHaveBeenNthCalledWith(1, 'near');
     expect(onSelect).toHaveBeenNthCalledWith(2, 'near');

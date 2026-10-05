@@ -6,8 +6,14 @@ import { resetBubbleConfig } from '../../../config/bubbleConfig.js';
 import { eventBus } from '../../../domain/events/DomainEvent.js';
 import { ClaudeVilleController } from './ClaudeVilleController.js';
 import { useWorldStore } from '../world/state/useWorldStore.js';
+import type { Agent } from '../../../domain/entities/Agent.js';
 
-function makeAgent(overrides: Record<string, unknown> = {}) {
+/**
+ * The world store is keyed by `Agent`, whose class declares 22 fields, but these
+ * cases only need identity, display name, status, model, provider and project.
+ * The stand-in is typed once here rather than at each of the six call sites.
+ */
+function makeAgent(overrides: Record<string, unknown> = {}): Agent {
   return {
     id: 'agent-1',
     name: 'Agent One',
@@ -17,6 +23,26 @@ function makeAgent(overrides: Record<string, unknown> = {}) {
     project: '/Users/openclaw/Github/claude-ville',
     regenerateName: vi.fn(),
     ...overrides,
+  } as unknown as Agent;
+}
+
+/**
+ * `DomainEventMap` declares no `mode:changed`, `agent:selected` or
+ * `agent:deselected`, and nothing in production emits or subscribes to them —
+ * that is the whole point of the case below, which asserts the controller stays
+ * quiet. `on` is closed to unmapped names, so these canaries subscribe straight
+ * into the bus's string-keyed `listeners` map — the same layer `emit` reads, and
+ * the same one `WebSocketClient.test.ts` uses for its `ws:message` canary — and
+ * get `on`/`off`'s unsubscribe behaviour back.
+ */
+function onUnmapped(name: string, handler: (data: unknown) => void) {
+  const handlers = new Set<(data: unknown) => void>([handler]);
+  eventBus.listeners.set(name, handlers);
+  return () => {
+    handlers.delete(handler);
+    if (handlers.size === 0) {
+      eventBus.listeners.delete(name);
+    }
   };
 }
 
@@ -52,9 +78,9 @@ describe('ClaudeVilleController', () => {
     const modeListener = vi.fn();
     const selectedListener = vi.fn();
     const deselectedListener = vi.fn();
-    const unsubscribeMode = eventBus.on('mode:changed', modeListener);
-    const unsubscribeSelect = eventBus.on('agent:selected', selectedListener);
-    const unsubscribeDeselect = eventBus.on('agent:deselected', deselectedListener);
+    const unsubscribeMode = onUnmapped('mode:changed', modeListener);
+    const unsubscribeSelect = onUnmapped('agent:selected', selectedListener);
+    const unsubscribeDeselect = onUnmapped('agent:deselected', deselectedListener);
 
     controller.setMode('dashboard');
     controller.focusAgent(agent.id);

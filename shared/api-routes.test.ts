@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-const { createApiRouteHandler } = await import('./api-routes.ts');
+const { createApiRouteHandler } = await import('./api-routes.js');
 
 type FakeResponse = {
   headersSent: boolean;

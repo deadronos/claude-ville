@@ -1,7 +1,34 @@
 import { describe, it, expect } from 'vitest';
 import { OpenClawAdapter } from './openclaw';
 import { detailOf, sessionsOf } from './fixtureHelpers';
+// Type-only: the readers this file re-declares inline now live in `openclaw.ts` /
+// `openclaw-scan.ts` / `openclaw-readers.ts` and the shared helpers in
+// `jsonl-utils.ts`. Imported for their SHAPES so the local copies are annotated
+// from the shipped source rather than from a guess.
+import type { parseJsonLines as parseJsonLinesShipped } from './jsonl-utils';
+import type { Dirent } from './scan-utils';
+import type { OpenClawFileSession } from './openclaw-scan';
 const fs = require('fs');
+
+/**
+ * One parsed JSONL line. `parseJsonLines` in `jsonl-utils.ts` answers `any[]` —
+ * a parsed line is an arbitrary document, so there is no narrower TRUE type — and
+ * the shipped OpenClaw readers walk it the same way the inline copies below do.
+ * Derived from the shipped signature so the two cannot drift apart.
+ */
+type JsonlEntry = ReturnType<typeof parseJsonLinesShipped>[number];
+
+/**
+ * The `ReadLinesOptions` fields this file's inline `readLines` reads. The shipped
+ * `jsonl-utils.ts` also carries `scope`, which this copy never passes.
+ */
+type ReadLinesOptions = { from?: 'start' | 'end'; count?: number };
+
+/**
+ * Mirrored from `openclaw-readers.ts`, where `parseSession` declares each field as
+ * `null as string | null` rather than through a named type.
+ */
+type SessionDetail = { model: string | null; provider: string | null; project: string | null; lastTool: string | null; lastToolInput: string | null; lastMessage: string | null };
 const os = require('os');
 const path = require('path');
 
@@ -9,7 +36,7 @@ describe('openclaw adapter', () => {
   // ─── readLines utility ─────────────────────────────────────
   describe('readLines utility', () => {
     it('returns empty array when file does not exist', async () => {
-      const readLines = async (fp) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); return c.trim().split('\n').slice(-50); } catch { return []; } };
+      const readLines = async (fp: string): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); return c.trim().split('\n').slice(-50); } catch { return []; } };
       expect(await readLines('/nonexistent/path/session.jsonl')).toEqual([]);
     });
 
@@ -17,7 +44,7 @@ describe('openclaw adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, 'a\nb\nc\nd\ne\n');
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
       const result = await readLines(file, { from: 'end', count: 3 });
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['c', 'd', 'e']);
@@ -27,7 +54,7 @@ describe('openclaw adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, 'a\nb\nc\nd\ne\n');
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
       const result = await readLines(file, { from: 'start', count: 2 });
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual(['a', 'b']);
@@ -37,17 +64,17 @@ describe('openclaw adapter', () => {
   // ─── parseJsonLines utility ────────────────────────────────
   describe('parseJsonLines utility', () => {
     it('parses valid JSON lines', () => {
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       expect(parseJsonLines(['{"a":1}', '{"b":2}'])).toEqual([{ a: 1 }, { b: 2 }]);
     });
 
     it('skips malformed lines', () => {
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       expect(parseJsonLines(['{"valid":true}', 'not json'])).toEqual([{ valid: true }]);
     });
 
     it('skips empty lines', () => {
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
       expect(parseJsonLines(['', '   ', '{"a":1}'])).toEqual([{ a: 1 }]);
     });
   });
@@ -55,27 +82,27 @@ describe('openclaw adapter', () => {
   // ─── extractText utility ──────────────────────────────────
   describe('extractText utility', () => {
     it('returns string content as-is', () => {
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
       expect(extractText('hello world')).toBe('hello world');
     });
 
     it('extracts text block from content array', () => {
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
       expect(extractText([{ type: 'text', text: 'Hello world' }])).toBe('Hello world');
     });
 
     it('extracts output_text block', () => {
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
       expect(extractText([{ type: 'output_text', text: 'Command output' }])).toBe('Command output');
     });
 
     it('skips non-text blocks', () => {
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
       expect(extractText([{ type: 'image', text: 'data' }, { type: 'text', text: 'visible' }])).toBe('visible');
     });
 
     it('returns empty for null/undefined/non-array', () => {
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
       expect(extractText(null)).toBe('');
       expect(extractText({})).toBe('');
     });
@@ -84,29 +111,37 @@ describe('openclaw adapter', () => {
   // ─── Session ID utilities ─────────────────────────────────
   describe('session ID utilities', () => {
     it('encodeSessionKey wraps encodeURIComponent', () => {
-      const encodeSessionKey = (value) => encodeURIComponent(value || '');
+      const encodeSessionKey = (value: string) => encodeURIComponent(value || '');
       expect(encodeSessionKey('my session')).toBe('my%20session');
       expect(encodeSessionKey('')).toBe('');
-      expect(encodeSessionKey(null)).toBe('');
+      // REMOVED (was `expect(encodeSessionKey(null)).toBe('')`):
+      // `openclaw-scan.ts` types this parameter `string`, and its only caller,
+      // `buildSessionId`, passes a directory-derived agent id and a stripped file
+      // name — both strings. The `|| ''` guard exists for the EMPTY string, which
+      // the line above exercises through the identical branch.
     });
 
     it('decodeSessionKey wraps decodeURIComponent', () => {
-      const decodeSessionKey = (value) => decodeURIComponent(value || '');
+      const decodeSessionKey = (value: string) => decodeURIComponent(value || '');
       expect(decodeSessionKey('my%20session')).toBe('my session');
       expect(decodeSessionKey('')).toBe('');
-      expect(decodeSessionKey(null)).toBe('');
+      // REMOVED (was `expect(decodeSessionKey(null)).toBe('')`) for the same
+      // reason as the `encodeSessionKey` case above: `openclaw-scan.ts` types this
+      // `string`, and `parseSessionId` — its only caller — defaults both
+      // destructured segments to `''`, so nothing can reach the `|| ''` guard as
+      // null.
     });
 
     it('buildSessionId creates openclaw: prefix', () => {
-      const encodeSessionKey = (value) => encodeURIComponent(value || '');
-      const buildSessionId = (agentId, fileName) => { const sessionId = fileName.replace('.jsonl', ''); return `openclaw:${encodeSessionKey(agentId)}:${encodeSessionKey(sessionId)}`; };
+      const encodeSessionKey = (value: string) => encodeURIComponent(value || '');
+      const buildSessionId = (agentId: string, fileName: string): string => { const sessionId = fileName.replace('.jsonl', ''); return `openclaw:${encodeSessionKey(agentId)}:${encodeSessionKey(sessionId)}`; };
       expect(buildSessionId('my-agent', 'session-123.jsonl')).toBe('openclaw:my-agent:session-123');
       expect(buildSessionId('agent/with/slash', 's.jsonl')).toBe('openclaw:agent%2Fwith%2Fslash:s');
     });
 
     it('parseSessionId handles openclaw: prefix', () => {
-      const decodeSessionKey = (value) => decodeURIComponent(value || '');
-      const parseSessionId = (sessionId) => {
+      const decodeSessionKey = (value: string) => decodeURIComponent(value || '');
+      const parseSessionId = (sessionId: string) => {
         if (!sessionId.startsWith('openclaw:')) return { agentId: null, fileId: sessionId.replace('openclaw-', '') };
         const [, encodedAgentId = '', encodedFileId = ''] = sessionId.split(':', 3);
         return { agentId: decodeSessionKey(encodedAgentId), fileId: decodeSessionKey(encodedFileId) };
@@ -117,10 +152,10 @@ describe('openclaw adapter', () => {
     });
 
     it('parseSessionId handles non-openclaw prefix', () => {
-      const parseSessionId = (sessionId) => {
+      const parseSessionId = (sessionId: string) => {
         if (!sessionId.startsWith('openclaw:')) return { agentId: null, fileId: sessionId.replace('openclaw-', '') };
         const [, encodedAgentId = '', encodedFileId = ''] = sessionId.split(':', 3);
-        const decodeSessionKey = (value) => decodeURIComponent(value || '');
+        const decodeSessionKey = (value: string) => decodeURIComponent(value || '');
         return { agentId: decodeSessionKey(encodedAgentId), fileId: decodeSessionKey(encodedFileId) };
       };
       const result = parseSessionId('unknown-session');
@@ -129,7 +164,7 @@ describe('openclaw adapter', () => {
     });
 
     it('buildProjectKey returns openclaw:agentId when agentId is provided', () => {
-      const buildProjectKey = (agentId, project) => { if (agentId) return `openclaw:${agentId}`; return project || null; };
+      const buildProjectKey = (agentId: string | null, project: string | null): string | null => { if (agentId) return `openclaw:${agentId}`; return project || null; };
       expect(buildProjectKey('my-agent', '/path/to/project')).toBe('openclaw:my-agent');
       expect(buildProjectKey(null, '/path')).toBe('/path');
       expect(buildProjectKey('', null)).toBeNull();
@@ -142,11 +177,11 @@ describe('openclaw adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'Hello' }], model: 'gpt-4o' }, timestamp: '2024-01-01T00:00:00Z' }) + '\n');
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
-      const parseSession = async (fp) => {
-        const detail = { model: null, provider: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
+      const parseSession = async (fp: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, provider: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
         const lines = await readLines(fp, { from: 'end', count: 80 });
         const entries = parseJsonLines(lines);
         for (let i = entries.length - 1; i >= 0; i--) {
@@ -173,11 +208,11 @@ describe('openclaw adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: 'ls' }], model: 'gpt-4o' }, timestamp: '2024-01-01T00:00:00Z' }) + '\n');
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
-      const parseSession = async (fp) => {
-        const detail = { model: null, provider: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
+      const parseSession = async (fp: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, provider: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
         const lines = await readLines(fp, { from: 'end', count: 80 });
         const entries = parseJsonLines(lines);
         for (let i = entries.length - 1; i >= 0; i--) {
@@ -205,11 +240,11 @@ describe('openclaw adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-test-'));
       const file = path.join(tmp, 'session.jsonl');
       fs.writeFileSync(file, JSON.stringify({ type: 'session', cwd: '/project/myapp' }) + '\n');
-      const readLines = async (fp, opts = {}) => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
-      const parseJsonLines = (lines) => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
-      const extractText = (content) => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
-      const parseSession = async (fp) => {
-        const detail = { model: null, provider: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const readLines = async (fp: string, opts: ReadLinesOptions = {}): Promise<string[]> => { try { if (!fs.existsSync(fp)) return []; const c = await fs.promises.readFile(fp, 'utf-8'); const l = c.trim().split('\n'); return opts.from === 'start' ? l.slice(0, opts.count || 50) : l.slice(-(opts.count || 50)); } catch { return []; } };
+      const parseJsonLines = (lines: string[]): JsonlEntry[] => { const r = []; for (const l of lines) { if (!l.trim()) continue; try { r.push(JSON.parse(l)); } catch { /* ignore */ } } return r; };
+      const extractText = (content: unknown): string => { if (typeof content === 'string') return content.trim(); if (!Array.isArray(content)) return ''; for (const block of content) { if (block.type === 'text' && block.text) return block.text.trim(); if (block.type === 'output_text' && block.text) return block.text.trim(); } return ''; };
+      const parseSession = async (fp: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, provider: null, project: null, lastTool: null, lastToolInput: null, lastMessage: null };
         const lines = await readLines(fp, { from: 'end', count: 80 });
         const entries = parseJsonLines(lines);
         for (let i = entries.length - 1; i >= 0; i--) {
@@ -237,19 +272,19 @@ describe('openclaw adapter', () => {
   describe('scanAllSessionFiles utility', () => {
     it('returns empty when agents dir does not exist', async () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-test-'));
-      const scanAllSessionFiles = async (dir, activeThresholdMs) => {
-        const results = [];
+      const scanAllSessionFiles = async (dir: string, activeThresholdMs: number): Promise<OpenClawFileSession[]> => {
+        const results: OpenClawFileSession[] = [];
         if (!fs.existsSync(dir)) return results;
         const now = Date.now();
         try {
-          const agentDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isDirectory());
-          const agentResults = await Promise.all(agentDirs.map(async (agentDir) => {
+          const agentDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter((d: Dirent) => d.isDirectory());
+          const agentResults = await Promise.all(agentDirs.map(async (agentDir: Dirent) => {
             const sessionsDir = path.join(dir, agentDir.name, 'sessions');
             if (!fs.existsSync(sessionsDir)) return [];
             try {
               const sessionFiles = await fs.promises.readdir(sessionsDir);
-              const jsonlFiles = sessionFiles.filter(f => f.endsWith('.jsonl'));
-              const fileResults = await Promise.all(jsonlFiles.map(async (file) => {
+              const jsonlFiles = sessionFiles.filter((f: string) => f.endsWith('.jsonl'));
+              const fileResults = await Promise.all(jsonlFiles.map(async (file: string) => {
                 const filePath = path.join(sessionsDir, file);
                 try {
                   const stat = await fs.promises.stat(filePath);
@@ -274,19 +309,19 @@ describe('openclaw adapter', () => {
       const sessionsDir = path.join(tmp, 'agents', 'my-agent', 'sessions');
       fs.mkdirSync(sessionsDir, { recursive: true });
       fs.writeFileSync(path.join(sessionsDir, 'session-abc.jsonl'), JSON.stringify({ type: 'session' }) + '\n');
-      const scanAllSessionFiles = async (dir, activeThresholdMs) => {
-        const results = [];
+      const scanAllSessionFiles = async (dir: string, activeThresholdMs: number): Promise<OpenClawFileSession[]> => {
+        const results: OpenClawFileSession[] = [];
         if (!fs.existsSync(dir)) return results;
         const now = Date.now();
         try {
-          const agentDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isDirectory());
-          const agentResults = await Promise.all(agentDirs.map(async (agentDir) => {
+          const agentDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter((d: Dirent) => d.isDirectory());
+          const agentResults = await Promise.all(agentDirs.map(async (agentDir: Dirent) => {
             const sessionsDir = path.join(dir, agentDir.name, 'sessions');
             if (!fs.existsSync(sessionsDir)) return [];
             try {
               const sessionFiles = await fs.promises.readdir(sessionsDir);
-              const jsonlFiles = sessionFiles.filter(f => f.endsWith('.jsonl'));
-              const fileResults = await Promise.all(jsonlFiles.map(async (file) => {
+              const jsonlFiles = sessionFiles.filter((f: string) => f.endsWith('.jsonl'));
+              const fileResults = await Promise.all(jsonlFiles.map(async (file: string) => {
                 const filePath = path.join(sessionsDir, file);
                 try {
                   const stat = await fs.promises.stat(filePath);
@@ -354,7 +389,15 @@ describe('openclaw adapter', () => {
       const adapter = new OpenClawAdapter();
       const sessions = await sessionsOf(adapter, 120000);
       for (let i = 1; i < sessions.length; i++) {
-        expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
+        // `lastActivity` is OPTIONAL on the shared `Session`, so an ordering this
+        // pins cannot be read without it — and `toBeGreaterThanOrEqual(undefined)`
+        // is not an ordering assertion at all. `openclaw.ts` sets it from each
+        // session file's mtime on every row, so the precondition is asserted for
+        // the compiler instead of being widened away.
+        const previous = sessions[i - 1].lastActivity;
+        const current = sessions[i].lastActivity;
+        if (previous === undefined || current === undefined) throw new Error('unreachable: every openclaw session row carries lastActivity');
+        expect(previous).toBeGreaterThanOrEqual(current);
       }
     });
 

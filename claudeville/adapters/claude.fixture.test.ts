@@ -69,9 +69,11 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import assert from 'node:assert';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { detailOf, sessionsOf } from './fixtureHelpers';
+import type { AgentSessionSummary, WatchPath } from '../../shared/types.js';
 
 const MINUTE = 60 * 1000;
 
@@ -95,6 +97,19 @@ const ENCODED_ALPHA = encodeProject(ALPHA_PROJECT);
 const ENCODED_KNOWN = encodeProject(KNOWN_PROJECT);
 const ENCODED_STALE = encodeProject(STALE_PROJECT);
 const ENCODED_WIDE = encodeProject(WIDE_PROJECT);
+
+/**
+ * Narrowing row lookup. `sessions.find` answers `| undefined`, and every use
+ * reads properties straight off the result. Asserting once here rather than at
+ * each call site keeps those call sites' own assertions exactly as written: a
+ * missing row still fails the test, now with the id in the message instead of a
+ * TypeError on `undefined`.
+ */
+function rowOf(sessions: AgentSessionSummary[], id: string) {
+  const found = sessions.find((s) => s.sessionId === id);
+  assert(found, `no session row for ${id}`);
+  return found;
+}
 
 /** Sub-agent ids, as they appear in the `agent-<id>.jsonl` file names. */
 const A1 = 'aaaa1111-bbbb-cccc-dddd-eeee2222ffff';
@@ -426,7 +441,7 @@ describe('ClaudeAdapter fixtures', () => {
     ]);
     // The one observable `isDirectory()` in the file: without it, the loose
     // `projects/README.md` would be watched as if it were a project.
-    expect(adapter.getWatchPaths().some((p) => p.path.endsWith('README.md'))).toBe(false);
+    expect(adapter.getWatchPaths().some((p: WatchPath) => p.path.endsWith('README.md'))).toBe(false);
   });
 
   // The listing length and this exact order pin five things at once: the
@@ -459,7 +474,7 @@ describe('ClaudeAdapter fixtures', () => {
   // newer than its file. `Math.min` answers three different numbers here.
   it('takes lastActivity as the max of the history timestamp and the file mtime', async () => {
     const sessions = await list();
-    const row = (id: string) => sessions.find((s: any) => s.sessionId === id);
+    const row = (id: string) => rowOf(sessions, id);
 
     expect(tsAlpha).toBeLessThan(alphaMtime);
     expect(tsKnown).toBeGreaterThan(knownFileMtime);
@@ -485,7 +500,7 @@ describe('ClaudeAdapter fixtures', () => {
   // claude.ts:296).
   it('emits a main-session row with the full field set and the model fallback chain', async () => {
     const sessions = await list();
-    const alpha = sessions.find((s: any) => s.sessionId === 'ses-alpha');
+    const alpha = rowOf(sessions, 'ses-alpha');
     expect(alpha).toEqual({
       sessionId: 'ses-alpha',
       provider: 'claude',
@@ -511,7 +526,7 @@ describe('ClaudeAdapter fixtures', () => {
   // reads `agentType` alone loses two of them.
   it('derives agentType from agentType, then agentId, then nothing at all', async () => {
     const sessions = await list();
-    const row = (id: string) => sessions.find((s: any) => s.sessionId === id);
+    const row = (id: string) => rowOf(sessions, id);
 
     expect(row('ses-alpha')).toMatchObject({ agentId: null, agentType: 'main' });
     expect(row('ses-beta')).toMatchObject({ agentId: 'ag-beta', agentType: 'workflow' });
@@ -560,7 +575,7 @@ describe('ClaudeAdapter fixtures', () => {
   // and the fixture tree would look broken for reasons no other assertion covers.
   it('decodes a sub-agent project from a STALE history entry, and falls back to a placeholder otherwise', async () => {
     const sessions = await list();
-    const row = (id: string) => sessions.find((s: any) => s.sessionId === id);
+    const row = (id: string) => rowOf(sessions, id);
 
     // A1's project decodes only through the stale donor.
     expect(row(`subagent-${A1}`).project).toBe(STALE_PROJECT);
@@ -574,7 +589,11 @@ describe('ClaudeAdapter fixtures', () => {
     // The encoding itself, pinned in both directions: writing the tree under the
     // `/` -> `-` name of a project string is what makes the decode possible.
     expect(ENCODED_STALE).toBe('-tmp-cv-stale-donor');
-    expect(encodeProject(row(`subagent-${A1}`).project)).toBe(ENCODED_STALE);
+    // `project` is `string | null` on the summary; a null here used to throw
+    // inside `encodeProject`. Asserted instead so the failure names the cause.
+    const a1Project = row(`subagent-${A1}`).project;
+    assert(typeof a1Project === 'string', `subagent-${A1} must carry a string project`);
+    expect(encodeProject(a1Project)).toBe(ENCODED_STALE);
   });
 
   // The four-level walk: `projects/` -> session dir -> `subagents/` ->
@@ -591,7 +610,7 @@ describe('ClaudeAdapter fixtures', () => {
       [`subagent-${A1}`, `subagent-${A2}`, `subagent-${A3}`].sort(),
     );
 
-    const a1 = sessions.find((s: any) => s.sessionId === `subagent-${A1}`);
+    const a1 = rowOf(sessions, `subagent-${A1}`);
     expect(a1).toEqual({
       sessionId: `subagent-${A1}`,
       provider: 'claude',
@@ -745,7 +764,7 @@ describe('ClaudeAdapter fixtures', () => {
         'ses-live-0', 'ses-live-1', 'ses-live-2', 'ses-live-3', 'ses-live-4', 'ses-live-5',
         'subagent-D',
       ]);
-      expect(sessions.find((s: any) => s.sessionId === 'subagent-D').project).toBe('/p-donor');
+      expect(rowOf(sessions, 'subagent-D').project).toBe('/p-donor');
     });
   });
 
@@ -758,7 +777,7 @@ describe('ClaudeAdapter fixtures', () => {
   // along: the history entry's `display` is NOT what this row shows.
   it('takes the detail from the NEWEST assistant turn, and caps its message at 80', async () => {
     const sessions = await list();
-    const last = sessions.find((s: any) => s.sessionId === 'ses-last');
+    const last = rowOf(sessions, 'ses-last');
     expect(last).toMatchObject({
       // From line 2 of the file, not line 1.
       model: 'last-new-model',
@@ -857,7 +876,7 @@ describe('ClaudeAdapter fixtures', () => {
 
     // The same file through the row's own 30-line detail read, where the
     // backwards walk meets line 2 first.
-    const row = (await list()).find((s: any) => s.sessionId === 'ses-known');
+    const row = rowOf(await list(), 'ses-known');
     expect(row.lastTool).toBe('Read');
     expect(row.lastToolInput).toBe('known.txt');
     expect((await detailOf(adapter, 'ses-known', KNOWN_PROJECT)).toolHistory).toEqual([
@@ -937,7 +956,7 @@ describe('ClaudeAdapter fixtures', () => {
 
       const rows = await sessionsOf(new Adapter(), MINUTE);
       for (const [label, , expected] of ROW_CASES) {
-        const row = rows.find((s: any) => s.sessionId === `row-${label}`);
+        const row = rowOf(rows, `row-${label}`);
         expect(row.lastTool).toBe('Row');
         expect(row.lastToolInput).toBe(expected);
       }
