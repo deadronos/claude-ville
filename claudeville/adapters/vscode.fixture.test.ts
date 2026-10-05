@@ -94,9 +94,11 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import assert from 'node:assert';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { detailOf as unionDetailOf, sessionsOf } from './fixtureHelpers';
+import type { AgentSessionSummary } from '../../shared/types.js';
 
 const ACTIVE_WINDOW_MS = 60 * 1000;
 
@@ -287,6 +289,35 @@ async function withVscodeTree<T>(
 /** The filePath branch of the public `getSessionDetail` (vscode.ts:624-631). */
 function detailOf(adapter: any, file: string) {
   return unionDetailOf(adapter, 'vscode-fixture', null, file);
+}
+
+/**
+ * Narrowing row lookups. `sessionsOf` answers `AgentSessionSummary[]`, so
+ * `.find` answers `| undefined`, and every use below reads properties straight
+ * off the result. Asserting here rather than at each call site leaves those call
+ * sites' own assertions exactly as written: a missing row failed before (as a
+ * TypeError on `undefined`) and fails now, with the id or suffix in the message.
+ */
+function rowOf(sessions: AgentSessionSummary[], sessionId: string) {
+  const found = sessions.find((s) => s.sessionId === sessionId);
+  assert(found, `no session row for ${sessionId}`);
+  return found;
+}
+
+function rowEndingWith(sessions: AgentSessionSummary[], suffix: string) {
+  const found = sessions.find((s) => s.sessionId.endsWith(suffix));
+  assert(found, `no session row ending with ${suffix}`);
+  return found;
+}
+
+/**
+ * `filePath` is `string | null | undefined` on the summary, so a row read back
+ * out of the listing has to prove it carries one before it is handed to a
+ * reader. Without this the value reached `detailOf`/`endsWith` unchecked.
+ */
+function filePathOf(row: AgentSessionSummary): string {
+  assert(typeof row.filePath === 'string', `row ${row.sessionId} must carry a filePath`);
+  return row.filePath;
 }
 
 describe('vscode readers', () => {
@@ -871,7 +902,7 @@ describe('vscode readers', () => {
         'vscode:vscode:ws-ver:model-wins',
         'vscode:vscode:ws-ver:no-data',
       ]);
-      const row = (id: string) => sessions.find((s: any) => s.sessionId === `vscode:vscode:ws-ver:${id}`);
+      const row = (id: string) => rowOf(sessions, `vscode:vscode:ws-ver:${id}`);
       expect(row('from-version').model).toBe('copilot-chat@1.95.0');
       expect(row('model-wins').model).toBe('explicit-model');
       expect(row('no-data').model).toBe('vscode');
@@ -899,7 +930,7 @@ describe('vscode readers', () => {
       ]);
 
       const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
-      const row = (id: string) => sessions.find((s: any) => s.sessionId === `vscode:vscode:ws-caps:${id}`);
+      const row = (id: string) => rowOf(sessions, `vscode:vscode:ws-caps:${id}`);
       expect(sessions.map((s: any) => s.sessionId).sort()).toEqual([
         'vscode:vscode:ws-caps:dir-assistant-msg',
         'vscode:vscode:ws-caps:dir-caps',
@@ -926,12 +957,12 @@ describe('vscode readers', () => {
       // The message reader, for contrast: the same response is read forward and
       // NOT truncated at 120. The `tool_call` and the attrs-less
       // `agent_response` contribute no message row either.
-      const detail = await detailOf(Adapter, row('dir-caps').filePath);
+      const detail = await detailOf(Adapter, filePathOf(row('dir-caps')));
       expect(detail.messages).toEqual([
         { role: 'assistant', text: TEXT150, ts: 5 },
       ]);
       expect(detail.messages[0].text).toHaveLength(150);
-      expect((await detailOf(Adapter, row('dir-assistant-msg').filePath)).messages).toEqual([
+      expect((await detailOf(Adapter, filePathOf(row('dir-assistant-msg')))).messages).toEqual([
         { role: 'assistant', text: TEXT150, ts: 3 },
       ]);
     });
@@ -975,7 +1006,7 @@ describe('vscode readers', () => {
       const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
       expect(sessions).toHaveLength(cases.length);
       for (const [id, , tool, input] of cases) {
-        const row = sessions.find((s: any) => s.sessionId === `vscode:vscode:ws-tools:${id}`);
+        const row = rowOf(sessions, `vscode:vscode:ws-tools:${id}`);
         if (tool === '') {
           // No tool record: null, not ''.
           expect(row.lastTool).toBeNull();
@@ -987,9 +1018,9 @@ describe('vscode readers', () => {
       }
       // Only the toolRequests shape reads `toolRequests[0]`, and only a tool
       // record with args leaves `lastToolInput` empty rather than null.
-      expect(sessions.find((s: any) => s.sessionId.endsWith('tr-noname')).lastToolInput).toBe('');
-      expect(sessions.find((s: any) => s.sessionId.endsWith('tc-noattrs')).lastToolInput).toBe('');
-      expect(sessions.find((s: any) => s.sessionId.endsWith('tr-two')).lastToolInput).toBe('first-args');
+      expect(rowEndingWith(sessions, 'tr-noname').lastToolInput).toBe('');
+      expect(rowEndingWith(sessions, 'tc-noattrs').lastToolInput).toBe('');
+      expect(rowEndingWith(sessions, 'tr-two').lastToolInput).toBe('first-args');
     });
   });
 
@@ -1012,7 +1043,7 @@ describe('vscode readers', () => {
       expect(JSON_LLM_REQUEST_LINE.length).toBe(86);
 
       const sessions = await sessionsOf(Adapter, ACTIVE_WINDOW_MS);
-      const row = (id: string) => sessions.find((s: any) => s.sessionId === `vscode:vscode:ws-res:${id}`);
+      const row = (id: string) => rowOf(sessions, `vscode:vscode:ws-res:${id}`);
 
       const head = row('res-head');
       expect(head.lastMessage).toBe(HEAD_MARKER_120);
@@ -1034,7 +1065,7 @@ describe('vscode readers', () => {
 
       // The resource row reports only the NEWEST sibling's text: with a single
       // child that is the one written above, and `filePath` names its file.
-      expect(head.filePath.endsWith(`${path.sep}call_head${path.sep}content.txt`)).toBe(true);
+      expect(filePathOf(head).endsWith(`${path.sep}call_head${path.sep}content.txt`)).toBe(true);
     });
   });
 
@@ -1055,8 +1086,8 @@ describe('vscode readers', () => {
         'vscode:vscode:ws-ws:res-space',
         'vscode:vscode:ws-ws:res-long',
       ]);
-      expect(sessions.find((s: any) => s.sessionId.endsWith(':res-space')).lastMessage).toBe('padded text');
-      const long = sessions.find((s: any) => s.sessionId.endsWith(':res-long'));
+      expect(rowEndingWith(sessions, ':res-space').lastMessage).toBe('padded text');
+      const long = rowEndingWith(sessions, ':res-long');
       expect(long.lastMessage).toBe(TEXT120);
       expect(long.lastMessage).toHaveLength(120);
     });
@@ -1152,11 +1183,18 @@ describe('vscode readers', () => {
         'vscode:vscode:ws-act:two-text',
       ]);
       // Newest first, by `lastActivity`: one-text is 1s old, two-text 4s.
-      expect(sessions[0].lastActivity).toBeGreaterThan(sessions[1].lastActivity);
+      // `lastActivity` is optional on the summary, so both are proved present
+      // before comparing — an absent one made `toBeGreaterThan` compare
+      // `undefined`, which failed without saying which row was missing.
+      const [newest, second] = sessions;
+      assert(newest && second, 'both listed rows must be present');
+      assert(newest.lastActivity !== undefined && second.lastActivity !== undefined,
+        'both listed rows must report lastActivity');
+      expect(newest.lastActivity).toBeGreaterThan(second.lastActivity);
       // The listed resource rows report the text of the file that was checked.
-      const oneText = sessions.find((s: any) => s.sessionId.endsWith(':one-text'));
+      const oneText = rowEndingWith(sessions, ':one-text');
       expect(oneText.lastMessage).toBe('one line of text');
-      const twoText = sessions.find((s: any) => s.sessionId.endsWith(':two-text'));
+      const twoText = rowEndingWith(sessions, ':two-text');
       expect(twoText.lastMessage).toBe('line one\nline two');
     });
   });
