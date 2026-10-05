@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CLAUDE_RATE_TABLE, estimateCost } from './cost.ts';
+import { CLAUDE_RATE_TABLE, estimateCost } from './cost.js';
 
 describe('shared cost utilities', () => {
   it('exposes the expected Claude rate table', () => {

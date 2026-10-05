@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createFileWatchers } from './watch-utils.js';
 
+// `createFileWatchers` keeps each `fs.watch` result in a `fs.FSWatcher[]` and
+// later calls only `close()` on it, so a `close` spy is the whole surface used.
+function makeWatcher(close: () => void): fs.FSWatcher {
+  return { close } as unknown as fs.FSWatcher;
+}
+
 describe('createFileWatchers', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -14,8 +20,8 @@ describe('createFileWatchers', () => {
     const closeDirectory = vi.fn();
     vi.spyOn(fs, 'existsSync').mockReturnValue(true);
     const watchSpy = vi.spyOn(fs, 'watch')
-      .mockReturnValueOnce({ close: closeFile } as fs.FSWatcher)
-      .mockReturnValueOnce({ close: closeDirectory } as fs.FSWatcher);
+      .mockReturnValueOnce(makeWatcher(closeFile))
+      .mockReturnValueOnce(makeWatcher(closeDirectory));
 
     const result = createFileWatchers([
       { path: '/tmp/session.jsonl', type: 'file' },
@@ -42,7 +48,7 @@ describe('createFileWatchers', () => {
       if (typeof listener === 'function') {
         listener('change', 'session.jsonl');
       }
-      return { close } as fs.FSWatcher;
+      return makeWatcher(close);
     });
 
     const result = createFileWatchers([{ path: '/tmp/session.jsonl', type: 'file' }], onChange, 50);

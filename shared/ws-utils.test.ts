@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-const wsUtils = await import('./ws-utils.ts');
+const wsUtils = await import('./ws-utils.js');
 
 describe('shared WebSocket utilities', () => {
   it('computes the RFC 6455 accept key', () => {
