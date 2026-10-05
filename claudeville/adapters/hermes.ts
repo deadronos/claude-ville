@@ -69,19 +69,28 @@ async function discoverSessionFiles(activeThresholdMs: number): Promise<FileList
     const candidates = entries
       .filter((entry) => entry.isFile() && entry.name.startsWith('session_') && entry.name.endsWith('.json'))
       .map((entry) => path.join(SESSIONS_DIR, entry.name));
+    // Counted separately from the stale filter below: a file older than the
+    // window is inactive by design, while a file that cannot be stat-ed is a
+    // genuine per-item loss. Conflating the two reported every old session as
+    // `root-unreadable` on every poll.
+    let filesUnstattable = 0;
     const stats = await Promise.all(candidates.map(async (filePath) => {
       try {
         const stat = await fs.promises.stat(filePath);
+        // Stale by design, not a failure: the threshold is what makes an old
+        // session inactive rather than unreadable, so it must NOT feed the
+        // warning count below. Counting it there reported every session older
+        // than the window as `root-unreadable` on every poll.
         if (now - stat.mtimeMs > activeThresholdMs) return null;
         const sessionId = path.basename(filePath, '.json').replace(/^session_/, '');
         return { filePath, sessionId, mtime: stat.mtimeMs };
       } catch (err) {
         debugAdapterError('hermes', 'discoverSessionFiles stat', err, filePath);
+        filesUnstattable += 1;
         return null;
       }
     }));
     const files = stats.filter((result): result is SessionFile => result !== null);
-    const dropped = candidates.length - files.length;
     return {
       kind: 'files',
       files,
@@ -93,8 +102,8 @@ async function discoverSessionFiles(activeThresholdMs: number): Promise<FileList
       // regular file that existed moments ago, and `stat` needs execute — not
       // read — permission on the DIRECTORY it is already listed through. Only a
       // race removes it in between. The branch stays because a dropped file is
-      // exactly the kind of loss the audit flagged, and it costs one subtraction.
-      warnings: degradedWarnings(dropped, 'root-unreadable', 'session file(s)'),
+      // exactly the kind of loss the audit flagged, and it costs one counter.
+      warnings: degradedWarnings(filesUnstattable, 'root-unreadable', 'session file(s)'),
     };
   } catch (err) {
     debugAdapterError('hermes', 'discoverSessionFiles readdir', err, SESSIONS_DIR);

@@ -731,6 +731,29 @@ describe('HermesAdapter on-disk characterization', () => {
     );
   });
 
+  // Stale files are inactive by design, not unreadable. Before the fix,
+  // `candidates.length - files.length` counted every session older than the
+  // window as dropped, so 176 old files meant 176 `root-unreadable` warnings
+  // on every poll. Only an actual stat failure may warn.
+  it('report no warning for session files older than the active window', async () => {
+    await withHermesDir(
+      (dir) => {
+        const sessions = sessionsDir(dir);
+        for (const name of ['old-a', 'old-b', 'old-c']) {
+          const file = path.join(sessions, `session_${name}.json`);
+          writeJson(file, { session_id: name, session_start: at(0) });
+          backdate(file, 60 * MINUTE);
+        }
+      },
+      async (HermesAdapter) => {
+        const result = await new HermesAdapter().getActiveSessions(MINUTE);
+        if (!result.ok) throw new Error(`expected ok, got ${result.error.code}`);
+        expect(result.sessions).toEqual([]);
+        expect(result.warnings).toEqual([]);
+      },
+    );
+  });
+
   // ─── the emitted row shape, legacy path ─────────────────
 
   // The 15-key legacy row, pinned exactly with `toStrictEqual` so the ABSENCE of
