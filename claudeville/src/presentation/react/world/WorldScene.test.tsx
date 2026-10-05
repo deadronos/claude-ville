@@ -81,10 +81,14 @@ vi.mock('./components/BuildingActor.js', () => ({
   BuildingActor: () => <div data-testid="building-actor" />,
 }));
 
-vi.mock('./ecs/world.js', () => ({
-  createWorld: () => fiberMocks.rootNode,
-  ECSWorld: vi.fn(),
-}));
+vi.mock('./ecs/world.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./ecs/world.js')>();
+  return {
+    ...actual,
+    createWorld: () => fiberMocks.rootNode,
+    ECSWorld: vi.fn(),
+  };
+});
 
 import { WorldScene } from './components/WorldScene.js';
 

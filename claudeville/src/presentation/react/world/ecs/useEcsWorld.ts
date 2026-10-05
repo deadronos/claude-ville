@@ -1,14 +1,15 @@
 import { useRef } from 'react';
-import { createWorld, ECSWorld, type Entity } from './world.js';
+import { createWorld, ECSWorld, type AgentEntity, type Entity } from './world.js';
 import { isoToScreen } from '../utils.js';
-import type { Appearance } from '../../../../domain/value-objects/Appearance.js';
 
-export interface Agent {
-  id: string;
-  name: string;
-  status: string;
-  bubbleText: string | null;
-  appearance: Appearance;
+/**
+ * Input shape accepted at the call site (a domain `Agent` is assignable to
+ * this). Distinct from the domain `Agent` class and from the ECS `Agent`
+ * component tag — named `AgentInput` so the three meanings do not collide.
+ * The identity fields reuse `AgentEntity` so a change to the render contract
+ * propagates here instead of silently diverging.
+ */
+export interface AgentInput extends Pick<AgentEntity, 'id' | 'name' | 'status' | 'bubbleText' | 'appearance'> {
   position?: { tileX: number; tileY: number };
 }
 
@@ -22,14 +23,14 @@ export interface Building {
   };
 }
 
-function agentToScreen(agent: Agent): { x: number; y: number } {
+function agentToScreen(agent: AgentInput): { x: number; y: number } {
   if (agent.position) {
     return isoToScreen(agent.position.tileX, agent.position.tileY);
   }
   return { x: 0, y: 0 };
 }
 
-export function useEcsWorld(agents: Agent[], buildings: Building[]) {
+export function useEcsWorld(agents: AgentInput[], buildings: Building[]) {
   const worldRef = useRef<ECSWorld | null>(null);
   // `Entity`, not `any`: these maps hand out the objects the systems read, so
   // typing them is what makes the writes below (`entity.moving = true` and the

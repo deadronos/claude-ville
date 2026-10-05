@@ -4,6 +4,7 @@ import * as THREE from 'three';
 
 import { THEME } from '../../../../config/theme.js';
 import { useEcsWorld } from '../ecs/useEcsWorld.js';
+import { isAgentEntity, type Entity } from '../ecs/world.js';
 import { createMovementSystem, createProximitySystem, createCameraFollowSystem } from '../ecs/systems.js';
 import { getCameraFocusPosition } from '../utils.js';
 import { InstancedTerrain } from './InstancedTerrain.js';
@@ -65,7 +66,10 @@ export function WorldScene({
       <group ref={rootRef}>
         <InstancedTerrain tiles={tiles} />
         <Vegetation waterTiles={waterTiles} />
-        {world.with('Building').entities.map((entity: any) => {
+        {world.with('Building').entities.map((entity: Entity) => {
+          if (typeof entity.buildingType !== 'string') {
+            return null;
+          }
           const building = buildingByType.get(entity.buildingType);
           if (!building) {
             return null;
@@ -79,7 +83,11 @@ export function WorldScene({
             />
           );
         })}
-        {world.with('Agent').entities.map((entity: any) => (
+        {world.with('Agent').entities.map((entity: Entity) => {
+          if (!isAgentEntity(entity)) {
+            return null;
+          }
+          return (
           <AgentActor
             key={entity.id}
             entity={entity}
@@ -90,7 +98,8 @@ export function WorldScene({
             onSelect={onSelectAgent}
             interactionRef={interactionRef}
           />
-        ))}
+          );
+        })}
       </group>
       {movementSystem()}
       {proximitySystem()}
