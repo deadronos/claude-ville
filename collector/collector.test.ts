@@ -1,41 +1,47 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import os from 'os';
+import { createHash } from 'node:crypto';
 import { estimateCost } from '../shared/cost.js';
-import { normalizeSession } from './snapshot.js';
+import { buildCollectorSnapshot, normalizeSession } from './snapshot.js';
+import { getCollectorConfig } from './index.js';
+import { computeSnapshotFingerprint } from './publisher.js';
 
-// We test the collector concepts directly here.
+// Every case below calls a shipped function: if the shipped behaviour changes,
+// the case fails. Cases that could not name such a function were deleted rather
+// than kept green (see the per-case dispositions in `.superpowers/sdd/`).
 
 describe('collector', () => {
   describe('snapshot structure and normalization', () => {
-    it('snapshot includes all required fields', () => {
-      const snapshot = {
+    it('snapshot includes all required fields', async () => {
+      const snapshot = await buildCollectorSnapshot(
+        {
+          getAllSessions: async () => [],
+          getSessionDetailByProvider: async () => null,
+          getActiveProviders: () => [],
+        },
+        { collectorId: 'collector-test', collectorHost: 'test-host', activeThresholdMs: 120000 },
+      );
+
+      expect(snapshot).toMatchObject({
         collectorId: 'collector-test',
         hostName: 'test-host',
-        timestamp: Date.now(),
         sessions: [],
         teams: [],
         taskGroups: [],
         providers: [],
         sessionDetails: {},
-      };
-
-      expect(snapshot).toHaveProperty('collectorId');
-      expect(snapshot).toHaveProperty('hostName');
-      expect(snapshot).toHaveProperty('timestamp');
-      expect(snapshot).toHaveProperty('sessions');
-      expect(snapshot).toHaveProperty('teams');
-      expect(snapshot).toHaveProperty('taskGroups');
-      expect(snapshot).toHaveProperty('providers');
-      expect(snapshot).toHaveProperty('sessionDetails');
+      });
+      expect(typeof snapshot.timestamp).toBe('number');
     });
 
     it('sessions include normalized tokens and cost', () => {
-      // Using shared/cost.js values
-      const tokens = { input: 1000, output: 500 };
-      const cost = estimateCost('claude-sonnet-4-5', tokens);
+      const normalized = normalizeSession(
+        { provider: 'claude', sessionId: 's1', model: 'claude-sonnet-4-5', tokens: null },
+        { tokenUsage: { totalInput: 1000, totalOutput: 500 } },
+      );
 
-      expect(tokens).toEqual({ input: 1000, output: 500 });
-      expect(cost).toBeCloseTo(0.0105, 4);
+      expect(normalized.tokens).toEqual({ input: 1000, output: 500 });
+      expect(normalized.estimatedCost).toBeCloseTo(0.0105, 4);
     });
 
     it('estimateCost uses correct rate table for known models', () => {
@@ -64,10 +70,7 @@ describe('collector', () => {
     });
 
     it('normalizeSession handles missing tokenUsage', () => {
-      // This used to reimplement the normalization inline and assert its own
-      // local result, so it passed no matter what `normalizeSession` did. It
-      // now calls the real thing. `detail: null` with no session tokens is the
-      // case that yields zeros.
+      // `detail: null` with no session tokens is the case that yields zeros.
       const normalized = normalizeSession(
         { provider: 'claude', sessionId: 's1', tokens: null },
         null,
@@ -78,12 +81,16 @@ describe('collector', () => {
     });
 
     it('normalizeSession handles partial tokenUsage', () => {
-      const tokenUsage = { totalInput: 5000 } as { totalInput?: number; totalOutput?: number } | null;
-      const tokens = tokenUsage
-        ? { input: Number(tokenUsage.totalInput || 0), output: Number(tokenUsage.totalOutput || 0) }
-        : { input: 0, output: 0 };
+      // The old version re-implemented the normalization inline and asserted its
+      // own local result. This calls the real function: a present `tokenUsage`
+      // wins over the session fallback, and a missing `totalOutput` is zero.
+      const normalized = normalizeSession(
+        { provider: 'claude', sessionId: 's1', tokens: null },
+        { tokenUsage: { totalInput: 5000 } },
+      );
 
-      expect(tokens).toEqual({ input: 5000, output: 0 });
+      expect(normalized.tokens).toEqual({ input: 5000, output: 0 });
+      expect(normalized.tokenUsage).toEqual({ totalInput: 5000 });
     });
 
     it('estimateCost handles zero tokens', () => {
@@ -98,123 +105,103 @@ describe('collector', () => {
   });
 
   describe('collector configuration', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
     it('uses COLLECTOR_ID from environment or defaults to hostname-based', () => {
-      const collectorId = process.env.COLLECTOR_ID || `collector-${os.hostname()}`;
-      expect(typeof collectorId).toBe('string');
-      expect(collectorId.startsWith('collector-')).toBe(true);
+      vi.stubEnv('COLLECTOR_ID', 'custom-collector');
+      expect(getCollectorConfig().collectorId).toBe('custom-collector');
+
+      vi.stubEnv('COLLECTOR_ID', '');
+      expect(getCollectorConfig().collectorId).toBe(`collector-${os.hostname()}`);
     });
 
     it('uses HUB_URL from environment or defaults to localhost:3030', () => {
-      const hubUrl = process.env.HUB_URL || 'http://localhost:3030';
-      expect(hubUrl).toMatch(/^https?:\/\//);
+      vi.stubEnv('HUB_URL', 'https://hub.example:9999');
+      expect(getCollectorConfig().hubUrl).toBe('https://hub.example:9999');
+
+      vi.stubEnv('HUB_URL', '');
+      expect(getCollectorConfig().hubUrl).toBe('http://localhost:3030');
     });
 
     it('uses FLUSH_INTERVAL_MS from environment or defaults to 2000', () => {
-      const flushInterval = Number(process.env.FLUSH_INTERVAL_MS || 2000);
-      expect(flushInterval).toBe(2000);
-      expect(typeof flushInterval).toBe('number');
+      vi.stubEnv('FLUSH_INTERVAL_MS', '5000');
+      expect(getCollectorConfig().flushIntervalMs).toBe(5000);
+
+      vi.stubEnv('FLUSH_INTERVAL_MS', '');
+      expect(getCollectorConfig().flushIntervalMs).toBe(2000);
     });
 
     it('ACTIVE_THRESHOLD_MS defaults to 2 minutes', () => {
-      const activeThreshold = 2 * 60 * 1000;
-      expect(activeThreshold).toBe(120000);
+      // The shipped name is COLLECTOR_ACTIVE_THRESHOLD_MS; the old case never
+      // read any variable at all, which is also how it got the name wrong.
+      vi.stubEnv('COLLECTOR_ACTIVE_THRESHOLD_MS', '60000');
+      expect(getCollectorConfig().activeThresholdMs).toBe(60000);
+
+      vi.stubEnv('COLLECTOR_ACTIVE_THRESHOLD_MS', '');
+      expect(getCollectorConfig().activeThresholdMs).toBe(120000);
     });
   });
 
-  describe('getActiveProviders', () => {
-    it('providers have expected structure', () => {
-      // Test the expected structure of provider objects
-      const mockProvider = {
-        name: 'Claude Code',
-        provider: 'claude',
-        homeDir: '/Users/test/.claude',
-      };
+  describe('snapshot fingerprinting', () => {
+    it('same snapshot produces same fingerprint', () => {
+      const snapshot = { sessions: [{ id: '1' }], timestamp: 1000 };
+      const copy = { sessions: [{ id: '1' }], timestamp: 1000 };
 
-      expect(mockProvider).toHaveProperty('name');
-      expect(mockProvider).toHaveProperty('provider');
-      expect(mockProvider).toHaveProperty('homeDir');
-      expect(typeof mockProvider.name).toBe('string');
-      expect(typeof mockProvider.provider).toBe('string');
-      expect(typeof mockProvider.homeDir).toBe('string');
-    });
-  });
-
-  describe('dirty flag and flush behavior', () => {
-    it('dirty flag is set when changes occur', () => {
-      let dirty = false;
-      let sending = false;
-
-      // Simulate: dirty is true when either sending or changes occurred
-      const hasChanges = true;
-      if (hasChanges && !sending) {
-        dirty = true;
-      }
-
-      expect(dirty).toBe(true);
-    });
-
-    it('dirty stays true while sending is in progress', () => {
-      let dirty = true;
-      let sending = true;
-
-      // When sending is in progress, dirty should stay true
-      if (sending) {
-        dirty = true;
-      }
-
-      expect(dirty).toBe(true);
-    });
-
-    it('skips send when fingerprint unchanged and not dirty', () => {
-      const snapshot1 = { sessions: [{ id: '1' }], timestamp: 1000 };
-      const snapshot2 = { sessions: [{ id: '1' }], timestamp: 1000 };
-
-      const fp1 = JSON.stringify(snapshot1);
-      const fp2 = JSON.stringify(snapshot2);
-
-      expect(fp1).toEqual(fp2);
+      expect(computeSnapshotFingerprint(copy, createHash)).toBe(
+        computeSnapshotFingerprint(snapshot, createHash),
+      );
     });
 
     it('different sessions produce different fingerprints', () => {
       const snapshot1 = { sessions: [{ id: '1' }], timestamp: 1000 };
       const snapshot2 = { sessions: [{ id: '2' }], timestamp: 1000 };
 
-      const fp1 = JSON.stringify(snapshot1);
-      const fp2 = JSON.stringify(snapshot2);
-
-      expect(fp1).not.toEqual(fp2);
+      expect(computeSnapshotFingerprint(snapshot1, createHash)).not.toBe(
+        computeSnapshotFingerprint(snapshot2, createHash),
+      );
     });
 
-    it('fingerprint changes when timestamp changes', () => {
+    it('fingerprint ignores timestamp changes', () => {
+      // The old case asserted the opposite — that a timestamp change alters the
+      // fingerprint — which proves it never ran against the shipped function:
+      // `computeSnapshotFingerprint` strips `timestamp` before hashing.
       const snapshot1 = { sessions: [{ id: '1' }], timestamp: 1000 };
       const snapshot2 = { sessions: [{ id: '1' }], timestamp: 2000 };
 
-      const fp1 = JSON.stringify(snapshot1);
-      const fp2 = JSON.stringify(snapshot2);
-
-      expect(fp1).not.toEqual(fp2);
+      expect(computeSnapshotFingerprint(snapshot1, createHash)).toBe(
+        computeSnapshotFingerprint(snapshot2, createHash),
+      );
     });
   });
 
   describe('session key generation', () => {
-    it('session key format is provider:sessionId', () => {
-      const session = {
-        provider: 'claude',
-        sessionId: 'abc-123-def',
-      };
+    it('session key format is provider:sessionId', async () => {
+      const snapshot = await buildCollectorSnapshot(
+        {
+          getAllSessions: async () => [{ provider: 'claude', sessionId: 'abc-123-def' }],
+          getSessionDetailByProvider: async () => null,
+          getActiveProviders: () => [],
+        },
+        { collectorId: 'c1', collectorHost: 'h1', activeThresholdMs: 1000 },
+      );
 
-      const key = `${session.provider}:${session.sessionId}`;
-      expect(key).toBe('claude:abc-123-def');
+      expect(snapshot.sessionDetails).toEqual({ 'claude:abc-123-def': null });
+      expect(snapshot.sessions[0]).toMatchObject({ provider: 'claude', sessionId: 'abc-123-def' });
     });
 
-    it('handles special characters in sessionId', () => {
-      const session = {
-        provider: 'openclaw',
-        sessionId: 'agent%3Awith%3Aspecial:chars',
-      };
+    it('handles special characters in sessionId', async () => {
+      const snapshot = await buildCollectorSnapshot(
+        {
+          getAllSessions: async () => [{ provider: 'openclaw', sessionId: 'agent%3Awith%3Aspecial:chars' }],
+          getSessionDetailByProvider: async () => null,
+          getActiveProviders: () => [],
+        },
+        { collectorId: 'c1', collectorHost: 'h1', activeThresholdMs: 1000 },
+      );
 
-      const key = `${session.provider}:${session.sessionId}`;
-      expect(key).toBe('openclaw:agent%3Awith%3Aspecial:chars');
+      expect(snapshot.sessionDetails).toEqual({ 'openclaw:agent%3Awith%3Aspecial:chars': null });
     });
   });
 });
