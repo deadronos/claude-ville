@@ -157,9 +157,12 @@ describe('WebSocketClient', () => {
       eventBus.on('ws:init', handler);
       eventBus.on('ws:update', handler);
       eventBus.on('usage:updated', handler);
-      // Canary for the removed generic channel: the event bus is keyed by
-      // plain string, so this still resolves if 'ws:message' is ever re-emitted.
-      eventBus.on('ws:message', handler);
+      // Canary for the removed generic channel. `DomainEventMap` deliberately
+      // declares no 'ws:message', and `on` is closed to unmapped names, so this
+      // subscribes straight into the bus's string-keyed listener map — which is
+      // exactly the layer `emit` reads, so a re-introduced generic channel would
+      // still reach this handler and fail the assertion below.
+      eventBus.listeners.set('ws:message', new Set([handler]));
 
       client.connect();
       (client.ws as any)._simulateOpen();

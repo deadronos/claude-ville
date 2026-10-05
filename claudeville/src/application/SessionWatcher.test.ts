@@ -77,15 +77,18 @@ describe('SessionWatcher', () => {
       const { eventBus } = await import('../domain/events/DomainEvent.js');
       watcher.start();
       mockAgentManager.handleWebSocketMessage.mockClear();
-      eventBus.emit('ws:init', { sessions: [{ sessionId: 's1' }] });
-      expect(mockAgentManager.handleWebSocketMessage).toHaveBeenCalledWith({ sessions: [{ sessionId: 's1' }] });
+      // `WsMessage` declares `type` as required, and every frame the hub sends
+      // carries one (`buildWsPayload` puts it there), so the fixture now matches
+      // the real wire shape rather than smuggling past the type.
+      eventBus.emit('ws:init', { type: 'init', sessions: [{ sessionId: 's1' }] });
+      expect(mockAgentManager.handleWebSocketMessage).toHaveBeenCalledWith({ type: 'init', sessions: [{ sessionId: 's1' }] });
     });
 
     it('subscribes to ws:update event', async () => {
       const { eventBus } = await import('../domain/events/DomainEvent.js');
       watcher.start();
       mockAgentManager.handleWebSocketMessage.mockClear();
-      eventBus.emit('ws:update', { sessions: [{ sessionId: 's2' }] });
+      eventBus.emit('ws:update', { type: 'update', sessions: [{ sessionId: 's2' }] });
       expect(mockAgentManager.handleWebSocketMessage).toHaveBeenCalled();
     });
 
