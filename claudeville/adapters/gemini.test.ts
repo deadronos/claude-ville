@@ -1,28 +1,50 @@
 import { describe, it, expect } from 'vitest';
 import { GeminiAdapter } from './gemini';
 import { detailOf, sessionsOf } from './fixtureHelpers';
+// Type-only: the readers this file re-declares inline now live in `gemini.ts` /
+// `gemini-readers.ts`. Imported for their SHAPES so the local copies are
+// annotated from the shipped source rather than from a guess.
+import type { Dirent } from './scan-utils';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
+/**
+ * Arbitrary parsed JSON — the whole `.json` session document this file reads. The
+ * shipped `readJsonFile` returns `JSON.parse`'s own result, which is `any`
+ * because the shape is only known at runtime. Derived from `JSON.parse` rather
+ * than restated, so the local copy cannot drift from it.
+ */
+type ParsedJson = ReturnType<typeof JSON.parse>;
+
+/**
+ * Mirrored from `gemini.ts` and `gemini-readers.ts`, which declare these without
+ * exporting them — `gemini-readers.ts` writes `ToolEntry` and `MsgEntry` as local
+ * types inside the two readers — so the shipped shapes have to be restated here.
+ */
+type SessionDetail = { model: string | null; lastTool: string | null; lastToolInput: string | null; lastMessage: string | null };
+type ToolEntry = { tool: string; detail: string; ts: number };
+type MsgEntry = { role: string; text: string; ts: number };
+type ScanResult = { filePath: string; mtime: number; fileName: string; projectHash: string };
+
 describe('gemini adapter', () => {
   // ─── sha256 utility ───────────────────────────────────────
   describe('sha256 utility', () => {
     it('produces consistent hash for same input', () => {
-      const sha256 = (str) => crypto.createHash('sha256').update(str).digest('hex');
+      const sha256 = (str: string): string => crypto.createHash('sha256').update(str).digest('hex');
       const h1 = sha256('hello');
       const h2 = sha256('hello');
       expect(h1).toBe(h2);
     });
 
     it('produces different hashes for different inputs', () => {
-      const sha256 = (str) => crypto.createHash('sha256').update(str).digest('hex');
+      const sha256 = (str: string): string => crypto.createHash('sha256').update(str).digest('hex');
       expect(sha256('hello')).not.toBe(sha256('world'));
     });
 
     it('produces 64-character hex string', () => {
-      const sha256 = (str) => crypto.createHash('sha256').update(str).digest('hex');
+      const sha256 = (str: string): string => crypto.createHash('sha256').update(str).digest('hex');
       expect(sha256('test')).toMatch(/^[a-f0-9]{64}$/);
     });
   });
@@ -30,7 +52,7 @@ describe('gemini adapter', () => {
   // ─── readJsonFile utility ─────────────────────────────────
   describe('readJsonFile utility', () => {
     it('returns null when file does not exist', async () => {
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
       expect(await readJsonFile('/nonexistent/session.json')).toBeNull();
     });
 
@@ -38,7 +60,7 @@ describe('gemini adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-test-'));
       const file = path.join(tmp, 'session.json');
       fs.writeFileSync(file, JSON.stringify({ sessionId: 'abc', messages: [] }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
       const result = await readJsonFile(file);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toEqual({ sessionId: 'abc', messages: [] });
@@ -48,7 +70,7 @@ describe('gemini adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-test-'));
       const file = path.join(tmp, 'bad.json');
       fs.writeFileSync(file, 'not valid json');
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
       const result = await readJsonFile(file);
       fs.rmSync(tmp, { recursive: true, force: true });
       expect(result).toBeNull();
@@ -61,9 +83,9 @@ describe('gemini adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-test-'));
       const file = path.join(tmp, 'session.json');
       fs.writeFileSync(file, JSON.stringify({ messages: [{ type: 'gemini', content: 'Hello', model: 'gemini-2.5-flash' }] }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const parseSession = async (fp) => {
-        const detail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const parseSession = async (fp: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null };
         try {
           const session = await readJsonFile(fp);
           if (!session) return detail;
@@ -91,9 +113,9 @@ describe('gemini adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-test-'));
       const file = path.join(tmp, 'session.json');
       fs.writeFileSync(file, JSON.stringify({ messages: [{ type: 'gemini', content: 'Hi there!' }] }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const parseSession = async (fp) => {
-        const detail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const parseSession = async (fp: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null };
         try {
           const session = await readJsonFile(fp);
           if (!session) return detail;
@@ -121,9 +143,9 @@ describe('gemini adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-test-'));
       const file = path.join(tmp, 'session.json');
       fs.writeFileSync(file, JSON.stringify({ messages: [{ type: 'gemini', content: '', toolCalls: [{ name: 'Bash', args: { command: 'ls -la' } }] }] }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const parseSession = async (fp) => {
-        const detail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const parseSession = async (fp: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null };
         try {
           const session = await readJsonFile(fp);
           if (!session) return detail;
@@ -152,9 +174,9 @@ describe('gemini adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-test-'));
       const file = path.join(tmp, 'session.json');
       fs.writeFileSync(file, JSON.stringify({ messages: [{ type: 'tool_call', name: 'Read', input: '/tmp/file.txt' }] }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const parseSession = async (fp) => {
-        const detail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null };
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const parseSession = async (fp: string): Promise<SessionDetail> => {
+        const detail: SessionDetail = { model: null, lastTool: null, lastToolInput: null, lastMessage: null };
         try {
           const session = await readJsonFile(fp);
           if (!session) return detail;
@@ -185,9 +207,9 @@ describe('gemini adapter', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-test-'));
       const file = path.join(tmp, 'session.json');
       fs.writeFileSync(file, JSON.stringify({ messages: [{ type: 'gemini', toolCalls: [{ name: 'Bash', args: { command: 'ls' } }], timestamp: '2024-01-01T00:00:00Z' }] }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const getToolHistory = async (fp, maxItems = 15) => {
-        const tools = [];
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const getToolHistory = async (fp: string, maxItems = 15): Promise<ToolEntry[]> => {
+        const tools: ToolEntry[] = [];
         try {
           const session = await readJsonFile(fp);
           if (!session) return tools;
@@ -217,9 +239,9 @@ describe('gemini adapter', () => {
         messages.push({ type: 'gemini', toolCalls: [{ name: `T${i}`, args: { command: `c${i}` } }], timestamp: `2024-01-01T00:00:${String(i).padStart(2,'0')}Z` });
       }
       fs.writeFileSync(file, JSON.stringify({ messages }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const getToolHistory = async (fp, maxItems = 15) => {
-        const tools = [];
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const getToolHistory = async (fp: string, maxItems = 15): Promise<ToolEntry[]> => {
+        const tools: ToolEntry[] = [];
         try {
           const session = await readJsonFile(fp);
           if (!session) return tools;
@@ -249,9 +271,9 @@ describe('gemini adapter', () => {
         { type: 'user', content: 'Hello' },
         { type: 'gemini', content: 'Hi there!' },
       ] }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const getRecentMessages = async (fp, maxItems = 5) => {
-        const msgList = [];
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const getRecentMessages = async (fp: string, maxItems = 5): Promise<MsgEntry[]> => {
+        const msgList: MsgEntry[] = [];
         try {
           const session = await readJsonFile(fp);
           if (!session) return msgList;
@@ -282,9 +304,9 @@ describe('gemini adapter', () => {
         { type: 'info', content: 'System info message' },
         { type: 'gemini', content: 'Visible' },
       ] }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const getRecentMessages = async (fp, maxItems = 5) => {
-        const msgList = [];
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const getRecentMessages = async (fp: string, maxItems = 5): Promise<MsgEntry[]> => {
+        const msgList: MsgEntry[] = [];
         try {
           const session = await readJsonFile(fp);
           if (!session) return msgList;
@@ -313,9 +335,9 @@ describe('gemini adapter', () => {
         messages.push({ type: 'gemini', content: `msg${i}` });
       }
       fs.writeFileSync(file, JSON.stringify({ messages }));
-      const readJsonFile = async (fp) => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
-      const getRecentMessages = async (fp, maxItems = 5) => {
-        const msgList = [];
+      const readJsonFile = async (fp: string): Promise<ParsedJson | null> => { try { const c = await fs.promises.readFile(fp, 'utf-8'); return JSON.parse(c); } catch { return null; } };
+      const getRecentMessages = async (fp: string, maxItems = 5): Promise<MsgEntry[]> => {
+        const msgList: MsgEntry[] = [];
         try {
           const session = await readJsonFile(fp);
           if (!session) return msgList;
@@ -340,19 +362,19 @@ describe('gemini adapter', () => {
   describe('scanActiveSessions utility', () => {
     it('returns empty when tmp dir does not exist', async () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-test-'));
-      const scanActiveSessions = async (dir, activeThresholdMs) => {
-        const results = [];
+      const scanActiveSessions = async (dir: string, activeThresholdMs: number): Promise<ScanResult[]> => {
+        const results: ScanResult[] = [];
         if (!fs.existsSync(dir)) return results;
         const now = Date.now();
         try {
-          const projectDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isDirectory());
-          const projectResults = await Promise.all(projectDirs.map(async (projDir) => {
+          const projectDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter((d: Dirent) => d.isDirectory());
+          const projectResults = await Promise.all(projectDirs.map(async (projDir: Dirent) => {
             const chatsDir = path.join(dir, projDir.name, 'chats');
             if (!fs.existsSync(chatsDir)) return [];
             try {
               const sessionFiles = await fs.promises.readdir(chatsDir);
-              const jsonFiles = sessionFiles.filter(f => f.startsWith('session-') && f.endsWith('.json'));
-              const fileResults = await Promise.all(jsonFiles.map(async (file) => {
+              const jsonFiles = sessionFiles.filter((f: string) => f.startsWith('session-') && f.endsWith('.json'));
+              const fileResults = await Promise.all(jsonFiles.map(async (file: string) => {
                 const filePath = path.join(chatsDir, file);
                 try {
                   const stat = await fs.promises.stat(filePath);
@@ -377,19 +399,19 @@ describe('gemini adapter', () => {
       const chatsDir = path.join(tmp, 'tmp', 'abc123hash', 'chats');
       fs.mkdirSync(chatsDir, { recursive: true });
       fs.writeFileSync(path.join(chatsDir, 'session-abc123.json'), JSON.stringify({ sessionId: 'abc123' }));
-      const scanActiveSessions = async (dir, activeThresholdMs) => {
-        const results = [];
+      const scanActiveSessions = async (dir: string, activeThresholdMs: number): Promise<ScanResult[]> => {
+        const results: ScanResult[] = [];
         if (!fs.existsSync(dir)) return results;
         const now = Date.now();
         try {
-          const projectDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isDirectory());
-          const projectResults = await Promise.all(projectDirs.map(async (projDir) => {
+          const projectDirs = (await fs.promises.readdir(dir, { withFileTypes: true })).filter((d: Dirent) => d.isDirectory());
+          const projectResults = await Promise.all(projectDirs.map(async (projDir: Dirent) => {
             const chatsDir = path.join(dir, projDir.name, 'chats');
             if (!fs.existsSync(chatsDir)) return [];
             try {
               const sessionFiles = await fs.promises.readdir(chatsDir);
-              const jsonFiles = sessionFiles.filter(f => f.startsWith('session-') && f.endsWith('.json'));
-              const fileResults = await Promise.all(jsonFiles.map(async (file) => {
+              const jsonFiles = sessionFiles.filter((f: string) => f.startsWith('session-') && f.endsWith('.json'));
+              const fileResults = await Promise.all(jsonFiles.map(async (file: string) => {
                 const filePath = path.join(chatsDir, file);
                 try {
                   const stat = await fs.promises.stat(filePath);
@@ -469,7 +491,15 @@ describe('gemini adapter', () => {
       const adapter = new GeminiAdapter();
       const sessions = await sessionsOf(adapter, 120000);
       for (let i = 1; i < sessions.length; i++) {
-        expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
+        // `lastActivity` is OPTIONAL on the shared `Session`, so an ordering this
+        // pins cannot be read without it — and `toBeGreaterThanOrEqual(undefined)`
+        // is not an ordering assertion at all. `gemini.ts` sets it from each
+        // session file's mtime on every row, so the precondition is asserted for
+        // the compiler instead of being widened away.
+        const previous = sessions[i - 1].lastActivity;
+        const current = sessions[i].lastActivity;
+        if (previous === undefined || current === undefined) throw new Error('unreachable: every gemini session row carries lastActivity');
+        expect(previous).toBeGreaterThanOrEqual(current);
       }
     });
 
