@@ -73,6 +73,8 @@ The inverse helpers follow the same convention:
 
 - `useWorldSprites` keeps stable `AgentSprite` objects tied to domain agents.
 - `useEcsWorld()` converts agent tile positions into isometric scene `x` / `y` values and keeps stable ECS entities across renders.
+- `AgentEntity` (`world/ecs/world.ts`) is the render contract: `Entity` with the fields `useEcsWorld`'s agent path establishes unconditionally (`id`, `name`, `status`, `bubbleText`, `appearance`, plus the `Agent: true` tag). `AgentActor` takes `AgentEntity`; motion fields (`x`, `y`, `moving`, `walkFrame`, `facingLeft`, `targetX`, `targetY`) and `z` / `chatting` stay optional with `?? 0` / falsy guards at their use sites. `Entity` itself stays open because `createEntity()` starts from `{}` and the Proxy accepts any component key.
+- `WorldScene` proves the contract with `isAgentEntity(entity: Entity): entity is AgentEntity`, which checks every required field; `world.with('Agent').entities` is `Entity[]` and only guard-passing entities reach `AgentActor`.
 - `AgentActor` positions each entity at `entity.x`, `entity.y`, and uses a local `scale={[entity.facingLeft ? -stretch : stretch, selected ? 1.12 * squash : squash, 1]}` on the character `<group>` for facing and selection emphasis, where `stretch` / `squash` come from the walk-cycle values below.
 - **Animations**: Implements squash-and-stretch walk cycles and hopping as JS-computed scale and offset on that `<group>` — `swing`, `hop`, `squash`, and `stretch` are all derived from `Math.sin(entity.walkFrame * 4)`. There is no vertex shader involved.
 - **Dynamic Shadows**: Elliptical gradient shadows that respond to agent height (scaling/fading during hops).
