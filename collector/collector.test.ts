@@ -125,6 +125,19 @@ describe('collector', () => {
       expect(getCollectorConfig().hubUrl).toBe('http://localhost:3030');
     });
 
+    it('prefers HUB_HTTP_URL over HUB_URL, matching runtime-config and server-http', () => {
+      vi.stubEnv('HUB_HTTP_URL', 'https://canonical.example:9000');
+      vi.stubEnv('HUB_URL', 'https://alias.example:9000');
+      expect(getCollectorConfig().hubUrl).toBe('https://canonical.example:9000');
+
+      vi.stubEnv('HUB_HTTP_URL', '');
+      expect(getCollectorConfig().hubUrl).toBe('https://alias.example:9000');
+
+      vi.unstubAllEnvs();
+      vi.stubEnv('HUB_HTTP_URL', 'https://canonical.example:9000');
+      expect(getCollectorConfig().hubUrl).toBe('https://canonical.example:9000');
+    });
+
     it('uses FLUSH_INTERVAL_MS from environment or defaults to 2000', () => {
       vi.stubEnv('FLUSH_INTERVAL_MS', '5000');
       expect(getCollectorConfig().flushIntervalMs).toBe(5000);

@@ -1,6 +1,6 @@
 # ClaudeVille — Legacy App Subtree
 
-This directory holds the **legacy all-in-one ClaudeVille app** (`claudeville/server.ts`, the React/R3F presentation, the adapter layer, and the `pixivillage` / `voxelvillage` frontend variants).
+This directory holds the **legacy all-in-one ClaudeVille app** (`claudeville/server.ts`, the React/R3F presentation, the adapter layer, and the `pixijs` / `voxel` frontend variants).
 
 Primary repository guidance lives in [`../.github/copilot-instructions.md`](../.github/copilot-instructions.md) and [`../AGENTS.md`](../AGENTS.md). Follow those first, then the architecture docs in [`../docs/architecture/`](../docs/architecture/).
 

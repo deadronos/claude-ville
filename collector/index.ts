@@ -53,7 +53,7 @@ export function getCollectorConfig(): CollectorRuntimeConfig {
   const activeThresholdMs = Number(process.env.COLLECTOR_ACTIVE_THRESHOLD_MS || DEFAULT_ACTIVE_THRESHOLD_MS);
 
   return {
-    hubUrl: process.env.HUB_URL || 'http://localhost:3030',
+    hubUrl: process.env.HUB_HTTP_URL || process.env.HUB_URL || 'http://localhost:3030',
     hubAuthToken: resolveHubAuthToken(),
     collectorId: process.env.COLLECTOR_ID || `collector-${hostname}`,
     collectorHost: process.env.COLLECTOR_HOST || hostname,

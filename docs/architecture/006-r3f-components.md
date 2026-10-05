@@ -26,7 +26,7 @@ The inverse helpers follow the same convention:
 ## Camera contract
 
 - `CameraModel` is not a Three.js camera; it is a logical pan/zoom state stored in a ref.
-- `ScreenSpaceCamera` creates a local `THREE.OrthographicCamera`, installs it into R3F with `useThree().set`, and configures it as a screen-space camera with `left=0`, `right=viewport.width`, `top=0`, `bottom=viewport.height`, and `zoom={1}`.
+- `ScreenSpaceCamera` creates a local `THREE.OrthographicCamera`, installs it into R3F with `useThree().set`, and configures it as a screen-space camera with `left=0`, `right=viewport.width`, `top=0`, `bottom=viewport.height`, near/far `-1000`/`1000`, and `camera.zoom = 1` assigned imperatively (not as a JSX prop — there is no `<orthographicCamera>` element; the camera object is constructed and mutated directly).
 - The camera helper must preserve that manual frustum; otherwise R3F's resize defaults can overwrite the projection with a centered y-up camera and flip the scene.
 - `getCameraFocusPosition(targetX, targetZ, viewport, zoom)` is the single source of truth for centering.
 - `followAgentId` and `followSmoothing` are the only follow controls.

@@ -96,8 +96,7 @@ Open a WebSocket client against the server and verify the upgrade succeeds and a
 curl -s -I http://localhost:4000/api/sessions
 ```
 
-- **PASS**: `Access-Control-Allow-Origin: *` header is present
-- **FAIL**: Missing CORS headers
+- **PASS**: the route answers without an `Access-Control-Allow-Origin` header. The server omits CORS headers by design (`shared/http-utils.ts:18-27`), and `server.test.ts:240-241` pins their absence — a present header would be the failure, not the success.
 
 ## Cleanup
 

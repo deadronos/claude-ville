@@ -37,10 +37,10 @@ widget/ClaudeVilleWidget.app/
 │   └── Resources/
 │       ├── popover.html / popover.css / popover.js
 │       ├── pet.html / pet.css / pet.js
-│       ├── pets/
-│       ├── project_path           (must contain valid path)
-│       └── node_path              (must contain valid node binary path)
+│       └── pets/
 ```
+
+> `build.sh` does not write a `node_path` (or `project_path`) file, and `main.swift` does not read one. Those checks describe a mechanism that does not exist in this tree; `build.sh` and `main.swift` are the source of truth for what the bundle records.
 
 - **PASS**: All files exist with correct content
 - **WARN**: project_path or node_path points to non-existent location
@@ -63,17 +63,13 @@ Parse Info.plist and verify required keys:
 - **PASS**: All keys present and correct
 - **FAIL**: Missing or incorrect key values
 
-### 4. Node Path Resolution
+### 4. (Removed: node-path resolution.)
 
-Verify the recorded node_path is a real binary (not an fnm temp symlink):
-
-```bash
-cat widget/ClaudeVilleWidget.app/Contents/Resources/node_path
-```
-
-- **PASS**: Path exists AND does NOT contain `fnm_multishells` (permanent path)
-- **WARN**: Path exists but contains `fnm_multishells` (temporary, will break on restart)
-- **FAIL**: Path does not exist
+An earlier version of this skill checked a `node_path` file that the bundle
+records. That file does not exist — `build.sh` never writes it and `main.swift`
+never reads it — so there is nothing to verify, and a check for it would fail
+unconditionally. If the widget ever gains a recorded interpreter path, the check
+belongs here with the mechanism that writes it.
 
 ### 5. Port Configuration Consistency
 
