@@ -1,16 +1,20 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 
 import { subscribeFrame } from './frameTicker.js';
 
 describe('frameTicker', () => {
   let callbacks: FrameRequestCallback[];
-  let cancelSpy: ReturnType<typeof vi.fn>;
+  // Typed to what `cancelAnimationFrame` actually takes. `ReturnType<typeof
+  // vi.fn>` is `Mock<Constructable | Procedure>`, which is neither callable with
+  // a handle nor assignable to the `(handle: number) => void` the DOM declares.
+  let cancelSpy: Mock<(handle: number) => void>;
 
   beforeEach(() => {
     callbacks = [];
-    cancelSpy = vi.fn();
+    cancelSpy = vi.fn<(handle: number) => void>();
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
       callbacks.push(callback);
       return callbacks.length;

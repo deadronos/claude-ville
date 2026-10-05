@@ -46,7 +46,10 @@ describe('useHubVillageData', () => {
     const selectBuilding = result.current.selectBuilding;
 
     await act(async () => {
+      // `WsMessage` declares `type` as required, and every frame the hub sends
+      // carries one, so the fixture matches the real wire shape.
       eventBus.emit('ws:update', {
+        type: 'update',
         sessions: [{
           sessionId: 'pi-session',
           provider: 'pi',

@@ -16,8 +16,9 @@ describe('costs', () => {
     });
 
     it('output is more expensive than input for all models', () => {
-      for (const model of Object.keys(CLAUDE_RATE_TABLE)) {
-        const rate = CLAUDE_RATE_TABLE[model];
+      // `Object.values` keeps the rate typed. Indexing the table with a `string`
+      // key did not, so the lookup came back as an implicit `any`.
+      for (const rate of Object.values(CLAUDE_RATE_TABLE)) {
         expect(rate.output).toBeGreaterThan(rate.input);
       }
     });
@@ -58,7 +59,10 @@ describe('costs', () => {
     });
 
     it('handles missing tokens (default)', () => {
-      const cost = estimateClaudeCost('claude-sonnet-4-5');
+      // `estimateCost` declares `tokens` as REQUIRED and nullable, so `null` is
+      // the spelling for "no token counts". The body reads `tokens?.input ?? 0`,
+      // so omitting the argument is not an option the signature allows.
+      const cost = estimateClaudeCost('claude-sonnet-4-5', null);
       expect(cost).toBe(0);
     });
 

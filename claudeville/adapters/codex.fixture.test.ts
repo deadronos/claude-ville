@@ -42,6 +42,7 @@ import path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { detailOf, sessionsOf } from './fixtureHelpers';
+import type { AgentSessionSummary } from '../../shared/types.js';
 
 let tmpHome = '';
 let CodexAdapter: any;
@@ -71,6 +72,21 @@ const sessionsRoot = () => path.join(tmpHome, '.codex', 'sessions');
  */
 const sessionIdOf = (fileName: string) =>
   `codex-${fileName.replace('rollout-', '').replace('.jsonl', '')}`;
+
+/**
+ * `Array.prototype.find` answers `T | undefined`. Every fixture below wants the
+ * row or a loud failure — the same "assert rather than coerce" rule
+ * `fixtureHelpers.ts` states for the union-returning adapter methods — so this
+ * throws and names the ids it did find, rather than letting the next line read
+ * a property off `undefined`.
+ */
+function sessionRow(rows: AgentSessionSummary[], sessionId: string): AgentSessionSummary {
+  const row = rows.find((s) => s.sessionId === sessionId);
+  if (!row) {
+    throw new Error(`no row for ${sessionId}; found [${rows.map((r) => r.sessionId).join(', ')}]`);
+  }
+  return row;
+}
 
 const ALPHA_FILE = 'rollout-2024-01-22T10-30-00-alpha1.jsonl';
 const DELTA_FILE = 'rollout-2025-01-22T10-30-00-delta1.jsonl';
@@ -485,9 +501,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
-        (s: any) => s.sessionId === sessionIdOf('rollout-latemeta1.jsonl'),
-      );
+      const row = sessionRow(await sessionsOf(adapter, 5 * MINUTE), sessionIdOf('rollout-latemeta1.jsonl'));
       expect(row).toMatchObject({
         // model falls back because the head window never saw session_meta, and
         // the tail loop only reads model from turn_context / event_msg
@@ -524,9 +538,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
-        (s: any) => s.sessionId === sessionIdOf('rollout-tail1.jsonl'),
-      );
+      const row = sessionRow(await sessionsOf(adapter, 5 * MINUTE), sessionIdOf('rollout-tail1.jsonl'));
       expect(row).toMatchObject({
         lastTool: null,
         lastToolInput: null,
@@ -617,9 +629,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
-        (s: any) => s.sessionId === sessionIdOf('rollout-zeta1.jsonl'),
-      );
+      const row = sessionRow(await sessionsOf(adapter, 5 * MINUTE), sessionIdOf('rollout-zeta1.jsonl'));
       expect(row).toMatchObject({ model: 'gpt-5-codex', lastTool: 'shell' });
       // codex.ts:75 — the row's tool input, capped at 60.
       expect(row.lastToolInput).toBe('s'.repeat(60));
@@ -679,9 +689,7 @@ describe('CodexAdapter fixtures', () => {
     const file = rollout('2026', '09', '01', 'eta1', entries);
 
     try {
-      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
-        (s: any) => s.sessionId === sessionIdOf('rollout-eta1.jsonl'),
-      );
+      const row = sessionRow(await sessionsOf(adapter, 5 * MINUTE), sessionIdOf('rollout-eta1.jsonl'));
       // First-in-window, not last: tool_00 / msg 1, not tool_19 / msg 8.
       expect(row).toMatchObject({ lastTool: 'tool_00', lastToolInput: '{"n":0}', lastMessage: 'msg 1' });
 
@@ -728,9 +736,7 @@ describe('CodexAdapter fixtures', () => {
     ]);
 
     try {
-      const row = (await sessionsOf(adapter, 5 * MINUTE)).find(
-        (s: any) => s.sessionId === sessionIdOf('rollout-cmdexec1.jsonl'),
-      );
+      const row = sessionRow(await sessionsOf(adapter, 5 * MINUTE), sessionIdOf('rollout-cmdexec1.jsonl'));
       expect(row).toMatchObject({ lastTool: 'command_execution' });
       // codex.ts:77 — the command branch of the 60-char cap.
       expect(row.lastToolInput).toBe('c'.repeat(60));
@@ -818,7 +824,7 @@ describe('CodexAdapter fixtures', () => {
   it('reads a thread_token_usage entry even when a newer total_token_usage precedes it', async () => {
     const adapter = new CodexAdapter();
     const sessions = await sessionsOf(adapter, 5 * MINUTE);
-    const row = sessions.find((s: any) => s.sessionId === EPSILON_ID);
+    const row = sessionRow(sessions, EPSILON_ID);
     expect(row).toBeDefined();
 
     const detail = await detailOf(adapter, EPSILON_ID, workspaceEpsilon, row.filePath);
@@ -843,7 +849,7 @@ describe('CodexAdapter fixtures', () => {
   it('falls back to the LAST info.total_token_usage when no thread reading exists', async () => {
     const adapter = new CodexAdapter();
     const sessions = await sessionsOf(adapter, 5 * MINUTE);
-    const row = sessions.find((s: any) => s.sessionId === ALPHA_ID);
+    const row = sessionRow(sessions, ALPHA_ID);
     expect(row).toBeDefined();
 
     const detail = await detailOf(adapter, ALPHA_ID, workspaceAlpha, row.filePath);
@@ -853,7 +859,7 @@ describe('CodexAdapter fixtures', () => {
   it('reports null tokenUsage when the rollout carries neither reading', async () => {
     const adapter = new CodexAdapter();
     const sessions = await sessionsOf(adapter, 5 * MINUTE);
-    const row = sessions.find((s: any) => s.sessionId === GAMMA_ID);
+    const row = sessionRow(sessions, GAMMA_ID);
     expect(row).toBeDefined();
 
     const detail = await detailOf(adapter, GAMMA_ID, workspaceGamma, row.filePath);

@@ -1,21 +1,28 @@
 /** @vitest-environment node */
 
 import { EventEmitter } from 'node:events';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { describe, expect, it, vi } from 'vitest';
 
-const httpUtils = await import('./http-utils.ts');
+const httpUtils = await import('./http-utils.js');
 
-function makeResponse() {
+// The helpers under test are typed against the full `http.ServerResponse` and
+// `http.IncomingMessage` classes but only ever touch a handful of members, so
+// these doubles stand in for the rest. The assertions read the spies back
+// through `expect(...)`, which needs no extra typing.
+function makeResponse(): ServerResponse {
   return {
     setHeader: vi.fn(),
     writeHead: vi.fn(),
     end: vi.fn(),
-  };
+  } as unknown as ServerResponse;
 }
 
-function makeRequest() {
-  const req = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> };
+function makeRequest(): IncomingMessage {
+  // `readBoundedBody` subscribes to `data`/`end`/`error` and may call `pause()`
+  // or `destroy()`, so EventEmitter plus those two spies is the whole surface.
+  const req = new EventEmitter() as IncomingMessage;
   req.destroy = vi.fn();
   req.pause = vi.fn();
   return req;
@@ -44,7 +51,10 @@ describe('shared HTTP utilities', () => {
 
     expect(httpUtils.safeLimit(undefined)).toBe(100);
     expect(httpUtils.safeLimit('0')).toBe(1);
-    expect(httpUtils.safeLimit(999)).toBe(500);
+    // `safeLimit` declares `string | null | undefined` because its callers read a
+    // query parameter, so the over-max case goes through the declared type.
+    // `Number('999')` is 999 either way and still clamps to 500.
+    expect(httpUtils.safeLimit('999')).toBe(500);
     expect(httpUtils.safeLimit('42')).toBe(42);
   });
 
