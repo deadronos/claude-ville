@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-const { buildCollectorSnapshot, normalizeSession } = await import('./snapshot.ts');
+const { buildCollectorSnapshot, normalizeSession } = await import('./snapshot.js');
 
 describe('collector snapshot helpers', () => {
   it('normalizes tokens and estimated cost from session detail', () => {
@@ -22,8 +22,19 @@ describe('collector snapshot helpers', () => {
   });
 
   it('preserves contextPercent through normalizeSession', () => {
-    const normalized = normalizeSession({ sessionId: 's1', tokens: { input: 1, output: 2 }, contextPercent: 40 } as any, null);
-    expect(normalized.contextPercent).toBe(40);
+    // `SessionSummary` carries a `[key: string]: unknown` index signature, so
+    // `contextPercent` is a legal input field and the `as any` this used to
+    // need is not. It was also hiding that the object omitted the required
+    // `provider`. On the way out, `normalizeSession` spreads the session, but
+    // its inferred return type lists only the declared fields and drops the
+    // index signature, so the field cannot be read back off the result.
+    // `toMatchObject` asserts the same thing — the value 40 survived — without
+    // needing the property to exist on the inferred type.
+    const normalized = normalizeSession(
+      { provider: 'claude', sessionId: 's1', tokens: { input: 1, output: 2 }, contextPercent: 40 },
+      null,
+    );
+    expect(normalized).toMatchObject({ contextPercent: 40 });
   });
 
   it('builds a normalized snapshot with providers, teams, and task groups', async () => {

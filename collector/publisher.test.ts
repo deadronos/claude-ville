@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
-const { createCollectorPublisher, computeSnapshotFingerprint, sendCollectorSnapshot } = await import('./publisher.ts');
+const { createCollectorPublisher, computeSnapshotFingerprint, sendCollectorSnapshot } = await import('./publisher.js');
 
 describe('collector publisher', () => {
   it('reuses the same fingerprint for identical snapshots', () => {
@@ -45,8 +45,10 @@ describe('collector publisher', () => {
         createHash,
         fetch: fetchMock as typeof fetch,
         console: { log: logSpy, error: errorSpy },
-        setTimeout: setTimeoutSpy as typeof setTimeout,
-        clearTimeout: clearTimeoutSpy as typeof clearTimeout,
+        // Node's `setTimeout` is overloaded, so neither the spy nor the spy
+        // return type lines up with `typeof setTimeout` on its own.
+        setTimeout: setTimeoutSpy as unknown as typeof setTimeout,
+        clearTimeout: clearTimeoutSpy as unknown as typeof clearTimeout,
       },
       {
         hubUrl: 'http://hub.test',
@@ -76,7 +78,7 @@ describe('collector publisher', () => {
 
   it('times out stalled hub requests with an actionable error', async () => {
     let capturedSignal: AbortSignal | undefined;
-    const fetchMock = vi.fn((_url: string, options: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+    const fetchMock = vi.fn((_url: string, options: { signal?: AbortSignal }) => new Promise<never>((_resolve, reject) => {
       capturedSignal = options.signal;
       options.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted', 'TimeoutError')));
     }));
@@ -92,7 +94,7 @@ describe('collector publisher', () => {
     const buildSnapshot = vi.fn().mockResolvedValue(snapshot);
     const errorSpy = vi.fn();
     const fetchMock = vi.fn()
-      .mockImplementationOnce((_url: string, options: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+      .mockImplementationOnce((_url: string, options: { signal?: AbortSignal }) => new Promise<never>((_resolve, reject) => {
         options.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted', 'TimeoutError')));
       }))
       .mockResolvedValueOnce({ ok: true, status: 202, statusText: 'Accepted' });

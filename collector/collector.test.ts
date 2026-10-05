@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import os from 'os';
 import { estimateCost } from '../shared/cost.js';
+import { normalizeSession } from './snapshot.js';
 
 // We test the collector concepts directly here.
 
@@ -63,12 +64,17 @@ describe('collector', () => {
     });
 
     it('normalizeSession handles missing tokenUsage', () => {
-      const tokenUsage = null;
-      const tokens = tokenUsage
-        ? { input: Number(tokenUsage.totalInput || 0), output: Number(tokenUsage.totalOutput || 0) }
-        : { input: 0, output: 0 };
+      // This used to reimplement the normalization inline and assert its own
+      // local result, so it passed no matter what `normalizeSession` did. It
+      // now calls the real thing. `detail: null` with no session tokens is the
+      // case that yields zeros.
+      const normalized = normalizeSession(
+        { provider: 'claude', sessionId: 's1', tokens: null },
+        null,
+      );
 
-      expect(tokens).toEqual({ input: 0, output: 0 });
+      expect(normalized.tokens).toEqual({ input: 0, output: 0 });
+      expect(normalized.tokenUsage).toBeNull();
     });
 
     it('normalizeSession handles partial tokenUsage', () => {

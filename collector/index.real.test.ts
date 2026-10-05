@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { estimateCost } from '../shared/cost.js';
+import type { WatchPath } from '../shared/types.js';
 
 type TokenUsage = {
   totalInput?: number;
@@ -33,7 +34,7 @@ type CollectorOptions = {
   fetchMock?: ReturnType<typeof vi.fn>;
 };
 
-type CollectorModule = typeof import('./index.ts');
+type CollectorModule = typeof import('./index.js');
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -53,7 +54,7 @@ async function drainAsyncWork() {
 
 async function loadCollectorModule(): Promise<CollectorModule> {
   vi.resetModules();
-  return import('./index.ts');
+  return import('./index.js');
 }
 
 function createHarness(createCollectorRuntime: CollectorModule['createCollectorRuntime'], options: CollectorOptions = {}) {
@@ -66,7 +67,10 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
   const timeoutCallbacks = new Map<number, () => void>();
   const signalHandlers = new Map<string, () => void>();
   const fetchMock = options.fetchMock ?? vi.fn().mockResolvedValue({ ok: true, status: 202, statusText: 'Accepted' });
-  const createFileWatchers = vi.fn((paths: string[], onChange: () => void) => {
+  // `CollectorRuntimeDeps` declares this as `(paths: WatchPath[], ...)`, the same
+  // shape the real `createFileWatchers` takes. The harness only reads
+  // `paths.length` from it, so the annotation is the whole fix.
+  const createFileWatchers = vi.fn((paths: WatchPath[], onChange: () => void) => {
     watcherCallback = onChange;
     return { watchCount: paths.length, close: watcherClose };
   });
@@ -122,12 +126,14 @@ function createHarness(createCollectorRuntime: CollectorModule['createCollectorR
       getActiveProviders,
       getSessionDetailByProvider,
       fetch: fetchMock as typeof fetch,
-      setTimeout: setTimeoutSpy as typeof setTimeout,
-      clearTimeout: clearTimeoutSpy as typeof clearTimeout,
-      setInterval: setIntervalSpy as typeof setInterval,
-      clearInterval: clearIntervalSpy as typeof clearInterval,
+      // Node's timers are overloaded, so a single-signature spy is not directly
+      // comparable with `typeof setTimeout` and friends.
+      setTimeout: setTimeoutSpy as unknown as typeof setTimeout,
+      clearTimeout: clearTimeoutSpy as unknown as typeof clearTimeout,
+      setInterval: setIntervalSpy as unknown as typeof setInterval,
+      clearInterval: clearIntervalSpy as unknown as typeof clearInterval,
       console: { log: logSpy, error: errorSpy },
-      process: { on: processOnSpy as typeof process.on, exit: processExitSpy as typeof process.exit },
+      process: { on: processOnSpy as unknown as typeof process.on, exit: processExitSpy as unknown as typeof process.exit },
     },
     {
       hubUrl: 'http://hub.test',
