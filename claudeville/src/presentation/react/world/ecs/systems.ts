@@ -11,13 +11,10 @@ export function createMovementSystem(world: ECSWorld) {
     useFrame(() => {
       const agents = world.with('Agent').entities;
       for (const entity of agents) {
-        const moving = entity.moving as boolean;
-        if (!moving) continue;
+        if (!entity.moving) continue;
 
-        const x = entity.x as number;
-        const y = entity.y as number;
-        const targetX = entity.targetX as number;
-        const targetY = entity.targetY as number;
+        const { x, y, targetX, targetY } = entity;
+        if (x === undefined || y === undefined || targetX === undefined || targetY === undefined) continue;
 
         const dx = targetX - x;
         const dy = targetY - y;
@@ -31,7 +28,7 @@ export function createMovementSystem(world: ECSWorld) {
           const speed = 1.5;
           entity.x = x + (dx / dist) * speed;
           entity.y = y + (dy / dist) * speed;
-          entity.walkFrame = (((entity.walkFrame as number) || 0) + 0.15);
+          entity.walkFrame = (entity.walkFrame ?? 0) + 0.15;
           entity.facingLeft = dx < 0;
         }
       }
@@ -47,31 +44,30 @@ export function createProximitySystem(
     useFrame(() => {
       const buildings = world.with('Building').entities;
       for (const building of buildings) {
-        const type = building.buildingType as string;
-        const style = BUILDING_STYLES[type];
+        const { buildingType, tileX, tileY, width, height } = building;
+        if (!buildingType) continue;
+        const style = BUILDING_STYLES[buildingType];
         if (!style) continue;
+        if (tileX === undefined || tileY === undefined || width === undefined || height === undefined) continue;
 
-        const tileX = building.tileX as number;
-        const tileY = building.tileY as number;
-        const width = building.width as number;
-
-        const center = worldToIso(tileX + width / 2, tileY + (building.height as number) / 2);
+        const center = worldToIso(tileX + width / 2, tileY + height / 2);
         const halfW = (width * TILE_WIDTH) / 4;
 
         let agentNear = false;
         const agents = world.with('Agent').entities;
         for (const agent of agents) {
-          const dx = (agent.x as number) - center.x;
-          const dy = (agent.y as number) - center.y;
+          if (agent.x === undefined || agent.y === undefined) continue;
+          const dx = agent.x - center.x;
+          const dy = agent.y - center.y;
           if (Math.abs(dx) < halfW + 15 && dy > -style.wallHeight - 10 && dy < 20) {
             agentNear = true;
             break;
           }
         }
 
-        const current = roofAlphaRef.current.get(type) ?? 1;
+        const current = roofAlphaRef.current.get(buildingType) ?? 1;
         const next = current + ((agentNear ? 0 : 1) - current) * 0.06;
-        roofAlphaRef.current.set(type, next);
+        roofAlphaRef.current.set(buildingType, next);
         building.alpha = next;
       }
     });
@@ -88,8 +84,9 @@ export function createCameraFollowSystem(
       if (!camera.followAgentId) return;
 
       const agents = world.with('Agent').entities;
-      const target = agents.find((e: any) => e.id === camera.followAgentId);
+      const target = agents.find((e) => e.id === camera.followAgentId);
       if (!target) return;
+      if (target.x === undefined || target.y === undefined) return;
 
       // Agent x,y are already in isometric screen coordinates
       // Camera targetX/targetZ are in the same coordinate space

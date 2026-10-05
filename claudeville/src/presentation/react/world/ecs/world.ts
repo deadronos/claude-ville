@@ -1,16 +1,30 @@
 // Local ECS world implementation for the render path.
+//
+// The optional fields below are the component payload from `components.ts`. An
+// entity is a bare `{}` when `createEntity` returns it and each component key is
+// added later, so "absent" is a real state and every one of these is genuinely
+// `number | undefined` until something writes it. Declaring them is what lets
+// `systems.ts` read and write them without a cast at each use.
 export type Entity = {
+  /** Query flags: `with('Agent')` matches on the key being present and truthy. */
+  Agent?: boolean;
+  Building?: boolean;
   id?: string;
   name?: string;
   status?: string;
   bubbleText?: string | null;
   appearance?: any;
+  /** `Position`. */
+  x?: number;
+  y?: number;
+  z?: number;
   buildingType?: string;
   width?: number;
   height?: number;
   tileX?: number;
   tileY?: number;
   alpha?: number;
+  /** `Movement`. */
   moving?: boolean;
   targetX?: number;
   targetY?: number;
