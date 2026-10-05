@@ -1,36 +1,71 @@
 /** @vitest-environment node */
 
-import { EventEmitter } from 'node:events';
+import http from 'node:http';
+import net from 'node:net';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 
-const { createHubreceiverRequestHandler, maybeGetAuthToken } = await import('./routes.ts');
+// `.js`, as production imports the module: `allowImportingTsExtensions` is off,
+// so a `.ts` specifier cannot be written here.
+const { createHubreceiverRequestHandler, maybeGetAuthToken } = await import('./routes.js');
 
-function makeResponse() {
-  return {
+/**
+ * The handler takes real `http.IncomingMessage` / `http.ServerResponse`. Rather
+ * than cast a hand-rolled stand-in, these build genuine Node objects - so
+ * `headersSent`, the header bag and `pause` behave the way the handler expects -
+ * and replace only the methods this suite asserts on. An unconnected `net.Socket`
+ * satisfies the constructors; no connection is ever opened.
+ */
+type MockedRequest = http.IncomingMessage & {
+  pause: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
+};
+
+type MockedResponse = http.ServerResponse & {
+  setHeader: ReturnType<typeof vi.fn>;
+  writeHead: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
+};
+
+function makeResponse(): MockedResponse {
+  return Object.assign(new http.ServerResponse(new http.IncomingMessage(new net.Socket())), {
     setHeader: vi.fn(),
     writeHead: vi.fn(),
     end: vi.fn(),
-  };
+  });
 }
 
-function makeRequest(method: string, url: string, headers: Record<string, string> = {}) {
-  const req = new EventEmitter() as EventEmitter & {
-    headers: Record<string, string>;
-    method: string;
-    url: string;
-    destroy: ReturnType<typeof vi.fn>;
-    pause: ReturnType<typeof vi.fn>;
-  };
-
-  req.headers = headers;
-  req.method = method;
-  req.url = url;
-  req.destroy = vi.fn();
-  req.pause = vi.fn();
-  return req;
+function makeRequest(method: string, url: string, headers: Record<string, string> = {}): MockedRequest {
+  return Object.assign(new http.IncomingMessage(new net.Socket()), {
+    method,
+    url,
+    headers,
+    pause: vi.fn(),
+    destroy: vi.fn(),
+  });
 }
 
 function createHandler(overrides: Partial<Parameters<typeof createHubreceiverRequestHandler>[0]> = {}) {
+  /**
+   * A keyed map rather than a one-key object literal: `getSessionDetail` below
+   * indexes it with a `` `${provider}:${sessionId}` `` template, which needs a
+   * string index signature to typecheck.
+   */
+  const sessionDetails: Record<string, {
+    sessionId: string;
+    toolHistory: { tool: string; detail: string }[];
+    messages: { role: string; text: string; ts: number }[];
+    tokenUsage: { input: number; output: number };
+  }> = {
+    'claude:s1': {
+      sessionId: 's1',
+      toolHistory: [{ tool: 'Read', detail: 'README.md' }],
+      messages: [{ role: 'assistant', text: 'hello', ts: 5 }],
+      tokenUsage: { input: 10, output: 4 },
+    },
+  };
+
   const state = {
     sessions: [{ sessionId: 's1', lastActivity: 10 }],
     teams: [{ teamName: 'alpha' }],
@@ -38,14 +73,7 @@ function createHandler(overrides: Partial<Parameters<typeof createHubreceiverReq
     providers: [{ provider: 'claude' }],
     usage: { totals: { sessions: 1, messages: 2 } },
     timestamp: 123,
-    sessionDetails: {
-      'claude:s1': {
-        sessionId: 's1',
-        toolHistory: [{ tool: 'Read', detail: 'README.md' }],
-        messages: [{ role: 'assistant', text: 'hello', ts: 5 }],
-        tokenUsage: { input: 10, output: 4 },
-      },
-    },
+    sessionDetails,
   };
 
   const applySnapshot = vi.fn().mockReturnValue(state);
@@ -84,16 +112,25 @@ async function flush() {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+/**
+ * Captured here so the assertions can name the mock. They previously passed
+ * `console.log as never`, which typechecked only because `never` is assignable
+ * to anything - the value at runtime was the spy installed by `beforeEach`.
+ */
+let logSpy: MockInstance<typeof console.log>;
+
 beforeEach(() => {
-  vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
 describe('hubreceiver routes', () => {
   it('extracts bearer tokens case-insensitively', () => {
-    expect(maybeGetAuthToken({ headers: { authorization: 'Bearer abc123' } })).toBe('abc123');
-    expect(maybeGetAuthToken({ headers: { authorization: 'bearer abc123' } })).toBe('abc123');
-    expect(maybeGetAuthToken({ headers: {} })).toBe('');
+    // `maybeGetAuthToken` reads only `req.headers.authorization`, so a real
+    // request object is enough to exercise it without a partial literal.
+    expect(maybeGetAuthToken(makeRequest('GET', '/api/sessions', { authorization: 'Bearer abc123' }))).toBe('abc123');
+    expect(maybeGetAuthToken(makeRequest('GET', '/api/sessions', { authorization: 'bearer abc123' }))).toBe('abc123');
+    expect(maybeGetAuthToken(makeRequest('GET', '/api/sessions'))).toBe('');
   });
 
   it('answers preflight requests with CORS headers', () => {
@@ -167,28 +204,28 @@ describe('hubreceiver routes', () => {
       await flush();
     }
 
-    function snapshotAcceptLines(spy: ReturnType<typeof vi.spyOn>) {
+    function snapshotAcceptLines(spy: MockInstance<typeof console.log>) {
       return spy.mock.calls
-        .map((call) => String(call[0]))
+        .map((call: unknown[]) => String(call[0]))
         .filter((line) => line.includes('snapshot accepted'));
     }
 
     it('stays quiet by default so a running collector does not flood stdout', async () => {
       delete process.env.CLAUDEVILLE_DEBUG;
       await postSnapshot();
-      expect(snapshotAcceptLines(console.log as never)).toEqual([]);
+      expect(snapshotAcceptLines(logSpy)).toEqual([]);
     });
 
     it('logs when CLAUDEVILLE_DEBUG=1', async () => {
       process.env.CLAUDEVILLE_DEBUG = '1';
       await postSnapshot();
-      expect(snapshotAcceptLines(console.log as never).length).toBe(1);
+      expect(snapshotAcceptLines(logSpy).length).toBe(1);
     });
 
     it('logs when CLAUDEVILLE_DEBUG=true', async () => {
       process.env.CLAUDEVILLE_DEBUG = 'true';
       await postSnapshot();
-      expect(snapshotAcceptLines(console.log as never).length).toBe(1);
+      expect(snapshotAcceptLines(logSpy).length).toBe(1);
     });
 
     // Leave the env clean: vitest.config.ts sets no unstubEnvs, so a leaked
