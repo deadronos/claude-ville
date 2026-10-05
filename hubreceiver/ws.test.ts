@@ -1,8 +1,15 @@
 /** @vitest-environment node */
 
 import { describe, expect, it, vi } from 'vitest';
+import type { IncomingMessage } from 'node:http';
 
-const { createHubWebSocketManager } = await import('./ws.ts');
+const { createHubWebSocketManager } = await import('./ws.js');
+
+// `handleUpgrade` reads only `req.headers`, so that is the whole surface these
+// request doubles need to stand in for.
+function makeRequest(headers: Record<string, string>): IncomingMessage {
+  return { headers } as unknown as IncomingMessage;
+}
 
 function makeSocket() {
   const listeners = new Map<string, () => void>();
@@ -39,7 +46,7 @@ describe('hubreceiver websocket manager', () => {
     const manager = createHubWebSocketManager(() => state);
     const { socket } = makeSocket();
 
-    manager.handleUpgrade({ headers: { 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', authorization: 'Bearer secret' } }, socket, 'secret');
+    manager.handleUpgrade(makeRequest({ 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', authorization: 'Bearer secret' }), socket, 'secret');
 
     expect(socket.write).toHaveBeenCalledTimes(2);
     expect(String(socket.write.mock.calls[0][0])).toContain('101 Switching Protocols');
@@ -60,7 +67,7 @@ describe('hubreceiver websocket manager', () => {
     }));
     const { socket } = makeSocket();
 
-    manager.handleUpgrade({ headers: { 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==' } }, socket, 'secret');
+    manager.handleUpgrade(makeRequest({ 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==' }), socket, 'secret');
 
     expect(String(socket.write.mock.calls[0][0])).toContain('401 Unauthorized');
     expect(socket.destroy).toHaveBeenCalled();
