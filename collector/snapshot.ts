@@ -17,6 +17,14 @@ export type SessionSummary = {
   sessionId: string;
   project?: string | null;
   model?: string;
+  /**
+   * Named here rather than left to the index signature below, because the shared
+   * `Session` guarantees it: `getAllSessions` returns `AgentSessionSummary[]`,
+   * whose comparability to this index-signature type rests on this field being
+   * declared on both sides. It stays optional because this type also describes
+   * persisted rows, which predate the guarantee.
+   */
+  lastActivity?: number;
   tokens?: { input?: number; output?: number } | null;
   detail?: SessionDetail | null;
   [key: string]: unknown;

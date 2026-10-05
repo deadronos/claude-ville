@@ -630,15 +630,11 @@ describe('copilot adapter', () => {
       const adapter = new CopilotAdapter();
       const sessions = await sessionsOf(adapter, 120000);
       for (let i = 1; i < sessions.length; i++) {
-        // `lastActivity` is OPTIONAL on the shared `Session`, so an ordering this
-        // pins cannot be read without it — and `toBeGreaterThanOrEqual(undefined)`
-        // is not an ordering assertion at all. `copilot.ts` sets it from the
-        // events file's mtime on every row, so the precondition is asserted for
-        // the compiler instead of `!`-asserted away.
-        const previous = sessions[i - 1].lastActivity;
-        const current = sessions[i].lastActivity;
-        if (previous === undefined || current === undefined) throw new Error('unreachable: every copilot session row carries lastActivity');
-        expect(previous).toBeGreaterThanOrEqual(current);
+        // `lastActivity` is required on the shared `Session` and every copilot row
+        // sets it, so both reads below are numbers: the matcher compares two of
+        // them and cannot pass on `undefined`. A row without the field would not
+        // compile here.
+        expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
       }
     });
 
@@ -703,13 +699,10 @@ describe('copilot adapter', () => {
         expect(sessions.map((s: any) => s.lastActivity)).toEqual(
           [...sessions.map((s: any) => s.lastActivity)].sort((a, b) => b - a),
         );
-        // Same optional field as the real-HOME case above. This one has teeth — it
-        // drives three sessions with distinct mtimes — so the precondition holds
-        // by construction and is asserted for the compiler rather than cast away.
-        const newest = sessions[0].lastActivity;
-        const oldest = sessions[2].lastActivity;
-        if (newest === undefined || oldest === undefined) throw new Error('unreachable: the three written session dirs all carry lastActivity');
-        expect(newest).toBeGreaterThan(oldest);
+        // Same required field as the real-HOME case above, and this one has teeth:
+        // it drives three sessions with distinct mtimes. The reads are numbers, so
+        // the matcher compares them and cannot pass on `undefined`.
+        expect(sessions[0].lastActivity).toBeGreaterThan(sessions[2].lastActivity);
       } finally {
         if (originalHome === undefined) delete process.env.HOME;
         else process.env.HOME = originalHome;

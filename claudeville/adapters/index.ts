@@ -176,8 +176,9 @@ export async function collectFromAdapters(activeThresholdMs: number): Promise<Ad
   }));
 
   return {
-    // `?? 0` because `AgentSessionSummary.lastActivity` is optional. Every adapter
-    // sets it to a number, and this only decides what an absent value sorts as.
+    // `?? 0` is defensive. `lastActivity` is required on the shared `Session`, so
+    // every adapter row carries a number and this never fires; it only decides
+    // what a row without one would sort as.
     sessions: collected.flatMap((entry) => entry.sessions).sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)),
     errors: collected.flatMap((entry) => entry.errors),
     warnings: collected.flatMap((entry) => entry.warnings),

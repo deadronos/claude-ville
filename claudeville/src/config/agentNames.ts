@@ -73,14 +73,38 @@ interface TeamInfo {
     name?: string;
 }
 
-function getNameKind(session: { agentId?: string | null; agentType?: string | null }, teamInfo: TeamInfo | null) {
+/** The fields `getNameKind` reads to tell an agent row from a session row. */
+interface NameKindInput {
+    agentId?: string | null;
+    agentType?: string | null;
+}
+
+/**
+ * What `resolveAgentDisplayName` reads. It hands its `session` straight to
+ * `getNameKind`, so this is that caller's own fields PLUS `NameKindInput`, kept
+ * as one type because the two shapes have to agree — two inline shapes that must
+ * stay in step is the fragility the duplicated `tableColumns` removal had.
+ *
+ * `agentType` was read by `getNameKind` while missing here, so a caller that
+ * supplies one was relying on a field its parameter did not declare. Nothing
+ * caught it because `Agent._buildDisplaySession` returns a value rather than
+ * passing a fresh literal, and excess-property checking only applies to literals.
+ */
+interface DisplayNameInput extends NameKindInput {
+    provider?: string | null;
+    sessionId?: string | null;
+    displayName?: string | null;
+    agentName?: string | null;
+}
+
+function getNameKind(session: NameKindInput, teamInfo: TeamInfo | null) {
     if (teamInfo?.name) return 'agent';
     if (session.agentId) return 'agent';
     if (session.agentType && session.agentType !== 'main') return 'agent';
     return 'session';
 }
 
-export function resolveAgentDisplayName(session: { provider?: string | null; agentId?: string | null; sessionId?: string | null; displayName?: string | null; agentName?: string | null }, teamInfo: TeamInfo | null = null) {
+export function resolveAgentDisplayName(session: DisplayNameInput, teamInfo: TeamInfo | null = null) {
     const provider = session.provider || 'unknown';
     const candidate: string | null = teamInfo?.name || session.displayName || session.agentName || null;
     const nameKind = getNameKind(session, teamInfo);

@@ -547,15 +547,11 @@ describe('codex adapter', () => {
       const adapter = new CodexAdapter();
       const sessions = await sessionsOf(adapter, 120000);
       for (let i = 1; i < sessions.length; i++) {
-        // `lastActivity` is OPTIONAL on the shared `Session`, so an ordering this
-        // pins cannot be read without it — and `toBeGreaterThanOrEqual(undefined)`
-        // is not an ordering assertion at all. `codex.ts` sets it from the
-        // rollout file's mtime on every row, so the precondition is asserted for
-        // the compiler instead of `!`-asserted away.
-        const previous = sessions[i - 1].lastActivity;
-        const current = sessions[i].lastActivity;
-        if (previous === undefined || current === undefined) throw new Error('unreachable: every codex session row carries lastActivity');
-        expect(previous).toBeGreaterThanOrEqual(current);
+        // `lastActivity` is required on the shared `Session` and every codex row
+        // sets it, so both reads below are numbers: the matcher compares two of
+        // them and cannot pass on `undefined`. A row without the field would not
+        // compile here.
+        expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
       }
     });
 

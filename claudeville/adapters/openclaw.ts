@@ -127,9 +127,9 @@ export class OpenClawAdapter implements AgentAdapter {
     if (!combined.ok) return combined;
     return {
       ok: true,
-      // `?? 0` because `AgentSessionSummary.lastActivity` is optional, exactly as
-      // in `collectFromAdapters`. Every openclaw row sets it to a number, so this
-      // only decides what an absent value sorts as, and the order is unchanged.
+      // `?? 0` is defensive, exactly as in `collectFromAdapters`.
+      // `lastActivity` is required on the shared `Session` and every openclaw row
+      // sets it to a number, so this never fires and the order is unchanged.
       sessions: combined.sessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0)),
       warnings: combined.warnings,
     };

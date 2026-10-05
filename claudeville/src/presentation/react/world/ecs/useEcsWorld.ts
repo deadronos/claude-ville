@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { createWorld, ECSWorld } from './world.js';
+import { createWorld, ECSWorld, type Entity } from './world.js';
 import { isoToScreen } from '../utils.js';
 
 export interface Agent {
@@ -30,8 +30,11 @@ function agentToScreen(agent: Agent): { x: number; y: number } {
 
 export function useEcsWorld(agents: Agent[], buildings: Building[]) {
   const worldRef = useRef<ECSWorld | null>(null);
-  const agentMapRef = useRef<Map<string, any>>(new Map());
-  const buildingMapRef = useRef<Map<string, any>>(new Map());
+  // `Entity`, not `any`: these maps hand out the objects the systems read, so
+  // typing them is what makes the writes below (`entity.moving = true` and the
+  // rest) checked against the component fields rather than waved through.
+  const agentMapRef = useRef<Map<string, Entity>>(new Map());
+  const buildingMapRef = useRef<Map<string, Entity>>(new Map());
 
   if (!worldRef.current) {
     worldRef.current = createWorld();
@@ -74,7 +77,7 @@ export function useEcsWorld(agents: Agent[], buildings: Building[]) {
 
   // Remove stale agents
   for (const entity of [...world.entities]) {
-    if (entity.Agent && !agents.some((a: any) => a.id === entity.id)) {
+    if (entity.Agent && !agents.some((a) => a.id === entity.id)) {
       world.removeEntity(entity);
     }
   }
@@ -99,7 +102,7 @@ export function useEcsWorld(agents: Agent[], buildings: Building[]) {
 
   // Remove stale buildings
   for (const entity of [...world.entities]) {
-    if (entity.isBuilding && !buildings.some((b: any) => b.type === entity.buildingType)) {
+    if (entity.isBuilding && !buildings.some((b) => b.type === entity.buildingType)) {
       world.removeEntity(entity);
     }
   }

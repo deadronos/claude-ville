@@ -11,7 +11,22 @@ export interface Session {
   project?: string | null;
   model?: string;
   status?: string;
-  lastActivity?: number;
+  /**
+   * Required, not optional: all nine adapters set it on every row (from a file
+   * mtime, a SQLite column, or a history timestamp), and `AgentSessionSummary` —
+   * the only consumer of this interface, via `extends Omit<Session, 'displayName'>`
+   * — is the adapter's output type. Optionality bought nothing and cost twice:
+   * every ordering assertion over a session list compared
+   * `sessions[i].lastActivity` against its neighbour, and `toBeGreaterThanOrEqual`
+   * accepts `any`, so a row without the field made the comparison vacuous rather
+   * than failing.
+   *
+   * Untrusted input is unaffected. The hub's WebSocket frames are not read as
+   * `Session` at all: `hubreceiver/state.ts` parses them into its own
+   * `NormalizedSnapshot`, whose `sessions` are `AnyRecord`, and keeps its
+   * `Number(session.lastActivity || 0)` coercions for exactly that reason.
+   */
+  lastActivity: number;
   tokenUsage?: { input?: number; output?: number; totalInput?: number; totalOutput?: number };
   tokens?: { input: number; output: number };
   estimatedCost?: number;
