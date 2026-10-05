@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { detailOf, sessionsOf } from './fixtureHelpers';
 
-type LoadedAdapter = InstanceType<typeof import('./vscode.ts').VSCodeAdapter>;
+type LoadedAdapter = InstanceType<typeof import('./vscode.js').VSCodeAdapter>;
 
 function makeTmpRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'claudeville-vscode-real-'));
@@ -68,7 +68,7 @@ async function loadAdapter(vscodeUserDir: string, insidersUserDir: string, activ
   vi.stubEnv('VSCODE_INSIDERS_USER_DATA_DIR', insidersUserDir);
   vi.stubEnv('VSCODE_ACTIVE_WINDOW_MS', activeWindowMs);
 
-  const mod = await import('./vscode.ts');
+  const mod = await import('./vscode.js');
   return new mod.VSCodeAdapter();
 }
 
