@@ -34,7 +34,7 @@ export type Entity = {
   chatting?: boolean;
   isAgent?: boolean;
   isBuilding?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type Query = {
