@@ -43,6 +43,40 @@ export type Query = {
   entities: Entity[];
 };
 
+/**
+ * The render contract `useEcsWorld`'s agent path establishes unconditionally
+ * (`useEcsWorld.ts`: `id`/:55, `name`/:56, `status`/:57, `bubbleText`/:58,
+ * `appearance`/:59, `Agent`/:60). Everything else on `Entity` (`x`, `y`,
+ * `targetX`, `targetY`, `moving`, `walkFrame`, `facingLeft`, `z`, `chatting`, …)
+ * stays optional: positions are set only on first creation, motion fields are
+ * written later by the movement system, and `createEntity` starts from `{}`.
+ *
+ * Owned here (next to `Entity`) so both `useEcsWorld` and `AgentActor` share
+ * one declaration: `world.ts` imports only the `Appearance` type, so neither
+ * consumer can create an import cycle by depending on it.
+ */
+export type AgentEntity = Entity & {
+  Agent: true;
+  id: string;
+  name: string;
+  status: string;
+  bubbleText: string | null;
+  appearance: Appearance;
+};
+
+/** Proves what `useEcsWorld` establishes; checks every `AgentEntity` field. */
+export function isAgentEntity(entity: Entity): entity is AgentEntity {
+  return (
+    entity.Agent === true &&
+    typeof entity.id === 'string' &&
+    typeof entity.name === 'string' &&
+    typeof entity.status === 'string' &&
+    (entity.bubbleText === null || typeof entity.bubbleText === 'string') &&
+    typeof entity.appearance === 'object' &&
+    entity.appearance !== null
+  );
+}
+
 const IS_PROXY = Symbol('is_proxy');
 
 export class ECSWorld {
