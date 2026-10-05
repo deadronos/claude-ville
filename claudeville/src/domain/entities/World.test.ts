@@ -1,17 +1,36 @@
 import { describe, it, expect, vi } from 'vitest';
 import { World } from './World.js';
 import { eventBus } from '../events/DomainEvent.js';
+import { Agent } from './Agent.js';
+import { Building } from './Building.js';
 
-// Helper to create a minimal mock agent
-function makeAgent(overrides: Record<string, any> = {}) {
-  return {
-    id: 'agent-1',
-    status: 'idle',
-    tokens: { input: 0, output: 0 },
-    cost: 0,
-    update: vi.fn(function (data) { Object.assign(this, data); }),
-    ...overrides,
-  };
+/**
+ * A real Agent: `World.addAgent` takes an `Agent`, and `Agent`'s constructor
+ * only requires `id`, so the defaults cover every other field. `overrides` is
+ * typed from the shipped constructor signature rather than a local shape, so a
+ * param rename or a widened `AgentParams` field still typechecks here.
+ *
+ * `update` is replaced with a mock that still applies the patch, exactly as the
+ * real method does (`Object.assign(this, data)`), so `World.updateAgent` keeps
+ * mutating the agent while the call can be asserted. The previous helper passed
+ * `cost: 0`, which is not an Agent field at all - `cost` is a getter derived
+ * from `model` and `tokens`, it is not a constructor param and has no setter -
+ * and no assertion read it.
+ */
+function makeAgent(overrides: Partial<ConstructorParameters<typeof Agent>[0]> = {}): Agent {
+  const agent = new Agent({ id: 'agent-1', status: 'idle', tokens: { input: 0, output: 0 }, ...overrides });
+  agent.update = vi.fn((data: Partial<Agent>) => {
+    Object.assign(agent, data);
+  });
+  return agent;
+}
+
+/**
+ * `Building`'s constructor requires every field. The old literal
+ * `{ type, x, y }` was not a Building: a Building stores a `position`, not `x`/`y`.
+ */
+function makeBuilding(type: string, label: string): Building {
+  return new Building({ type, x: 0, y: 0, width: 4, height: 4, label, icon: type, description: `${type} building` });
 }
 
 describe('World', () => {
@@ -100,16 +119,20 @@ describe('World', () => {
   describe('addBuilding', () => {
     it('adds building keyed by type', () => {
       const world = new World();
-      const building = { type: 'forge', x: 10, y: 10 };
+      const building = new Building({ type: 'forge', x: 10, y: 10, width: 4, height: 4, label: 'Forge', icon: 'anvil', description: 'forges code' });
       world.addBuilding(building);
       expect(world.buildings.get('forge')).toBe(building);
     });
 
     it('overwrites building of same type', () => {
       const world = new World();
-      world.addBuilding({ type: 'mine', level: 1 });
-      world.addBuilding({ type: 'mine', level: 2 });
-      expect((world.buildings.get('mine') as any).level).toBe(2);
+      // The old literals carried a `level` property that `Building` does not
+      // have, and the assertion read it back through `as any`, so it verified
+      // nothing about the stored type. `label` is a real Building field and
+      // carries the same "second add wins" meaning.
+      world.addBuilding(makeBuilding('mine', 'Mine Lv1'));
+      world.addBuilding(makeBuilding('mine', 'Mine Lv2'));
+      expect(world.buildings.get('mine')?.label).toBe('Mine Lv2');
     });
   });
 
@@ -122,10 +145,10 @@ describe('World', () => {
 
     it('counts agents by status', () => {
       const world = new World();
-      world.agents.set('w1', { status: 'working', tokens: { input: 0, output: 0 }, cost: 0 });
-      world.agents.set('w2', { status: 'working', tokens: { input: 0, output: 0 }, cost: 0 });
-      world.agents.set('i1', { status: 'idle',    tokens: { input: 0, output: 0 }, cost: 0 });
-      world.agents.set('p1', { status: 'waiting', tokens: { input: 0, output: 0 }, cost: 0 });
+      world.agents.set('w1', makeAgent({ id: 'w1', status: 'working' }));
+      world.agents.set('w2', makeAgent({ id: 'w2', status: 'working' }));
+      world.agents.set('i1', makeAgent({ id: 'i1', status: 'idle' }));
+      world.agents.set('p1', makeAgent({ id: 'p1', status: 'waiting' }));
       const stats = world.getStats();
       expect(stats.working).toBe(2);
       expect(stats.idle).toBe(1);
@@ -135,8 +158,8 @@ describe('World', () => {
 
     it('sums token counts across agents', () => {
       const world = new World();
-      world.agents.set('a1', { status: 'idle', tokens: { input: 1000, output: 500 }, cost: 0 });
-      world.agents.set('a2', { status: 'idle', tokens: { input: 2000, output: 1000 }, cost: 0 });
+      world.agents.set('a1', makeAgent({ id: 'a1', status: 'idle', tokens: { input: 1000, output: 500 } }));
+      world.agents.set('a2', makeAgent({ id: 'a2', status: 'idle', tokens: { input: 2000, output: 1000 } }));
       // getStats doesn't return tokens directly, just verify it doesn't throw
       expect(() => world.getStats()).not.toThrow();
     });
