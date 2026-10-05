@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CodexAdapter } from './codex';
 import { detailOf, sessionsOf } from './fixtureHelpers';
 // Type-only: the readers this file re-declares inline now live in `codex.ts` and
@@ -543,15 +543,57 @@ describe('codex adapter', () => {
       }
     });
 
+    // Temp-tree ordering case (not the real $HOME): three rollouts with known
+    // mtimes — names ascend oldest→newest, so readdir order is the exact
+    // reverse of what is asserted. Reversing codex.ts's comparator turns this
+    // red; against the real $HOME the loop below could pass on zero rows.
     it('sessions are sorted by lastActivity descending', async () => {
-      const adapter = new CodexAdapter();
-      const sessions = await sessionsOf(adapter, 120000);
-      for (let i = 1; i < sessions.length; i++) {
-        // `lastActivity` is required on the shared `Session` and every codex row
-        // sets it, so both reads below are numbers: the matcher compares two of
-        // them and cannot pass on `undefined`. A row without the field would not
-        // compile here.
-        expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
+      const originalHome = process.env.HOME;
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-order-'));
+      const now = Date.now();
+      const day = new Date(now);
+      const yyyy = String(day.getFullYear());
+      const mm = String(day.getMonth() + 1).padStart(2, '0');
+      const dd = String(day.getDate()).padStart(2, '0');
+      const names = ['order-01', 'order-02', 'order-03'];
+      for (let i = 0; i < names.length; i++) {
+        const dir = path.join(tmp, '.codex', 'sessions', yyyy, mm, dd);
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, `rollout-${names[i]}.jsonl`);
+        fs.writeFileSync(
+          file,
+          JSON.stringify({ type: 'session_meta', payload: { id: names[i], cwd: `/tmp/codex-${names[i]}`, model: 'gpt-5-codex' } }) + '\n',
+        );
+        const stamp = new Date(now - (names.length - i) * 60_000);
+        fs.utimesSync(file, stamp, stamp);
+      }
+      try {
+        process.env.HOME = tmp;
+        vi.resetModules();
+        const { CodexAdapter: OrderedAdapter } = await import('./codex');
+        const adapter = new OrderedAdapter();
+        expect(adapter.isAvailable()).toBe(true);
+        const sessions = await sessionsOf(adapter, 60 * 60 * 1000);
+        // Ordering is meaningless below 2: without this, an empty listing
+        // passes the loop below without executing it.
+        expect(sessions.length).toBeGreaterThan(1);
+        expect(sessions.map((s) => s.sessionId)).toEqual([
+          'codex-order-03',
+          'codex-order-02',
+          'codex-order-01',
+        ]);
+        for (let i = 1; i < sessions.length; i++) {
+          // `lastActivity` is required on the shared `Session` and every codex row
+          // sets it, so both reads below are numbers: the matcher compares two of
+          // them and cannot pass on `undefined`. A row without the field would not
+          // compile here.
+          expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
+        }
+      } finally {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+        vi.resetModules();
+        fs.rmSync(tmp, { recursive: true, force: true });
       }
     });
 

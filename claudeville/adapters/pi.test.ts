@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { PiAdapter, parseSession, resolveProjectPath } from './pi';
 import { detailOf, sessionsOf } from './fixtureHelpers';
 // Type-only: the readers this file re-declares inline now live in `pi.ts` and the
@@ -439,10 +439,45 @@ describe('pi adapter', () => {
       }
     });
 
+    // Temp-tree ordering case (not the real $HOME): three sessions with known
+    // mtimes — names ascend oldest→newest, so readdir order is the exact
+    // reverse of what is asserted. Reversing pi.ts's comparator turns this
+    // red; against the real $HOME the loop below could pass on zero rows.
     it('sessions are sorted by lastActivity descending when available', async () => {
-      const adapter = new PiAdapter();
-      const sessions = await sessionsOf(adapter, 120000);
-      if (sessions.length > 1) {
+      const originalHome = process.env.HOME;
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-order-'));
+      const now = Date.now();
+      const projects = ['proj-order-01', 'proj-order-02', 'proj-order-03'];
+      const files = ['order-01.jsonl', 'order-02.jsonl', 'order-03.jsonl'];
+      for (let i = 0; i < projects.length; i++) {
+        const dir = path.join(tmp, '.pi', 'agent', 'sessions', projects[i]);
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, files[i]);
+        fs.writeFileSync(
+          file,
+          [
+            JSON.stringify({ type: 'session', id: files[i], cwd: `/tmp/pi-${projects[i]}`, timestamp: new Date(now - 3600_000).toISOString() }),
+            JSON.stringify({ type: 'model_change', provider: 'anthropic', modelId: 'claude-sonnet-4', timestamp: new Date(now - 3600_000).toISOString() }),
+          ].join('\n') + '\n',
+        );
+        const stamp = new Date(now - (projects.length - i) * 60_000);
+        fs.utimesSync(file, stamp, stamp);
+      }
+      try {
+        process.env.HOME = tmp;
+        vi.resetModules();
+        const { PiAdapter: OrderedAdapter } = await import('./pi');
+        const adapter = new OrderedAdapter();
+        expect(adapter.isAvailable()).toBe(true);
+        const sessions = await sessionsOf(adapter, 60 * 60 * 1000);
+        // Ordering is meaningless below 2: without this, an empty listing
+        // passes the loop below without executing it.
+        expect(sessions.length).toBeGreaterThan(1);
+        expect(sessions.map((s) => s.sessionId)).toEqual([
+          'pi:proj-order-03:order-03',
+          'pi:proj-order-02:order-02',
+          'pi:proj-order-01:order-01',
+        ]);
         for (let i = 1; i < sessions.length; i++) {
           // `lastActivity` is required on the shared `Session` and every pi row
           // sets it, so both reads below are numbers: the matcher compares two of
@@ -450,6 +485,11 @@ describe('pi adapter', () => {
           // compile here.
           expect(sessions[i - 1].lastActivity).toBeGreaterThanOrEqual(sessions[i].lastActivity);
         }
+      } finally {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+        vi.resetModules();
+        fs.rmSync(tmp, { recursive: true, force: true });
       }
     });
 
