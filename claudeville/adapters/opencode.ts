@@ -8,8 +8,8 @@ import path from 'path';
 
 import type { AdapterDetailResult, AdapterErrorCode, AdapterSessionsResult, AdapterWarning, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
-import type { DbMessage } from './opencode-readers.js';
-import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession } from './opencode-readers.js';
+import type { DbMessage, DbMessageRow } from './opencode-readers.js';
+import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession, buildDbMessages, dbMessagesSql, DB_SESSIONS_SQL } from './opencode-readers.js';
 import { closeSqlite, hasTableOrNull, openReadonlySqlite, queryAll, withReadonlySqlite } from './sqlite-utils.js';
 import { combineSources, degradedWarnings, detailFailed, detailOk, sourceDetail, type SourceListing } from './sources.js';
 import type { Dirent } from './scan-utils.js';
@@ -105,89 +105,8 @@ function isReadableDir(dir: string): boolean {
   }
 }
 
-/**
- * The per-session message read.
- *
- * `queryDb` answers `[]` for "this session has no messages" and for "the query
- * raised" alike, which cost this one session its whole detail. That swallow is
- * load-bearing containment — the call sits inside a `.map()`, so a throw would
- * abort the map and take EVERY session with it (#156) — so it stays, and the
- * difference is reported instead of collapsed. Same shape as `hermes`'s
- * `readSessionMessages`, and for the same reason.
- */
-type DbMessageRow = {
-  message_id: string;
-  message_time_created: number;
-  message_data: string;
-  part_id: string | null;
-  part_time_created: number | null;
-  part_data: string | null;
-};
-
-/**
- * The one message query, for both readers. It is a FUNCTION because the `LIMIT ?`
- * differs between them — 30 for the listing's summary, 60 for the detail — and two
- * copies of this literal are two copies of a query that #156 already had to be
- * reasoned about carefully.
- */
-function dbMessagesSql(limit: number): string {
-  return `SELECT
-       recent.id AS message_id,
-       recent.time_created AS message_time_created,
-       recent.data AS message_data,
-       p.id AS part_id,
-       p.time_created AS part_time_created,
-       p.data AS part_data
-     FROM (
-       SELECT id, time_created, data
-       FROM message
-       WHERE session_id = ?
-       ORDER BY time_created DESC
-       LIMIT ${limit}
-     ) recent
-     LEFT JOIN part p ON p.message_id = recent.id
-     ORDER BY recent.time_created ASC, p.time_created ASC`;
-}
-
 async function getDbMessages(sessionId: string, limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
   return buildDbMessages(await queryDb<DbMessageRow>(dbMessagesSql(limit), [sessionId]));
-}
-
-/** The rows to messages, shared by both readers so the per-row tolerance cannot drift. */
-function buildDbMessages(rows: DbMessageRow[]): { messages: DbMessage[]; degraded: boolean } {
-  const messageMap = new Map<string, DbMessage>();
-  // A `message.data` or `part.data` column that does not parse arrives as its raw
-  // string. That is audit instance 1's condition and #156's fix: the bad ROW
-  // degrades, the listing does not. It is counted, not thrown.
-  let unparsedRows = 0;
-  for (const row of rows) {
-    let message = messageMap.get(row.message_id);
-    if (!message) {
-      const messageData = normalizeDbJson(row.message_data) as any;
-      if (typeof messageData === 'string') unparsedRows += 1;
-      message = {
-        id: row.message_id,
-        role: messageData?.role || 'assistant',
-        modelID: messageData?.modelID || null,
-        providerID: messageData?.providerID || null,
-        time_created: row.message_time_created,
-        data: messageData,
-        parts: [],
-      };
-      messageMap.set(row.message_id, message);
-    }
-
-    if (row.part_id && row.part_data) {
-      if (typeof normalizeDbJson(row.part_data) === 'string') unparsedRows += 1;
-      message.parts.push({
-        id: row.part_id,
-        time_created: row.part_time_created || row.message_time_created,
-        data: normalizeDbJson(row.part_data),
-      });
-    }
-  }
-
-  return { messages: Array.from(messageMap.values()), degraded: unparsedRows > 0 };
 }
 
 /**
@@ -315,38 +234,6 @@ function readDbListing(activeThresholdMs: number): DbSource {
     closeSqlite(db);
   }
 }
-
-/**
- * The session query, as a named constant so the classified reader above can hand
- * it straight to `db.prepare`.
- *
- * Deliberately NOT projected from `tableColumns`, unlike `hermes`'s and
- * `openclaw`'s: here a drifted schema made SQLite raise `no such column`, and the
- * pre-contract behaviour of that raise was `[]` and then the legacy-file fallback.
- * Projecting would replace that fallback with a partial listing — a better answer,
- * but a behaviour change this refactor must not make. So the raise is classified
- * (`unknown`) and the fallback still runs.
- */
-const DB_SESSIONS_SQL = `
-  SELECT
-    s.id,
-    s.project_id,
-    s.parent_id,
-    s.directory,
-    s.title,
-    s.time_created,
-    s.time_updated,
-    (
-      SELECT m.data
-      FROM message m
-      WHERE m.session_id = s.id
-      ORDER BY m.time_created DESC
-      LIMIT 1
-    ) AS message_data
-  FROM session s
-  WHERE s.time_updated >= ?
-    AND s.time_archived IS NULL
-  ORDER BY s.time_updated DESC`;
 
 function resolveMessageFile(projectKey: string, sessionId: string) {
   return path.join(MESSAGE_DIR, projectKey, `${sessionId}.json`);
