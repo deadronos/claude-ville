@@ -457,6 +457,25 @@ Changing that type is a decision about the collector's contract, not this one.
 All nine adapters are converted. `unwrapSessions` — the array branch that existed
 only while eight of them were unconverted — is gone.
 
+### OpenCode's two session schemas
+
+OpenCode 2.x added a second session schema to `opencode.db` — `session_v2` plus its
+event log `session_message` — alongside the original `session` / `message` / `part`.
+A new session is written only to the v2 tables; a session migrated or continued from
+v1 appears in both, and there `session_message` is a superset of the migrated rows.
+
+The adapter unions the two listings, de-duped by `id` with `session_v2` winning, and
+routes each session's message read to the store that holds its rows —
+`session_message` for v2, `message`/`part` for v1 — falling back to v1 when a v2
+session's event log is still empty mid-migration. v2 carries `model` and the token
+totals as first-class `session_v2` columns, so a v2 detail's `tokenUsage` comes from
+the session row rather than the message fold, and a NULL/non-JSON `model` falls back
+to the literal `opencode` rather than failing the row.
+
+Before this, v2-only sessions were silently absent: the listing gate asked only for a
+`session` table, so a v2-only install read as `absent` and a mixed install dropped
+every session newer than the migration — `ok: true`, no warning, no rows.
+
 ### What each adapter classifies
 
 Every adapter's answer is `combineSources` over its own read sources. What varies
@@ -470,7 +489,7 @@ which is the only judgement in the whole contract:
 | `copilot` | `session-state/` unlistable (one source, no fallback) | — see below |
 | `gemini` | `tmp/` unlistable | one project's `chats/` |
 | `openclaw` | **`agents/` unlistable** — no database and no legacy file could be read | one agent's database; one agent's `sessions/` directory |
-| `opencode` | `opencode.db` unreadable **and** no legacy `storage/session` file | one `message.data` / `part.data` column that will not parse (#156); one session file that will not stat |
+| `opencode` | `opencode.db` unreadable **and** no legacy `storage/session` file | one `message.data` / `part.data` / `session_message.data` column that will not parse (#156); one session file that will not stat |
 | `pi` | `agent/sessions/` unlistable | one project directory |
 | `vscode` | every PRESENT `workspaceStorage` root unlistable | one storage root that is locked while another answered; one chat directory below one |
 | `hermes` | `state.db` unreadable **and** the legacy files unlistable | one agent-less store failure beside readable files (#157); one session's message query |
@@ -549,7 +568,7 @@ The per-adapter line, for the DETAIL path rather than the listing:
 | `pi` | `sessions/` unlistable | one project directory | a project directory whose `*.jsonl` is a directory (#144) |
 | `vscode` | every PRESENT `workspaceStorage` root unlistable | one locked channel beside an answered one; one chat directory | a root with no `workspaceStorage` at all |
 | `openclaw` | `agents/` unlistable; or a caller-named `.sqlite` that will not open / has no `transcript_events` | — | an id-only lookup whose agent database failed but whose legacy scan answered |
-| `opencode` | a caller-named `opencode-db:` whose store will not open, has no `message` table, or whose read raises | one `message.data` / `part.data` column that will not parse | a session whose resolved message file is absent |
+| `opencode` | a caller-named `opencode-db:` whose store will not open, has neither a `message` nor a `session_message` table, or whose read raises | one `message.data` / `part.data` / `session_message.data` column that will not parse | a session whose resolved message file is absent |
 | `hermes` | `state.db` will not open, is not a database, or has no `messages` table | one session's message query; one session row query | a `state.db` with no `sessions` table |
 
 The two lines that differ from the listing table are the caller-named ones. When the
@@ -874,12 +893,13 @@ Every production file passes today. The largest, in code-only lines:
 
 | File | code-only |
 | --- | --- |
+| `opencode-readers.ts` | 357 |
 | `agentSpriteRender.ts` | 356 |
 | `vscode.ts` | 354 |
 | `claude.ts` | 350 |
-| `opencode.ts` | 343 |
-| `hermes.ts` | 319 |
 | `codex.ts` | 323 |
+| `opencode.ts` | 322 |
+| `hermes.ts` | 319 |
 | `pi.ts` | 289 |
 | `copilot.ts` | 233 |
 
@@ -888,8 +908,14 @@ most, +42 code-only lines, for the classified `readDbMessages` and its `dbMessag
 / `buildDbMessages` split out of `getDbMessages`. That is the entry point owning the
 SQL, which is the same reasoning the `readAgentDirs` split above turned on — the
 question "which store, and which query, do I read?" belongs with the reader that asks
-it, and `opencode-readers.ts` has 27 code-only lines of headroom before this is worth
-reopening.
+it.
+
+The v2 work then moved the other way: the row-to-message shaping for BOTH stores
+(`buildDbMessages`, `buildV2Messages`, `normalizeV2Model`, the SQL text) sits in
+`opencode-readers.ts`, which is now the largest production file at 357 — the shaping
+is pure and belongs with the readers, while `opencode.ts` kept the DB execution and
+the union. Both stay under the 400 criterion, but `opencode-readers.ts` has little
+headroom left, so the next addition there is the one that reopens the split.
 
 Measured result across the six split adapters (total / code-only):
 
@@ -899,7 +925,7 @@ Measured result across the six split adapters (total / code-only):
 | `openclaw` | 619 / 486 | 257 / 175 | 266 / 200 | 375 / 223 | legacy-JSONL and SQLite-transcript readers, `toolBlockInfo`, `normalizeTokenUsage` |
 | `claude` | 626 / 486 | 437 / 350 | 269 / 188 | — | the whole pre-class block: `foldDetailEntry`, `foldNewestFirstDetail`, both detail readers, tool/message/token readers |
 | `hermes` | 517 / 420 | 496 / 323 | 274 / 224 | — | legacy transcript/metadata readers, `summarizeTool`/`summarizeMessage`, `dbRowToEntry`, `summarizeDbMessages` |
-| `opencode` | 470 / 417 | 430 / 343 | 213 / 186 | — | part/tool/message shaping, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
+| `opencode` | 470 / 417 | 487 / 322 | 465 / 357 | — | part/tool/message shaping for both stores (`buildDbMessages`, `buildV2Messages`, `normalizeV2Model`), the session/message SQL text, `extractDetail`, `extractDbDetail`, `normalizeDbJson` |
 | `gemini` | 473 / 324 | 282 / 195 | 234 / 152 | — | `readJsonFile`, `loadSessionMessages`, `parseSession`, tool/message readers, `getTokenUsage`, `TokenFold` |
 
 `openclaw` was the only `<name>.ts` that grew back over the criterion after its
