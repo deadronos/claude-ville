@@ -60,6 +60,25 @@ describe('buildV2Messages', () => {
     expect(messages[0].providerID).toBe('openai');
   });
 
+  // Tool detection must defer to `toolFromPart`, which already tolerates
+  // `tool-call` / `tool_use` beside v2's `tool` — a hardcoded `type === 'tool'`
+  // here would silently drop those shapes.
+  it('keep every tool shape toolFromPart accepts, not only type "tool"', () => {
+    const data = {
+      content: [
+        { type: 'tool-call', name: 'skill', state: { input: { name: 'x' } } },
+        { type: 'tool_use', name: 'read', state: { input: { filePath: '/a' } } },
+      ],
+    };
+    const { messages } = buildV2Messages([
+      { id: 'a2', type: 'assistant', time_created: 3, data: JSON.stringify(data) },
+    ]);
+    expect(messages[0].parts.map((part) => part.data)).toEqual([
+      { type: 'tool-call', name: 'skill', state: { input: { name: 'x' } } },
+      { type: 'tool_use', name: 'read', state: { input: { filePath: '/a' } } },
+    ]);
+  });
+
   it('degrades only the malformed row, keeping its siblings', () => {
     const good: V2MessageRow = { id: 'good', type: 'user', time_created: 1, data: JSON.stringify({ text: 'ok' }) };
     const bad: V2MessageRow = { id: 'bad', type: 'assistant', time_created: 2, data: 'not json' };

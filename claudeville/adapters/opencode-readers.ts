@@ -167,7 +167,11 @@ function buildV2Messages(rows: V2MessageRow[]): { messages: DbMessage[]; degrade
     let hasContentParts = false;
     if (Array.isArray(data?.content)) {
       data.content.forEach((item: any, index: number) => {
-        if (item?.type !== 'text' && item?.type !== 'tool') return;
+        // Tool detection is `toolFromPart`'s job — it already tolerates
+        // `tool-call` / `tool_use` beside v2's `tool`, so the shaper must not
+        // narrow it to one literal. Text stays `type === 'text'`, which is what
+        // drops `reasoning`.
+        if (item?.type !== 'text' && !toolFromPart(item)) return;
         hasContentParts = true;
         parts.push({ id: item.id || `${row.id}:${index}`, time_created: row.time_created, data: item });
       });
