@@ -174,11 +174,11 @@ Caveats for anyone converting an adapter:
       synchronously, so that listing is a `readdirSync` (`gemini.ts:152`); see the
       Compliance note below.
     - `opencode` **does** apply a threshold: `getSessionFiles(activeThresholdMs)`
-      (`opencode.ts:55`) stats each candidate and drops anything older
-      (`opencode.ts:61`), fed live from `getActiveSessions` (`opencode.ts:209`).
+      (`opencode.ts:76`) stats each candidate and drops anything older
+      (`opencode.ts:84`), fed live from `getActiveSessions` (`opencode.ts:348`).
       What does not fit is the *shape*, not the absence of a threshold —
       discovery and filtering are **two separate phases**. `collectJsonFiles`
-      (`opencode.ts:35`) is an unbounded recursive walk that never stats and
+      (`opencode.ts:44`) is an unbounded recursive walk that never stats and
       yields arbitrary `.json` paths at any depth; the stat runs afterwards as a
       second pass over that result. `collectScanByMtime` fuses readdir → stat →
       build across child *directories* in one pass, so it cannot express a
@@ -256,7 +256,7 @@ migrated install, which has none, reports an empty provider while holding six
 sessions.
 
 The house rule, which this was the last violation of, is: **select the raw column
-and parse it per row in JS.** `normalizeDbJson` (`opencode-readers.ts:77-84`,
+and parse it per row in JS.** `normalizeDbJson` (`opencode-readers.ts:255-262`,
 returning the raw string on a parse failure), `safeJsonParse`
 (`sqlite-utils.ts:147-154`, returning `null`) and `decodeEventRows` in
 `openclaw-readers.ts` all do this, and `getDbMessages` had always done it on the
@@ -903,12 +903,12 @@ Every production file passes today. The largest, in code-only lines:
 | `pi.ts` | 289 |
 | `copilot.ts` | 233 |
 
-The detail contract moved these without splitting anything: `opencode.ts` grew the
-most, +42 code-only lines, for the classified `readDbMessages` and its `dbMessagesSql`
-/ `buildDbMessages` split out of `getDbMessages`. That is the entry point owning the
-SQL, which is the same reasoning the `readAgentDirs` split above turned on — the
-question "which store, and which query, do I read?" belongs with the reader that asks
-it.
+The detail contract moved these without splitting anything: **before the v2 work**,
+`opencode.ts` had grown the most, +42 code-only lines, for the classified
+`readDbMessages` and its `dbMessagesSql` / `buildDbMessages` split out of
+`getDbMessages`. That is the entry point owning the SQL, which is the same reasoning
+the `readAgentDirs` split above turned on — the question "which store, and which
+query, do I read?" belongs with the reader that asks it.
 
 The v2 work then moved the other way: the row-to-message shaping for BOTH stores
 (`buildDbMessages`, `buildV2Messages`, `normalizeV2Model`, the SQL text) sits in
@@ -1009,7 +1009,7 @@ under `subagents/`), `claude.ts:201` (`*.jsonl` under a project),
 at the day level), `gemini.ts:152` (`session-*.json`/`.jsonl` in `chats/`),
 `openclaw-scan.ts:113` (`isPrimarySessionFile` in `sessions/`), `pi.ts:262` (`*.jsonl`
 in a project directory) and `vscode.ts:181` (`*.jsonl` in `transcripts/`).
-`hermes.ts:36-38` and `opencode.ts:37-41` always had the guard.
+`hermes.ts:36-38` and `opencode.ts:44-52` always had the guard.
 
 This is distinct from the `isDirectory()` filters on the directory-level fan-out
 (`claude.ts:109`/`:121`/`:190`, `openclaw-scan.ts:58` — now the single filter inside
