@@ -8,9 +8,10 @@ import path from 'path';
 
 import type { AdapterDetailResult, AdapterErrorCode, AdapterSessionsResult, AdapterWarning, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
-import type { DbMessage } from './opencode-readers.js';
-import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession } from './opencode-readers.js';
-import { closeSqlite, hasTableOrNull, openReadonlySqlite, queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import type { DbMessage, DbMessageRow, DbSessionV2, V2MessageRow } from './opencode-readers.js';
+import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession, buildDbMessages, dbMessagesSql, DB_SESSIONS_SQL, buildV2Messages, v2MessagesSql, v2TokensSql, DB_SESSIONS_V2_SQL, normalizeV2Model } from './opencode-readers.js';
+import { closeSqlite, hasTable, hasTableOrNull, openReadonlySqlite, queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import type { SqliteDb } from './sqlite-utils.js';
 import { combineSources, degradedWarnings, detailFailed, detailOk, sourceDetail, type SourceListing } from './sources.js';
 import type { Dirent } from './scan-utils.js';
 
@@ -32,6 +33,13 @@ type DbSession = {
   modelID?: string | null;
   providerID?: string | null;
 };
+
+/**
+ * A DB session tagged with the store its MESSAGES live in — v1's `message`/`part`
+ * or v2's `session_message`. An id present in both `session` and `session_v2`
+ * resolves to `v2`, so the message read and the de-dupe agree.
+ */
+type ListedDbSession = DbSession & { store: 'v1' | 'v2' };
 
 async function collectJsonFiles(root: string): Promise<string[]> {
   try {
@@ -105,89 +113,16 @@ function isReadableDir(dir: string): boolean {
   }
 }
 
-/**
- * The per-session message read.
- *
- * `queryDb` answers `[]` for "this session has no messages" and for "the query
- * raised" alike, which cost this one session its whole detail. That swallow is
- * load-bearing containment — the call sits inside a `.map()`, so a throw would
- * abort the map and take EVERY session with it (#156) — so it stays, and the
- * difference is reported instead of collapsed. Same shape as `hermes`'s
- * `readSessionMessages`, and for the same reason.
- */
-type DbMessageRow = {
-  message_id: string;
-  message_time_created: number;
-  message_data: string;
-  part_id: string | null;
-  part_time_created: number | null;
-  part_data: string | null;
-};
-
-/**
- * The one message query, for both readers. It is a FUNCTION because the `LIMIT ?`
- * differs between them — 30 for the listing's summary, 60 for the detail — and two
- * copies of this literal are two copies of a query that #156 already had to be
- * reasoned about carefully.
- */
-function dbMessagesSql(limit: number): string {
-  return `SELECT
-       recent.id AS message_id,
-       recent.time_created AS message_time_created,
-       recent.data AS message_data,
-       p.id AS part_id,
-       p.time_created AS part_time_created,
-       p.data AS part_data
-     FROM (
-       SELECT id, time_created, data
-       FROM message
-       WHERE session_id = ?
-       ORDER BY time_created DESC
-       LIMIT ${limit}
-     ) recent
-     LEFT JOIN part p ON p.message_id = recent.id
-     ORDER BY recent.time_created ASC, p.time_created ASC`;
-}
-
-async function getDbMessages(sessionId: string, limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
-  return buildDbMessages(await queryDb<DbMessageRow>(dbMessagesSql(limit), [sessionId]));
-}
-
-/** The rows to messages, shared by both readers so the per-row tolerance cannot drift. */
-function buildDbMessages(rows: DbMessageRow[]): { messages: DbMessage[]; degraded: boolean } {
-  const messageMap = new Map<string, DbMessage>();
-  // A `message.data` or `part.data` column that does not parse arrives as its raw
-  // string. That is audit instance 1's condition and #156's fix: the bad ROW
-  // degrades, the listing does not. It is counted, not thrown.
-  let unparsedRows = 0;
-  for (const row of rows) {
-    let message = messageMap.get(row.message_id);
-    if (!message) {
-      const messageData = normalizeDbJson(row.message_data) as any;
-      if (typeof messageData === 'string') unparsedRows += 1;
-      message = {
-        id: row.message_id,
-        role: messageData?.role || 'assistant',
-        modelID: messageData?.modelID || null,
-        providerID: messageData?.providerID || null,
-        time_created: row.message_time_created,
-        data: messageData,
-        parts: [],
-      };
-      messageMap.set(row.message_id, message);
-    }
-
-    if (row.part_id && row.part_data) {
-      if (typeof normalizeDbJson(row.part_data) === 'string') unparsedRows += 1;
-      message.parts.push({
-        id: row.part_id,
-        time_created: row.part_time_created || row.message_time_created,
-        data: normalizeDbJson(row.part_data),
-      });
-    }
+async function getDbMessages(sessionId: string, store: 'v1' | 'v2', limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
+  if (store === 'v2') {
+    const rows = await queryDb<V2MessageRow>(v2MessagesSql(limit), [sessionId]);
+    // An EMPTY event log is data, not a verdict: a session mid-migration still has
+    // its only copy in `message`/`part`, so fall through rather than show blank.
+    // `v2MessagesSql` takes the newest N by `seq DESC`; `extractDetail` walks
+    // forward, so flip to chronological here.
+    if (rows.length > 0) return buildV2Messages(rows.reverse());
   }
-
-  return { messages: Array.from(messageMap.values()), degraded: unparsedRows > 0 };
+  return buildDbMessages(await queryDb<DbMessageRow>(dbMessagesSql(limit), [sessionId]));
 }
 
 /**
@@ -203,8 +138,31 @@ function buildDbMessages(rows: DbMessageRow[]): { messages: DbMessage[]; degrade
  */
 type DbMessagesRead =
   | { kind: 'absent' }
-  | { kind: 'messages'; messages: DbMessage[]; degraded: boolean }
+  | { kind: 'messages'; messages: DbMessage[]; degraded: boolean; tokenUsage?: { input: number; output: number } | null }
   | { kind: 'failed'; code: AdapterErrorCode; detail: string };
+
+/**
+ * Which store a session's messages live in. The detail path is handed an id alone
+ * (`opencode-db:<id>`), so — unlike the listing — it has no `store` tag to read and
+ * probes here instead. v2 wins when both hold data, matching the listing's de-dupe.
+ */
+function dbSessionStore(db: SqliteDb, sessionId: string): 'v1' | 'v2' {
+  if (hasTable(db, 'session_v2') && db.prepare('SELECT 1 FROM session_v2 WHERE id = ? LIMIT 1').get(sessionId)) return 'v2';
+  if (hasTable(db, 'session_message') && db.prepare('SELECT 1 FROM session_message WHERE session_id = ? LIMIT 1').get(sessionId)) return 'v2';
+  return 'v1';
+}
+
+/**
+ * The v2 session token totals, or null when both are zero — the same zero-check
+ * the v1 fold applies. A `session_message`-only partial store has no `session_v2`
+ * table to ask, so that is `null` rather than a raise.
+ */
+function readV2TokenUsage(db: SqliteDb, sessionId: string): { input: number; output: number } | null {
+  if (!hasTable(db, 'session_v2')) return null;
+  const row = db.prepare(v2TokensSql()).get(sessionId) as { tokens_input: number; tokens_output: number } | undefined;
+  if (!row || (!row.tokens_input && !row.tokens_output)) return null;
+  return { input: row.tokens_input, output: row.tokens_output };
+}
 
 function readDbMessages(sessionId: string, limit = 30): DbMessagesRead {
   if (!fs.existsSync(DB_FILE)) return { kind: 'absent' };
@@ -214,14 +172,33 @@ function readDbMessages(sessionId: string, limit = 30): DbMessagesRead {
 
   try {
     const hasMessage = hasTableOrNull(db, 'message');
-    if (hasMessage === null) {
+    const hasSessionMessage = hasTableOrNull(db, 'session_message');
+    if (hasMessage === null || hasSessionMessage === null) {
       return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db is not a readable database', OPENCODE_DIR) };
     }
-    if (!hasMessage) {
+    // EITHER store answers this id: a v2-only install has no `message` table, and a
+    // pre-v2 install has no `session_message`.
+    if (!hasMessage && !hasSessionMessage) {
       return { kind: 'failed', code: 'schema-incompatible', detail: sourceDetail('opencode.db has no message table', OPENCODE_DIR) };
     }
 
     try {
+      // The v2 read is gated on `session_message` EXISTING, not just on the store
+      // being v2: a partial store can have a `session_v2` row with no event-log
+      // table, and preparing against it would raise into `unknown`.
+      if (hasSessionMessage && dbSessionStore(db, sessionId) === 'v2') {
+        const rows = (db.prepare(v2MessagesSql(limit)).all(sessionId) as V2MessageRow[]).reverse();
+        const tokenUsage = readV2TokenUsage(db, sessionId);
+        if (rows.length > 0) return { kind: 'messages', ...buildV2Messages(rows), tokenUsage };
+        // Empty v2 log. A v1 `message` table, if present, is still the only copy
+        // mid-migration — keep the v2 token totals with it — and with none answer
+        // the empty detail rather than let a missing-table query raise.
+        if (!hasMessage) return { kind: 'messages', messages: [], degraded: false, tokenUsage };
+        return { kind: 'messages', ...buildDbMessages(db.prepare(dbMessagesSql(limit)).all(sessionId) as DbMessageRow[]), tokenUsage };
+      }
+      // No `message` table (a v2-only or partial store): the v2 read above either
+      // answered or the log is empty; there is nothing v1 to fall back to.
+      if (!hasMessage) return { kind: 'messages', messages: [], degraded: false, tokenUsage: readV2TokenUsage(db, sessionId) };
       return { kind: 'messages', ...buildDbMessages(db.prepare(dbMessagesSql(limit)).all(sessionId) as DbMessageRow[]) };
     } catch (err) {
       debugAdapterError('opencode', 'readDbMessages rows', err, DB_FILE);
@@ -241,7 +218,7 @@ type DbSessionRow = DbSession & { message_data: string | null };
  */
 type DbSource =
   | { kind: 'absent' }
-  | { kind: 'rows'; sessions: DbSession[]; warnings: AdapterWarning[] }
+  | { kind: 'rows'; sessions: ListedDbSession[]; warnings: AdapterWarning[] }
   | { kind: 'failed'; code: AdapterErrorCode; detail: string };
 
 /**
@@ -260,9 +237,13 @@ type DbSource =
  * * |---|---|
  * * | no `opencode.db` | `absent` |
  * * | will not open, or `sqlite_master` will not answer | `store-unreadable` |
- * * | no `session` table | `absent` — a database from a different tool |
+ * * | neither `session` nor `session_v2` | `absent` — a database from a different tool |
  * * | the query planned and the READ raised | `unknown` |
  * * | one session's message column would not parse | a `warning`, never a failure |
+ *
+ * v1 (`session`) and v2 (`session_v2`) rows are merged here, de-duped by id with
+ * v2 winning, because OpenCode 2.x wrote new sessions to `session_v2` while older
+ * installs (and migrated sessions) live in `session`.
  */
 function readDbListing(activeThresholdMs: number): DbSource {
   const absent: DbSource = { kind: 'absent' };
@@ -272,30 +253,63 @@ function readDbListing(activeThresholdMs: number): DbSource {
   if (!db) return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db would not open', OPENCODE_DIR) };
 
   try {
-    const hasSession = hasTableOrNull(db, 'session');
-    if (hasSession === null) {
+    const hasV1 = hasTableOrNull(db, 'session');
+    const hasV2 = hasTableOrNull(db, 'session_v2');
+    if (hasV1 === null || hasV2 === null) {
       return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db is not a readable database', OPENCODE_DIR) };
     }
-    if (!hasSession) return absent;
+    // Neither table is a database from a different tool; EITHER is this tool's.
+    if (!hasV1 && !hasV2) return absent;
 
-    // The latest message's `data` is selected RAW and parsed per row below. It
-    // must not be projected with `json_extract(m.data, '$.modelID')`: SQLite
-    // RAISES `malformed JSON` on a column that does not parse (it does not answer
-    // NULL), `queryAll` swallowed that into `[]`, and one malformed row then
-    // removed EVERY session from the listing rather than its own (#156).
-    // `normalizeDbJson` is what the sibling `getDbMessages` above already uses on
-    // the same column.
-    let rows: DbSessionRow[];
-    try {
-      rows = db.prepare(DB_SESSIONS_SQL).all(String(Date.now() - activeThresholdMs)) as DbSessionRow[];
-    } catch (err) {
-      debugAdapterError('opencode', 'getDbSessions rows', err, DB_FILE);
-      return { kind: 'failed', code: 'unknown', detail: sourceDetail('opencode.db session read failed', OPENCODE_DIR) };
+    const cutoff = String(Date.now() - activeThresholdMs);
+    // v2 is seeded FIRST: the de-dupe below keeps the first row seen per id, and
+    // `session_message` is a superset of the migrated v1 data.
+    const merged = new Map<string, ListedDbSession>();
+
+    if (hasV2) {
+      // `session_v2.model` is selected RAW and normalized per row, so a malformed
+      // value costs this one session its model rather than the listing (#156).
+      let rows: DbSessionV2[];
+      try {
+        rows = db.prepare(DB_SESSIONS_V2_SQL).all(cutoff) as DbSessionV2[];
+      } catch (err) {
+        debugAdapterError('opencode', 'getDbSessionsV2 rows', err, DB_FILE);
+        return { kind: 'failed', code: 'unknown', detail: sourceDetail('opencode.db v2 session read failed', OPENCODE_DIR) };
+      }
+      for (const row of rows) {
+        const { modelID, providerID } = normalizeV2Model(row.model);
+        merged.set(row.id, {
+          id: row.id,
+          project_id: row.project_id,
+          parent_id: row.parent_id,
+          directory: row.directory,
+          title: row.title,
+          time_created: row.time_created,
+          time_updated: row.time_updated,
+          store: 'v2',
+          modelID,
+          providerID,
+        });
+      }
     }
 
-    return {
-      kind: 'rows',
-      sessions: rows.map((row) => {
+    if (hasV1) {
+      // The latest message's `data` is selected RAW and parsed per row below. It
+      // must not be projected with `json_extract(m.data, '$.modelID')`: SQLite
+      // RAISES `malformed JSON` on a column that does not parse (it does not answer
+      // NULL), `queryAll` swallowed that into `[]`, and one malformed row then
+      // removed EVERY session from the listing rather than its own (#156).
+      // `normalizeDbJson` is what the sibling `getDbMessages` above already uses on
+      // the same column.
+      let rows: DbSessionRow[];
+      try {
+        rows = db.prepare(DB_SESSIONS_SQL).all(cutoff) as DbSessionRow[];
+      } catch (err) {
+        debugAdapterError('opencode', 'getDbSessions rows', err, DB_FILE);
+        return { kind: 'failed', code: 'unknown', detail: sourceDetail('opencode.db session read failed', OPENCODE_DIR) };
+      }
+      for (const row of rows) {
+        if (merged.has(row.id)) continue;
         const messageData = normalizeDbJson(row.message_data);
         // A malformed column arrives as the raw string and parses to nothing, so
         // only this one session loses its model and provider.
@@ -303,50 +317,20 @@ function readDbListing(activeThresholdMs: number): DbSource {
           modelID?: unknown;
           providerID?: unknown;
         };
-        return {
+        merged.set(row.id, {
           ...row,
+          store: 'v1',
           modelID: (data.modelID || null) as string | null,
           providerID: (data.providerID || null) as string | null,
-        };
-      }),
-      warnings: [],
-    };
+        });
+      }
+    }
+
+    return { kind: 'rows', sessions: [...merged.values()], warnings: [] };
   } finally {
     closeSqlite(db);
   }
 }
-
-/**
- * The session query, as a named constant so the classified reader above can hand
- * it straight to `db.prepare`.
- *
- * Deliberately NOT projected from `tableColumns`, unlike `hermes`'s and
- * `openclaw`'s: here a drifted schema made SQLite raise `no such column`, and the
- * pre-contract behaviour of that raise was `[]` and then the legacy-file fallback.
- * Projecting would replace that fallback with a partial listing — a better answer,
- * but a behaviour change this refactor must not make. So the raise is classified
- * (`unknown`) and the fallback still runs.
- */
-const DB_SESSIONS_SQL = `
-  SELECT
-    s.id,
-    s.project_id,
-    s.parent_id,
-    s.directory,
-    s.title,
-    s.time_created,
-    s.time_updated,
-    (
-      SELECT m.data
-      FROM message m
-      WHERE m.session_id = s.id
-      ORDER BY m.time_created DESC
-      LIMIT 1
-    ) AS message_data
-  FROM session s
-  WHERE s.time_updated >= ?
-    AND s.time_archived IS NULL
-  ORDER BY s.time_updated DESC`;
 
 function resolveMessageFile(projectKey: string, sessionId: string) {
   return path.join(MESSAGE_DIR, projectKey, `${sessionId}.json`);
@@ -370,7 +354,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     if (db.kind === 'rows' && db.sessions.length > 0) {
       let unparsed = 0;
       const sessions = await Promise.all(db.sessions.map(async (session) => {
-        const { messages, degraded } = await getDbMessages(session.id);
+        const { messages, degraded } = await getDbMessages(session.id, session.store);
         if (degraded) unparsed += 1;
         const detail = extractDbDetail(messages);
         return {
@@ -461,8 +445,11 @@ export class OpenCodeAdapter implements AgentAdapter {
       // `absent` — no `opencode.db` at all — is the listing's own `absent` too: this
       // install stores nothing in a database, which is an absence and not a failure.
       const detail = extractDbDetail(read.kind === 'messages' ? read.messages : []);
+      // For v2 the totals are session-level columns the message fold cannot see, so
+      // the read's own `tokenUsage` (present only on the v2 branch) wins when set.
+      const tokenUsage = read.kind === 'messages' && read.tokenUsage ? read.tokenUsage : detail.tokenUsage;
       return detailOk(
-        { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId },
+        { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage, sessionId },
         // One malformed `message.data` or `part.data` degrades the ROW, never the
         // session — so it is a `warning` here for the same reason it is one in the
         // listing (#156).

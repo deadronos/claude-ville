@@ -318,11 +318,39 @@ type DbPartRow = {
   data?: string | null;
 };
 
+type DbSessionV2Row = {
+  id: string;
+  projectId?: string;
+  parentId?: string | null;
+  directory?: string | null;
+  title?: string | null;
+  timeCreated?: number;
+  timeUpdated?: number;
+  timeArchived?: number | null;
+  timeSuspended?: number | null;
+  /** A raw JSON string, so an unparseable model can be written verbatim. */
+  model?: string | null;
+  tokensInput?: number;
+  tokensOutput?: number;
+};
+
+type DbSessionMessageRow = {
+  id: string;
+  sessionId: string;
+  type: string;
+  seq?: number;
+  timeCreated?: number;
+  /** A raw string, so a malformed value can be written verbatim. */
+  data?: string | null;
+};
+
 type OpencodeDb = {
   db: Database.Database;
   addSession: (row: DbSessionRow) => void;
   addMessage: (row: DbMessageRow) => void;
   addPart: (row: DbPartRow) => void;
+  addSessionV2: (row: DbSessionV2Row) => void;
+  addMessageV2: (row: DbSessionMessageRow) => void;
 };
 
 /** Creates `<dir>/opencode.db` with `schema` and returns typed inserters for it. */
@@ -343,6 +371,14 @@ function openDb(dir: string, schema: string): OpencodeDb {
     : null;
   const insertPart = schema.includes('CREATE TABLE part (')
     ? db.prepare('INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?,?)')
+    : null;
+  const insertSessionV2 = schema.includes('CREATE TABLE session_v2 (')
+    ? db.prepare(
+        'INSERT INTO session_v2 (id, project_id, parent_id, directory, title, time_created, time_updated, time_archived, time_suspended, model, tokens_input, tokens_output) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+      )
+    : null;
+  const insertSessionMessage = schema.includes('CREATE TABLE session_message (')
+    ? db.prepare('INSERT INTO session_message (id, session_id, type, seq, time_created, data) VALUES (?,?,?,?,?,?)')
     : null;
 
   const now = Date.now();
@@ -386,10 +422,78 @@ function openDb(dir: string, schema: string): OpencodeDb {
         'data' in row ? row.data : JSON.stringify({ type: 'text', text: 'part' }),
       );
     },
+    addSessionV2: (row) => {
+      if (!insertSessionV2) throw new Error('openDb was not given a session_v2 table');
+      insertSessionV2.run(
+        row.id,
+        row.projectId ?? 'project_default',
+        'parentId' in row ? row.parentId : null,
+        'directory' in row ? row.directory : '/workspace/opencode-v2',
+        row.title ?? 'OpenCode v2 session',
+        row.timeCreated ?? now,
+        'timeUpdated' in row ? row.timeUpdated : (row.timeCreated ?? now),
+        'timeArchived' in row ? row.timeArchived : null,
+        'timeSuspended' in row ? row.timeSuspended : null,
+        'model' in row ? row.model : null,
+        row.tokensInput ?? 0,
+        row.tokensOutput ?? 0,
+      );
+    },
+    addMessageV2: (row) => {
+      if (!insertSessionMessage) throw new Error('openDb was not given a session_message table');
+      insertSessionMessage.run(
+        row.id,
+        row.sessionId,
+        row.type,
+        row.seq ?? 0,
+        row.timeCreated ?? now,
+        'data' in row ? row.data : JSON.stringify({ text: 'v2 message' }),
+      );
+    },
   };
 }
 
-/** The full current schema: `session`, `message` and `part`. */
+/**
+ * The v2 schema. `session_v2` carries the model and token totals as first-class
+ * columns; `session_message` is the per-session event log, with content inlined in
+ * `data` rather than split into a `part` table.
+ */
+const SESSION_V2_SQL = `
+  CREATE TABLE session_v2 (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    parent_id TEXT,
+    directory TEXT NOT NULL,
+    title TEXT NOT NULL,
+    time_created INTEGER NOT NULL,
+    time_updated INTEGER NOT NULL,
+    time_archived INTEGER,
+    time_suspended INTEGER,
+    model TEXT,
+    tokens_input INTEGER NOT NULL DEFAULT 0,
+    tokens_output INTEGER NOT NULL DEFAULT 0
+  );
+`;
+
+const SESSION_MESSAGE_SQL = `
+  CREATE TABLE session_message (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    time_created INTEGER NOT NULL,
+    data TEXT NOT NULL
+  );
+`;
+
+/** The v2-only store — no `session`/`message`/`part` tables at all. */
+const openOpencodeV2Db = (dir: string) => openDb(dir, SESSION_V2_SQL + SESSION_MESSAGE_SQL);
+
+/** Both stores side by side, which is how a migrated install looks. */
+const openOpencodeDualDb = (dir: string) =>
+  openDb(dir, SESSION_SQL + MESSAGE_SQL + SESSION_V2_SQL + SESSION_MESSAGE_SQL);
+
+/** The full current v1 schema: `session`, `message` and `part`. */
 const openOpencodeDb = (dir: string) => openDb(dir, SESSION_SQL + MESSAGE_SQL);
 
 // ─── record builders ─────────────────────────────────────
@@ -1110,6 +1214,223 @@ describe('OpenCodeAdapter on-disk characterization', () => {
           'opencode-fresh',
           'opencode-kept',
         ]);
+      },
+    );
+  });
+
+  // The whole point of the v2 work: a session that exists ONLY in `session_v2`
+  // (no `session`/`message`/`part` tables at all) must list, model from the v2
+  // columns/message, with the same 15-key row shape and no `tokens` key.
+  it('list a v2-only session from session_v2 and session_message, with no v1 tables', async () => {
+    let updatedAt = 0;
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2, addMessageV2 } = openOpencodeV2Db(dir);
+        updatedAt = Date.now() - 1_000;
+        addSessionV2({
+          id: 'v2-one',
+          projectId: 'project-v2',
+          directory: '/workspace/v2',
+          title: 'V2 session',
+          timeCreated: updatedAt - 5_000,
+          timeUpdated: updatedAt,
+          model: JSON.stringify({ id: 'glm-5.1', providerID: 'opencode-go' }),
+        });
+        addMessageV2({
+          id: 'v2-user',
+          sessionId: 'v2-one',
+          type: 'user',
+          seq: 1,
+          timeCreated: updatedAt - 500,
+          data: JSON.stringify({ text: 'hi', time: { created: updatedAt - 500 } }),
+        });
+        addMessageV2({
+          id: 'v2-asst',
+          sessionId: 'v2-one',
+          type: 'assistant',
+          seq: 2,
+          timeCreated: updatedAt - 400,
+          data: JSON.stringify({
+            text: 'done',
+            model: { id: 'glm-5.1', providerID: 'opencode-go' },
+            content: [{ type: 'text', text: 'done' }],
+          }),
+        });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toStrictEqual({
+          sessionId: 'opencode-v2-one',
+          provider: 'opencode',
+          agentId: null,
+          agentType: 'main',
+          // `data.model` composes `provider/model` through `extractDbDetail`.
+          model: 'opencode-go/glm-5.1',
+          status: 'active',
+          lastActivity: updatedAt,
+          project: '/workspace/v2',
+          lastMessage: 'done',
+          lastTool: null,
+          lastToolInput: null,
+          parentSessionId: null,
+          filePath: 'opencode-db:v2-one',
+        });
+        expect('tokens' in rows[0]).toBe(false);
+      },
+    );
+  });
+
+  // `v2MessagesSql` orders `seq DESC` and the reader reverses to chronological. A
+  // reversal bug would leave the OLDEST assistant text as `lastMessage`.
+  it('read v2 session_message in ascending seq order, so the newest assistant text wins', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2, addMessageV2 } = openOpencodeV2Db(dir);
+        addSessionV2({ id: 'v2-order', timeUpdated: Date.now() - 1_000 });
+        addMessageV2({
+          id: 'older',
+          sessionId: 'v2-order',
+          type: 'assistant',
+          seq: 1,
+          timeCreated: Date.now() - 500,
+          data: JSON.stringify({ text: 'older-answer' }),
+        });
+        addMessageV2({
+          id: 'newer',
+          sessionId: 'v2-order',
+          type: 'assistant',
+          seq: 2,
+          timeCreated: Date.now() - 400,
+          data: JSON.stringify({ text: 'newer-answer' }),
+        });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
+        expect(rows[0].lastMessage).toBe('newer-answer');
+      },
+    );
+  });
+
+  // An id present in BOTH stores must appear exactly once, and the v2 rows win —
+  // `session_message` is a superset of the migrated `message`/`part` data.
+  it('de-dupe a session present in both stores, with the v2 message winning', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSession, addMessage, addPart, addSessionV2, addMessageV2 } = openOpencodeDualDb(dir);
+        const ts = Date.now() - 1_000;
+        addSession({ id: 'dual', timeUpdated: ts });
+        addMessage({ id: 'dual-v1', sessionId: 'dual', timeCreated: ts - 500, data: JSON.stringify({ role: 'assistant' }) });
+        addPart({ id: 'dual-v1-part', messageId: 'dual-v1', timeCreated: ts - 400, data: JSON.stringify({ type: 'text', text: 'from-v1' }) });
+        addSessionV2({ id: 'dual', timeUpdated: ts });
+        addMessageV2({
+          id: 'dual-v2',
+          sessionId: 'dual',
+          type: 'assistant',
+          seq: 1,
+          timeCreated: ts - 300,
+          data: JSON.stringify({ text: 'from-v2' }),
+        });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        const rows = await sessionsOf(adapter, 5 * MINUTE);
+        expect(ids(rows)).toEqual(['opencode-dual']);
+        expect(rows[0].lastMessage).toBe('from-v2');
+      },
+    );
+  });
+
+  // The v2 gate is the same `time_updated >= ? AND time_archived IS NULL`.
+  it('gate the v2 path on time_updated and on time_archived IS NULL', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2 } = openOpencodeV2Db(dir);
+        const now = Date.now();
+        addSessionV2({ id: 'v2-fresh', timeUpdated: now - 6_100 });
+        addSessionV2({ id: 'v2-stale', timeUpdated: now - 61_000 });
+        addSessionV2({ id: 'v2-archived', timeUpdated: now - 1_000, timeArchived: 1 });
+        addSessionV2({ id: 'v2-kept', timeUpdated: now - 1_000, timeArchived: null });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        expect(ids(await sessionsOf(adapter, 6_000))).toEqual(['opencode-v2-kept']);
+        expect(ids(await sessionsOf(adapter, 60_000))).toEqual(['opencode-v2-fresh', 'opencode-v2-kept']);
+      },
+    );
+  });
+
+  // The v2 detail path: `opencode-db:<id>` has no listing row to consult, so the
+  // store is detected from `session_v2`/`session_message`, and `tokenUsage` comes
+  // from the session columns rather than per-message `data.tokens`.
+  it('read v2 session detail and token usage from the session_v2 columns', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2, addMessageV2 } = openOpencodeV2Db(dir);
+        const now = Date.now();
+        addSessionV2({ id: 'v2-detail', timeUpdated: now - 1_000, tokensInput: 75_825, tokensOutput: 8_564 });
+        addMessageV2({
+          id: 'v2-detail-asst',
+          sessionId: 'v2-detail',
+          type: 'assistant',
+          seq: 1,
+          timeCreated: now - 500,
+          data: JSON.stringify({
+            text: 'answer',
+            content: [
+              { type: 'text', text: 'answer' },
+              { type: 'tool', name: 'skill', state: { input: { name: 'using-git-worktrees' } } },
+            ],
+          }),
+        });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        const detail = await detailOf(adapter, 'opencode-v2-detail', null, 'opencode-db:v2-detail');
+        expect(texts(detail.messages)).toEqual(['answer']);
+        expect(toolNames(detail.toolHistory)).toEqual(['skill']);
+        expect(detail.tokenUsage).toStrictEqual({ input: 75_825, output: 8_564 });
+        expect(detail.sessionId).toBe('opencode-v2-detail');
+      },
+    );
+  });
+
+  // A v2 session with no tokens reads `null`, not `{ input: 0, output: 0 }` — the
+  // same zero-check the v1 path applies.
+  it('report v2 tokenUsage as null when the two columns are both zero', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2 } = openOpencodeV2Db(dir);
+        addSessionV2({ id: 'v2-zero', timeUpdated: Date.now() - 1_000, tokensInput: 0, tokensOutput: 0 });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        const detail = await detailOf(adapter, 'opencode-v2-zero', null, 'opencode-db:v2-zero');
+        expect(detail.tokenUsage).toBeNull();
+      },
+    );
+  });
+
+  // Only `time_archived` excludes a session; a suspended one stays listed.
+  it('list a suspended v2 session, since only time_archived excludes', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2 } = openOpencodeV2Db(dir);
+        const now = Date.now();
+        addSessionV2({ id: 'v2-suspended', timeUpdated: now - 1_000, timeSuspended: now - 2_000, timeArchived: null });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual(['opencode-v2-suspended']);
       },
     );
   });

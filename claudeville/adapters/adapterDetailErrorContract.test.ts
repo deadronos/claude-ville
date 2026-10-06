@@ -435,3 +435,169 @@ describe('a provider is never failed by one session it could not detail', () => 
     expect(row?.tokenUsage).toBeNull();
   });
 });
+
+describe('getSessionDetail: the v2 session store', () => {
+  const V2_SQL = `
+    CREATE TABLE session_v2 (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT,
+      title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER, model TEXT,
+      tokens_input INTEGER, tokens_output INTEGER);
+    CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER,
+      time_created INTEGER, data TEXT);
+  `;
+  const INSERT_SESSION =
+    'INSERT INTO session_v2 (id, project_id, parent_id, directory, title, time_created, time_updated, time_archived, model, tokens_input, tokens_output) VALUES (?,?,?,?,?,?,?,?,?,?,?)';
+
+  // Review Focus 1: a v2-only store has no `message` table, and naming it must not
+  // read as `schema-incompatible`. The v2 token columns are the detail's tokenUsage.
+  it('read a v2-only store with no message table, and use the v2 token columns', async () => {
+    const { fixture } = withTrees(({ fixture: dir }) => {
+      const db = new Database(path.join(dir, 'opencode.db'));
+      db.exec(V2_SQL);
+      const now = Date.now();
+      db.prepare(INSERT_SESSION).run('ses', 'proj', null, '/w', 'v2', now, now, null, null, 120, 30);
+      db.prepare('INSERT INTO session_message VALUES (?,?,?,?,?,?)').run(
+        'sm1',
+        'ses',
+        'assistant',
+        1,
+        now,
+        JSON.stringify({ text: 'v2 body' }),
+      );
+      db.close();
+    });
+
+    process.env.OPENCODE_DATA_DIR = fixture;
+    vi.resetModules();
+    const { OpenCodeAdapter } = await import('./opencode.js');
+    const { detail, warnings } = expectSuccess(
+      await new OpenCodeAdapter().getSessionDetail('opencode-ses', null, 'opencode-db:ses'),
+    );
+    expect(detail.messages.map((m) => m.text)).toContain('v2 body');
+    expect(detail.tokenUsage).toEqual({ input: 120, output: 30 });
+    expect(warnings).toEqual([]);
+  });
+
+  // Review Focus 5: one malformed `session_message.data` degrades its row only,
+  // the same contract #156 pinned for `message.data`.
+  it('warn about one session_message.data that will not parse, keeping the rest', async () => {
+    const { fixture } = withTrees(({ fixture: dir }) => {
+      const db = new Database(path.join(dir, 'opencode.db'));
+      db.exec(V2_SQL);
+      const now = Date.now();
+      db.prepare(INSERT_SESSION).run('ses', 'proj', null, '/w', 'v2', now, now, null, null, 0, 0);
+      db.prepare('INSERT INTO session_message VALUES (?,?,?,?,?,?)').run(
+        'sm1',
+        'ses',
+        'assistant',
+        1,
+        now,
+        JSON.stringify({ text: 'good body' }),
+      );
+      db.prepare('INSERT INTO session_message VALUES (?,?,?,?,?,?)').run('sm2', 'ses', 'assistant', 2, now, '{ not json');
+      db.close();
+    });
+
+    process.env.OPENCODE_DATA_DIR = fixture;
+    vi.resetModules();
+    const { OpenCodeAdapter } = await import('./opencode.js');
+    const { detail, warnings } = expectSuccess(
+      await new OpenCodeAdapter().getSessionDetail('opencode-ses', null, 'opencode-db:ses'),
+    );
+    expect(warnings).toEqual([{ code: 'schema-incompatible', detail: 'message row(s) would not parse' }]);
+    expect(detail.messages.map((m) => m.text)).toContain('good body');
+  });
+
+  // A partial store: `session_v2` present but `session_message` absent. The listing
+  // tolerates this; the detail must too, by falling back to the v1 messages rather
+  // than letting the missing-table v2 query raise into `unknown`.
+  it('fall back to v1 messages when session_v2 exists but session_message does not', async () => {
+    const { fixture } = withTrees(({ fixture: dir }) => {
+      const db = new Database(path.join(dir, 'opencode.db'));
+      db.exec(`
+        CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT,
+          title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER);
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
+        CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, time_created INTEGER, data TEXT);
+        CREATE TABLE session_v2 (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT,
+          title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER, model TEXT,
+          tokens_input INTEGER, tokens_output INTEGER);
+      `);
+      const now = Date.now();
+      db.prepare('INSERT INTO session VALUES (?,?,?,?,?,?,?,?)').run('ses', 'proj', null, '/w', 'ses', now, now, null);
+      db.prepare('INSERT INTO message VALUES (?,?,?,?)').run('v1m', 'ses', now, JSON.stringify({ role: 'assistant' }));
+      db.prepare('INSERT INTO part VALUES (?,?,?,?)').run('v1p', 'v1m', now, JSON.stringify({ type: 'text', text: 'from-v1' }));
+      db.prepare(INSERT_SESSION).run('ses', 'proj', null, '/w', 'ses', now, now, null, null, 0, 0);
+      db.close();
+    });
+
+    process.env.OPENCODE_DATA_DIR = fixture;
+    vi.resetModules();
+    const { OpenCodeAdapter } = await import('./opencode.js');
+    const { detail } = expectSuccess(
+      await new OpenCodeAdapter().getSessionDetail('opencode-ses', null, 'opencode-db:ses'),
+    );
+    expect(detail.messages.map((m) => m.text)).toContain('from-v1');
+  });
+
+  // The mirror partial store: `session_message` present but `session_v2` absent.
+  // The v2 message read must not prepare against the missing token table.
+  it('read a session_message-only store, without raising on the absent session_v2', async () => {
+    const { fixture } = withTrees(({ fixture: dir }) => {
+      const db = new Database(path.join(dir, 'opencode.db'));
+      db.exec(`
+        CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER,
+          time_created INTEGER, data TEXT);
+      `);
+      const now = Date.now();
+      db.prepare('INSERT INTO session_message VALUES (?,?,?,?,?,?)').run(
+        'sm1',
+        'ses',
+        'assistant',
+        1,
+        now,
+        JSON.stringify({ text: 'v2 body' }),
+      );
+      db.close();
+    });
+
+    process.env.OPENCODE_DATA_DIR = fixture;
+    vi.resetModules();
+    const { OpenCodeAdapter } = await import('./opencode.js');
+    const { detail } = expectSuccess(
+      await new OpenCodeAdapter().getSessionDetail('opencode-ses', null, 'opencode-db:ses'),
+    );
+    expect(detail.messages.map((m) => m.text)).toContain('v2 body');
+    expect(detail.tokenUsage).toBeNull();
+  });
+
+  // Review Focus 2, detail half: the empty-log fallback to v1 messages must still
+  // carry the session-level v2 token totals.
+  it('keep the v2 token columns when the empty-log detail falls back to v1 messages', async () => {
+    const { fixture } = withTrees(({ fixture: dir }) => {
+      const db = new Database(path.join(dir, 'opencode.db'));
+      db.exec(`
+        CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT,
+          title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER);
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
+        CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, time_created INTEGER, data TEXT);
+      `);
+      db.exec(V2_SQL);
+      const now = Date.now();
+      db.prepare('INSERT INTO session VALUES (?,?,?,?,?,?,?,?)').run('dual', 'proj', null, '/w', 'dual', now, now, null);
+      db.prepare('INSERT INTO message VALUES (?,?,?,?)').run('v1m', 'dual', now, JSON.stringify({ role: 'assistant' }));
+      db.prepare('INSERT INTO part VALUES (?,?,?,?)').run('v1p', 'v1m', now, JSON.stringify({ type: 'text', text: 'from-v1' }));
+      db.prepare(INSERT_SESSION).run('dual', 'proj', null, '/w', 'dual', now, now, null, null, 111, 222);
+      // `session_message` deliberately empty.
+      db.close();
+    });
+
+    process.env.OPENCODE_DATA_DIR = fixture;
+    vi.resetModules();
+    const { OpenCodeAdapter } = await import('./opencode.js');
+    const { detail } = expectSuccess(
+      await new OpenCodeAdapter().getSessionDetail('opencode-dual', null, 'opencode-db:dual'),
+    );
+    expect(detail.messages.map((m) => m.text)).toContain('from-v1');
+    expect(detail.tokenUsage).toEqual({ input: 111, output: 222 });
+  });
+});
