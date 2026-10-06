@@ -152,8 +152,13 @@ function dbSessionStore(db: SqliteDb, sessionId: string): 'v1' | 'v2' {
   return 'v1';
 }
 
-/** The v2 session token totals, or null when both are zero — the same zero-check the v1 fold applies. */
+/**
+ * The v2 session token totals, or null when both are zero — the same zero-check
+ * the v1 fold applies. A `session_message`-only partial store has no `session_v2`
+ * table to ask, so that is `null` rather than a raise.
+ */
 function readV2TokenUsage(db: SqliteDb, sessionId: string): { input: number; output: number } | null {
+  if (!hasTable(db, 'session_v2')) return null;
   const row = db.prepare(v2TokensSql()).get(sessionId) as { tokens_input: number; tokens_output: number } | undefined;
   if (!row || (!row.tokens_input && !row.tokens_output)) return null;
   return { input: row.tokens_input, output: row.tokens_output };
@@ -178,18 +183,22 @@ function readDbMessages(sessionId: string, limit = 30): DbMessagesRead {
     }
 
     try {
-      if (dbSessionStore(db, sessionId) === 'v2') {
+      // The v2 read is gated on `session_message` EXISTING, not just on the store
+      // being v2: a partial store can have a `session_v2` row with no event-log
+      // table, and preparing against it would raise into `unknown`.
+      if (hasSessionMessage && dbSessionStore(db, sessionId) === 'v2') {
         const rows = (db.prepare(v2MessagesSql(limit)).all(sessionId) as V2MessageRow[]).reverse();
-        if (rows.length > 0) {
-          return { kind: 'messages', ...buildV2Messages(rows), tokenUsage: readV2TokenUsage(db, sessionId) };
-        }
+        const tokenUsage = readV2TokenUsage(db, sessionId);
+        if (rows.length > 0) return { kind: 'messages', ...buildV2Messages(rows), tokenUsage };
         // Empty v2 log. A v1 `message` table, if present, is still the only copy
-        // mid-migration; with none (a v2-only install) answer the empty detail
-        // rather than let the missing-table v1 query raise into `unknown`.
-        if (!hasMessage) {
-          return { kind: 'messages', messages: [], degraded: false, tokenUsage: readV2TokenUsage(db, sessionId) };
-        }
+        // mid-migration — keep the v2 token totals with it — and with none answer
+        // the empty detail rather than let a missing-table query raise.
+        if (!hasMessage) return { kind: 'messages', messages: [], degraded: false, tokenUsage };
+        return { kind: 'messages', ...buildDbMessages(db.prepare(dbMessagesSql(limit)).all(sessionId) as DbMessageRow[]), tokenUsage };
       }
+      // No `message` table (a v2-only or partial store): the v2 read above either
+      // answered or the log is empty; there is nothing v1 to fall back to.
+      if (!hasMessage) return { kind: 'messages', messages: [], degraded: false, tokenUsage: readV2TokenUsage(db, sessionId) };
       return { kind: 'messages', ...buildDbMessages(db.prepare(dbMessagesSql(limit)).all(sessionId) as DbMessageRow[]) };
     } catch (err) {
       debugAdapterError('opencode', 'readDbMessages rows', err, DB_FILE);

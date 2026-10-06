@@ -468,6 +468,35 @@ describe('opencode', () => {
       expect(result.sessions[0].lastMessage).toBe('from-v1');
     });
   });
+
+  // The v2 twin of the `message.data` warning above: one malformed
+  // `session_message.data` degrades its own row, the listing survives.
+  it('warn, not fail, when one v2 session_message.data will not parse', async () => {
+    await withAdapter({ opencode: '' }, () => {}, async () => {
+      const dir = tempDir('claudeville-opencode-v2-unparsed-');
+      process.env.OPENCODE_DATA_DIR = dir;
+      const db = new Database(path.join(dir, 'opencode.db'));
+      db.exec(`
+        CREATE TABLE session_v2 (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT,
+          title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER, model TEXT,
+          tokens_input INTEGER, tokens_output INTEGER);
+        CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER,
+          time_created INTEGER, data TEXT);
+      `);
+      const now = Date.now();
+      db.prepare(
+        'INSERT INTO session_v2 (id, project_id, parent_id, directory, title, time_created, time_updated, time_archived, model, tokens_input, tokens_output) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      ).run('v2', 'proj', null, '/w/v2', 'v2', now, now, null, null, 0, 0);
+      db.prepare('INSERT INTO session_message VALUES (?,?,?,?,?,?)').run('m1', 'v2', 'assistant', 1, now, JSON.stringify({ text: 'good' }));
+      db.prepare('INSERT INTO session_message VALUES (?,?,?,?,?,?)').run('m2', 'v2', 'assistant', 2, now, '{ not json');
+      db.close();
+      return import('./opencode.js');
+    }, async (adapter) => {
+      const result = expectOk(await adapter.getActiveSessions(5 * MINUTE));
+      expect(result.sessions.map((row) => row.sessionId)).toEqual(['opencode-v2']);
+      expect(result.warnings).toStrictEqual([{ code: 'schema-incompatible', detail: '1 session(s)' }]);
+    });
+  });
 });
 
 describe('pi', () => {
