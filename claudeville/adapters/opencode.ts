@@ -8,8 +8,8 @@ import path from 'path';
 
 import type { AdapterDetailResult, AdapterErrorCode, AdapterSessionsResult, AdapterWarning, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
-import type { DbMessage, DbMessageRow } from './opencode-readers.js';
-import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession, buildDbMessages, dbMessagesSql, DB_SESSIONS_SQL } from './opencode-readers.js';
+import type { DbMessage, DbMessageRow, DbSessionV2, V2MessageRow } from './opencode-readers.js';
+import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession, buildDbMessages, dbMessagesSql, DB_SESSIONS_SQL, buildV2Messages, v2MessagesSql, DB_SESSIONS_V2_SQL, normalizeV2Model } from './opencode-readers.js';
 import { closeSqlite, hasTableOrNull, openReadonlySqlite, queryAll, withReadonlySqlite } from './sqlite-utils.js';
 import { combineSources, degradedWarnings, detailFailed, detailOk, sourceDetail, type SourceListing } from './sources.js';
 import type { Dirent } from './scan-utils.js';
@@ -32,6 +32,13 @@ type DbSession = {
   modelID?: string | null;
   providerID?: string | null;
 };
+
+/**
+ * A DB session tagged with the store its MESSAGES live in — v1's `message`/`part`
+ * or v2's `session_message`. An id present in both `session` and `session_v2`
+ * resolves to `v2`, so the message read and the de-dupe agree.
+ */
+type ListedDbSession = DbSession & { store: 'v1' | 'v2' };
 
 async function collectJsonFiles(root: string): Promise<string[]> {
   try {
@@ -105,7 +112,13 @@ function isReadableDir(dir: string): boolean {
   }
 }
 
-async function getDbMessages(sessionId: string, limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
+async function getDbMessages(sessionId: string, store: 'v1' | 'v2', limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
+  if (store === 'v2') {
+    const rows = await queryDb<V2MessageRow>(v2MessagesSql(limit), [sessionId]);
+    // `v2MessagesSql` takes the newest N by `seq DESC`; `extractDetail` walks
+    // forward, so flip to chronological here.
+    return buildV2Messages(rows.reverse());
+  }
   return buildDbMessages(await queryDb<DbMessageRow>(dbMessagesSql(limit), [sessionId]));
 }
 
@@ -160,7 +173,7 @@ type DbSessionRow = DbSession & { message_data: string | null };
  */
 type DbSource =
   | { kind: 'absent' }
-  | { kind: 'rows'; sessions: DbSession[]; warnings: AdapterWarning[] }
+  | { kind: 'rows'; sessions: ListedDbSession[]; warnings: AdapterWarning[] }
   | { kind: 'failed'; code: AdapterErrorCode; detail: string };
 
 /**
@@ -179,9 +192,13 @@ type DbSource =
  * * |---|---|
  * * | no `opencode.db` | `absent` |
  * * | will not open, or `sqlite_master` will not answer | `store-unreadable` |
- * * | no `session` table | `absent` — a database from a different tool |
+ * * | neither `session` nor `session_v2` | `absent` — a database from a different tool |
  * * | the query planned and the READ raised | `unknown` |
  * * | one session's message column would not parse | a `warning`, never a failure |
+ *
+ * v1 (`session`) and v2 (`session_v2`) rows are merged here, de-duped by id with
+ * v2 winning, because OpenCode 2.x wrote new sessions to `session_v2` while older
+ * installs (and migrated sessions) live in `session`.
  */
 function readDbListing(activeThresholdMs: number): DbSource {
   const absent: DbSource = { kind: 'absent' };
@@ -191,30 +208,63 @@ function readDbListing(activeThresholdMs: number): DbSource {
   if (!db) return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db would not open', OPENCODE_DIR) };
 
   try {
-    const hasSession = hasTableOrNull(db, 'session');
-    if (hasSession === null) {
+    const hasV1 = hasTableOrNull(db, 'session');
+    const hasV2 = hasTableOrNull(db, 'session_v2');
+    if (hasV1 === null || hasV2 === null) {
       return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db is not a readable database', OPENCODE_DIR) };
     }
-    if (!hasSession) return absent;
+    // Neither table is a database from a different tool; EITHER is this tool's.
+    if (!hasV1 && !hasV2) return absent;
 
-    // The latest message's `data` is selected RAW and parsed per row below. It
-    // must not be projected with `json_extract(m.data, '$.modelID')`: SQLite
-    // RAISES `malformed JSON` on a column that does not parse (it does not answer
-    // NULL), `queryAll` swallowed that into `[]`, and one malformed row then
-    // removed EVERY session from the listing rather than its own (#156).
-    // `normalizeDbJson` is what the sibling `getDbMessages` above already uses on
-    // the same column.
-    let rows: DbSessionRow[];
-    try {
-      rows = db.prepare(DB_SESSIONS_SQL).all(String(Date.now() - activeThresholdMs)) as DbSessionRow[];
-    } catch (err) {
-      debugAdapterError('opencode', 'getDbSessions rows', err, DB_FILE);
-      return { kind: 'failed', code: 'unknown', detail: sourceDetail('opencode.db session read failed', OPENCODE_DIR) };
+    const cutoff = String(Date.now() - activeThresholdMs);
+    // v2 is seeded FIRST: the de-dupe below keeps the first row seen per id, and
+    // `session_message` is a superset of the migrated v1 data.
+    const merged = new Map<string, ListedDbSession>();
+
+    if (hasV2) {
+      // `session_v2.model` is selected RAW and normalized per row, so a malformed
+      // value costs this one session its model rather than the listing (#156).
+      let rows: DbSessionV2[];
+      try {
+        rows = db.prepare(DB_SESSIONS_V2_SQL).all(cutoff) as DbSessionV2[];
+      } catch (err) {
+        debugAdapterError('opencode', 'getDbSessionsV2 rows', err, DB_FILE);
+        return { kind: 'failed', code: 'unknown', detail: sourceDetail('opencode.db v2 session read failed', OPENCODE_DIR) };
+      }
+      for (const row of rows) {
+        const { modelID, providerID } = normalizeV2Model(row.model);
+        merged.set(row.id, {
+          id: row.id,
+          project_id: row.project_id,
+          parent_id: row.parent_id,
+          directory: row.directory,
+          title: row.title,
+          time_created: row.time_created,
+          time_updated: row.time_updated,
+          store: 'v2',
+          modelID,
+          providerID,
+        });
+      }
     }
 
-    return {
-      kind: 'rows',
-      sessions: rows.map((row) => {
+    if (hasV1) {
+      // The latest message's `data` is selected RAW and parsed per row below. It
+      // must not be projected with `json_extract(m.data, '$.modelID')`: SQLite
+      // RAISES `malformed JSON` on a column that does not parse (it does not answer
+      // NULL), `queryAll` swallowed that into `[]`, and one malformed row then
+      // removed EVERY session from the listing rather than its own (#156).
+      // `normalizeDbJson` is what the sibling `getDbMessages` above already uses on
+      // the same column.
+      let rows: DbSessionRow[];
+      try {
+        rows = db.prepare(DB_SESSIONS_SQL).all(cutoff) as DbSessionRow[];
+      } catch (err) {
+        debugAdapterError('opencode', 'getDbSessions rows', err, DB_FILE);
+        return { kind: 'failed', code: 'unknown', detail: sourceDetail('opencode.db session read failed', OPENCODE_DIR) };
+      }
+      for (const row of rows) {
+        if (merged.has(row.id)) continue;
         const messageData = normalizeDbJson(row.message_data);
         // A malformed column arrives as the raw string and parses to nothing, so
         // only this one session loses its model and provider.
@@ -222,14 +272,16 @@ function readDbListing(activeThresholdMs: number): DbSource {
           modelID?: unknown;
           providerID?: unknown;
         };
-        return {
+        merged.set(row.id, {
           ...row,
+          store: 'v1',
           modelID: (data.modelID || null) as string | null,
           providerID: (data.providerID || null) as string | null,
-        };
-      }),
-      warnings: [],
-    };
+        });
+      }
+    }
+
+    return { kind: 'rows', sessions: [...merged.values()], warnings: [] };
   } finally {
     closeSqlite(db);
   }
@@ -257,7 +309,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     if (db.kind === 'rows' && db.sessions.length > 0) {
       let unparsed = 0;
       const sessions = await Promise.all(db.sessions.map(async (session) => {
-        const { messages, degraded } = await getDbMessages(session.id);
+        const { messages, degraded } = await getDbMessages(session.id, session.store);
         if (degraded) unparsed += 1;
         const detail = extractDbDetail(messages);
         return {
