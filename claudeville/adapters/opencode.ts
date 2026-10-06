@@ -116,9 +116,11 @@ function isReadableDir(dir: string): boolean {
 async function getDbMessages(sessionId: string, store: 'v1' | 'v2', limit = 30): Promise<{ messages: DbMessage[]; degraded: boolean }> {
   if (store === 'v2') {
     const rows = await queryDb<V2MessageRow>(v2MessagesSql(limit), [sessionId]);
+    // An EMPTY event log is data, not a verdict: a session mid-migration still has
+    // its only copy in `message`/`part`, so fall through rather than show blank.
     // `v2MessagesSql` takes the newest N by `seq DESC`; `extractDetail` walks
     // forward, so flip to chronological here.
-    return buildV2Messages(rows.reverse());
+    if (rows.length > 0) return buildV2Messages(rows.reverse());
   }
   return buildDbMessages(await queryDb<DbMessageRow>(dbMessagesSql(limit), [sessionId]));
 }
@@ -177,8 +179,16 @@ function readDbMessages(sessionId: string, limit = 30): DbMessagesRead {
 
     try {
       if (dbSessionStore(db, sessionId) === 'v2') {
-        const built = buildV2Messages((db.prepare(v2MessagesSql(limit)).all(sessionId) as V2MessageRow[]).reverse());
-        return { kind: 'messages', ...built, tokenUsage: readV2TokenUsage(db, sessionId) };
+        const rows = (db.prepare(v2MessagesSql(limit)).all(sessionId) as V2MessageRow[]).reverse();
+        if (rows.length > 0) {
+          return { kind: 'messages', ...buildV2Messages(rows), tokenUsage: readV2TokenUsage(db, sessionId) };
+        }
+        // Empty v2 log. A v1 `message` table, if present, is still the only copy
+        // mid-migration; with none (a v2-only install) answer the empty detail
+        // rather than let the missing-table v1 query raise into `unknown`.
+        if (!hasMessage) {
+          return { kind: 'messages', messages: [], degraded: false, tokenUsage: readV2TokenUsage(db, sessionId) };
+        }
       }
       return { kind: 'messages', ...buildDbMessages(db.prepare(dbMessagesSql(limit)).all(sessionId) as DbMessageRow[]) };
     } catch (err) {

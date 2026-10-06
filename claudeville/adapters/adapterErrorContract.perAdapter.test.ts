@@ -395,6 +395,79 @@ describe('opencode', () => {
       expect(result.warnings).toStrictEqual([{ code: 'schema-incompatible', detail: '1 session(s)' }]);
     });
   });
+
+  // A v2-only install has `session_v2`/`session_message` and NO `session`/`message`
+  // tables at all. The old gate (`hasTable('session')`) answered `absent` for this
+  // and the sessions vanished; either table is now this tool's store.
+  it('list a v2-only store as ok, with no message table present', async () => {
+    await withAdapter({ opencode: '' }, () => {}, async () => {
+      const dir = tempDir('claudeville-opencode-v2-only-');
+      process.env.OPENCODE_DATA_DIR = dir;
+      const db = new Database(path.join(dir, 'opencode.db'));
+      db.exec(`
+        CREATE TABLE session_v2 (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT,
+          title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER, model TEXT,
+          tokens_input INTEGER, tokens_output INTEGER);
+        CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER,
+          time_created INTEGER, data TEXT);
+      `);
+      const now = Date.now();
+      db.prepare(
+        'INSERT INTO session_v2 (id, project_id, parent_id, directory, title, time_created, time_updated, time_archived, model, tokens_input, tokens_output) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      ).run('v2', 'proj', null, '/w/v2', 'v2', now, now, null, null, 0, 0);
+      db.prepare('INSERT INTO session_message VALUES (?,?,?,?,?,?)').run(
+        'm1',
+        'v2',
+        'assistant',
+        1,
+        now,
+        JSON.stringify({ text: 'hello v2' }),
+      );
+      db.close();
+      return import('./opencode.js');
+    }, async (adapter) => {
+      const result = expectOk(await adapter.getActiveSessions(5 * MINUTE));
+      expect(result.sessions.map((row) => row.sessionId)).toEqual(['opencode-v2']);
+      // Review Focus 4: a NULL `session_v2.model` falls back to the literal.
+      expect(result.sessions[0].model).toBe('opencode');
+      expect(result.warnings).toEqual([]);
+    });
+  });
+
+  // Review Focus 2: a dual session whose v2 event log is still empty (mid-migration)
+  // must keep reading its v1 `message`/`part` rows rather than show a blank row.
+  it('fall back to the v1 message store for a dual session whose session_message is empty', async () => {
+    await withAdapter({ opencode: '' }, () => {}, async () => {
+      const dir = tempDir('claudeville-opencode-dual-empty-v2-');
+      process.env.OPENCODE_DATA_DIR = dir;
+      const db = new Database(path.join(dir, 'opencode.db'));
+      db.exec(`
+        CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT,
+          title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER);
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);
+        CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, time_created INTEGER, data TEXT);
+        CREATE TABLE session_v2 (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT,
+          title TEXT, time_created INTEGER, time_updated INTEGER, time_archived INTEGER, model TEXT,
+          tokens_input INTEGER, tokens_output INTEGER);
+        CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER,
+          time_created INTEGER, data TEXT);
+      `);
+      const now = Date.now();
+      db.prepare('INSERT INTO session VALUES (?,?,?,?,?,?,?,?)').run('dual', 'proj', null, '/w/dual', 'dual', now, now, null);
+      db.prepare('INSERT INTO message VALUES (?,?,?,?)').run('v1m', 'dual', now, JSON.stringify({ role: 'assistant' }));
+      db.prepare('INSERT INTO part VALUES (?,?,?,?)').run('v1p', 'v1m', now, JSON.stringify({ type: 'text', text: 'from-v1' }));
+      db.prepare(
+        'INSERT INTO session_v2 (id, project_id, parent_id, directory, title, time_created, time_updated, time_archived, model, tokens_input, tokens_output) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      ).run('dual', 'proj', null, '/w/dual', 'dual', now, now, null, null, 0, 0);
+      // `session_message` deliberately empty: the migration has not copied yet.
+      db.close();
+      return import('./opencode.js');
+    }, async (adapter) => {
+      const result = expectOk(await adapter.getActiveSessions(5 * MINUTE));
+      expect(result.sessions).toHaveLength(1);
+      expect(result.sessions[0].lastMessage).toBe('from-v1');
+    });
+  });
 });
 
 describe('pi', () => {
