@@ -9,8 +9,9 @@ import path from 'path';
 import type { AdapterDetailResult, AdapterErrorCode, AdapterSessionsResult, AdapterWarning, AgentAdapter, WatchPath } from '../../shared/types.js';
 import { debugAdapterError } from './jsonl-utils.js';
 import type { DbMessage, DbMessageRow, DbSessionV2, V2MessageRow } from './opencode-readers.js';
-import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession, buildDbMessages, dbMessagesSql, DB_SESSIONS_SQL, buildV2Messages, v2MessagesSql, DB_SESSIONS_V2_SQL, normalizeV2Model } from './opencode-readers.js';
-import { closeSqlite, hasTableOrNull, openReadonlySqlite, queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import { readJson, asTimestamp, normalizeDbJson, normalizeMessages, normalizeModel, extractDetail, extractDbDetail, projectFromSession, buildDbMessages, dbMessagesSql, DB_SESSIONS_SQL, buildV2Messages, v2MessagesSql, v2TokensSql, DB_SESSIONS_V2_SQL, normalizeV2Model } from './opencode-readers.js';
+import { closeSqlite, hasTable, hasTableOrNull, openReadonlySqlite, queryAll, withReadonlySqlite } from './sqlite-utils.js';
+import type { SqliteDb } from './sqlite-utils.js';
 import { combineSources, degradedWarnings, detailFailed, detailOk, sourceDetail, type SourceListing } from './sources.js';
 import type { Dirent } from './scan-utils.js';
 
@@ -135,8 +136,26 @@ async function getDbMessages(sessionId: string, store: 'v1' | 'v2', limit = 30):
  */
 type DbMessagesRead =
   | { kind: 'absent' }
-  | { kind: 'messages'; messages: DbMessage[]; degraded: boolean }
+  | { kind: 'messages'; messages: DbMessage[]; degraded: boolean; tokenUsage?: { input: number; output: number } | null }
   | { kind: 'failed'; code: AdapterErrorCode; detail: string };
+
+/**
+ * Which store a session's messages live in. The detail path is handed an id alone
+ * (`opencode-db:<id>`), so — unlike the listing — it has no `store` tag to read and
+ * probes here instead. v2 wins when both hold data, matching the listing's de-dupe.
+ */
+function dbSessionStore(db: SqliteDb, sessionId: string): 'v1' | 'v2' {
+  if (hasTable(db, 'session_v2') && db.prepare('SELECT 1 FROM session_v2 WHERE id = ? LIMIT 1').get(sessionId)) return 'v2';
+  if (hasTable(db, 'session_message') && db.prepare('SELECT 1 FROM session_message WHERE session_id = ? LIMIT 1').get(sessionId)) return 'v2';
+  return 'v1';
+}
+
+/** The v2 session token totals, or null when both are zero — the same zero-check the v1 fold applies. */
+function readV2TokenUsage(db: SqliteDb, sessionId: string): { input: number; output: number } | null {
+  const row = db.prepare(v2TokensSql()).get(sessionId) as { tokens_input: number; tokens_output: number } | undefined;
+  if (!row || (!row.tokens_input && !row.tokens_output)) return null;
+  return { input: row.tokens_input, output: row.tokens_output };
+}
 
 function readDbMessages(sessionId: string, limit = 30): DbMessagesRead {
   if (!fs.existsSync(DB_FILE)) return { kind: 'absent' };
@@ -146,14 +165,21 @@ function readDbMessages(sessionId: string, limit = 30): DbMessagesRead {
 
   try {
     const hasMessage = hasTableOrNull(db, 'message');
-    if (hasMessage === null) {
+    const hasSessionMessage = hasTableOrNull(db, 'session_message');
+    if (hasMessage === null || hasSessionMessage === null) {
       return { kind: 'failed', code: 'store-unreadable', detail: sourceDetail('opencode.db is not a readable database', OPENCODE_DIR) };
     }
-    if (!hasMessage) {
+    // EITHER store answers this id: a v2-only install has no `message` table, and a
+    // pre-v2 install has no `session_message`.
+    if (!hasMessage && !hasSessionMessage) {
       return { kind: 'failed', code: 'schema-incompatible', detail: sourceDetail('opencode.db has no message table', OPENCODE_DIR) };
     }
 
     try {
+      if (dbSessionStore(db, sessionId) === 'v2') {
+        const built = buildV2Messages((db.prepare(v2MessagesSql(limit)).all(sessionId) as V2MessageRow[]).reverse());
+        return { kind: 'messages', ...built, tokenUsage: readV2TokenUsage(db, sessionId) };
+      }
       return { kind: 'messages', ...buildDbMessages(db.prepare(dbMessagesSql(limit)).all(sessionId) as DbMessageRow[]) };
     } catch (err) {
       debugAdapterError('opencode', 'readDbMessages rows', err, DB_FILE);
@@ -400,8 +426,11 @@ export class OpenCodeAdapter implements AgentAdapter {
       // `absent` — no `opencode.db` at all — is the listing's own `absent` too: this
       // install stores nothing in a database, which is an absence and not a failure.
       const detail = extractDbDetail(read.kind === 'messages' ? read.messages : []);
+      // For v2 the totals are session-level columns the message fold cannot see, so
+      // the read's own `tokenUsage` (present only on the v2 branch) wins when set.
+      const tokenUsage = read.kind === 'messages' && read.tokenUsage ? read.tokenUsage : detail.tokenUsage;
       return detailOk(
-        { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage: detail.tokenUsage, sessionId },
+        { toolHistory: detail.toolHistory.slice(-15), messages: detail.messages.slice(-5), tokenUsage, sessionId },
         // One malformed `message.data` or `part.data` degrades the ROW, never the
         // session — so it is a `warning` here for the same reason it is one in the
         // listing (#156).

@@ -327,6 +327,7 @@ type DbSessionV2Row = {
   timeCreated?: number;
   timeUpdated?: number;
   timeArchived?: number | null;
+  timeSuspended?: number | null;
   /** A raw JSON string, so an unparseable model can be written verbatim. */
   model?: string | null;
   tokensInput?: number;
@@ -373,7 +374,7 @@ function openDb(dir: string, schema: string): OpencodeDb {
     : null;
   const insertSessionV2 = schema.includes('CREATE TABLE session_v2 (')
     ? db.prepare(
-        'INSERT INTO session_v2 (id, project_id, parent_id, directory, title, time_created, time_updated, time_archived, model, tokens_input, tokens_output) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO session_v2 (id, project_id, parent_id, directory, title, time_created, time_updated, time_archived, time_suspended, model, tokens_input, tokens_output) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
       )
     : null;
   const insertSessionMessage = schema.includes('CREATE TABLE session_message (')
@@ -432,6 +433,7 @@ function openDb(dir: string, schema: string): OpencodeDb {
         row.timeCreated ?? now,
         'timeUpdated' in row ? row.timeUpdated : (row.timeCreated ?? now),
         'timeArchived' in row ? row.timeArchived : null,
+        'timeSuspended' in row ? row.timeSuspended : null,
         'model' in row ? row.model : null,
         row.tokensInput ?? 0,
         row.tokensOutput ?? 0,
@@ -466,6 +468,7 @@ const SESSION_V2_SQL = `
     time_created INTEGER NOT NULL,
     time_updated INTEGER NOT NULL,
     time_archived INTEGER,
+    time_suspended INTEGER,
     model TEXT,
     tokens_input INTEGER NOT NULL DEFAULT 0,
     tokens_output INTEGER NOT NULL DEFAULT 0
@@ -1359,6 +1362,75 @@ describe('OpenCodeAdapter on-disk characterization', () => {
         const adapter = new OpenCodeAdapter();
         expect(ids(await sessionsOf(adapter, 6_000))).toEqual(['opencode-v2-kept']);
         expect(ids(await sessionsOf(adapter, 60_000))).toEqual(['opencode-v2-fresh', 'opencode-v2-kept']);
+      },
+    );
+  });
+
+  // The v2 detail path: `opencode-db:<id>` has no listing row to consult, so the
+  // store is detected from `session_v2`/`session_message`, and `tokenUsage` comes
+  // from the session columns rather than per-message `data.tokens`.
+  it('read v2 session detail and token usage from the session_v2 columns', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2, addMessageV2 } = openOpencodeV2Db(dir);
+        const now = Date.now();
+        addSessionV2({ id: 'v2-detail', timeUpdated: now - 1_000, tokensInput: 75_825, tokensOutput: 8_564 });
+        addMessageV2({
+          id: 'v2-detail-asst',
+          sessionId: 'v2-detail',
+          type: 'assistant',
+          seq: 1,
+          timeCreated: now - 500,
+          data: JSON.stringify({
+            text: 'answer',
+            content: [
+              { type: 'text', text: 'answer' },
+              { type: 'tool', name: 'skill', state: { input: { name: 'using-git-worktrees' } } },
+            ],
+          }),
+        });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        const detail = await detailOf(adapter, 'opencode-v2-detail', null, 'opencode-db:v2-detail');
+        expect(texts(detail.messages)).toEqual(['answer']);
+        expect(toolNames(detail.toolHistory)).toEqual(['skill']);
+        expect(detail.tokenUsage).toStrictEqual({ input: 75_825, output: 8_564 });
+        expect(detail.sessionId).toBe('opencode-v2-detail');
+      },
+    );
+  });
+
+  // A v2 session with no tokens reads `null`, not `{ input: 0, output: 0 }` — the
+  // same zero-check the v1 path applies.
+  it('report v2 tokenUsage as null when the two columns are both zero', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2 } = openOpencodeV2Db(dir);
+        addSessionV2({ id: 'v2-zero', timeUpdated: Date.now() - 1_000, tokensInput: 0, tokensOutput: 0 });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        const detail = await detailOf(adapter, 'opencode-v2-zero', null, 'opencode-db:v2-zero');
+        expect(detail.tokenUsage).toBeNull();
+      },
+    );
+  });
+
+  // Only `time_archived` excludes a session; a suspended one stays listed.
+  it('list a suspended v2 session, since only time_archived excludes', async () => {
+    await withOpencodeDir(
+      (dir) => {
+        const { db, addSessionV2 } = openOpencodeV2Db(dir);
+        const now = Date.now();
+        addSessionV2({ id: 'v2-suspended', timeUpdated: now - 1_000, timeSuspended: now - 2_000, timeArchived: null });
+        db.close();
+      },
+      async (OpenCodeAdapter) => {
+        const adapter = new OpenCodeAdapter();
+        expect(ids(await sessionsOf(adapter, 5 * MINUTE))).toEqual(['opencode-v2-suspended']);
       },
     );
   });
